@@ -32,10 +32,9 @@ export class NotificationSettingRelationalRepository
     const entity = await this.notificationSettingRepository.save(
       this.notificationSettingRepository.create({
         userId: data.userId,
-        emailEnabled: data.emailEnabled,
-        emailAddress: data.emailAddress,
         webhookEnabled: data.webhookEnabled,
         webhookUrl: data.webhookUrl,
+        webhookSecret: data.webhookSecret,
         browserEnabled: data.browserEnabled,
       }),
     );

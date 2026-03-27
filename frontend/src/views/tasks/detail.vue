@@ -25,6 +25,7 @@ import type {
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
+import { refreshSidebarRecentTasks } from '@/utils/sidebar-recent-tasks-refresh'
 
 defineOptions({
   name: 'TaskDetailView',
@@ -81,8 +82,27 @@ const message = useMessage()
 let streamAbortController: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let sidebarRecentTasksDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let taskDataRequestId = 0
+
+const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
+  'Node execution started',
+  'Agent node completed; pending approval',
+  'Agent node completed successfully',
+  'Task completed; worktree preserved',
+  'Agent node execution failed',
+  'Node approved and marked as done',
+  'Task title generated',
+] as const
+
+const NODE_STATUS_CHANGE_LOG_MESSAGES = [
+  'Node execution started',
+  'Agent node completed; pending approval',
+  'Agent node completed successfully',
+  'Agent node execution failed',
+  'Node approved and marked as done',
+] as const
 
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
@@ -391,16 +411,11 @@ const upsertLog = (nextLog: TaskLog) => {
 }
 
 const shouldRefreshTaskDetailForLog = (log: TaskLog) => {
-  const refreshMessages = [
-    'Node execution started',
-    'Agent node completed; pending approval',
-    'Agent node completed successfully',
-    'Task completed; worktree preserved',
-    'Agent node execution failed',
-    'Node approved and marked as done',
-  ]
+  return TASK_DETAIL_REFRESH_LOG_MESSAGES.some((messageText) => log.message?.includes(messageText))
+}
 
-  return refreshMessages.some((messageText) => log.message?.includes(messageText))
+const shouldRefreshRightPanelForNodeStatusLog = (log: TaskLog) => {
+  return NODE_STATUS_CHANGE_LOG_MESSAGES.some((messageText) => log.message?.includes(messageText))
 }
 
 const clearReconnectTimer = () => {
@@ -439,6 +454,10 @@ const disconnectStream = () => {
   if (detailRefreshDebounceTimer) {
     clearTimeout(detailRefreshDebounceTimer)
     detailRefreshDebounceTimer = null
+  }
+  if (sidebarRecentTasksDebounceTimer) {
+    clearTimeout(sidebarRecentTasksDebounceTimer)
+    sidebarRecentTasksDebounceTimer = null
   }
 
   if (streamAbortController) {
@@ -493,11 +512,21 @@ const connectStream = async () => {
             if (isAgentOutputLog(payload) || shouldRefreshTaskDetailForLog(payload)) {
               scheduleRefreshMessages()
             }
+            if (shouldRefreshRightPanelForNodeStatusLog(payload)) {
+              rightPanelRefreshToken.value += 1
+            }
             if (shouldRefreshTaskDetailForLog(payload)) {
               if (detailRefreshDebounceTimer) clearTimeout(detailRefreshDebounceTimer)
               detailRefreshDebounceTimer = setTimeout(() => {
                 detailRefreshDebounceTimer = null
                 void loadTaskData()
+              }, 300)
+            }
+            if (payload.message?.includes('Task title generated')) {
+              if (sidebarRecentTasksDebounceTimer) clearTimeout(sidebarRecentTasksDebounceTimer)
+              sidebarRecentTasksDebounceTimer = setTimeout(() => {
+                sidebarRecentTasksDebounceTimer = null
+                void refreshSidebarRecentTasks()
               }, 300)
             }
           } catch {
@@ -783,6 +812,7 @@ const removeTask = async () => {
     removeStepSummaryCacheForTask(taskId.value)
     deleteOpen.value = false
     message.success('任务已删除')
+    void refreshSidebarRecentTasks()
     await router.push(taskListRoute.value)
   } catch (error) {
     message.error(toErrorMessage(error, '删除任务失败'))

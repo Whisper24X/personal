@@ -27,9 +27,7 @@ const TOOL_TYPES: Set<NormalizedEntryType> = new Set([
 
 function isStandaloneOtherEntry(entry: NormalizedEntry): boolean {
   return (
-    entry.type === 'user_message' ||
-    entry.type === 'error' ||
-    entry.metadata?.isResult === true
+    entry.type === 'user_message' || entry.type === 'error' || entry.metadata?.isResult === true
   )
 }
 

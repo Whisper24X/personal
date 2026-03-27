@@ -7,4 +7,4 @@ Add new specs here by domain. Keep each rule in its own focused document and use
 ## Domains
 
 - Frontend: `docs/dev-spec/frontend/README.md`
-- Operations (deploy / proxy): `docs/dev-spec/operations/reverse-proxy-timeouts.md`
+- Repo: `docs/dev-spec/repo/README.md`

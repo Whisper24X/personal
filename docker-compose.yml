@@ -3,8 +3,8 @@ networks:
     driver: bridge
 
 volumes:
-  ainative-postgres-data:
-  ainative-redis-data:
+  postgres-data:
+  redis-data:
 
 services:
   postgres:
@@ -12,16 +12,13 @@ services:
     container_name: ainative-postgres
     restart: unless-stopped
     environment:
-      TZ: Asia/Shanghai
       POSTGRES_DB: ainative
       POSTGRES_USER: postgres
-      # 仅首次初始化 data volume 时生效；若改密码需删卷或进库改用户口令
       POSTGRES_PASSWORD: 123456
-    ports:
-      # 本机运行 Nest（npm run start:dev）时用 localhost:5432 连接
-      - "5432:5432"
     volumes:
-      - ainative-postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ainative"]
       interval: 10s
@@ -36,41 +33,35 @@ services:
     container_name: ainative-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "123456"]
+    volumes:
+      - redis-data:/data
     ports:
       - "6379:6379"
-    volumes:
-      - ainative-redis-data:/data
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a 123456 ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 5s
+      start_period: 10s
     networks:
       - ainative
 
   backend:
+    image: ainative/backend:dev
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ainative-backend
     restart: unless-stopped
-    env_file: ./backend/.env.development
+    env_file:
+      - ./backend/.env.${NODE_ENV:?NODE_ENV is required}
     environment:
-      DATABASE_HOST: postgres
-      DATABASE_PASSWORD: 123456
-      WORKER_HOST: redis://:123456@redis:6379/1
-      SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:+/ssh-agent}
-      GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
+      NODE_ENV: ${NODE_ENV:?NODE_ENV is required}
+      AINATIVE_DATA_ROOT_DIR: ${PWD}/tmp
     volumes:
-      - ~/.ssh:/root/.ssh:ro
-      - ${SSH_AUTH_SOCK:-/dev/null}:/ssh-agent
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./tmp:/usr/src/tmp
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - ${PWD}/tmp:${PWD}/tmp
     ports:
       - "9000:9000"
     healthcheck:
@@ -87,6 +78,7 @@ services:
       - ainative
 
   frontend:
+    image: ainative/frontend:dev
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -98,6 +90,6 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "8000:80"
+      - "8000:8000"
     networks:
       - ainative

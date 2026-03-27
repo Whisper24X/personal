@@ -138,6 +138,31 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
           runningStatus: TaskStatus.inProgress,
         },
       )
+      .andWhere(
+        `NOT EXISTS (
+          SELECT 1
+          FROM task_nodes review
+          WHERE review."taskId" = :taskId
+            AND review.status = :reviewStatus
+        )`,
+        {
+          taskId,
+          reviewStatus: TaskStatus.inReview,
+        },
+      )
+      .andWhere(
+        `NOT EXISTS (
+          SELECT 1
+          FROM task_nodes prior
+          WHERE prior."taskId" = :taskId
+            AND prior."nodeOrder" < candidate."nodeOrder"
+            AND prior.status <> :doneStatus
+        )`,
+        {
+          taskId,
+          doneStatus: TaskStatus.done,
+        },
+      )
       .orderBy('candidate."nodeOrder"', 'ASC')
       .limit(1)
       .getQuery();
@@ -160,6 +185,8 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
         taskId,
         todoStatus,
         runningStatus: TaskStatus.inProgress,
+        reviewStatus: TaskStatus.inReview,
+        doneStatus: TaskStatus.done,
         workerId,
         leaseUntil: leaseUntil.toISOString(),
         heartbeatAt: now.toISOString(),

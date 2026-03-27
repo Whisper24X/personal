@@ -17,6 +17,8 @@ import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 import { buildBranchOptions } from '@/utils/git-branch-options'
 import { requestSidebarRecentTasksRefresh } from '@/hooks/useSidebarRecentTasks'
+import { initialTitleFromPrompt } from '@/utils/task-title-placeholder'
+import { refreshSidebarRecentTasks } from '@/utils/sidebar-recent-tasks-refresh'
 
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 
@@ -39,6 +41,7 @@ const TASK_HEADLINES = [
 const HEADLINE_ROTATE_INTERVAL_MS = 30000
 const TASK_CREATE_SELECT_PANEL_Z_INDEX = 130
 const TASK_CREATE_SELECT_PANEL_PLACEMENT = 'top' as const
+const PROJECT_DETAIL_FALLBACK_TIMEOUT_MS = 5000
 
 const props = withDefaults(
   defineProps<{
@@ -69,6 +72,7 @@ const loadingBranches = ref(false)
 const submitting = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const currentHeadline = ref(TASK_HEADLINES[0] ?? '我能为你做什么？')
+const initializingProjectDependencies = ref(false)
 let headlineTimer: ReturnType<typeof setInterval> | null = null
 let latestBranchRequestId = 0
 
@@ -148,6 +152,24 @@ const syncProjectFromContext = () => {
   if (projectId) {
     createForm.projectId = projectId
   }
+}
+
+const withRequestTimeout = <T,>(promise: Promise<T>, timeoutMs: number) => {
+  return new Promise<T | null>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      resolve(null)
+    }, timeoutMs)
+
+    promise
+      .then((result) => {
+        clearTimeout(timeoutId)
+        resolve(result)
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
 }
 
 const resetCreateForm = (projectId?: string) => {
@@ -342,6 +364,19 @@ const loadConversationCliOptions = async (projectId: string) => {
   }
 }
 
+const loadProjectDependencies = async (projectId: string) => {
+  const parallel: Promise<unknown>[] = [
+    loadConversationCliOptions(projectId),
+    loadBranchesForProject(projectId),
+  ]
+
+  if (createForm.mode === 'workflow') {
+    parallel.push(loadTemplatesForProject(projectId))
+  }
+
+  await Promise.all(parallel)
+}
+
 const refreshAccessContext = async (projectId: string) => {
   try {
     await accessStore.loadContext(projectId ? { projectId } : {})
@@ -360,10 +395,15 @@ const loadProjectsForForm = async () => {
 
   if (preferredId) {
     try {
-      const project = await projectsApi.detail(preferredId)
-      projects.value = [project]
-      createForm.projectId = project.id
-      return
+      const project = await withRequestTimeout(
+        projectsApi.detail(preferredId),
+        PROJECT_DETAIL_FALLBACK_TIMEOUT_MS,
+      )
+      if (project) {
+        projects.value = [project]
+        createForm.projectId = project.id
+        return
+      }
     } catch {
       // detail 不可用（如临时网络错误）时退回全量列表，与旧行为一致
     }
@@ -387,22 +427,15 @@ const loadProjectsForForm = async () => {
 
 const loadPageData = async () => {
   loading.value = true
+  initializingProjectDependencies.value = true
   try {
     await loadProjectsForForm()
     await refreshAccessContext(createForm.projectId)
-
-    const pid = createForm.projectId
-    const parallel: Promise<unknown>[] = [
-      loadConversationCliOptions(pid),
-      loadBranchesForProject(pid),
-    ]
-    if (createForm.mode === 'workflow') {
-      parallel.push(loadTemplatesForProject(pid))
-    }
-    await Promise.all(parallel)
+    void loadProjectDependencies(createForm.projectId)
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务页面失败'))
   } finally {
+    initializingProjectDependencies.value = false
     loading.value = false
   }
 }
@@ -503,29 +536,14 @@ const createTask = async () => {
 
   try {
     const project = projects.value.find((item) => item.id === projectIdForSubmit)
-    const suggestPayload =
-      createForm.mode === 'conversation'
-        ? {
-            projectId: projectIdForSubmit,
-            mode: createForm.mode,
-            prompt: createForm.prompt.trim(),
-            agentCliId: createForm.agentCliId || undefined,
-            agentCliConfigId: createForm.agentCliConfigId || undefined,
-          }
-        : {
-            projectId: projectIdForSubmit,
-            mode: createForm.mode,
-            prompt: createForm.prompt.trim(),
-            workflowTemplateId: createForm.workflowTemplateId || undefined,
-          }
-
-    const { title: generatedTitle } = await tasksApi.suggestTaskTitle(suggestPayload)
+    const promptTrimmed = createForm.prompt.trim()
+    const initialTitle = initialTitleFromPrompt(promptTrimmed)
 
     const task = await tasksApi.create({
       projectId: projectIdForSubmit,
       mode: createForm.mode,
-      title: generatedTitle.trim(),
-      prompt: createForm.prompt.trim(),
+      title: initialTitle,
+      prompt: promptTrimmed,
       gitBaseBranch: createForm.gitBaseBranch.trim() || project?.defaultBranch?.trim() || undefined,
       configJson: {
         ...(createForm.mode === 'workflow'
@@ -549,6 +567,7 @@ const createTask = async () => {
     message.success('创建任务成功，正在跳转详情')
     resetCreateForm(projectIdForSubmit)
     emit('created', task.id)
+    void refreshSidebarRecentTasks()
     await router.push({
       name: 'task-detail',
       params: { id: task.id },
@@ -564,19 +583,12 @@ const createTask = async () => {
 watch(
   () => createForm.projectId,
   async (projectId, previousProjectId) => {
-    if (projectId === previousProjectId) {
+    if (projectId === previousProjectId || initializingProjectDependencies.value) {
       return
     }
 
     await refreshAccessContext(projectId)
-    const parallel: Promise<unknown>[] = [
-      loadConversationCliOptions(projectId),
-      loadBranchesForProject(projectId),
-    ]
-    if (createForm.mode === 'workflow') {
-      parallel.push(loadTemplatesForProject(projectId))
-    }
-    await Promise.all(parallel)
+    await loadProjectDependencies(projectId)
   },
 )
 
@@ -638,7 +650,6 @@ onMounted(() => {
   headlineTimer = setInterval(() => {
     pickRandomHeadline()
   }, HEADLINE_ROTATE_INTERVAL_MS)
-  syncProjectFromContext()
   void loadPageData()
 })
 
@@ -696,7 +707,7 @@ onBeforeUnmount(() => {
               v-model="createForm.prompt"
               class="min-h-[360px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
               :placeholder="
-                createForm.mode === 'conversation' ? '解决简单需求...' : '解决复杂需求...'
+                createForm.mode === 'conversation' ? '分配任务，或直接提出问题' : '解决复杂需求...'
               "
             />
           </div>
@@ -945,34 +956,10 @@ onBeforeUnmount(() => {
         </form>
       </template>
     </div>
-
-    <Teleport to="body">
-      <Transition name="create-task-overlay">
-        <div
-          v-if="submitting"
-          class="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <p class="px-6 text-center text-base font-medium text-foreground">正在创建任务，请稍后...</p>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.create-task-overlay-enter-active,
-.create-task-overlay-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.create-task-overlay-enter-from,
-.create-task-overlay-leave-to {
-  opacity: 0;
-}
-
 .headline-fade-enter-active,
 .headline-fade-leave-active {
   transition: opacity 0.45s ease;

@@ -33,6 +33,8 @@ export type TaskConfig = {
   agentCliConfigId?: string | null
   loopEnabled?: boolean | null
   maxLoops?: number | null
+  earlyExitMarkerFileName?: string | null
+  earlyExitMarkerEnabled?: boolean | null
   attachments?: TaskAttachmentConfig[] | null
 }
 
@@ -63,6 +65,8 @@ export type TaskNode = {
   input?: {
     taskInput?: string | null
     nodeInput?: string | null
+    earlyExitMarkerFileName?: string | null
+    earlyExitMarkerEnabled?: boolean | null
     [key: string]: unknown
   } | null
   agentCliId?: string | null

@@ -7,6 +7,7 @@ import {
 import { GoalsService } from '../../goals/goals.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TaskNode } from '../domain/task-node';
+import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
@@ -51,7 +52,7 @@ export class TaskStatusService {
         status,
       );
 
-      if (currentTask.createdBy) {
+      if (currentTask.createdBy && currentTask.mode === TaskMode.workflow) {
         await this.notificationsService.notifyTaskStatusChanged({
           userId: currentTask.createdBy,
           taskId,

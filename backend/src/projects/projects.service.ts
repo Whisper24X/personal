@@ -1,4 +1,4 @@
-import { createReadStream } from 'fs';
+import { createReadStream, existsSync } from 'fs';
 import {
   BadRequestException,
   ConflictException,
@@ -7,6 +7,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
@@ -66,6 +67,7 @@ export type EnsureProjectRepositoryOptions = {
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly maxProjectDocFiles = 500;
   private readonly maxProjectDocDepth = 8;
@@ -75,6 +77,7 @@ export class ProjectsService {
     string,
     { tail: Promise<void>; pending: number }
   >();
+  private readonly deployLocks = new Map<string, string>();
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
   );
@@ -375,6 +378,357 @@ export class ProjectsService {
   async remove(id: Project['id'], currentUser: JwtPayloadType): Promise<void> {
     await this.ensureCanDeleteProjectItem(id, currentUser);
     await this.projectRepository.remove(id);
+  }
+
+  async getDeployInfo(
+    projectId: Project['id'],
+    taskId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ featureBranch: string | null }> {
+    const project = await this.ensureCanAccessProject(projectId, currentUser);
+
+    const task = await this.taskRepository.findById(taskId);
+    if (!task || task.projectId !== projectId) {
+      throw new NotFoundException('Task not found in this project');
+    }
+
+    const worktreePath = this.resolveTaskWorktreePathForDeploy(task, project);
+
+    if (!existsSync(worktreePath)) {
+      return { featureBranch: null };
+    }
+
+    const featureBranch = await this.resolveCurrentBranch(worktreePath);
+    return { featureBranch };
+  }
+
+  async deployToTest(
+    projectId: Project['id'],
+    taskId: string,
+    currentUser: JwtPayloadType,
+    emit: (event: string, data: Record<string, unknown>) => void,
+    commandOverride?: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const project = await this.ensureCanAccessProject(projectId, currentUser);
+
+    const deployCommand = commandOverride?.trim() || 'make push-test';
+
+    if (!deployCommand) {
+      throw new BadRequestException('Deploy command is empty');
+    }
+
+    const task = await this.taskRepository.findById(taskId);
+    if (!task || task.projectId !== projectId) {
+      throw new NotFoundException('Task not found in this project');
+    }
+
+    const worktreePath = this.resolveTaskWorktreePathForDeploy(task, project);
+
+    if (!existsSync(worktreePath)) {
+      throw new BadRequestException(
+        `Task worktree directory does not exist: ${worktreePath}`,
+      );
+    }
+
+    const featureBranch = await this.resolveCurrentBranch(worktreePath);
+    const mainRepoPath = this.resolveRepositoryRoot(project);
+    const isDefaultDeploy = deployCommand === 'make push-test';
+    const execCwd = isDefaultDeploy ? mainRepoPath : worktreePath;
+
+    const lockKey = isDefaultDeploy ? mainRepoPath : worktreePath;
+    const lockedBy = this.deployLocks.get(lockKey);
+    if (lockedBy) {
+      const message = isDefaultDeploy
+        ? `该项目有其他分支正在部署中（${lockedBy}），请等待完成后再试`
+        : `该任务正在部署中（${lockedBy}），请等待完成后再试`;
+      throw new ConflictException(message);
+    }
+
+    const deployer =
+      (currentUser as any).name ||
+      (currentUser as any).email ||
+      currentUser.sub;
+    this.deployLocks.set(lockKey, deployer);
+
+    try {
+      const gitName = currentUser.username || 'ainative-user';
+      const gitEmail = `${currentUser.username || currentUser.sub}@ainative.local`;
+
+      if (isDefaultDeploy && featureBranch) {
+        const status = await this.runCommand('git', [
+          '-C',
+          worktreePath,
+          'status',
+          '--porcelain',
+        ]);
+        if (status.success && status.stdout.trim()) {
+          emit('stdout', {
+            text: '[pre-deploy] 检测到未提交的改动，自动提交中...\n',
+          });
+          await this.runCommand('git', ['-C', worktreePath, 'add', '-A']);
+          await this.runCommand('git', [
+            '-C',
+            worktreePath,
+            '-c',
+            `user.name=${gitName}`,
+            '-c',
+            `user.email=${gitEmail}`,
+            'commit',
+            '-m',
+            `deploy: auto-commit ${featureBranch}`,
+          ]);
+          await this.runCommand('git', [
+            '-C',
+            worktreePath,
+            'push',
+            'origin',
+            featureBranch,
+          ]);
+          emit('stdout', {
+            text: '[pre-deploy] 已提交并推送到远程\n',
+          });
+        }
+
+        await this.runCommand('git', ['-C', mainRepoPath, 'fetch', '--all']);
+
+        const currentMainBranch = await this.resolveCurrentBranch(mainRepoPath);
+        const reset = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'reset',
+          '--hard',
+          `origin/${currentMainBranch}`,
+        ]);
+        if (!reset.success) {
+          emit('stdout', {
+            text: '[pre-deploy] 主仓库状态异常，无法对齐远程，部署中止\n',
+          });
+          throw new BadRequestException('主仓库状态异常，请联系管理员');
+        }
+      }
+
+      const originalBranch = await this.resolveCurrentBranch(execCwd);
+
+      const execEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        FORCE_COLOR: '0',
+        GIT_AUTHOR_NAME: gitName,
+        GIT_AUTHOR_EMAIL: gitEmail,
+        GIT_COMMITTER_NAME: gitName,
+        GIT_COMMITTER_EMAIL: gitEmail,
+      };
+      if (isDefaultDeploy && featureBranch) {
+        execEnv.BRANCH = featureBranch;
+      }
+
+      emit('deploy_start', {
+        command: deployCommand,
+        cwd: execCwd,
+        featureBranch: featureBranch || undefined,
+      });
+
+      const IDLE_TIMEOUT_MS = 120_000;
+
+      const { exitCode, aborted, timedOut } = await new Promise<{
+        exitCode: number;
+        aborted: boolean;
+        timedOut: boolean;
+      }>((resolve) => {
+        let wasAborted = false;
+        let wasTimedOut = false;
+        let lastActivityTs = Date.now();
+
+        const child = spawn('sh', ['-c', deployCommand], {
+          cwd: execCwd,
+          env: execEnv,
+          stdio: 'pipe',
+        });
+
+        const cleanup = () => {
+          clearInterval(idleCheckRef);
+          signal?.removeEventListener('abort', killChild);
+        };
+
+        const killChild = () => {
+          wasAborted = true;
+          child.kill('SIGTERM');
+          setTimeout(() => {
+            try {
+              child.kill('SIGKILL');
+            } catch {
+              /* already dead */
+            }
+          }, 5_000);
+        };
+
+        const idleCheckRef = setInterval(() => {
+          if (Date.now() - lastActivityTs >= IDLE_TIMEOUT_MS) {
+            wasTimedOut = true;
+            emit('stderr', {
+              text: `\n[timeout] 超过 ${IDLE_TIMEOUT_MS / 1000} 秒无输出，判定为超时，正在终止进程...\n`,
+            });
+            killChild();
+          }
+        }, 10_000);
+
+        if (signal?.aborted) {
+          killChild();
+        } else {
+          signal?.addEventListener('abort', killChild, { once: true });
+        }
+
+        child.stdout?.on('data', (chunk: Buffer) => {
+          lastActivityTs = Date.now();
+          const text = chunk.toString('utf-8');
+          this.logger.log(`[deploy:stdout] ${text.trimEnd()}`);
+          emit('stdout', { text });
+        });
+
+        child.stderr?.on('data', (chunk: Buffer) => {
+          lastActivityTs = Date.now();
+          const text = chunk.toString('utf-8');
+          this.logger.warn(`[deploy:stderr] ${text.trimEnd()}`);
+          emit('stderr', { text });
+        });
+
+        child.on('error', (error) => {
+          cleanup();
+          emit('stderr', { text: error.message });
+          resolve({ exitCode: -1, aborted: wasAborted, timedOut: wasTimedOut });
+        });
+
+        child.on('close', (code) => {
+          cleanup();
+          resolve({
+            exitCode: code ?? -1,
+            aborted: wasAborted,
+            timedOut: wasTimedOut,
+          });
+        });
+      });
+
+      if (exitCode !== 0 && originalBranch) {
+        const reason = timedOut
+          ? '部署超时'
+          : aborted
+            ? '部署已取消'
+            : '部署失败';
+        emit('stderr', {
+          text: `\n[auto-rollback] ${reason}，正在恢复分支状态...\n`,
+        });
+        await this.rollbackWorktree(execCwd, originalBranch, emit);
+      }
+
+      emit('deploy_end', { exitCode, aborted, timedOut });
+    } finally {
+      this.deployLocks.delete(lockKey);
+    }
+  }
+
+  private async resolveCurrentBranch(cwd: string): Promise<string | null> {
+    const result = await this.runCommand('git', [
+      '-C',
+      cwd,
+      'rev-parse',
+      '--abbrev-ref',
+      'HEAD',
+    ]);
+    if (!result.success) return null;
+    const branch = result.stdout.trim();
+    if (!branch || branch === 'HEAD') return null;
+    return branch;
+  }
+
+  private async rollbackWorktree(
+    cwd: string,
+    originalBranch: string,
+    emit: (event: string, data: Record<string, unknown>) => void,
+  ): Promise<void> {
+    const abortResult = await this.runCommand('git', [
+      '-C',
+      cwd,
+      'merge',
+      '--abort',
+    ]);
+    if (abortResult.success) {
+      emit('stderr', { text: '[auto-rollback] git merge --abort 成功\n' });
+    }
+
+    const currentBranch = await this.resolveCurrentBranch(cwd);
+    if (currentBranch !== originalBranch) {
+      const checkoutResult = await this.runCommand('git', [
+        '-C',
+        cwd,
+        'checkout',
+        originalBranch,
+      ]);
+      if (checkoutResult.success) {
+        emit('stderr', {
+          text: `[auto-rollback] 已切回分支 ${originalBranch}\n`,
+        });
+      } else {
+        emit('stderr', {
+          text: `[auto-rollback] 切回分支失败: ${checkoutResult.stderr}\n`,
+        });
+      }
+    }
+  }
+
+  private resolveTaskWorktreePathForDeploy(
+    task: { id: string; gitWorktree?: string | null },
+    project: Project,
+  ): string {
+    const gitWorktree = task.gitWorktree?.trim() || `wk-${task.id}`;
+
+    if (path.isAbsolute(gitWorktree)) {
+      return gitWorktree;
+    }
+
+    const baseDir = this.resolveWorktreeBaseDirForDeploy(project);
+    const nextPath = path.join(baseDir, gitWorktree);
+
+    const legacyBaseDir = this.resolveLegacyWorktreeBaseDirForDeploy(project);
+    const legacyPath = path.join(legacyBaseDir, gitWorktree);
+
+    if (legacyPath !== nextPath && existsSync(legacyPath)) {
+      return legacyPath;
+    }
+
+    return nextPath;
+  }
+
+  private resolveWorktreeBaseDirForDeploy(project: Project): string {
+    const config = (project.configJson ?? {}) as Record<string, unknown>;
+
+    if (
+      typeof config.worktreeBaseDir === 'string' &&
+      config.worktreeBaseDir.trim()
+    ) {
+      return path.resolve(config.worktreeBaseDir);
+    }
+
+    const envBaseDir = this.configService
+      .get<string>('AINATIVE_WORKTREE_BASE_DIR', { infer: true })
+      ?.trim();
+    if (envBaseDir) {
+      return path.resolve(envBaseDir);
+    }
+
+    return path.join(this.resolveProjectStorageBaseDir(project), 'worktrees');
+  }
+
+  private resolveLegacyWorktreeBaseDirForDeploy(project: Project): string {
+    const businessLineId =
+      project.businessLineId?.trim() || 'unknown-business-line';
+    const projectId = project.id?.trim() || 'unknown-project';
+
+    return path.resolve(
+      this.defaultDataRootDir,
+      businessLineId,
+      'worktrees',
+      projectId,
+    );
   }
 
   async findMembers(

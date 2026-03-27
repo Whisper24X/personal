@@ -668,7 +668,12 @@ watch(
               <p class="text-xs text-muted-foreground">
                 <span class="font-mono">{{ project.id }}</span>
                 <span class="mx-2">•</span>
-                <RouterLink :to="`/projects/${project.id}`" class="hover:text-foreground hover:underline">项目详情</RouterLink>
+                <RouterLink
+                  :to="{ path: '/dashboard', query: { projectId: project.id } }"
+                  class="hover:text-foreground hover:underline"
+                >
+                  项目工作台
+                </RouterLink>
               </p>
             </div>
 

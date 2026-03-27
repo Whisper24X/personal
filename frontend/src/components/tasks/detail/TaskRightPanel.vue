@@ -6,6 +6,7 @@ import TaskFilesPanel from './TaskFilesPanel.vue'
 import TaskGitPanel from './TaskGitPanel.vue'
 import TaskTerminalPanel from './TaskTerminalPanel.vue'
 import TaskLogsPanel from './TaskLogsPanel.vue'
+import TaskDeployPanel from './TaskDeployPanel.vue'
 import type { TaskLog } from '@/types/api/tasks'
 
 defineOptions({
@@ -39,7 +40,7 @@ const props = withDefaults(
   },
 )
 
-const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal' | 'logs'>('artifact')
+const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal' | 'logs' | 'deploy'>('artifact')
 
 watch(
   () => props.artifactOpenNonce,
@@ -123,10 +124,18 @@ watch(
         >
           日志
         </button>
+        <button
+          class="h-8 rounded-md px-3 text-xs font-semibold transition"
+          :class="activeTab === 'deploy' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          type="button"
+          @click="activeTab = 'deploy'"
+        >
+          部署
+        </button>
       </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-hidden">
+    <div v-show="activeTab !== 'deploy'" class="min-h-0 flex-1 overflow-hidden">
       <TaskArtifactsPanel
         v-if="activeTab === 'artifact'"
         :task-id="props.taskId"
@@ -162,5 +171,13 @@ watch(
         :format-date="props.formatDate"
       />
     </div>
+
+    <TaskDeployPanel
+      v-show="activeTab === 'deploy'"
+      class="min-h-0 flex-1 overflow-hidden"
+      :task-id="props.taskId"
+      :project-id="props.projectId"
+      :deploy-command="''"
+    />
   </div>
 </template>

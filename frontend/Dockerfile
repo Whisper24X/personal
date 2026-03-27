@@ -10,9 +10,9 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
-ENV BACKEND_URL=http://host.docker.internal:3000
+ENV BACKEND_URL=http://host.docker.internal:9000
 
 COPY docker/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 8000

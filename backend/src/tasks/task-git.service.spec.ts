@@ -17,16 +17,23 @@ const runGit = (args: string[], cwd: string): string => {
   return result.stdout.trim();
 };
 
-const initializeRepository = async (): Promise<string> => {
+const initializeRepository = async (
+  options: { removeIdentityAfterInit?: boolean } = {},
+): Promise<string> => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ainative-git-'));
 
   runGit(['init'], directory);
-  runGit(['config', 'user.name', 'AINative Test'], directory);
+  runGit(['config', 'user.name', 'AINative'], directory);
   runGit(['config', 'user.email', 'ainative@example.com'], directory);
 
   await fs.writeFile(path.join(directory, 'README.md'), '# test\n');
   runGit(['add', 'README.md'], directory);
   runGit(['commit', '-m', 'init'], directory);
+
+  if (options.removeIdentityAfterInit) {
+    runGit(['config', '--unset', 'user.name'], directory);
+    runGit(['config', '--unset', 'user.email'], directory);
+  }
 
   return directory;
 };
@@ -296,5 +303,77 @@ describe('TaskGitService', () => {
     expect(runGit(['log', '-1', '--pretty=%s'], repositoryPath)).toBe(
       'chore(task): approve node #1 Node 1',
     );
+  });
+
+  it('should configure fallback git identity before committing when missing', async () => {
+    const repositoryPath = await initializeRepository({
+      removeIdentityAfterInit: true,
+    });
+    createdDirectories.push(repositoryPath);
+    const isolatedHome = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-git-home-'),
+    );
+    const isolatedConfigHome = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-git-xdg-'),
+    );
+    createdDirectories.push(isolatedHome, isolatedConfigHome);
+
+    await fs.writeFile(
+      path.join(repositoryPath, 'README.md'),
+      '# updated without identity\n',
+    );
+
+    const service = new TaskGitService({} as any, {} as any);
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        gitBaseBranch: 'main',
+      },
+      worktreePath: repositoryPath,
+    });
+    const previousHome = process.env.HOME;
+    const previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    const previousNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
+
+    process.env.HOME = isolatedHome;
+    process.env.XDG_CONFIG_HOME = isolatedConfigHome;
+    process.env.GIT_CONFIG_NOSYSTEM = '1';
+
+    try {
+      const result = await service.commitIfChanged(
+        'task-1',
+        'chore(task): approve node #1 Node 1',
+        {} as never,
+      );
+
+      expect(result).toEqual({
+        committed: true,
+        commitSha: expect.any(String),
+        subject: 'chore(task): approve node #1 Node 1',
+      });
+      expect(runGit(['config', '--get', 'user.name'], repositoryPath)).toBe(
+        'AINative Bot',
+      );
+      expect(runGit(['config', '--get', 'user.email'], repositoryPath)).toBe(
+        'ainative@example.com',
+      );
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
+
+      if (previousXdgConfigHome === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdgConfigHome;
+      }
+
+      if (previousNoSystem === undefined) {
+        delete process.env.GIT_CONFIG_NOSYSTEM;
+      } else {
+        process.env.GIT_CONFIG_NOSYSTEM = previousNoSystem;
+      }
+    }
   });
 });

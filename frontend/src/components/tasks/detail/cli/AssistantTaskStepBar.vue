@@ -34,11 +34,11 @@ function stepTextClass(state: TaskStepState): string {
   <div class="mb-1 flex flex-wrap items-center gap-2">
     <template v-for="(step, i) in steps" :key="i">
       <div
-        class="max-w-[min(220px,40vw)] rounded-md border px-2.5 py-1.5 text-xs shadow-sm"
+        class="min-w-0 w-max max-w-[min(560px,calc(100vw-2rem))] rounded-md border px-2.5 py-1.5 text-xs shadow-sm"
         :class="stepBoxClass(step.state)"
       >
         <span
-          class="block truncate font-medium leading-snug"
+          class="block break-words font-medium leading-snug"
           :class="stepTextClass(step.state)"
           :title="step.fullLabel"
         >

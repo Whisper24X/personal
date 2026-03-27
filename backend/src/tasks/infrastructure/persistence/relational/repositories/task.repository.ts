@@ -241,17 +241,10 @@ export class TaskRelationalRepository implements TaskRepository {
       .andWhere('task."projectId" IN (:...projectIds)', {
         projectIds,
       })
-      .andWhere(
-        `EXISTS (
-          SELECT 1
-          FROM task_nodes todo
-          WHERE todo."taskId" = task.id
-            AND todo.status = :todoStatus
-        )`,
-        {
-          todoStatus: TaskStatus.todo,
-        },
-      )
+      .andWhere(this.buildDispatchableTodoExistsCondition('task'), {
+        todoStatus: TaskStatus.todo,
+        doneStatus: TaskStatus.done,
+      })
       .andWhere(
         `NOT EXISTS (
           SELECT 1
@@ -265,6 +258,9 @@ export class TaskRelationalRepository implements TaskRepository {
           at,
         },
       )
+      .andWhere(this.buildNoInReviewNodesCondition('task'), {
+        reviewStatus: TaskStatus.inReview,
+      })
       .groupBy('task."projectId"')
       .getRawMany<{ projectId: string; count: string }>();
 
@@ -300,17 +296,10 @@ export class TaskRelationalRepository implements TaskRepository {
       .createQueryBuilder('task')
       .select('task."createdAt"', 'createdAt')
       .where('task."deletedAt" IS NULL')
-      .andWhere(
-        `EXISTS (
-          SELECT 1
-          FROM task_nodes todo
-          WHERE todo."taskId" = task.id
-            AND todo.status = :todoStatus
-        )`,
-        {
-          todoStatus: TaskStatus.todo,
-        },
-      )
+      .andWhere(this.buildDispatchableTodoExistsCondition('task'), {
+        todoStatus: TaskStatus.todo,
+        doneStatus: TaskStatus.done,
+      })
       .andWhere(
         `NOT EXISTS (
           SELECT 1
@@ -324,6 +313,9 @@ export class TaskRelationalRepository implements TaskRepository {
           at,
         },
       )
+      .andWhere(this.buildNoInReviewNodesCondition('task'), {
+        reviewStatus: TaskStatus.inReview,
+      })
       .orderBy('task."createdAt"', 'ASC')
       .limit(1)
       .getRawOne<{ createdAt?: string | Date }>();
@@ -351,17 +343,10 @@ export class TaskRelationalRepository implements TaskRepository {
       .andWhere('task.status IN (:...statuses)', {
         statuses: [TaskStatus.todo, TaskStatus.inProgress],
       })
-      .andWhere(
-        `EXISTS (
-          SELECT 1
-          FROM task_nodes todo
-          WHERE todo."taskId" = task.id
-            AND todo.status = :todoStatus
-        )`,
-        {
-          todoStatus: TaskStatus.todo,
-        },
-      )
+      .andWhere(this.buildDispatchableTodoExistsCondition('task'), {
+        todoStatus: TaskStatus.todo,
+        doneStatus: TaskStatus.done,
+      })
       .andWhere(
         `NOT EXISTS (
           SELECT 1
@@ -373,6 +358,9 @@ export class TaskRelationalRepository implements TaskRepository {
           runningStatus: TaskStatus.inProgress,
         },
       )
+      .andWhere(this.buildNoInReviewNodesCondition('task'), {
+        reviewStatus: TaskStatus.inReview,
+      })
       .orderBy('task."createdAt"', 'ASC')
       .limit(limit)
       .getMany();
@@ -421,5 +409,30 @@ export class TaskRelationalRepository implements TaskRepository {
 
   async remove(id: Task['id']): Promise<void> {
     await this.taskRepository.softDelete(id);
+  }
+
+  private buildDispatchableTodoExistsCondition(taskAlias: string): string {
+    return `EXISTS (
+      SELECT 1
+      FROM task_nodes todo
+      WHERE todo."taskId" = ${taskAlias}.id
+        AND todo.status = :todoStatus
+        AND NOT EXISTS (
+          SELECT 1
+          FROM task_nodes prior
+          WHERE prior."taskId" = ${taskAlias}.id
+            AND prior."nodeOrder" < todo."nodeOrder"
+            AND prior.status <> :doneStatus
+        )
+    )`;
+  }
+
+  private buildNoInReviewNodesCondition(taskAlias: string): string {
+    return `NOT EXISTS (
+      SELECT 1
+      FROM task_nodes review
+      WHERE review."taskId" = ${taskAlias}.id
+        AND review.status = :reviewStatus
+    )`;
   }
 }

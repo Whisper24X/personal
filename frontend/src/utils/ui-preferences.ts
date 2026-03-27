@@ -1,8 +1,5 @@
 import { STORAGE_KEYS } from '@/types/common/storage'
 
-export const UI_LOCALES = ['zh-CN', 'en-US'] as const
-export type UiLocale = (typeof UI_LOCALES)[number]
-
 export const APPEARANCE_MODES = ['light', 'dark'] as const
 export type AppearanceMode = (typeof APPEARANCE_MODES)[number]
 
@@ -13,7 +10,6 @@ export const BACKGROUND_STYLES = ['grid', 'plain', 'glow'] as const
 export type BackgroundStyle = (typeof BACKGROUND_STYLES)[number]
 
 type UiPreferences = {
-  locale: UiLocale
   appearanceMode: AppearanceMode
   themeColor: ThemeColor
   backgroundStyle: BackgroundStyle
@@ -31,10 +27,6 @@ const asKnownValue = <T extends readonly string[]>(
   return fallback
 }
 
-export const resolveUiLocale = (value: string | null) => {
-  return asKnownValue(value, UI_LOCALES, 'zh-CN')
-}
-
 export const resolveAppearanceMode = (value: string | null) => {
   return asKnownValue(value, APPEARANCE_MODES, 'light')
 }
@@ -45,10 +37,6 @@ export const resolveThemeColor = (value: string | null) => {
 
 export const resolveBackgroundStyle = (value: string | null) => {
   return asKnownValue(value, BACKGROUND_STYLES, 'grid')
-}
-
-export const applyUiLocale = (locale: UiLocale) => {
-  document.documentElement.lang = locale
 }
 
 export const applyAppearanceMode = (appearanceMode: AppearanceMode) => {
@@ -65,7 +53,6 @@ export const applyBackgroundStyle = (backgroundStyle: BackgroundStyle) => {
 
 export const loadUiPreferencesFromStorage = (): UiPreferences => {
   return {
-    locale: resolveUiLocale(localStorage.getItem(STORAGE_KEYS.locale)),
     appearanceMode: resolveAppearanceMode(localStorage.getItem(STORAGE_KEYS.theme)),
     themeColor: resolveThemeColor(localStorage.getItem(STORAGE_KEYS.themeColor)),
     backgroundStyle: resolveBackgroundStyle(localStorage.getItem(STORAGE_KEYS.backgroundStyle)),
@@ -74,7 +61,6 @@ export const loadUiPreferencesFromStorage = (): UiPreferences => {
 
 export const applyStoredUiPreferences = () => {
   const preferences = loadUiPreferencesFromStorage()
-  applyUiLocale(preferences.locale)
   applyAppearanceMode(preferences.appearanceMode)
   applyThemeColor(preferences.themeColor)
   applyBackgroundStyle(preferences.backgroundStyle)

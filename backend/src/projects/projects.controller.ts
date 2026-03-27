@@ -512,4 +512,65 @@ export class ProjectsController {
 
     res.end();
   }
+
+  @Get(':id/deploy-info')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: { featureBranch: { type: 'string', nullable: true } },
+    },
+  })
+  async getDeployInfo(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('taskId') taskId: string,
+  ): Promise<{ featureBranch: string | null }> {
+    return this.projectsService.getDeployInfo(id, taskId, request.user);
+  }
+
+  @Post(':id/deploy')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async deploy(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { taskId: string; command?: string },
+    @Res() res: Response,
+  ): Promise<void> {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const abortController = new AbortController();
+
+    res.on('close', () => {
+      abortController.abort();
+    });
+
+    const safeEmit = (event: string, data: Record<string, unknown>) => {
+      try {
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`event: ${event}\n`);
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        }
+      } catch {
+        /* connection already closed */
+      }
+    };
+
+    await this.projectsService.deployToTest(
+      id,
+      body.taskId,
+      request.user,
+      safeEmit,
+      body.command,
+      abortController.signal,
+    );
+
+    if (!res.writableEnded) {
+      res.end();
+    }
+  }
 }

@@ -1,7 +1,11 @@
-import { ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import type { Task } from '@/types/api/tasks'
 import { fetchAllPages } from '@/utils/pagination'
+import {
+  registerSidebarRecentTasksRefresh,
+  unregisterSidebarRecentTasksRefresh,
+} from '@/utils/sidebar-recent-tasks-refresh'
 
 /** 侧栏列表高度有限，取最近更新前 N 条；与项目任务总数无必然相等 */
 const RECENT_LIMIT = 20
@@ -58,6 +62,14 @@ export function useSidebarRecentTasks(selectedProjectId: () => string) {
     },
     { immediate: true },
   )
+
+  onMounted(() => {
+    registerSidebarRecentTasksRefresh(load)
+  })
+
+  onUnmounted(() => {
+    unregisterSidebarRecentTasksRefresh()
+  })
 
   return { tasks, loading, refresh: load }
 }

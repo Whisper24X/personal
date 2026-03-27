@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TaskNode } from '@/types/api/tasks'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 defineOptions({
   name: 'TaskDetailWorkflowCard',
@@ -14,10 +15,9 @@ const emit = defineEmits<{
   selectNode: [nodeId: string]
 }>()
 
-/** 多轮执行时在节点名旁展示当前轮次/上限，如 <2/4> */
-const nodeLoopBadge = (node: TaskNode) => {
+const resolveLoopDisplay = (node: TaskNode) => {
   const lj = node.loopJson
-  if (!lj || lj.maxLoops <= 1) return ''
+  if (!lj || lj.maxLoops <= 1) return null
   const max = lj.maxLoops
   const count = typeof lj.loopCount === 'number' ? lj.loopCount : 0
   let current = count
@@ -25,9 +25,10 @@ const nodeLoopBadge = (node: TaskNode) => {
     if (count < max) current = count + 1
   }
   if (node.status === 'done' || node.status === 'in_review') {
-    current = max
+    current = Math.max(count, 1)
   }
-  return `<${current}/${max}>`
+  const earlyExit = (node.status === 'done' || node.status === 'in_review') && count > 0 && count < max
+  return { badge: `<${current}/${max}>`, earlyExit }
 }
 
 const nodeChipClass = (node: TaskNode) => {
@@ -79,13 +80,27 @@ const nodeDotClass = (node: TaskNode) => {
                 @click="emit('selectNode', node.id)"
               >
                 <span class="h-2 w-2 rounded-full shrink-0" :class="nodeDotClass(node)" />
-                <span class="max-w-[96px] truncate">{{ node.name || `节点 ${index + 1}` }}</span>
-                <span
-                  v-if="nodeLoopBadge(node)"
-                  class="text-muted-foreground shrink-0 font-mono text-[10px] opacity-90"
-                >
-                  {{ nodeLoopBadge(node) }}
-                </span>
+                <span class="whitespace-nowrap">{{ node.name || `节点 ${index + 1}` }}</span>
+                <template v-if="resolveLoopDisplay(node)">
+                  <Tooltip v-if="resolveLoopDisplay(node)!.earlyExit">
+                    <TooltipTrigger as-child>
+                      <span
+                        class="shrink-0 font-mono text-[10px] opacity-90 text-amber-600 dark:text-amber-400 cursor-default"
+                      >
+                        {{ resolveLoopDisplay(node)!.badge }} ✓
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <span>已提前完成，未达最大循环次数</span>
+                    </TooltipContent>
+                  </Tooltip>
+                  <span
+                    v-else
+                    class="text-muted-foreground shrink-0 font-mono text-[10px] opacity-90"
+                  >
+                    {{ resolveLoopDisplay(node)!.badge }}
+                  </span>
+                </template>
               </button>
             </div>
             <div

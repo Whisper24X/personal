@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
@@ -297,6 +299,12 @@ export class TaskNodeExecutionService {
         node,
         agentClioutput,
         agentCliSessionId: executionResult.sessionId ?? null,
+        earlyExitDecision: await this.resolveEarlyExitDecision({
+          taskId,
+          nodeId,
+          node,
+          runtimeContext,
+        }),
       });
 
       await this.taskLogService.appendLog({
@@ -315,6 +323,9 @@ export class TaskNodeExecutionService {
           args: executionResult.args,
           loopJson: loopResult.loopJson,
           pendingApproval: loopResult.pendingApproval,
+          earlyExitCompleted: loopResult.earlyExitCompleted,
+          earlyExitReason: loopResult.earlyExitReason,
+          earlyExitSourceFile: loopResult.earlyExitSourceFile,
         },
       });
 
@@ -617,15 +628,24 @@ export class TaskNodeExecutionService {
     node,
     agentClioutput,
     agentCliSessionId,
+    earlyExitDecision,
   }: {
     node: TaskNode;
     agentClioutput: string;
     agentCliSessionId?: string | null;
+    earlyExitDecision?: {
+      completed: boolean;
+      reason: string | null;
+      sourceFile: string | null;
+    };
   }): Promise<{
     status: TaskStatus;
     loopJson: { enabled: boolean; loopCount: number; maxLoops: number };
     queuedNextLoop: boolean;
     pendingApproval: boolean;
+    earlyExitCompleted: boolean;
+    earlyExitReason: string | null;
+    earlyExitSourceFile: string | null;
   }> {
     const currentLoop = this.taskConfigResolver.readNodeLoopConfig(
       node.loopJson,
@@ -635,8 +655,10 @@ export class TaskNodeExecutionService {
       loopCount: Math.max(currentLoop.loopCount + 1, 1),
       maxLoops: currentLoop.maxLoops,
     };
-    // 下一轮是否排队：仅看已完成次数与 maxLoops，不因 enabled 误判而提前进入审批
-    const queuedNextLoop = nextLoopJson.loopCount < nextLoopJson.maxLoops;
+    // 下一轮是否排队：默认按次数控制；若 marker 判定完成则提前退出
+    const queuedByLoopCount = nextLoopJson.loopCount < nextLoopJson.maxLoops;
+    const queuedNextLoop =
+      queuedByLoopCount && !(earlyExitDecision?.completed ?? false);
     const pendingApproval =
       !queuedNextLoop && this.taskConfigResolver.readNodeRequiresApproval(node);
     const status = queuedNextLoop
@@ -660,7 +682,170 @@ export class TaskNodeExecutionService {
       loopJson: nextLoopJson,
       queuedNextLoop,
       pendingApproval,
+      earlyExitCompleted: earlyExitDecision?.completed ?? false,
+      earlyExitReason: earlyExitDecision?.reason ?? null,
+      earlyExitSourceFile: earlyExitDecision?.sourceFile ?? null,
     };
+  }
+
+  private async resolveEarlyExitDecision({
+    taskId,
+    nodeId,
+    node,
+    runtimeContext,
+  }: {
+    taskId: string;
+    nodeId: string;
+    node: TaskNode;
+    runtimeContext?: {
+      gitBranch: string;
+      gitBaseBranch: string;
+      gitWorktree: string;
+      worktreePath: string;
+    };
+  }): Promise<{
+    completed: boolean;
+    reason: string | null;
+    sourceFile: string | null;
+  }> {
+    const markerConfig =
+      this.taskConfigResolver.readNodeEarlyExitMarkerConfig(node);
+    if (!markerConfig.enabled || !markerConfig.fileName) {
+      return { completed: false, reason: null, sourceFile: null };
+    }
+
+    if (!runtimeContext?.worktreePath) {
+      return { completed: false, reason: null, sourceFile: null };
+    }
+
+    const markerFilePaths = this.resolveMarkerFilePaths({
+      worktreePath: runtimeContext.worktreePath,
+      gitBranch: runtimeContext.gitBranch,
+      markerFileName: markerConfig.fileName,
+    });
+    if (!markerFilePaths.length) {
+      await this.taskLogService.appendLog({
+        taskId,
+        taskNodeId: nodeId,
+        level: TaskLogLevel.warn,
+        message: 'Early-exit marker file path rejected',
+        payload: {
+          markerFileName: markerConfig.fileName,
+        },
+      });
+      return { completed: false, reason: null, sourceFile: null };
+    }
+
+    let markerContent = '';
+    let loadedMarkerFilePath: string | null = null;
+    let lastReadError: NodeJS.ErrnoException | null = null;
+    for (const markerFilePath of markerFilePaths) {
+      try {
+        markerContent = await readFile(markerFilePath, 'utf-8');
+        loadedMarkerFilePath = markerFilePath;
+        break;
+      } catch (error) {
+        const readError = error as NodeJS.ErrnoException;
+        if (readError.code !== 'ENOENT') {
+          throw error;
+        }
+        lastReadError = readError;
+      }
+    }
+
+    if (!loadedMarkerFilePath) {
+      await this.taskLogService.appendLog({
+        taskId,
+        taskNodeId: nodeId,
+        level: TaskLogLevel.warn,
+        message: 'Early-exit marker file not found; continue looping',
+        payload: {
+          markerFilePaths,
+          errorCode: lastReadError?.code ?? null,
+        },
+      });
+      return {
+        completed: false,
+        reason: null,
+        sourceFile: markerFilePaths[0] ?? null,
+      };
+    }
+
+    const [statusLine = '', reasonLine = ''] = markerContent
+      .split('\n')
+      .map((line) => line.trim());
+    const reason = reasonLine || null;
+
+    if (statusLine === '已完成') {
+      return {
+        completed: true,
+        reason,
+        sourceFile: loadedMarkerFilePath,
+      };
+    }
+
+    if (statusLine === '未完成') {
+      return {
+        completed: false,
+        reason,
+        sourceFile: loadedMarkerFilePath,
+      };
+    }
+
+    if (statusLine === '未找到') {
+      throw new Error(
+        `Early-exit marker reports missing target: ${reason ?? 'unknown reason'}`,
+      );
+    }
+
+    await this.taskLogService.appendLog({
+      taskId,
+      taskNodeId: nodeId,
+      level: TaskLogLevel.warn,
+      message: 'Early-exit marker status invalid; continue looping',
+      payload: {
+        markerFilePath: loadedMarkerFilePath,
+        statusLine,
+        reason,
+      },
+    });
+
+    return {
+      completed: false,
+      reason,
+      sourceFile: loadedMarkerFilePath,
+    };
+  }
+
+  private resolveMarkerFilePaths({
+    worktreePath,
+    gitBranch,
+    markerFileName,
+  }: {
+    worktreePath: string;
+    gitBranch?: string;
+    markerFileName: string;
+  }): string[] {
+    const rootPath = path.resolve(worktreePath);
+    const gitBranchSegments = (gitBranch ?? '')
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter((segment) => segment && segment !== '.' && segment !== '..');
+    if (!gitBranchSegments.length) {
+      return [];
+    }
+
+    const markerRelativePathCandidates = [
+      path.join('docs', ...gitBranchSegments, `${markerFileName}.md`),
+    ];
+    const safePrefix = `${rootPath}${path.sep}`;
+    const dedupedRelativePaths = Array.from(
+      new Set(markerRelativePathCandidates),
+    );
+
+    return dedupedRelativePaths
+      .map((relativePath) => path.resolve(rootPath, relativePath))
+      .filter((candidatePath) => candidatePath.startsWith(safePrefix));
   }
 
   private async finalizeNodeAsFailure({

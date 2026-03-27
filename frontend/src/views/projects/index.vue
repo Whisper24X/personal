@@ -443,7 +443,7 @@ onBeforeUnmount(() => {
       <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">组织与项目</p>
       <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">业务线与项目</h1>
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        对接真实接口管理项目，支持创建、编辑、查看与删除。项目详情页可继续配置成员与执行参数。
+        对接真实接口管理项目，支持创建、编辑、打开项目工作台与删除。
       </p>
     </section>
 
@@ -507,7 +507,10 @@ onBeforeUnmount(() => {
             <tbody class="divide-y divide-border">
               <tr v-for="project in group.projects" :key="project.id" class="transition hover:bg-background/70">
                 <td class="px-5 py-4">
-                  <RouterLink :to="`/projects/${project.id}`" class="font-semibold text-foreground hover:underline">
+                  <RouterLink
+                    :to="{ path: '/dashboard', query: { projectId: project.id } }"
+                    class="font-semibold text-foreground hover:underline"
+                  >
                     {{ project.name }}
                   </RouterLink>
                   <p class="mt-1 font-mono text-xs text-muted-foreground">{{ project.id }}</p>
@@ -520,10 +523,10 @@ onBeforeUnmount(() => {
                 <td class="px-5 py-4">
                   <div class="flex justify-end gap-2">
                     <RouterLink
-                      :to="`/projects/${project.id}`"
+                      :to="{ path: '/dashboard', query: { projectId: project.id } }"
                       class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
                     >
-                      详情
+                      打开
                     </RouterLink>
                     <button
                       class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"

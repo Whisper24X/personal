@@ -6,8 +6,17 @@
     "dev": "sh -c 'pnpm --dir backend run start:dev & backend_pid=$!; trap \"kill $backend_pid\" EXIT INT TERM; until node -e \"fetch(\\\"http://127.0.0.1:9000/\\\").then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))\"; do sleep 1; done; pnpm --dir frontend dev'",
     "dev:backend": "pnpm --dir backend run start:dev",
     "dev:frontend": "pnpm --dir frontend dev",
-    "dev:install": "pnpm --dir frontend install && pnpm --dir backend install",
-    "docker": "docker compose up -d && echo '\\n✅ 全栈服务已启动：\\n   前端: http://localhost:8000\\n   后端: http://localhost:9000'",
+    "dev:install": "pnpm install && pnpm --dir frontend install && pnpm --dir backend install",
+    "lint": "pnpm run lint:frontend && pnpm run lint:backend",
+    "lint:frontend": "pnpm --dir frontend run lint:check",
+    "lint:backend": "pnpm --dir backend run lint",
+    "type-check": "pnpm run type-check:frontend && pnpm run type-check:backend",
+    "type-check:frontend": "pnpm --dir frontend run type-check",
+    "type-check:backend": "pnpm --dir backend run type-check",
+    "quality-gate": "pnpm run lint && pnpm run type-check",
+    "prepare": "husky",
+    "docker:up": "docker compose up -d",
+    "docker:up:build": "docker compose up -d --build",
     "docker:build": "docker compose build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
@@ -16,6 +25,7 @@
     "clean": "rm -rf frontend/node_modules frontend/dist backend/node_modules backend/dist"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
     "npm-run-all2": "^8.0.4"
   },
   "engines": {

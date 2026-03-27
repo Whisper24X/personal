@@ -1,4 +1,5 @@
 import { http } from '@/utils/http'
+import { HttpError } from '@/utils/http/error'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 const API_PREFIX = '/api/v1'
@@ -94,8 +95,46 @@ export const openSseStream = async (
     signal: callbacks.signal,
   })
 
+  await consumeSseResponse(response, callbacks)
+}
+
+export const postSseStream = async (
+  path: string,
+  body: unknown,
+  callbacks: SseCallbacks,
+) => {
+  const token = localStorage.getItem(STORAGE_KEYS.authToken)
+
+  const response = await fetch(buildUrl(path), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: callbacks.signal,
+  })
+
+  await consumeSseResponse(response, callbacks)
+}
+
+const consumeSseResponse = async (
+  response: Response,
+  callbacks: SseCallbacks,
+) => {
   if (!response.ok || !response.body) {
-    throw new Error(`SSE request failed with status ${response.status}`)
+    let message = `SSE request failed with status ${response.status}`
+    try {
+      const body = await response.json()
+      if (body?.message) {
+        message = typeof body.message === 'string' ? body.message : body.message[0]
+      }
+    } catch {
+      /* ignore parse error */
+    }
+
+    throw new HttpError(message, response.status)
   }
 
   const reader = response.body.getReader()

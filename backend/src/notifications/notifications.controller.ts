@@ -5,12 +5,14 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  MessageEvent,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
   Request,
+  Sse,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -20,7 +22,9 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { Observable } from 'rxjs';
 import { NotificationsService } from './notifications.service';
+import { NotificationEventsEmitterService } from './notification-events-emitter.service';
 import { NotificationSetting } from './domain/notification-setting';
 import { UpdateNotificationSettingDto } from './dto/update-notification-setting.dto';
 import { NotificationEvent } from './domain/notification-event';
@@ -34,7 +38,10 @@ import { FindNotificationEventsDto } from './dto/find-notification-events.dto';
   version: '1',
 })
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly notificationEventsEmitter: NotificationEventsEmitterService,
+  ) {}
 
   @Get('settings')
   @ApiOkResponse({ type: NotificationSetting })
@@ -102,5 +109,33 @@ export class NotificationsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<NotificationEvent> {
     return this.notificationsService.markEventRead(request.user.sub, id);
+  }
+
+  @Sse('events/stream')
+  async streamEvents(@Request() request): Promise<Observable<MessageEvent>> {
+    const userId: string = request.user.sub;
+    const { count } = await this.notificationsService.countUnreadEvents(userId);
+
+    return new Observable<MessageEvent>((subscriber) => {
+      subscriber.next({
+        type: 'unread_count',
+        data: { count },
+      });
+
+      const unsubscribe = this.notificationEventsEmitter.subscribe(
+        userId,
+        (event) => {
+          subscriber.next({
+            id: event.id,
+            type: 'new_event',
+            data: event,
+          });
+        },
+      );
+
+      return () => {
+        unsubscribe();
+      };
+    });
   }
 }

@@ -21,7 +21,7 @@ import type {
   CreateProjectCustomRolePayload,
   UpdateProjectCustomRolePayload,
 } from '@/types/api/projects'
-import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
+import { apiHttp, buildUrl, postSseStream, type InfinityPaginationResponse, type SseCallbacks } from './http'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 export const projectsApi = {
@@ -143,5 +143,13 @@ export const projectsApi = {
 
   queryDocs(projectId: string, payload: QueryProjectDocsPayload) {
     return apiHttp.post<QueryProjectDocsResponse>(`/projects/${projectId}/docs/query`, payload)
+  },
+
+  getDeployInfo(projectId: string, taskId: string) {
+    return apiHttp.get<{ featureBranch: string | null }>(`/projects/${projectId}/deploy-info`, { taskId })
+  },
+
+  deploy(projectId: string, taskId: string, command: string, callbacks: SseCallbacks) {
+    return postSseStream(`/projects/${projectId}/deploy`, { taskId, command }, callbacks)
   },
 }

@@ -4,20 +4,23 @@ import { useRoute } from 'vue-router'
 import HeaderBar from '@/components/core/layouts/Header.vue'
 import SideNav from '@/components/core/layouts/Sidebar.vue'
 import SidebarRouteSync from '@/components/core/layouts/SidebarRouteSync.vue'
-import SettingsModal from '@/components/settings/SettingsModal.vue'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { useLayout } from '@/hooks/core/useLayout'
 import { layoutWorkspaceKey } from '@/keys/layout-workspace'
 import { useUserStore } from '@/stores/modules/user'
+import { useBrowserNotification } from '@/hooks/core/useBrowserNotification'
 
 defineOptions({
   name: 'AppLayout',
 })
 
+useBrowserNotification()
+
 const route = useRoute()
 const userStore = useUserStore()
 const useFullContentMode = computed(() => route.meta.contentMode === 'full')
 const isBusinessLineManageActive = computed(() => route.name === 'business-lines-manage')
+const isSettingsActive = computed(() => route.name === 'settings')
 
 const userAvatarInitial = computed(() => {
   const name = userStore.profile?.name?.trim()
@@ -34,16 +37,12 @@ const userDisplayName = computed(() => {
 })
 
 const {
-  settingsModalOpen,
-  settingsSection,
-  availableSettingsSections,
   businessLineItems,
   activeBusinessLineId,
   selectedProjectId,
   currentBusinessLineName,
   hasSelectedProject,
   canCreateBusinessLine,
-  canCreateProject,
   projectItems,
   pageTitle,
   breadcrumbs,
@@ -55,9 +54,6 @@ const {
   sidebarCoreTasksKnowledge,
   refreshLayoutData,
   openBusinessLineModal,
-  openSettings,
-  closeSettings,
-  setSettingsSection,
   selectBusinessLine,
   selectProject,
   hasAnyBusinessLine,
@@ -102,9 +98,8 @@ provide(layoutWorkspaceKey, {
         :is-nav-active="isNavActive"
         :workbench-nav-to="workbenchNavTo"
         :is-workbench-nav-active="isWorkbenchNavActive"
-        :open-business-line-modal="openBusinessLineModal"
-        :can-create-project="canCreateProject"
         :is-business-line-manage-active="isBusinessLineManageActive"
+        :is-settings-active="isSettingsActive"
       />
 
       <SidebarInset
@@ -119,8 +114,6 @@ provide(layoutWorkspaceKey, {
           :is-nav-active="isNavActive"
           :user-avatar-initial="userAvatarInitial"
           :user-display-name="userDisplayName"
-          :available-settings-sections="availableSettingsSections"
-          :open-settings="openSettings"
         />
 
         <div id="main-content" class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
@@ -134,12 +127,5 @@ provide(layoutWorkspaceKey, {
       </SidebarInset>
     </SidebarProvider>
 
-    <SettingsModal
-      :open="settingsModalOpen"
-      :active-section="settingsSection"
-      :sections="availableSettingsSections"
-      @update:open="(open) => (open ? openSettings(settingsSection) : closeSettings())"
-      @select-section="setSettingsSection"
-    />
   </div>
 </template>

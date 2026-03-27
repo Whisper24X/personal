@@ -42,6 +42,16 @@ export class TaskConfigResolverService {
       typeof merged.loopEnabled === 'boolean' ? merged.loopEnabled : null,
     );
     const maxLoops = this.normalizeMaxLoops(merged.maxLoops, false);
+    const earlyExitMarkerFileName = this.normalizeOptionalString(
+      typeof merged.earlyExitMarkerFileName === 'string'
+        ? merged.earlyExitMarkerFileName
+        : null,
+    );
+    const earlyExitMarkerEnabled = this.normalizeBoolean(
+      typeof merged.earlyExitMarkerEnabled === 'boolean'
+        ? merged.earlyExitMarkerEnabled
+        : null,
+    );
 
     if (workflowTemplateId) {
       merged.workflowTemplateId = workflowTemplateId;
@@ -71,6 +81,18 @@ export class TaskConfigResolverService {
       merged.maxLoops = maxLoops;
     } else {
       delete merged.maxLoops;
+    }
+
+    if (earlyExitMarkerFileName) {
+      merged.earlyExitMarkerFileName = earlyExitMarkerFileName;
+    } else {
+      delete merged.earlyExitMarkerFileName;
+    }
+
+    if (earlyExitMarkerEnabled !== null) {
+      merged.earlyExitMarkerEnabled = earlyExitMarkerEnabled;
+    } else {
+      delete merged.earlyExitMarkerEnabled;
     }
 
     delete merged.cliToolId;
@@ -283,6 +305,26 @@ export class TaskConfigResolverService {
     );
   }
 
+  readNodeEarlyExitMarkerConfig(node: TaskNode): {
+    enabled: boolean;
+    fileName: string | null;
+  } {
+    const input = this.toObjectRecord(node.input);
+    const rawFileName = this.normalizeOptionalString(
+      typeof input.earlyExitMarkerFileName === 'string'
+        ? input.earlyExitMarkerFileName
+        : null,
+    );
+    const enabled =
+      this.normalizeBooleanLike(input.earlyExitMarkerEnabled) ?? true;
+    const fileName = this.normalizeMarkerFileName(rawFileName);
+
+    return {
+      enabled: enabled && !!fileName,
+      fileName,
+    };
+  }
+
   buildTaskNodeConfig(templateNode: {
     requiresApproval?: boolean;
   }): TaskNodeConfig | null {
@@ -428,5 +470,23 @@ export class TaskConfigResolverService {
     }
 
     return fallbackToOne ? 1 : null;
+  }
+
+  private normalizeMarkerFileName(value: string | null): string | null {
+    if (!value) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    const withoutMd = trimmed.toLowerCase().endsWith('.md')
+      ? trimmed.slice(0, -3)
+      : trimmed;
+    const normalized = withoutMd.trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    return /^[A-Za-z0-9._-]+$/.test(normalized) ? normalized : null;
   }
 }
