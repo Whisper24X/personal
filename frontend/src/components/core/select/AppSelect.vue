@@ -262,7 +262,6 @@ const updatePanelPosition = () => {
     ? Math.max(viewportPadding, triggerRect.top - panelHeight - offset)
     : Math.min(window.innerHeight - viewportPadding, triggerRect.bottom + offset)
   const minWidth = Math.round(triggerRect.width)
-  const panelMaxWidth = Math.min(window.innerWidth - viewportPadding * 2, 42 * 16)
   const maxLeft = Math.max(
     viewportPadding,
     window.innerWidth - minWidth - viewportPadding,

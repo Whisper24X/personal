@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
-import { BookOpen, Building2, LayoutDashboard, ListTodo, Plus, Target, Settings2 } from 'lucide-vue-next'
+import { BookOpen, Building2, LayoutDashboard, ListTodo, Target, Settings2 } from 'lucide-vue-next'
 import type { ProjectItem } from '@/hooks/core/useLayout'
 import {
   formatTaskShortTime,
