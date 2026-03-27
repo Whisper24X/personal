@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -12,10 +13,16 @@ import {
   Query,
   Request,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Express } from 'express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -55,6 +62,7 @@ import {
   ProjectDocsTreeQueryDto,
   ReadProjectDocDto,
   SaveProjectDocDto,
+  UploadProjectDocDto,
 } from './dto/project-doc.dto';
 import type { Response } from 'express';
 
@@ -383,6 +391,51 @@ export class ProjectsController {
     @Query() query: ReadProjectDocDto,
   ) {
     return this.projectsService.readDoc(id, query.path, request.user);
+  }
+
+  @Post(':id/docs/upload')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['path', 'file'],
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Relative path under project docs directory',
+        },
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({ type: ProjectDocContentDto })
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 50 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadDoc(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: UploadProjectDocDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('file is required');
+    }
+    return this.projectsService.uploadProjectDoc(
+      id,
+      body.path,
+      file.buffer,
+      request.user,
+    );
   }
 
   @Post(':id/docs')

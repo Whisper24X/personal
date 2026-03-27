@@ -10,6 +10,9 @@ export class Task {
   @ApiProperty({ type: String })
   projectId: string;
 
+  @ApiProperty({ type: String, required: false, nullable: true })
+  goalId?: string | null;
+
   @ApiProperty({ type: String })
   businessLineId: string;
 

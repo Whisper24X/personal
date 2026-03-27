@@ -11,6 +11,23 @@ const createCurrentUser = () => ({
 const createGitService = () => {
   const projectsService = {
     ensureProjectRepositoryReady: jest.fn(),
+    runWithProjectRepositoryLock: jest
+      .fn()
+      .mockImplementation(
+        async (
+          _projectId: string,
+          _user: unknown,
+          _options: unknown,
+          operation: (ctx: {
+            project: unknown;
+            repositoryRoot: string;
+          }) => Promise<unknown>,
+        ) =>
+          operation({
+            project: {},
+            repositoryRoot: '/tmp/project-repo',
+          }),
+      ),
   };
 
   const service = new GitService(projectsService as never);
@@ -191,5 +208,37 @@ describe('GitService', () => {
       'origin',
       'main',
     ]);
+  });
+
+  it('should create a branch with git branch name from', async () => {
+    const { service, projectsService } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy.mockResolvedValueOnce(createGitCommandResult(''));
+
+    const result = await service.createBranch(
+      'project-1',
+      ' goal/foo ',
+      ' main ',
+      createCurrentUser(),
+    );
+
+    expect(projectsService.runWithProjectRepositoryLock).toHaveBeenCalled();
+    expect(result).toEqual({ success: true, branch: 'goal/foo' });
+    expect(runCommandSpy).toHaveBeenCalledWith([
+      '-C',
+      '/tmp/project-repo',
+      'branch',
+      'goal/foo',
+      'main',
+    ]);
+  });
+
+  it('should reject invalid new branch names', async () => {
+    const { service } = createGitService();
+
+    await expect(
+      service.createBranch('project-1', '..bad', 'main', createCurrentUser()),
+    ).rejects.toThrow(BadRequestException);
   });
 });

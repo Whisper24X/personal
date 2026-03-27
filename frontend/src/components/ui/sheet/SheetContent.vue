@@ -29,6 +29,20 @@ const emits = defineEmits<DialogContentEmits>()
 const delegatedProps = reactiveOmit(props, "class", "side")
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits)
+
+/** Teleport 到 body 的 AppSelect 面板在 Dialog 之外，需阻止误判为「外部点击」而关闭 Sheet */
+function onPointerDownOutside(ev: CustomEvent<{ originalEvent?: PointerEvent }>) {
+  const target = ev.detail?.originalEvent?.target
+  const el =
+    target instanceof Element
+      ? target
+      : target instanceof Node
+        ? target.parentElement
+        : null
+  if (el?.closest('[data-app-select-panel]')) {
+    ev.preventDefault()
+  }
+}
 </script>
 
 <template>
@@ -36,6 +50,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     <SheetOverlay />
     <DialogContent
       data-slot="sheet-content"
+      @pointer-down-outside="onPointerDownOutside"
       :class="cn(
         'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
         side === 'right'

@@ -31,6 +31,10 @@ const props = withDefaults(
     block?: boolean
     size?: keyof typeof SIZE_CLASSES
     matchTriggerWidth?: boolean
+    /** false：触发器内选中项可换行，避免长文案被截断 */
+    triggerLabelTruncate?: boolean
+    /** false：下拉项可换行，配合 matchTriggerWidth=false 时面板可随内容变宽 */
+    optionLabelTruncate?: boolean
     wrapperClass?: string
     triggerClass?: string
     menuClass?: string
@@ -38,6 +42,11 @@ const props = withDefaults(
     emptyText?: string
     panelZIndex?: number | string
     panelPlacement?: 'auto' | 'top' | 'bottom'
+    /**
+     * 为 false 时不限制下拉面板高度、不使用内部滚动，适合选项少、标签较短的列表。
+     * 默认可限制高度以避免长列表撑出视口。
+     */
+    clampPanelHeight?: boolean
   }>(),
   {
     placeholder: '请选择',
@@ -53,6 +62,7 @@ const props = withDefaults(
     emptyText: '暂无可选项',
     panelZIndex: 80,
     panelPlacement: 'auto',
+    clampPanelHeight: true,
   },
 )
 
@@ -190,7 +200,9 @@ const triggerClasses = computed(() => {
 
 const menuClasses = computed(() => {
   return [
-    'overflow-auto rounded-xl border border-border bg-background/95 p-1 shadow-2xl backdrop-blur-sm',
+    props.clampPanelHeight
+      ? 'overflow-auto rounded-xl border border-border bg-background/95 p-1 shadow-2xl backdrop-blur-sm'
+      : 'overflow-visible rounded-xl border border-border bg-background/95 p-1 shadow-2xl backdrop-blur-sm',
     props.menuClass,
   ]
 })
@@ -250,6 +262,7 @@ const updatePanelPosition = () => {
     ? Math.max(viewportPadding, triggerRect.top - panelHeight - offset)
     : Math.min(window.innerHeight - viewportPadding, triggerRect.bottom + offset)
   const minWidth = Math.round(triggerRect.width)
+  const panelMaxWidth = Math.min(window.innerWidth - viewportPadding * 2, 42 * 16)
   const maxLeft = Math.max(
     viewportPadding,
     window.innerWidth - minWidth - viewportPadding,
@@ -258,7 +271,7 @@ const updatePanelPosition = () => {
   const availableWidth = Math.max(0, window.innerWidth - left - viewportPadding)
   const panelMaxWidth = Math.max(minWidth, availableWidth)
 
-  panelStyle.value = {
+  const style: CSSProperties = {
     position: 'fixed',
     top: `${top}px`,
     left: `${left}px`,
@@ -268,6 +281,10 @@ const updatePanelPosition = () => {
     width: props.matchTriggerWidth ? `${minWidth}px` : 'max-content',
     zIndex: String(props.panelZIndex),
   }
+  if (props.clampPanelHeight) {
+    style.maxHeight = `${maxHeight}px`
+  }
+  panelStyle.value = style
 }
 
 const closeDropdown = ({ focus = true } = {}) => {
@@ -457,9 +474,13 @@ const handleDocumentPointerDown = (event: Event) => {
   }
 
   const clickedInsideTrigger = triggerRef.value?.contains(event.target) ?? false
-  const clickedInsidePanel = panelRef.value?.contains(event.target) ?? false
+  const t = event.target
+  const el = t instanceof Element ? t : t.parentElement
+  const clickedInsidePanelTree =
+    (panelRef.value?.contains(event.target) ?? false) ||
+    Boolean(el?.closest('[data-app-select-panel]'))
 
-  if (!clickedInsideTrigger && !clickedInsidePanel) {
+  if (!clickedInsideTrigger && !clickedInsidePanelTree) {
     closeDropdown({ focus: false })
   }
 }
@@ -554,7 +575,15 @@ onBeforeUnmount(() => {
     >
       <span class="flex min-w-0 items-center gap-2">
         <slot name="prefix" />
-        <span class="truncate">{{ selectedLabel }}</span>
+        <span
+          :class="
+            triggerLabelTruncate
+              ? 'truncate'
+              : 'whitespace-normal break-words text-left'
+          "
+        >
+          {{ selectedLabel }}
+        </span>
       </span>
       <span class="pointer-events-none shrink-0 text-muted-foreground">
         <svg
@@ -580,6 +609,8 @@ onBeforeUnmount(() => {
       <div
         v-if="isOpen"
         ref="panelRef"
+        data-app-select-panel=""
+        class="pointer-events-auto"
         :class="menuClasses"
         :style="panelStyle"
         role="listbox"

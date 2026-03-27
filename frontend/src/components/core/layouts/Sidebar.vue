@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
-import { Building2, BookOpen, LayoutDashboard, ListTodo, Settings2 } from 'lucide-vue-next'
+import { BookOpen, Building2, LayoutDashboard, ListTodo, Plus, Target, Settings2 } from 'lucide-vue-next'
 import type { ProjectItem } from '@/hooks/core/useLayout'
 import {
   formatTaskShortTime,
@@ -38,6 +38,7 @@ const props = defineProps<{
   hasSelectedProject: boolean
   sidebarCoreTasksKnowledge: {
     tasks: { label: string; to: string } | undefined
+    goals: { label: string; to: string } | undefined
     knowledge: { label: string; to: string } | undefined
   }
   projectNavigationTo: (projectId: string) => RouteLocationRaw
@@ -89,7 +90,7 @@ const filteredRecentTasks = computed(() => {
     </SidebarHeader>
 
     <SidebarContent>
-      <!-- 原型：sidebar-section — 工作台 / 任务 / 知识库 -->
+      <!-- 原型：sidebar-section — 工作台 / 需求 / 任务 / 知识库 -->
       <SidebarGroup>
         <SidebarGroupContent>
           <SidebarMenu>
@@ -102,6 +103,18 @@ const filteredRecentTasks = computed(() => {
                 <RouterLink :to="props.workbenchNavTo">
                   <LayoutDashboard class="size-4 shrink-0" />
                   <span>工作台</span>
+                </RouterLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem v-if="props.sidebarCoreTasksKnowledge.goals">
+              <SidebarMenuButton
+                as-child
+                :is-active="isNavActive(props.sidebarCoreTasksKnowledge.goals.to)"
+                :tooltip="props.sidebarCoreTasksKnowledge.goals.label"
+              >
+                <RouterLink :to="props.sidebarCoreTasksKnowledge.goals.to">
+                  <Target class="size-4 shrink-0" />
+                  <span>{{ props.sidebarCoreTasksKnowledge.goals.label }}</span>
                 </RouterLink>
               </SidebarMenuButton>
             </SidebarMenuItem>
