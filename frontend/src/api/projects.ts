@@ -128,6 +128,11 @@ export const projectsApi = {
     return apiHttp.post<ProjectDocContent>(`/projects/${projectId}/docs`, payload)
   },
 
+  /** Binary upload (multipart); upserts without JSON/base64 body size issues */
+  uploadDoc(projectId: string, formData: FormData) {
+    return apiHttp.post<ProjectDocContent>(`/projects/${projectId}/docs/upload`, formData)
+  },
+
   updateDoc(projectId: string, payload: SaveProjectDocPayload) {
     return apiHttp.patch<ProjectDocContent>(`/projects/${projectId}/docs`, payload)
   },

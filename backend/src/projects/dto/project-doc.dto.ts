@@ -52,6 +52,18 @@ export class ReadProjectDocDto {
   path: string;
 }
 
+/** Multipart upload: field `path` + binary field `file` */
+export class UploadProjectDocDto {
+  @ApiProperty({
+    type: String,
+    description:
+      'Relative path under project docs directory (e.g. goals/{id}/input/prototype.zip)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  path: string;
+}
+
 export class SaveProjectDocDto {
   @ApiProperty({
     type: String,

@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import path from 'path';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { Project } from '../../projects/domain/project';
@@ -202,6 +203,7 @@ export class TaskCommandService {
     const task = await this.taskRepository.create({
       projectId: createTaskDto.projectId,
       businessLineId: project.businessLineId,
+      goalId: createTaskDto.goalId ?? null,
       mode: resolvedMode,
       title: titleForCreate,
       prompt: createTaskDto.prompt ?? null,
@@ -523,8 +525,11 @@ export class TaskCommandService {
   private buildTaskNameId(): string {
     const now = new Date();
     const datePrefix = this.formatTaskNameDate(now);
+    const timePart = this.formatTaskNameTime(now);
+    const ms = `${now.getMilliseconds()}`.padStart(3, '0');
+    const salt = randomInt(0, 10_000).toString().padStart(4, '0');
 
-    return `${datePrefix}-${this.formatTaskNameTime(now)}`;
+    return `${datePrefix}-${timePart}${ms}${salt}`;
   }
 
   private formatTaskNameDate(date: Date): string {

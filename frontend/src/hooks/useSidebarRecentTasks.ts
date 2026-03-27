@@ -10,6 +10,14 @@ import {
 /** 侧栏列表高度有限，取最近更新前 N 条；与项目任务总数无必然相等 */
 const RECENT_LIMIT = 20
 
+/** 任务列表变更时递增，供侧栏「最近任务」重新拉取（与当前项目 id 解耦） */
+const sidebarRecentTasksRefreshTick = ref(0)
+
+/** 在项目内新建/物化任务后调用，使侧栏「最近任务」与后端一致 */
+export function requestSidebarRecentTasksRefresh() {
+  sidebarRecentTasksRefreshTick.value += 1
+}
+
 const uniqueById = <T extends { id: string }>(items: T[]) => {
   return Array.from(new Map(items.map((item) => [item.id, item])).values())
 }
@@ -48,7 +56,7 @@ export function useSidebarRecentTasks(selectedProjectId: () => string) {
   }
 
   watch(
-    () => selectedProjectId(),
+    () => [selectedProjectId(), sidebarRecentTasksRefreshTick.value] as const,
     () => {
       void load()
     },

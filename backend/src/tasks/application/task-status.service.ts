@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  forwardRef,
+} from '@nestjs/common';
+import { GoalsService } from '../../goals/goals.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TaskNode } from '../domain/task-node';
 import { TaskMode } from '../dto/task-mode.enum';
@@ -17,6 +23,8 @@ export class TaskStatusService {
     private readonly notificationsService: NotificationsService,
     private readonly taskLogService: TaskLogService,
     private readonly taskConfigResolver: TaskConfigResolverService,
+    @Inject(forwardRef(() => GoalsService))
+    private readonly goalsService: GoalsService,
   ) {}
 
   async recalculateTaskStatus(taskId: string): Promise<void> {
@@ -34,6 +42,8 @@ export class TaskStatusService {
       status,
       finishedAt: status === TaskStatus.done ? new Date() : null,
     });
+
+    await this.goalsService.syncPlanSubTaskStatusFromLinkedTask(taskId, status);
 
     if (previousStatus !== status) {
       await this.applySandboxLifecycle(

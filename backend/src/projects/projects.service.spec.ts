@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { Project } from './domain/project';
 import { ProjectsService } from './projects.service';
@@ -75,6 +76,10 @@ const createProjectsService = () => {
     hasProjectCapability: jest.fn(),
   };
 
+  const agentRunnerService = {
+    executeGoalPrompt: jest.fn(),
+  };
+
   const service = new ProjectsService(
     projectRepository as never,
     projectMemberRepository as never,
@@ -85,6 +90,8 @@ const createProjectsService = () => {
     projectCustomRoleRepository as never,
     workflowTemplateRepository as never,
     accessService as never,
+    new ConfigService() as never,
+    agentRunnerService as never,
   );
 
   return {

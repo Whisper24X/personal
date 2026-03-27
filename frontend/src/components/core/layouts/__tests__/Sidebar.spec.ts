@@ -84,6 +84,7 @@ describe('Sidebar menu scope', () => {
       hasSelectedProject: true,
       sidebarCoreTasksKnowledge: {
         tasks: { id: 'tasks', label: '新建任务', to: '/tasks' },
+        goals: { id: 'goals', label: '需求', to: '/projects/p1/goals' },
         knowledge: { id: 'knowledge', label: '知识库', to: '/knowledge-base' },
       },
       projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),
@@ -97,6 +98,7 @@ describe('Sidebar menu scope', () => {
     expect(wrapper.text()).toContain('Retail')
     expect(wrapper.text()).toContain('AINative')
     expect(wrapper.text()).toContain('工作台')
+      expect(wrapper.text()).toContain('需求')
     expect(wrapper.text()).toContain('新建任务')
     expect(wrapper.text()).toContain('知识库')
     expect(wrapper.text()).toContain('AINative Workspace')
@@ -127,6 +129,7 @@ describe('Sidebar menu scope', () => {
       hasSelectedProject: false,
       sidebarCoreTasksKnowledge: {
         tasks: { id: 'tasks', label: '新建任务', to: '/tasks' },
+        goals: { id: 'goals', label: '需求', to: '/dashboard' },
         knowledge: { id: 'knowledge', label: '知识库', to: '/knowledge-base' },
       },
       projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),

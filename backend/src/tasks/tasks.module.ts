@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
@@ -30,11 +30,13 @@ import { TaskSchedulerService } from './application/task-scheduler.service';
 import { TaskStepLabelSummaryService } from './application/task-step-label-summary.service';
 import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
 import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
+import { GoalsModule } from '../goals/goals.module';
 
 @Module({
   imports: [
     RelationalTaskPersistenceModule,
-    ProjectsModule,
+    forwardRef(() => GoalsModule),
+    forwardRef(() => ProjectsModule),
     WorkflowTemplatesModule,
     NotificationsModule,
     RelationalBusinessLinePersistenceModule,
@@ -67,6 +69,11 @@ import { TaskWorkspaceWatchService } from './application/task-workspace-watch.se
     TaskWorkspaceWatchService,
     TerminalGateway,
   ],
-  exports: [TasksService, TaskRuntimeService, RelationalTaskPersistenceModule],
+  exports: [
+    TasksService,
+    TaskRuntimeService,
+    AgentRunnerService,
+    RelationalTaskPersistenceModule,
+  ],
 })
 export class TasksModule {}

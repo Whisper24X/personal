@@ -42,6 +42,18 @@ export class TaskRelationalRepository implements TaskRepository {
     return entity ? TaskMapper.toDomain(entity) : null;
   }
 
+  async findByGoalId(goalId: string): Promise<Task[]> {
+    const entities = await this.taskRepository.find({
+      where: {
+        goalId,
+        deletedAt: IsNull(),
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    return entities.map((entity) => TaskMapper.toDomain(entity));
+  }
+
   async findByGitWorktree(gitWorktree: string): Promise<NullableType<Task>> {
     const entity = await this.taskRepository.findOne({
       where: {

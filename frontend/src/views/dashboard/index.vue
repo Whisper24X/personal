@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
@@ -336,9 +336,9 @@ watch(
                 </p>
                 <p v-if="refreshing" class="text-xs text-primary">刷新中...</p>
               </div>
-              <div class="shrink-0 text-right text-[11px] text-muted-foreground">
-                <div>{{ welcomeClock.date }}</div>
-                <div class="mt-0.5">{{ welcomeClock.weekday }}</div>
+              <div class="flex shrink-0 flex-col items-end text-[11px] text-muted-foreground">
+                <div class="text-right">{{ welcomeClock.date }}</div>
+                <div class="mt-0.5 text-right">{{ welcomeClock.weekday }}</div>
               </div>
             </div>
           </CardContent>
