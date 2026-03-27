@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import FilePreviewCard from '@/components/core/file-browser/FilePreviewCard.vue'
+import FilePreviewPanel from '@/components/core/file-browser/FilePreviewPanel.vue'
 
 describe('FilePreviewCard', () => {
   afterEach(() => {
@@ -33,8 +34,9 @@ describe('FilePreviewCard', () => {
 
     expect(document.body.querySelector('[role="dialog"][aria-label="文件全屏预览"]')).not.toBeNull()
 
-    const closeButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('退出全屏'),
+    const dialog = document.body.querySelector('[role="dialog"][aria-label="文件全屏预览"]')
+    const closeButton = Array.from(dialog?.querySelectorAll('button') ?? []).find(
+      (button) => button.textContent?.trim() === '全屏',
     )
 
     expect(closeButton).toBeTruthy()
@@ -43,5 +45,30 @@ describe('FilePreviewCard', () => {
     await wrapper.vm.$nextTick()
 
     expect(document.body.querySelector('[role="dialog"][aria-label="文件全屏预览"]')).toBeNull()
+  })
+
+  it('disables preview tab for JSON and defaults to source mode', () => {
+    const wrapper = mount(FilePreviewCard, {
+      props: {
+        selectedPath: 'config.json',
+        preview: {
+          path: 'config.json',
+          previewType: 'text',
+          tooLarge: false,
+          size: 12,
+          mimeType: 'application/json',
+          text: '{}',
+        },
+      },
+    })
+
+    const previewBtn = wrapper.findAll('button').find((b) => b.text() === '预览')
+    const sourceBtn = wrapper.findAll('button').find((b) => b.text() === '源码')
+
+    expect(previewBtn?.attributes('disabled')).toBeDefined()
+    expect(sourceBtn?.attributes('disabled')).toBeUndefined()
+
+    const panel = wrapper.findComponent(FilePreviewPanel)
+    expect(panel.props('mode')).toBe('source')
   })
 })

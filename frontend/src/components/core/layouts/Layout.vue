@@ -23,17 +23,18 @@ const isBusinessLineManageActive = computed(() => route.name === 'business-lines
 const isSettingsActive = computed(() => route.name === 'settings')
 
 const userAvatarInitial = computed(() => {
-  const name = userStore.profile?.name?.trim()
-  if (!name) {
-    return '?'
+  const profile = userStore.profile
+  const label = profile?.name?.trim() || profile?.username?.trim()
+  if (!label) {
+    return '用'
   }
 
-  return name.slice(0, 1).toUpperCase()
+  return label.slice(0, 1).toUpperCase()
 })
 
 const userDisplayName = computed(() => {
-  const name = userStore.profile?.name?.trim()
-  return name || '用户'
+  const profile = userStore.profile
+  return profile?.name?.trim() || profile?.username?.trim() || '用户'
 })
 
 const {

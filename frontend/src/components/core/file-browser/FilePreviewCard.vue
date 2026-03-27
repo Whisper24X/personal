@@ -2,7 +2,13 @@
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import type { FileBrowserPreview } from './types'
 import FilePreviewPanel from './FilePreviewPanel.vue'
-import { formatPreviewSize, resolveTaskPreviewTypeLabel } from './preview'
+import {
+  canShowPreviewTab,
+  canShowSourceTab,
+  formatPreviewSize,
+  resolveDefaultPreviewMode,
+  resolveTaskPreviewTypeLabel,
+} from './preview'
 
 defineOptions({
   name: 'FilePreviewCard',
@@ -38,23 +44,48 @@ const typeLabel = computed(() => resolveTaskPreviewTypeLabel(props.preview))
 const previewMode = ref<'preview' | 'source'>('preview')
 const fullscreenOpen = ref(false)
 const fullscreenDialogRef = useTemplateRef<HTMLDivElement>('fullscreenDialog')
-const canViewSource = computed(() => {
-  return Boolean(props.preview && typeof props.preview.text === 'string')
-})
 
-watch(
-  () => props.selectedPath,
-  () => {
-    previewMode.value = 'preview'
-    fullscreenOpen.value = false
-  },
+const canPreviewTab = computed(() =>
+  canShowPreviewTab(props.preview, props.selectedPath, {
+    loading: props.loading,
+    errorMessage: props.errorMessage,
+  }),
 )
 
-watch(canViewSource, (enabled) => {
-  if (!enabled && previewMode.value === 'source') {
-    previewMode.value = 'preview'
-  }
-})
+const canSourceTab = computed(() =>
+  canShowSourceTab(props.preview, {
+    loading: props.loading,
+    errorMessage: props.errorMessage,
+  }),
+)
+
+watch(
+  () => [props.selectedPath, props.preview, props.loading, props.errorMessage] as const,
+  () => {
+    if (!props.selectedPath) {
+      fullscreenOpen.value = false
+      return
+    }
+    fullscreenOpen.value = false
+    previewMode.value = resolveDefaultPreviewMode(props.preview, props.selectedPath, {
+      loading: props.loading,
+      errorMessage: props.errorMessage,
+    })
+  },
+  { immediate: true },
+)
+
+watch(
+  [previewMode, canPreviewTab, canSourceTab],
+  () => {
+    if (previewMode.value === 'preview' && !canPreviewTab.value && canSourceTab.value) {
+      previewMode.value = 'source'
+    } else if (previewMode.value === 'source' && !canSourceTab.value && canPreviewTab.value) {
+      previewMode.value = 'preview'
+    }
+  },
+  { immediate: true },
+)
 
 watch(fullscreenOpen, async (open) => {
   if (!open) {
@@ -83,7 +114,7 @@ const closeFullscreen = () => {
     <template v-else>
       <div
         v-if="props.showHeader"
-        class="flex flex-shrink-0 items-center justify-between gap-3 bg-white px-4 py-3"
+        class="flex flex-shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-4 py-3"
       >
         <div class="min-w-0 flex-1">
           <p class="truncate font-mono text-sm font-semibold text-foreground">{{ props.selectedPath }}</p>
@@ -97,9 +128,10 @@ const closeFullscreen = () => {
         <div class="flex shrink-0 items-center gap-2">
           <div class="inline-flex rounded-md border border-border bg-muted/30 p-0.5 shadow-sm">
             <button
-              class="rounded px-2 py-1 text-xs transition"
+              class="rounded px-2 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-50"
               :class="previewMode === 'preview' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
               type="button"
+              :disabled="!canPreviewTab"
               @click="previewMode = 'preview'"
             >
               预览
@@ -107,7 +139,7 @@ const closeFullscreen = () => {
             <button
               class="rounded px-2 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-50"
               :class="previewMode === 'source' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-              :disabled="!canViewSource"
+              :disabled="!canSourceTab"
               type="button"
               @click="previewMode = 'source'"
             >
@@ -175,9 +207,10 @@ const closeFullscreen = () => {
           <div class="flex shrink-0 items-center gap-2">
             <div class="inline-flex rounded-md border border-border bg-muted/30 p-0.5 shadow-sm">
               <button
-                class="rounded px-2 py-1 text-xs transition"
+                class="rounded px-2 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-50"
                 :class="previewMode === 'preview' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
                 type="button"
+                :disabled="!canPreviewTab"
                 @click="previewMode = 'preview'"
               >
                 预览
@@ -185,7 +218,7 @@ const closeFullscreen = () => {
               <button
                 class="rounded px-2 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-50"
                 :class="previewMode === 'source' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-                :disabled="!canViewSource"
+                :disabled="!canSourceTab"
                 type="button"
                 @click="previewMode = 'source'"
               >
