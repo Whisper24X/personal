@@ -1,7 +1,9 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
@@ -22,6 +24,7 @@ import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { IPaginationOptions } from '../../utils/types/pagination-options';
 import { TaskAccessService } from './task-access.service';
 import { TaskOutputService } from './task-output.service';
+import { GoalsService } from '../../goals/goals.service';
 
 @Injectable()
 export class TaskQueryService {
@@ -39,6 +42,8 @@ export class TaskQueryService {
     private readonly taskRuntimeService: TaskRuntimeService,
     private readonly taskAccessService: TaskAccessService,
     private readonly taskOutputService: TaskOutputService,
+    @Inject(forwardRef(() => GoalsService))
+    private readonly goalsService: GoalsService,
     private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
@@ -119,10 +124,14 @@ export class TaskQueryService {
   ): Promise<TaskDetailDto> {
     const task = await this.taskAccessService.getTaskOrThrow(id, currentUser);
     const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+    const goalSummary = task.goalId
+      ? await this.goalsService.getGoalSummaryForTask(task.goalId, currentUser)
+      : null;
 
     return {
       task,
       nodes,
+      goalSummary,
     };
   }
 

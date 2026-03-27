@@ -20,6 +20,8 @@ import { GitLogDto } from './dto/git-log.dto';
 import { GitPullMainDto } from './dto/git-pull-main.dto';
 import { GitProjectDto } from './dto/git-project.dto';
 import { GitStatusDto } from './dto/git-status.dto';
+import { GitCreateBranchDto } from './dto/git-create-branch.dto';
+import { GitCreateBranchResultDto } from './dto/git-create-branch-result.dto';
 
 @ApiTags('Git')
 @ApiBearerAuth()
@@ -91,6 +93,21 @@ export class GitController {
     return this.gitService.pullBranch(
       payload.projectId,
       payload.branch,
+      request.user,
+    );
+  }
+
+  @Post('create-branch')
+  @ApiOkResponse({ type: GitCreateBranchResultDto })
+  @HttpCode(HttpStatus.OK)
+  createBranch(
+    @Request() request,
+    @Body() payload: GitCreateBranchDto,
+  ): Promise<GitCreateBranchResultDto> {
+    return this.gitService.createBranch(
+      payload.projectId,
+      payload.name,
+      payload.from,
       request.user,
     );
   }

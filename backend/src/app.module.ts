@@ -24,6 +24,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { ProjectContextModule } from './project-context/project-context.module';
 import { AutomationsModule } from './automations/automations.module';
 import { GitModule } from './git/git.module';
+import { GoalsModule } from './goals/goals.module';
 import { resolveEnvFilePath } from './config/env-file-path';
 import { existsSync } from 'fs';
 
@@ -45,10 +46,16 @@ function resolveI18nPath(): string {
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [databaseConfig, authConfig, appConfig],
+      envFilePath: resolveEnvFilePath(),
+    }),
     BusinessLinesModule,
     ProjectsModule,
     WorkflowTemplatesModule,
     TasksModule,
+    GoalsModule,
     NotificationsModule,
     SkillsModule,
     McpsModule,
@@ -57,11 +64,6 @@ function resolveI18nPath(): string {
     ProjectContextModule,
     AutomationsModule,
     GitModule,
-    ConfigModule.forRoot({
-      isGlobal: true,
-      load: [databaseConfig, authConfig, appConfig],
-      envFilePath: resolveEnvFilePath(),
-    }),
     infrastructureDatabaseModule,
     I18nModule.forRootAsync({
       useFactory: (configService: ConfigService<AllConfigType>) => ({

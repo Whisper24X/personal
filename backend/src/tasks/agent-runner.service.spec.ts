@@ -314,7 +314,7 @@ describe('AgentRunnerService', () => {
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBe('cfg-global-codex');
   });
 
-  it('should ignore invalid persisted config json and keep legacy runner config', async () => {
+  it('should ignore legacy project agentRunner when node selects a different CLI adapter', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
       id: 'cfg-invalid',
@@ -345,7 +345,8 @@ describe('AgentRunnerService', () => {
       agentCliId: 'gemini-cli',
     });
 
-    expect(result.command).toBe('legacy-command');
+    expect(result.adapter).toBe('gemini');
+    expect(result.command).toBe('gemini');
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBeUndefined();
   });
 
