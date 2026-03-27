@@ -2,10 +2,18 @@
 # All-in-One AI 编码沙箱镜像
 # ============================================================
 #
+# 用途：为 AI Agent 提供完整的编码沙箱环境，包含 Go/Node/pnpm 工具链
+#       以及多种 AI CLI 工具（Claude Code、Codex、Gemini CLI 等）
+#
 # 基于 golang:1.23-bookworm (Debian)，预装 Go 工具链 + Node 22/pnpm + protoc
 # 使用 glibc 以兼容 Taro @tarojs/binding-linux-x64-gnu（Alpine musl 不支持）
-# runner-only profile 默认由编排层追加 `sleep infinity`
-# preview/full-dev-sandbox profile 使用镜像内入口脚本启动 Supervisor + Nginx
+#
+# 运行模式（由入口脚本 entrypoint.sh 自动判断）:
+#   - sandbox 模式: 检测到 ainative-backend + ainative-shadow + ainative-app 三个目录
+#                   → 使用预置的 sandbox.nginx.conf + sandbox.supervisord.conf
+#   - repo 模式:    检测到 backend/ 或 frontend/ 目录
+#                   → 动态生成 nginx + supervisord 配置
+#   - runner-only:  编排层追加 `sleep infinity`，仅作为 AI agent 执行环境
 #
 # 构建: docker compose build  或  ./sandbox/sandbox.sh build
 # ============================================================
@@ -30,8 +38,9 @@ ENV TZ=Asia/Shanghai \
 # vim/jq              — 调试辅助
 # openssh-client      — 拉取 gitlab 私有仓库
 # netcat-openbsd      — 健康检查 / 端口探测
-# supervisor/nginx    — 进程管理 + 反向代理
-# Node 22            — 前端构建（glibc 兼容 Taro binding）
+# supervisor/nginx    — 进程管理 + 反向代理（sandbox/repo 模式需要）
+# xz-utils            — 解压 Node 二进制 tar.xz
+# gcc/g++             — 编译原生依赖（librdkafka、node-gyp 等）
 # cmake               — 构建 librdkafka（confluent-kafka-go 需 v2.3+，Debian 自带版本过旧）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash curl git make vim jq cmake \
@@ -45,6 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
+# ── Node.js 22（从官方二进制安装，不走 apt/nodesource，支持 aarch64/x64） ──
 RUN ARCH=$(uname -m) \
     && case "$ARCH" in aarch64) NODE_ARCH=arm64;; x86_64) NODE_ARCH=x64;; *) echo "unsupported arch: $ARCH" && exit 1;; esac \
     && curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-${NODE_ARCH}.tar.xz" -o /tmp/node.tar.xz \
@@ -53,7 +63,7 @@ RUN ARCH=$(uname -m) \
     && node --version \
     && npm --version
 
-# protoc 锁定 3.21.9
+# ── protoc 锁定 3.21.9（与 protoc-gen-go v1.28.1 匹配） ──
 RUN ARCH=$(uname -m) \
     && case "$ARCH" in aarch64) PROTOC_ARCH=aarch_64;; x86_64) PROTOC_ARCH=x86_64;; *) echo "unsupported arch: $ARCH" && exit 1;; esac \
     && curl -sL "https://github.com/protocolbuffers/protobuf/releases/download/v21.9/protoc-21.9-linux-${PROTOC_ARCH}.zip" -o /tmp/protoc.zip \
@@ -61,7 +71,7 @@ RUN ARCH=$(uname -m) \
     && rm -f /tmp/protoc.zip \
     && protoc --version
 
-# 从源码构建 librdkafka v2.3+（confluent-kafka-go 要求，Debian bookworm 仅 2.0.2）
+# ── 从源码构建 librdkafka v2.3+（confluent-kafka-go 要求，Debian bookworm 仅 2.0.2） ──
 RUN cd /tmp \
     && curl -sL https://github.com/confluentinc/librdkafka/archive/refs/tags/v2.3.0.tar.gz | tar xz \
     && cd librdkafka-2.3.0 \
@@ -72,6 +82,7 @@ RUN cd /tmp \
     && cd / && rm -rf /tmp/librdkafka-2.3.0
 
 
+# ============================================================
 # SSH + Git（用于拉取 gitlab.yc345.tv 私有依赖）
 # ============================================================
 
@@ -86,12 +97,18 @@ RUN chmod 700 /root/.ssh \
 # Go 工具链
 # ============================================================
 
-# air             — 热重载
-# kratos          — 框架 CLI
-# protoc-gen-*    — Proto 代码生成（Go/gRPC/HTTP/Gateway/Validate/Errors）
-# wire            — 依赖注入
-# go-enum         — 枚举生成
-# goimports       — 代码格式化
+# air             — 热重载（文件变更自动重新编译运行）
+# kratos          — 框架 CLI（项目生成、proto 代码生成等）
+# protoc-gen-go   — Proto → Go 结构体
+# protoc-gen-go-grpc — Proto → gRPC 服务端/客户端代码
+# protoc-gen-grpc-gateway — Proto → HTTP 反向代理网关
+# protoc-gen-openapiv2    — Proto → OpenAPI/Swagger 文档
+# protoc-gen-go-http      — Proto → Kratos HTTP 路由
+# protoc-gen-validate     — Proto → 参数校验代码
+# wire            — 编译期依赖注入
+# go-enum         — 枚举自动生成
+# goimports       — 代码格式化（自动管理 import）
+# gosec           — Go 安全扫描
 RUN go install github.com/air-verse/air@v1.61.7 \
     && go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93 \
     && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 \
@@ -113,6 +130,7 @@ RUN go install github.com/air-verse/air@v1.61.7 \
 # Node / pnpm（前端构建）
 # ============================================================
 
+# 配置 npm 镜像源 + 重试策略，提升国内网络下的安装成功率
 RUN npm config set registry https://registry.npmmirror.com \
     && npm config set fetch-retries 5 \
     && npm config set fetch-retry-factor 2 \
@@ -123,29 +141,42 @@ RUN npm config set registry https://registry.npmmirror.com \
     && pnpm config set registry https://registry.npmmirror.com
 
 
-# Install scripts target ~/.local/bin and ~/.opencode/bin; set PATH before install so exec and docker exec agree.
+# ============================================================
+# AI Coding CLI 工具
+# ============================================================
+
+# 安装脚本会将二进制放到 ~/.local/bin 或 ~/.opencode/bin，提前加入 PATH
 ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}"
 
-# OpenCode / Cursor CLI are best-effort: network or upstream may fail; do not fail the image build.
+# OpenCode / Cursor CLI 为 best-effort 安装：网络或上游变更可能导致安装失败，不阻断镜像构建
 RUN bash -o pipefail -c 'curl -fsSL https://opencode.ai/install | bash' \
     || echo "WARN: OpenCode install failed; opencode steps in docker mode need a working binary."
 RUN bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash' \
     || echo "WARN: Cursor CLI install failed or unavailable for this platform; docker mode cursor-agent steps need a working agent binary."
 
+# Claude Code / Codex / Gemini CLI（npm 全局安装）
 RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest
 
-# Only validate when `agent` exists (Cursor install succeeded).
+# 仅在 Cursor CLI 安装成功时校验可执行性
 RUN if command -v agent >/dev/null 2>&1; then \
       test -x "$(command -v agent)"; \
     else \
       echo "WARN: agent (Cursor CLI) not on PATH; skipping executable check."; \
     fi
 
+# Go 编译的 CLI（OpenCode、Codex）依赖系统 CA 证书，需显式指定路径
 ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 ENV CGO_ENABLED=1
 
+# ============================================================
+# 配置文件 & 入口脚本
+# ============================================================
+
+# sandbox 模式下的预置配置（ainative-backend + ainative-shadow + ainative-app 三合一）
 COPY backend/runner/sandbox.nginx.conf /etc/ainative/sandbox.nginx.conf
 COPY backend/runner/sandbox.supervisord.conf /etc/ainative/sandbox.supervisord.conf
+
+# 入口脚本：根据 /workspace 下的目录结构自动判断运行模式
 COPY backend/runner/entrypoint.sh /usr/local/bin/ainative-runner-entrypoint
 RUN chmod +x /usr/local/bin/ainative-runner-entrypoint \
     && mkdir -p /var/log/nginx /run/nginx /etc/ainative /var/log/supervisor /workspace/logs
