@@ -5,12 +5,24 @@ import { useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
+import {
+  createProjectContainerRuntimeFormState,
+  useProjectContainerRuntimeForm,
+} from '@/composables/useProjectContainerRuntimeForm'
+import {
+  createProjectRunnerTemplateFormState,
+  useProjectRunnerTemplateForm,
+} from '@/composables/useProjectRunnerTemplateForm'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import { usersApi } from '@/api/users'
 import { workflowApi } from '@/api/workflow'
 import type { ProjectContext } from '@/types/api/project-context'
-import type { Project, ProjectCustomRole, ProjectMember } from '@/types/api/projects'
+import type {
+  Project,
+  ProjectCustomRole,
+  ProjectMember,
+} from '@/types/api/projects'
 import type { Task } from '@/types/api/tasks'
 import type { User } from '@/types/api/users'
 import type {
@@ -212,7 +224,25 @@ const configForm = reactive({
   runnerCommand: '',
   runnerArgs: '',
   runnerTimeoutSeconds: '600',
+  ...createProjectContainerRuntimeFormState(),
+  ...createProjectRunnerTemplateFormState(),
 })
+
+const {
+  containerSandboxProfileOptions,
+  containerNetworkModeOptions,
+  containerExposeModeOptions,
+  syncFromContainerRuntime,
+  validateContainerRuntime,
+  buildProjectConfigJson: buildContainerRuntimeConfigJson,
+} = useProjectContainerRuntimeForm(configForm)
+const {
+  applyDefaultRunnerTemplates,
+  clearRunnerTemplateOverrides,
+  syncFromRunnerTemplate,
+  validateRunnerTemplate,
+  buildProjectConfigJson: buildRunnerTemplateConfigJson,
+} = useProjectRunnerTemplateForm(configForm)
 
 const formatDate = (value?: string) => {
   if (!value) return '-'
@@ -437,6 +467,10 @@ const displayUserMeta = (userId: string) => {
 const normalizeOptionalText = (value: string) => {
   const trimmedValue = value.trim()
   return trimmedValue.length > 0 ? trimmedValue : undefined
+}
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
@@ -1267,6 +1301,10 @@ const syncConfigForm = (currentProject: Project) => {
     typeof runnerConfig.timeoutSeconds === 'number' && runnerConfig.timeoutSeconds > 0
       ? String(runnerConfig.timeoutSeconds)
       : '600'
+  syncFromContainerRuntime(configJson.containerRuntime)
+  syncFromRunnerTemplate(configJson.runnerTemplate ?? null, {
+    whenMissing: 'empty',
+  })
 }
 
 const loadProjectContext = async () => {
@@ -1504,23 +1542,28 @@ const saveConfig = async () => {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean)
+    const containerRuntimeValidationMessage = validateContainerRuntime()
+    if (containerRuntimeValidationMessage) {
+      validationMessage.value = containerRuntimeValidationMessage
+      return
+    }
+    const runnerTemplateValidationMessage = validateRunnerTemplate()
+    if (runnerTemplateValidationMessage) {
+      validationMessage.value = runnerTemplateValidationMessage
+      return
+    }
 
+    const currentConfigJson = isObjectRecord(project.value.configJson)
+      ? { ...(project.value.configJson as Record<string, unknown>) }
+      : {}
     const configJson: Record<string, unknown> = {
+      ...currentConfigJson,
       agentAdapter: configForm.agentAdapter.trim() || 'codex',
       allowedSkills,
       allowedMcp,
       maxConcurrency: Math.max(1, Number(configForm.maxConcurrency) || 1),
       priority: configForm.priority.trim() || 'normal',
       gitRuntimeEnabled: configForm.gitRuntimeEnabled,
-      ...(configForm.repoLocalPath.trim()
-        ? { repoLocalPath: configForm.repoLocalPath.trim() }
-        : {}),
-      ...(configForm.repoCacheBaseDir.trim()
-        ? { repoCacheBaseDir: configForm.repoCacheBaseDir.trim() }
-        : {}),
-      ...(configForm.worktreeBaseDir.trim()
-        ? { worktreeBaseDir: configForm.worktreeBaseDir.trim() }
-        : {}),
       agentRunner: {
         ...(configForm.runnerCommand.trim() ? { command: configForm.runnerCommand.trim() } : {}),
         ...(runnerArgs.length ? { args: runnerArgs } : {}),
@@ -1528,12 +1571,34 @@ const saveConfig = async () => {
       },
     }
 
+    if (configForm.repoLocalPath.trim()) {
+      configJson.repoLocalPath = configForm.repoLocalPath.trim()
+    } else {
+      delete configJson.repoLocalPath
+    }
+
+    if (configForm.repoCacheBaseDir.trim()) {
+      configJson.repoCacheBaseDir = configForm.repoCacheBaseDir.trim()
+    } else {
+      delete configJson.repoCacheBaseDir
+    }
+
+    if (configForm.worktreeBaseDir.trim()) {
+      configJson.worktreeBaseDir = configForm.worktreeBaseDir.trim()
+    } else {
+      delete configJson.worktreeBaseDir
+    }
+
+    const mergedConfigJson = buildRunnerTemplateConfigJson(
+      buildContainerRuntimeConfigJson(configJson),
+    )
+
     await projectsApi.update(projectId.value, {
       name: configForm.name.trim(),
       description: configForm.description.trim() || undefined,
       gitUrl: configForm.gitUrl.trim(),
       defaultBranch: configForm.defaultBranch.trim() || 'main',
-      configJson,
+      configJson: mergedConfigJson,
     })
 
     await loadProjectData()
@@ -2127,6 +2192,26 @@ onBeforeUnmount(() => {
             <div>
               <dt class="text-muted-foreground">并发上限</dt>
               <dd class="mt-1 text-foreground">{{ configForm.maxConcurrency || '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">隔离容器 Profile</dt>
+              <dd class="mt-1 text-foreground">{{ configForm.containerSandboxProfile || '跟随全局' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">容器网络模式</dt>
+              <dd class="mt-1 text-foreground">{{ configForm.containerNetworkMode || '跟随全局' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">端口映射</dt>
+              <dd class="mt-1 text-foreground">
+                {{
+                  configForm.containerExposeMode === 'enabled'
+                    ? '开启'
+                    : configForm.containerExposeMode === 'disabled'
+                      ? '关闭'
+                      : '跟随全局'
+                }}
+              </dd>
             </div>
           </dl>
         </div>
@@ -2727,6 +2812,165 @@ onBeforeUnmount(() => {
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 placeholder="/path/to/worktrees"
                 type="text"
+              />
+            </label>
+
+            <div class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
+              <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
+              <p class="mt-1 text-[11px] text-muted-foreground">
+                仅覆盖当前项目的容器启动参数；留空表示继续使用全局默认值。
+              </p>
+            </div>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">Sandbox Profile</span>
+              <AppSelect
+                v-model="configForm.containerSandboxProfile"
+                aria-label="Sandbox Profile"
+                :options="containerSandboxProfileOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">容器网络模式</span>
+              <AppSelect
+                v-model="configForm.containerNetworkMode"
+                aria-label="容器网络模式"
+                :options="containerNetworkModeOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">端口映射</span>
+              <AppSelect
+                v-model="configForm.containerExposeMode"
+                aria-label="端口映射"
+                :options="containerExposeModeOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">启动超时（毫秒）</span>
+              <input
+                v-model="configForm.containerStartTimeoutMs"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                min="1000"
+                placeholder="跟随全局默认"
+                type="number"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">暴露宿主 IP（可选）</span>
+              <input
+                v-model="configForm.containerExposeHostIp"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如 127.0.0.1"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">容器暴露端口（可选）</span>
+              <input
+                v-model="configForm.containerExposeContainerPort"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                min="1"
+                placeholder="例如 8080"
+                type="number"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">内存上限 MB（可选）</span>
+              <input
+                v-model="configForm.containerMemoryMb"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                min="1"
+                placeholder="例如 2048"
+                type="number"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">PIDs 上限（可选）</span>
+              <input
+                v-model="configForm.containerPidsLimit"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                min="1"
+                placeholder="例如 256"
+                type="number"
+              />
+            </label>
+
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-semibold text-muted-foreground">
+                容器环境变量（每行 `KEY=VALUE`）
+              </span>
+              <textarea
+                v-model="configForm.containerEnv"
+                class="min-h-[120px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                placeholder="PORT=8080&#10;NODE_ENV=development"
+              />
+            </label>
+
+            <div class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="text-xs font-semibold text-muted-foreground">项目级 Runner 模板</p>
+                  <p class="mt-1 text-[11px] text-muted-foreground">
+                    默认继承 `backend/runner/` 下三份模板；只有填写的项才会覆盖项目级配置。
+                  </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
+                    type="button"
+                    @click="applyDefaultRunnerTemplates"
+                  >
+                    载入默认模板
+                  </button>
+                  <button
+                    class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
+                    type="button"
+                    @click="clearRunnerTemplateOverrides"
+                  >
+                    清空并回退全局
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">Dockerfile.runner</span>
+              <textarea
+                v-model="configForm.runnerDockerfile"
+                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                placeholder="输入项目级 Dockerfile.runner"
+                spellcheck="false"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">sandbox.nginx.conf</span>
+              <textarea
+                v-model="configForm.runnerSandboxNginxConf"
+                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                placeholder="输入项目级 sandbox.nginx.conf"
+                spellcheck="false"
+              />
+            </label>
+
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-semibold text-muted-foreground">sandbox.supervisord.conf</span>
+              <textarea
+                v-model="configForm.runnerSandboxSupervisordConf"
+                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                placeholder="输入项目级 sandbox.supervisord.conf"
+                spellcheck="false"
               />
             </label>
 

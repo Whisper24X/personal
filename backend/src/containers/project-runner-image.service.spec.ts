@@ -1,0 +1,85 @@
+import { ConfigService } from '@nestjs/config';
+import { ContainerExecutionConfigService } from './container-execution-config.service';
+import { ProjectRunnerImageService } from './project-runner-image.service';
+
+describe('ProjectRunnerImageService', () => {
+  const createService = () => {
+    const configService = {
+      get: jest.fn((key: string) => {
+        if (key === 'AINATIVE_RUNNER_IMAGE') {
+          return 'ainative/runner:latest';
+        }
+        return undefined;
+      }),
+    } as unknown as ConfigService;
+    const containerConfig = new ContainerExecutionConfigService(configService);
+
+    return new ProjectRunnerImageService(containerConfig);
+  };
+
+  const createProject = (configJson?: Record<string, unknown>) => ({
+    id: 'project-1',
+    businessLineId: 'business-line-1',
+    name: 'AINative Web',
+    description: null,
+    gitUrl: 'git@example.com:ainative/web.git',
+    defaultBranch: 'main',
+    configJson: configJson ?? null,
+    createdAt: new Date('2026-03-27T10:00:00.000Z'),
+    updatedAt: new Date('2026-03-27T10:00:00.000Z'),
+    deletedAt: null,
+  });
+
+  it('should fall back to the global runner image when template config is absent', async () => {
+    const service = createService();
+
+    await expect(service.resolveRunnerImage()).resolves.toBe(
+      'ainative/runner:latest',
+    );
+  });
+
+  it('should read project runner template overrides when any template field is present', () => {
+    const service = createService();
+
+    expect(
+      service.readProjectRunnerTemplateConfig(
+        createProject({
+          runnerTemplate: {
+            dockerfileRunner: 'FROM node:20',
+            sandboxNginxConf: 'events {}',
+          },
+        }) as never,
+      ),
+    ).toEqual({
+      dockerfileRunner: 'FROM node:20',
+      sandboxNginxConf: 'events {}',
+    });
+  });
+
+  it('should build and cache a project runner image tag from runner templates', async () => {
+    const service = createService();
+    jest
+      .spyOn(service as any, 'readDefaultRunnerTemplateConfig')
+      .mockResolvedValue({
+        dockerfileRunner: 'FROM node:20',
+        sandboxNginxConf: 'events {}',
+        sandboxSupervisordConf: '[supervisord]',
+      });
+    const ensureProjectRunnerImage = jest
+      .spyOn(service as any, 'ensureProjectRunnerImage')
+      .mockImplementation((imageTag: string) => Promise.resolve(imageTag));
+
+    const project = createProject({
+      runnerTemplate: {
+        sandboxNginxConf: 'events { worker_connections 1024; }',
+      },
+    });
+
+    const firstImage = await service.resolveRunnerImage(project as never);
+    const secondImage = await service.resolveRunnerImage(project as never);
+
+    expect(firstImage).toMatch(/^ainative\/runner-project-project-1:/);
+    expect(secondImage).toBe(firstImage);
+    expect(ensureProjectRunnerImage).toHaveBeenCalledTimes(2);
+  });
+});

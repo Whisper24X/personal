@@ -1,7 +1,19 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { projectsApi } from '@/api/projects'
 import AppSelect from '@/components/core/select'
+import {
+  createProjectContainerRuntimeFormState,
+  useProjectContainerRuntimeForm,
+} from '@/composables/useProjectContainerRuntimeForm'
+import {
+  createProjectRunnerTemplateFormState,
+  useProjectRunnerTemplateForm,
+} from '@/composables/useProjectRunnerTemplateForm'
+import type {
+  ProjectContainerRuntimeConfig,
+  ProjectRunnerTemplateConfig,
+} from '@/types/api/projects'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const props = defineProps<{
@@ -13,13 +25,25 @@ const props = defineProps<{
   initialDescription: string
   initialGitUrl: string
   initialDefaultBranch: string
+  initialContainerRuntime?: ProjectContainerRuntimeConfig | null
+  initialRunnerTemplate?: ProjectRunnerTemplateConfig | null
   errorMessage?: string
   size?: 'default' | 'large'
 }>()
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
-  (event: 'submit', payload: { name: string; description: string; gitUrl: string; defaultBranch: string }): void
+  (
+    event: 'submit',
+    payload: {
+      name: string
+      description: string
+      gitUrl: string
+      defaultBranch: string
+      containerRuntime?: ProjectContainerRuntimeConfig
+      runnerTemplate?: ProjectRunnerTemplateConfig
+    },
+  ): void
 }>()
 
 const name = ref('')
@@ -33,6 +57,8 @@ const inspectionErrorMessage = ref('')
 const nameEditedByUser = ref(false)
 const defaultBranchEditedByUser = ref(false)
 const autoFilledName = ref('')
+const containerRuntimeForm = reactive(createProjectContainerRuntimeFormState())
+const runnerTemplateForm = reactive(createProjectRunnerTemplateFormState())
 let inspectTimer: ReturnType<typeof setTimeout> | null = null
 let inspectRequestId = 0
 
@@ -58,6 +84,22 @@ const branchSelectOptions = computed(() => {
     value: branch,
   }))
 })
+
+const {
+  containerSandboxProfileOptions,
+  containerNetworkModeOptions,
+  containerExposeModeOptions,
+  syncFromContainerRuntime,
+  validateContainerRuntime,
+  buildContainerRuntimeConfig,
+} = useProjectContainerRuntimeForm(containerRuntimeForm)
+const {
+  applyDefaultRunnerTemplates,
+  clearRunnerTemplateOverrides,
+  syncFromRunnerTemplate,
+  validateRunnerTemplate,
+  buildRunnerTemplateConfig,
+} = useProjectRunnerTemplateForm(runnerTemplateForm)
 
 const PROJECT_FORM_SELECT_PANEL_Z_INDEX = 130
 
@@ -86,6 +128,10 @@ const syncFormValues = () => {
   description.value = props.initialDescription
   gitUrl.value = props.initialGitUrl
   defaultBranch.value = props.initialDefaultBranch || 'main'
+  syncFromContainerRuntime(props.initialContainerRuntime ?? null)
+  syncFromRunnerTemplate(props.initialRunnerTemplate ?? null, {
+    whenMissing: 'empty',
+  })
   validationMessage.value = ''
   resetAutoFillState()
 }
@@ -212,12 +258,26 @@ const submit = () => {
     return
   }
 
+  const containerRuntimeValidationMessage = validateContainerRuntime()
+  if (containerRuntimeValidationMessage) {
+    validationMessage.value = containerRuntimeValidationMessage
+    return
+  }
+
+  const runnerTemplateValidationMessage = validateRunnerTemplate()
+  if (runnerTemplateValidationMessage) {
+    validationMessage.value = runnerTemplateValidationMessage
+    return
+  }
+
   validationMessage.value = ''
   emit('submit', {
     name: name.value.trim(),
     description: description.value,
     gitUrl: gitUrl.value.trim(),
     defaultBranch: defaultBranch.value.trim(),
+    containerRuntime: buildContainerRuntimeConfig(),
+    runnerTemplate: buildRunnerTemplateConfig(),
   })
 }
 
@@ -233,7 +293,15 @@ watch(
 )
 
 watch(
-  () => [props.initialName, props.initialDescription, props.initialGitUrl, props.initialDefaultBranch, props.mode],
+  () => [
+    props.initialName,
+    props.initialDescription,
+    props.initialGitUrl,
+    props.initialDefaultBranch,
+    props.initialContainerRuntime,
+    props.initialRunnerTemplate,
+    props.mode,
+  ],
   () => {
     if (!props.open) {
       return
@@ -364,6 +432,168 @@ onBeforeUnmount(() => {
               type="text"
               class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
               placeholder="输入项目描述"
+            />
+          </label>
+
+          <div class="rounded-xl border border-border bg-background/60 p-3">
+            <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
+            <p class="mt-1 text-[11px] text-muted-foreground">
+              留空表示跟随全局配置，仅覆盖当前项目隔离容器启动参数。
+            </p>
+          </div>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">Sandbox Profile</span>
+            <AppSelect
+              v-model="containerRuntimeForm.containerSandboxProfile"
+              aria-label="Sandbox Profile"
+              :options="containerSandboxProfileOptions"
+              :panel-z-index="PROJECT_FORM_SELECT_PANEL_Z_INDEX"
+              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">容器网络模式</span>
+            <AppSelect
+              v-model="containerRuntimeForm.containerNetworkMode"
+              aria-label="容器网络模式"
+              :options="containerNetworkModeOptions"
+              :panel-z-index="PROJECT_FORM_SELECT_PANEL_Z_INDEX"
+              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">端口映射</span>
+            <AppSelect
+              v-model="containerRuntimeForm.containerExposeMode"
+              aria-label="端口映射"
+              :options="containerExposeModeOptions"
+              :panel-z-index="PROJECT_FORM_SELECT_PANEL_Z_INDEX"
+              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">启动超时（毫秒）</span>
+            <input
+              v-model="containerRuntimeForm.containerStartTimeoutMs"
+              type="number"
+              min="1000"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="例如 90000"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">暴露宿主 IP（可选）</span>
+            <input
+              v-model="containerRuntimeForm.containerExposeHostIp"
+              type="text"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="例如 127.0.0.1"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">容器暴露端口（可选）</span>
+            <input
+              v-model="containerRuntimeForm.containerExposeContainerPort"
+              type="number"
+              min="1"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="例如 8080"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">内存上限 MB（可选）</span>
+            <input
+              v-model="containerRuntimeForm.containerMemoryMb"
+              type="number"
+              min="1"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="例如 2048"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">PIDs 上限（可选）</span>
+            <input
+              v-model="containerRuntimeForm.containerPidsLimit"
+              type="number"
+              min="1"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="例如 256"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">
+              容器环境变量（每行 `KEY=VALUE`）
+            </span>
+            <textarea
+              v-model="containerRuntimeForm.containerEnv"
+              class="min-h-[120px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              placeholder="PORT=8080&#10;NODE_ENV=development"
+            />
+          </label>
+
+          <div class="rounded-xl border border-border bg-background/60 p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">项目级 Runner 模板</p>
+                <p class="mt-1 text-[11px] text-muted-foreground">
+                    默认继承 `backend/runner/` 下三份模板；只有填写的项才会覆盖项目级配置。
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
+                  @click="applyDefaultRunnerTemplates"
+                >
+                    载入默认模板
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
+                  @click="clearRunnerTemplateOverrides"
+                >
+                  清空并回退全局
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">Dockerfile.runner</span>
+            <textarea
+              v-model="runnerTemplateForm.runnerDockerfile"
+              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              spellcheck="false"
+              placeholder="输入项目级 Dockerfile.runner"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">sandbox.nginx.conf</span>
+            <textarea
+              v-model="runnerTemplateForm.runnerSandboxNginxConf"
+              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              spellcheck="false"
+              placeholder="输入项目级 sandbox.nginx.conf"
+            />
+          </label>
+
+          <label class="block space-y-1 md:col-span-2">
+            <span class="text-xs font-semibold text-muted-foreground">sandbox.supervisord.conf</span>
+            <textarea
+              v-model="runnerTemplateForm.runnerSandboxSupervisordConf"
+              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              spellcheck="false"
+              placeholder="输入项目级 sandbox.supervisord.conf"
             />
           </label>
 

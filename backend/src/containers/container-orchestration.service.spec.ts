@@ -22,6 +22,19 @@ describe('ContainerOrchestrationService', () => {
     deletedAt: null,
   });
 
+  const createProject = (configJson?: Record<string, unknown>) => ({
+    id: 'project-1',
+    businessLineId: 'business-line-1',
+    name: 'AINative Web',
+    description: null,
+    gitUrl: 'git@example.com:ainative/web.git',
+    defaultBranch: 'main',
+    configJson: configJson ?? null,
+    createdAt: new Date('2026-03-19T10:00:00.000Z'),
+    updatedAt: new Date('2026-03-19T10:00:00.000Z'),
+    deletedAt: null,
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -41,6 +54,9 @@ describe('ContainerOrchestrationService', () => {
     const isolatedRunner = {
       remove: jest.fn().mockResolvedValue(undefined),
       listAinativeContainers: jest.fn().mockResolvedValue([]),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:latest'),
     };
     const slotRepository = {
       findAll: jest.fn().mockResolvedValue([
@@ -63,6 +79,7 @@ describe('ContainerOrchestrationService', () => {
 
     const service = new ContainerOrchestrationService(
       config as never,
+      projectRunnerImageService as never,
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
@@ -89,6 +106,9 @@ describe('ContainerOrchestrationService', () => {
       remove: jest.fn().mockResolvedValue(undefined),
       listAinativeContainers: jest.fn().mockResolvedValue([]),
     };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:latest'),
+    };
     const slotRepository = {
       findAll: jest.fn().mockResolvedValue([
         {
@@ -110,6 +130,7 @@ describe('ContainerOrchestrationService', () => {
 
     const service = new ContainerOrchestrationService(
       config as never,
+      projectRunnerImageService as never,
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
@@ -121,5 +142,129 @@ describe('ContainerOrchestrationService', () => {
     expect(isolatedRunner.remove).toHaveBeenCalledWith('ainative-task-task-1');
     expect(slotRepository.releaseSlot).toHaveBeenCalledWith('project-1');
     expect(slotRepository.renewSlot).not.toHaveBeenCalled();
+  });
+
+  it('should apply project-level container runtime overrides when starting containers', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerAnonymousVolumeMounts: jest
+        .fn()
+        .mockReturnValue(['/workspace/backend/node_modules']),
+      getRunnerEnv: jest.fn().mockReturnValue({ PORT: '4173' }),
+      resourceLimitsForProfile: jest
+        .fn()
+        .mockReturnValue({ memoryMb: 3072, pidsLimit: 300 }),
+      getRunnerReadinessProbeUrl: jest
+        .fn()
+        .mockReturnValue('http://127.0.0.1:8080/health'),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(90000),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue(null),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-1',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 4173,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest
+        .fn()
+        .mockResolvedValue('ainative/runner:project-1'),
+    };
+    const slotRepository = {
+      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
+      updateContainerId: jest.fn().mockResolvedValue(undefined),
+      renewSlot: jest.fn().mockResolvedValue(undefined),
+      releaseSlot: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    const result = await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress) as never,
+      project: createProject({
+        containerRuntime: {
+          sandboxProfile: 'preview-web',
+          networkMode: 'bridge',
+          exposeLocal: true,
+          exposeHostIp: '192.168.50.8',
+          exposeContainerPort: 4173,
+          startTimeoutMs: 90000,
+          resourceLimits: {
+            memoryMb: 3072,
+            pidsLimit: 300,
+          },
+          env: {
+            PORT: '4173',
+          },
+        },
+      }) as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(result).toEqual({ containerId: 'container-1' });
+    expect(isolatedRunner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        containerName: 'ainative-task-task-1',
+        image: 'ainative/runner:project-1',
+        env: { PORT: '4173' },
+        resourceLimits: { memoryMb: 3072, pidsLimit: 300 },
+        networkMode: 'bridge',
+        startTimeoutMs: 90000,
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 4173,
+          },
+        ],
+      }),
+    );
+    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({
+        containerId: 'container-1',
+        accessMetadata: expect.objectContaining({
+          hostIp: '192.168.50.8',
+          hostPort: 38080,
+          containerPort: 4173,
+          networkMode: 'bridge',
+        }),
+      }),
+    );
+    expect(projectRunnerImageService.resolveRunnerImage).toHaveBeenCalledTimes(
+      2,
+    );
   });
 });

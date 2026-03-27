@@ -10,6 +10,26 @@ export type Project = {
   updatedAt?: string
 }
 
+export type ProjectContainerRuntimeConfig = {
+  sandboxProfile?: 'runner-only' | 'preview-web' | 'full-dev-sandbox'
+  networkMode?: 'host' | 'bridge'
+  exposeLocal?: boolean
+  exposeHostIp?: string
+  exposeContainerPort?: number
+  startTimeoutMs?: number
+  resourceLimits?: {
+    memoryMb?: number
+    pidsLimit?: number
+  }
+  env?: Record<string, string>
+}
+
+export type ProjectRunnerTemplateConfig = {
+  dockerfileRunner?: string
+  sandboxNginxConf?: string
+  sandboxSupervisordConf?: string
+}
+
 export type ProjectMemberRole = 'owner' | 'maintainer' | 'developer' | 'viewer'
 
 export type ProjectMember = {

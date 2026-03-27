@@ -7,6 +7,7 @@ import { ContainerOrchestrationService } from './container-orchestration.service
 import { ProjectExecutionSlotEntity } from './infrastructure/persistence/relational/entities/project-execution-slot.entity';
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { IsolatedRunnerContainerService } from './isolated-runner-container.service';
+import { ProjectRunnerImageService } from './project-runner-image.service';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { IsolatedRunnerContainerService } from './isolated-runner-container.serv
   ],
   providers: [
     ContainerExecutionConfigService,
+    ProjectRunnerImageService,
     IsolatedRunnerContainerService,
     AgentProcessLauncherService,
     ProjectExecutionSlotRepository,
@@ -22,6 +24,7 @@ import { IsolatedRunnerContainerService } from './isolated-runner-container.serv
   ],
   exports: [
     ContainerExecutionConfigService,
+    ProjectRunnerImageService,
     ContainerOrchestrationService,
     AgentProcessLauncherService,
     ProjectExecutionSlotRepository,

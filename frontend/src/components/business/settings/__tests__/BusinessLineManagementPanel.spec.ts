@@ -409,6 +409,72 @@ describe('BusinessLineManagementPanel', () => {
     expect(wrapper.emitted('request-refresh')).toBeTruthy()
   })
 
+  it('includes project runner templates in configJson when creating a project', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const projectFormModal = wrapper.findComponent({ name: 'ProjectFormModal' })
+    projectFormModal.vm.$emit('submit', {
+      name: 'Guard Console',
+      description: 'Console app',
+      gitUrl: 'git@gitlab.example.com:group/guard-console.git',
+      defaultBranch: 'main',
+      runnerTemplate: {
+        dockerfileRunner: 'FROM node:20',
+        sandboxNginxConf: 'events {}',
+        sandboxSupervisordConf: '[supervisord]',
+      },
+    })
+    await flushPromises()
+
+    expect(projectsApi.create).toHaveBeenCalledWith({
+      businessLineId: 'line-1',
+      name: 'Guard Console',
+      description: 'Console app',
+      gitUrl: 'git@gitlab.example.com:group/guard-console.git',
+      defaultBranch: 'main',
+      configJson: {
+        runnerTemplate: {
+          dockerfileRunner: 'FROM node:20',
+          sandboxNginxConf: 'events {}',
+          sandboxSupervisordConf: '[supervisord]',
+        },
+      },
+    })
+  })
+
+  it('navigates to the standalone projects list page from the projects tab', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const projectsListButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '查看项目列表')
+
+    expect(projectsListButton).toBeDefined()
+    await projectsListButton!.trigger('click')
+
+    expect(routerPush).toHaveBeenCalledWith({ path: '/projects' })
+  })
+
   it('emits select-project when choosing a project as current', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {

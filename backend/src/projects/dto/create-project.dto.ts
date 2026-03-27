@@ -37,7 +37,8 @@ export class CreateProjectDto {
 
   @ApiPropertyOptional({
     type: Object,
-    description: 'Project execution config snapshot',
+    description:
+      'Project execution config snapshot, including optional project-level containerRuntime overrides and runnerTemplate text files for project-specific runner images',
   })
   @IsOptional()
   @IsObject()

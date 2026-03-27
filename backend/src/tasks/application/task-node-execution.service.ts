@@ -119,6 +119,7 @@ export class TaskNodeExecutionService {
       const containerBundle = await this.containerOrchestration.ensureContainer(
         {
           task: executionTask,
+          project,
           worktreePath: runtime.worktreePath,
         },
       );

@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { createServer } from 'net';
+import { Project } from '../projects/domain/project';
 import { Task } from '../tasks/domain/task';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
@@ -12,6 +13,7 @@ import { ContainerExecutionConfigService } from './container-execution-config.se
 import { IsolatedRunnerContainerService } from './isolated-runner-container.service';
 import { SlotAccessMetadata } from './domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
+import { ProjectRunnerImageService } from './project-runner-image.service';
 
 @Injectable()
 export class ContainerOrchestrationService
@@ -24,6 +26,7 @@ export class ContainerOrchestrationService
 
   constructor(
     private readonly config: ContainerExecutionConfigService,
+    private readonly projectRunnerImageService: ProjectRunnerImageService,
     private readonly isolatedRunner: IsolatedRunnerContainerService,
     private readonly slotRepository: ProjectExecutionSlotRepository,
     private readonly taskRepository: TaskRepository,
@@ -55,24 +58,30 @@ export class ContainerOrchestrationService
    */
   async ensureContainer(params: {
     task: Task;
+    project: Project;
     worktreePath: string;
   }): Promise<{ containerId: string } | null> {
     if (!this.config.isDockerMode()) {
       return null;
     }
 
-    const { task, worktreePath } = params;
+    const { task, project, worktreePath } = params;
     const containerName = this.config.resolveContainerName(task);
-    const runtimeExposure = this.resolveRuntimeExposure();
+    const runtimeExposure = this.resolveRuntimeExposure(project);
+    const sandboxProfile = this.config.getSandboxProfile(project);
+    const readinessProbeUrl = this.config.getRunnerReadinessProbeUrl(project);
+    const startTimeoutMs = this.config.getRunnerStartTimeoutMs(project);
     const existing = await this.isolatedRunner.inspect(containerName);
     this.logger.log(
       `ensure_runner_container ${JSON.stringify({
         taskId: task.id,
         projectId: task.projectId,
         containerName,
-        image: this.config.getRunnerImage(),
+        image: existing?.running ? null : 'pending-resolution',
         worktreePath,
-        sandboxProfile: this.config.getSandboxProfile(),
+        sandboxProfile,
+        networkMode: this.config.getRunnerNetworkMode(project),
+        runtimeExposure: runtimeExposure ?? null,
         existing: existing ?? null,
       })}`,
     );
@@ -91,6 +100,9 @@ export class ContainerOrchestrationService
       return { containerId: existing.id };
     }
 
+    const runnerImage =
+      await this.projectRunnerImageService.resolveRunnerImage(project);
+
     try {
       if (existing && !existing.running) {
         this.logger.warn(
@@ -105,6 +117,7 @@ export class ContainerOrchestrationService
       const { containerId, accessMetadata } = await this.startRunnerWithRetries(
         {
           containerName,
+          project,
           worktreePath,
           runtimeExposure,
         },
@@ -142,11 +155,11 @@ export class ContainerOrchestrationService
           taskId: task.id,
           projectId: task.projectId,
           containerName,
-          image: this.config.getRunnerImage(),
+          image: runnerImage,
           worktreePath,
-          sandboxProfile: this.config.getSandboxProfile(),
-          readinessProbeUrl: this.config.getRunnerReadinessProbeUrl(),
-          startTimeoutMs: this.config.getRunnerStartTimeoutMs(),
+          sandboxProfile,
+          readinessProbeUrl,
+          startTimeoutMs,
           errorMessage: message,
         })}`,
       );
@@ -299,6 +312,7 @@ export class ContainerOrchestrationService
 
   private async startRunnerWithRetries(params: {
     containerName: string;
+    project: Project;
     worktreePath: string;
     runtimeExposure: RuntimeExposure;
   }): Promise<{
@@ -307,12 +321,15 @@ export class ContainerOrchestrationService
   }> {
     const retries = params.runtimeExposure ? this.maxPortAllocationAttempts : 1;
     let lastError: unknown;
+    const runnerImage = await this.projectRunnerImageService.resolveRunnerImage(
+      params.project,
+    );
 
     for (let attempt = 0; attempt < retries; attempt += 1) {
       const publishedPorts =
         params.runtimeExposure &&
-        this.config.getRunnerNetworkMode() === 'bridge' &&
-        this.config.shouldExposeSandboxPort()
+        this.config.getRunnerNetworkMode(params.project) === 'bridge' &&
+        this.config.shouldExposeSandboxPort(params.project)
           ? [
               {
                 hostIp: params.runtimeExposure.bindHostIp,
@@ -327,19 +344,23 @@ export class ContainerOrchestrationService
       try {
         const result = await this.isolatedRunner.run({
           containerName: params.containerName,
-          image: this.config.getRunnerImage(),
+          image: runnerImage,
           worktreePath: params.worktreePath,
           workspaceMount: this.config.getRunnerWorkspace(),
-          command: this.config.usesSandboxEntrypoint()
+          command: this.config.usesSandboxEntrypoint(params.project)
             ? ['/usr/local/bin/ainative-runner-entrypoint']
             : ['sleep', 'infinity'],
           anonymousVolumeMounts: this.config.getRunnerAnonymousVolumeMounts(
             this.config.getRunnerWorkspace(),
+            params.project,
           ),
-          resourceLimits: this.config.resourceLimitsForProfile(),
-          readinessProbeUrl: this.config.getRunnerReadinessProbeUrl(),
-          startTimeoutMs: this.config.getRunnerStartTimeoutMs(),
-          networkMode: this.config.getRunnerNetworkMode(),
+          env: this.config.getRunnerEnv(params.project),
+          resourceLimits: this.config.resourceLimitsForProfile(params.project),
+          readinessProbeUrl: this.config.getRunnerReadinessProbeUrl(
+            params.project,
+          ),
+          startTimeoutMs: this.config.getRunnerStartTimeoutMs(params.project),
+          networkMode: this.config.getRunnerNetworkMode(params.project),
           publishedPorts,
         });
         const mapping = result.publishedPorts[0];
@@ -353,7 +374,7 @@ export class ContainerOrchestrationService
                 containerPort: mapping.containerPort,
                 previewAddress: `${params.runtimeExposure?.advertisedHostIp ?? mapping.hostIp}:${mapping.hostPort}`,
                 baseUrl: `http://${params.runtimeExposure?.advertisedHostIp ?? mapping.hostIp}:${mapping.hostPort}`,
-                networkMode: this.config.getRunnerNetworkMode(),
+                networkMode: this.config.getRunnerNetworkMode(params.project),
               }
             : null,
         };
@@ -374,17 +395,17 @@ export class ContainerOrchestrationService
       : new Error('Failed to start runner container');
   }
 
-  private resolveRuntimeExposure(): RuntimeExposure {
-    if (!this.config.shouldExposeSandboxPort()) {
+  private resolveRuntimeExposure(project: Project): RuntimeExposure {
+    if (!this.config.shouldExposeSandboxPort(project)) {
       return null;
     }
-    if (this.config.getRunnerNetworkMode() !== 'bridge') {
+    if (this.config.getRunnerNetworkMode(project) !== 'bridge') {
       return null;
     }
     return {
       bindHostIp: '0.0.0.0',
-      advertisedHostIp: this.config.getRunnerExposeHostIp(),
-      containerPort: this.config.getRunnerExposeContainerPort(),
+      advertisedHostIp: this.config.getRunnerExposeHostIp(project),
+      containerPort: this.config.getRunnerExposeContainerPort(project),
     };
   }
 

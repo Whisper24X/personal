@@ -12,6 +12,19 @@ describe('ContainerExecutionConfigService', () => {
     return new ContainerExecutionConfigService(configService);
   };
 
+  const createProject = (configJson?: Record<string, unknown>) => ({
+    id: 'project-1',
+    businessLineId: 'business-line-1',
+    name: 'AINative Web',
+    description: null,
+    gitUrl: 'git@example.com:ainative/web.git',
+    defaultBranch: 'main',
+    configJson: configJson ?? null,
+    createdAt: new Date('2026-03-27T10:00:00.000Z'),
+    updatedAt: new Date('2026-03-27T10:00:00.000Z'),
+    deletedAt: null,
+  });
+
   it('should keep runner-only profile on sleep entrypoint defaults', () => {
     const service = createService({});
 
@@ -68,5 +81,52 @@ describe('ContainerExecutionConfigService', () => {
     expect(service.getRunnerReadinessProbeUrl()).toBe(
       'http://127.0.0.1:18080/healthz',
     );
+  });
+
+  it('should prefer project container runtime overrides over global defaults', () => {
+    const service = createService({
+      AINATIVE_TASK_SANDBOX_PROFILE: 'runner-only',
+      AINATIVE_RUNNER_NETWORK_MODE: 'host',
+      AINATIVE_RUNNER_EXPOSE_LOCAL: 'true',
+      AINATIVE_RUNNER_EXPOSE_HOST_IP: '127.0.0.1',
+      AINATIVE_RUNNER_EXPOSE_CONTAINER_PORT: '8080',
+      AINATIVE_RUNNER_START_TIMEOUT_MS: '30000',
+    });
+    const project = createProject({
+      containerRuntime: {
+        sandboxProfile: 'preview-web',
+        networkMode: 'bridge',
+        exposeLocal: false,
+        exposeHostIp: '192.168.50.8',
+        exposeContainerPort: 4173,
+        startTimeoutMs: 90000,
+        resourceLimits: {
+          memoryMb: 3072,
+          pidsLimit: 300,
+        },
+        env: {
+          PORT: '4173',
+          NODE_ENV: 'development',
+        },
+      },
+    });
+
+    expect(service.getSandboxProfile(project as never)).toBe('preview-web');
+    expect(service.usesSandboxEntrypoint(project as never)).toBe(true);
+    expect(service.getRunnerNetworkMode(project as never)).toBe('bridge');
+    expect(service.shouldExposeSandboxPort(project as never)).toBe(false);
+    expect(service.getRunnerExposeHostIp(project as never)).toBe(
+      '192.168.50.8',
+    );
+    expect(service.getRunnerExposeContainerPort(project as never)).toBe(4173);
+    expect(service.getRunnerStartTimeoutMs(project as never)).toBe(90_000);
+    expect(service.resourceLimitsForProfile(project as never)).toEqual({
+      memoryMb: 3072,
+      pidsLimit: 300,
+    });
+    expect(service.getRunnerEnv(project as never)).toEqual({
+      PORT: '4173',
+      NODE_ENV: 'development',
+    });
   });
 });

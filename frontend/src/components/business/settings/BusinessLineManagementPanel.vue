@@ -12,10 +12,23 @@ import {
   type BusinessLineMember,
 } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
+import {
+  createProjectContainerRuntimeFormState,
+  useProjectContainerRuntimeForm,
+} from '@/composables/useProjectContainerRuntimeForm'
+import {
+  createProjectRunnerTemplateFormState,
+  useProjectRunnerTemplateForm,
+} from '@/composables/useProjectRunnerTemplateForm'
 import { usersApi } from '@/api/users'
 import { workflowApi } from '@/api/workflow'
 import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
-import type { Project, ProjectCustomRole } from '@/types/api/projects'
+import type {
+  Project,
+  ProjectContainerRuntimeConfig,
+  ProjectRunnerTemplateConfig,
+  ProjectCustomRole,
+} from '@/types/api/projects'
 import type { User } from '@/types/api/users'
 import type { Skill, SkillTreeNode } from '@/types/api/skills'
 import type { Mcp } from '@/types/api/mcps'
@@ -168,6 +181,9 @@ const projectFormInitialName = ref('')
 const projectFormInitialDescription = ref('')
 const projectFormInitialGitUrl = ref('')
 const projectFormInitialDefaultBranch = ref('main')
+const projectFormInitialContainerRuntime = ref<ProjectContainerRuntimeConfig | null>(null)
+const projectFormInitialRunnerTemplate = ref<ProjectRunnerTemplateConfig | null>(null)
+const projectFormInitialConfigJson = ref<Record<string, unknown> | null>(null)
 const editingProjectId = ref('')
 
 const memberPermissionModalOpen = ref(false)
@@ -525,6 +541,13 @@ const normalizeOptionalText = (value: string) => {
   const trimmedValue = value.trim()
   return trimmedValue.length > 0 ? trimmedValue : undefined
 }
+
+const projectContainerRuntimeForm = useProjectContainerRuntimeForm(
+  createProjectContainerRuntimeFormState(),
+)
+const projectRunnerTemplateForm = useProjectRunnerTemplateForm(
+  createProjectRunnerTemplateFormState(),
+)
 
 const mapProjectItem = (project: Project): ProjectItem => {
   return {
@@ -1816,6 +1839,10 @@ const goToMainPage = () => {
   void router.push({ name: 'home' })
 }
 
+const openProjectsListPage = () => {
+  void router.push({ path: '/projects' })
+}
+
 const isCurrentProject = (projectId: string) => {
   return projectId === props.selectedProjectId
 }
@@ -2052,6 +2079,9 @@ const openCreateProjectModal = () => {
   projectFormInitialDescription.value = ''
   projectFormInitialGitUrl.value = ''
   projectFormInitialDefaultBranch.value = 'main'
+  projectFormInitialContainerRuntime.value = null
+  projectFormInitialRunnerTemplate.value = null
+  projectFormInitialConfigJson.value = null
   projectFormError.value = ''
   projectFormModalOpen.value = true
 }
@@ -2067,6 +2097,22 @@ const openEditProjectModal = (project: ProjectItem) => {
   projectFormInitialDescription.value = project.description ?? ''
   projectFormInitialGitUrl.value = project.gitUrl
   projectFormInitialDefaultBranch.value = project.defaultBranch
+  projectFormInitialContainerRuntime.value =
+    project.configJson?.containerRuntime &&
+    typeof project.configJson.containerRuntime === 'object' &&
+    !Array.isArray(project.configJson.containerRuntime)
+      ? (project.configJson.containerRuntime as ProjectContainerRuntimeConfig)
+      : null
+  projectFormInitialRunnerTemplate.value =
+    project.configJson?.runnerTemplate &&
+    typeof project.configJson.runnerTemplate === 'object' &&
+    !Array.isArray(project.configJson.runnerTemplate)
+      ? (project.configJson.runnerTemplate as ProjectRunnerTemplateConfig)
+      : null
+  projectFormInitialConfigJson.value =
+    project.configJson && typeof project.configJson === 'object' && !Array.isArray(project.configJson)
+      ? project.configJson
+      : null
   projectFormError.value = ''
   projectFormModalOpen.value = true
 }
@@ -2076,6 +2122,8 @@ const submitProjectForm = async (payload: {
   description: string
   gitUrl: string
   defaultBranch: string
+  containerRuntime?: ProjectContainerRuntimeConfig
+  runnerTemplate?: ProjectRunnerTemplateConfig
 }) => {
   if (!activeLineId.value) {
     return
@@ -2085,6 +2133,9 @@ const submitProjectForm = async (payload: {
   projectFormError.value = ''
 
   try {
+    projectContainerRuntimeForm.syncFromContainerRuntime(payload.containerRuntime)
+    projectRunnerTemplateForm.syncFromRunnerTemplate(payload.runnerTemplate)
+
     if (projectFormMode.value === 'create') {
       if (!canCreateProjectItem.value) {
         return
@@ -2095,6 +2146,9 @@ const submitProjectForm = async (payload: {
         description: normalizeOptionalText(payload.description),
         gitUrl: payload.gitUrl.trim(),
         defaultBranch: payload.defaultBranch.trim() || 'main',
+        configJson: projectRunnerTemplateForm.buildProjectConfigJson(
+          projectContainerRuntimeForm.buildProjectConfigJson(undefined),
+        ),
       })
     } else {
       if (!editingProjectId.value || !canUpdateProjectItem.value) {
@@ -2106,6 +2160,9 @@ const submitProjectForm = async (payload: {
         description: payload.description.trim(),
         gitUrl: payload.gitUrl.trim(),
         defaultBranch: payload.defaultBranch.trim() || 'main',
+        configJson: projectRunnerTemplateForm.buildProjectConfigJson(
+          projectContainerRuntimeForm.buildProjectConfigJson(projectFormInitialConfigJson.value),
+        ),
       })
     }
 
@@ -3005,6 +3062,13 @@ watch(
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <p class="text-sm font-semibold">项目列表（{{ filteredProjects.length }}）</p>
                     <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        @click="openProjectsListPage"
+                      >
+                        查看项目列表
+                      </button>
                       <button
                         type="button"
                         class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
@@ -4058,6 +4122,8 @@ watch(
         :initial-description="projectFormInitialDescription"
         :initial-git-url="projectFormInitialGitUrl"
         :initial-default-branch="projectFormInitialDefaultBranch"
+        :initial-container-runtime="projectFormInitialContainerRuntime"
+        :initial-runner-template="projectFormInitialRunnerTemplate"
         :error-message="projectFormError"
         @update:open="projectFormModalOpen = $event"
         @submit="submitProjectForm"

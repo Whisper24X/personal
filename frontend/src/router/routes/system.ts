@@ -85,8 +85,12 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/projects',
-    redirect: toDashboardSettings('projects'),
-    meta: buildRouteAccessMeta('projects'),
+    name: 'projects-list',
+    component: () => import('@/views/projects/index.vue'),
+    meta: buildRouteAccessMeta('projects', {
+      layout: 'workspace-page',
+      contentMode: 'full',
+    }),
   },
   {
     path: '/projects/workflows',

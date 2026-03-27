@@ -4,6 +4,14 @@ import { RouterLink } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { businessLinesApi, type BusinessLine } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
+import {
+  createProjectContainerRuntimeFormState,
+  useProjectContainerRuntimeForm,
+} from '@/composables/useProjectContainerRuntimeForm'
+import {
+  createProjectRunnerTemplateFormState,
+  useProjectRunnerTemplateForm,
+} from '@/composables/useProjectRunnerTemplateForm'
 import type { Project } from '@/types/api/projects'
 import AppSelect from '@/components/core/select'
 import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
@@ -45,7 +53,10 @@ const createForm = reactive({
   description: '',
   gitUrl: '',
   defaultBranch: 'main',
+  ...createProjectContainerRuntimeFormState(),
+  ...createProjectRunnerTemplateFormState(),
 })
+const editingProjectConfigJson = ref<Record<string, unknown> | null>(null)
 
 const businessLineSelectOptions = computed(() => {
   return businessLines.value.map((line) => ({
@@ -60,6 +71,22 @@ const repositoryBranchSelectOptions = computed(() => {
     value: branch,
   }))
 })
+
+const {
+  containerSandboxProfileOptions,
+  containerNetworkModeOptions,
+  containerExposeModeOptions,
+  syncFromContainerRuntime,
+  validateContainerRuntime,
+  buildProjectConfigJson,
+} = useProjectContainerRuntimeForm(createForm)
+const {
+  applyDefaultRunnerTemplates,
+  clearRunnerTemplateOverrides,
+  syncFromRunnerTemplate,
+  validateRunnerTemplate,
+  buildProjectConfigJson: buildRunnerTemplateConfigJson,
+} = useProjectRunnerTemplateForm(createForm)
 
 const formatDate = (value?: string) => {
   if (!value) return '-'
@@ -206,6 +233,11 @@ const resetProjectForm = () => {
   createForm.description = ''
   createForm.gitUrl = ''
   createForm.defaultBranch = 'main'
+  syncFromContainerRuntime(null)
+  syncFromRunnerTemplate(null, {
+    whenMissing: 'empty',
+  })
+  editingProjectConfigJson.value = null
   resetRepositoryAutoFillState()
 }
 
@@ -228,6 +260,14 @@ const startEditProject = (project: Project) => {
   createForm.description = project.description ?? ''
   createForm.gitUrl = project.gitUrl
   createForm.defaultBranch = project.defaultBranch
+  syncFromContainerRuntime(project.configJson?.containerRuntime)
+  syncFromRunnerTemplate(project.configJson?.runnerTemplate ?? null, {
+    whenMissing: 'empty',
+  })
+  editingProjectConfigJson.value =
+    project.configJson && typeof project.configJson === 'object' && !Array.isArray(project.configJson)
+      ? project.configJson
+      : null
   clearRepositoryInspectionMeta()
   validationMessage.value = ''
   projectFormModalOpen.value = true
@@ -345,12 +385,25 @@ const submitProject = async () => {
   validationMessage.value = ''
 
   try {
+    const containerRuntimeValidationMessage = validateContainerRuntime()
+    if (containerRuntimeValidationMessage) {
+      validationMessage.value = containerRuntimeValidationMessage
+      submitting.value = false
+      return
+    }
+    const runnerTemplateValidationMessage = validateRunnerTemplate()
+    if (runnerTemplateValidationMessage) {
+      validationMessage.value = runnerTemplateValidationMessage
+      submitting.value = false
+      return
+    }
     const payload = {
       businessLineId: createForm.businessLineId,
       name: createForm.name.trim(),
       description: createForm.description.trim() || undefined,
       gitUrl: createForm.gitUrl.trim(),
       defaultBranch: createForm.defaultBranch.trim() || 'main',
+      configJson: buildRunnerTemplateConfigJson(buildProjectConfigJson(editingProjectConfigJson.value)),
     }
 
     if (editingProjectId.value) {
@@ -591,7 +644,7 @@ onBeforeUnmount(() => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="project-form-modal-title"
-          class="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-2xl"
+          class="relative z-10 flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
           tabindex="-1"
           @keydown.esc.prevent="closeProjectFormModal"
         >
@@ -609,7 +662,7 @@ onBeforeUnmount(() => {
             </button>
           </header>
 
-          <form class="grid gap-3 px-4 py-4 md:grid-cols-2" @submit.prevent="submitProject">
+          <form class="grid max-h-[calc(92vh-56px)] gap-3 overflow-y-auto px-4 py-4 md:grid-cols-2" @submit.prevent="submitProject">
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">所属业务线</span>
               <AppSelect
@@ -666,6 +719,165 @@ onBeforeUnmount(() => {
                 v-model="createForm.description"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 type="text"
+              />
+            </label>
+
+            <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
+              <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
+              <p class="mt-1 text-[11px] text-muted-foreground">
+                留空表示沿用全局默认，仅覆盖当前项目的隔离容器启动参数。
+              </p>
+            </div>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">Sandbox Profile</span>
+              <AppSelect
+                v-model="createForm.containerSandboxProfile"
+                aria-label="Sandbox Profile"
+                :options="containerSandboxProfileOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">容器网络模式</span>
+              <AppSelect
+                v-model="createForm.containerNetworkMode"
+                aria-label="容器网络模式"
+                :options="containerNetworkModeOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">端口映射</span>
+              <AppSelect
+                v-model="createForm.containerExposeMode"
+                aria-label="端口映射"
+                :options="containerExposeModeOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">启动超时（毫秒）</span>
+              <input
+                v-model="createForm.containerStartTimeoutMs"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如 90000"
+                type="number"
+                min="1000"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">暴露宿主 IP（可选）</span>
+              <input
+                v-model="createForm.containerExposeHostIp"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如 127.0.0.1"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">容器暴露端口（可选）</span>
+              <input
+                v-model="createForm.containerExposeContainerPort"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如 8080"
+                type="number"
+                min="1"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">内存上限 MB（可选）</span>
+              <input
+                v-model="createForm.containerMemoryMb"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如 2048"
+                type="number"
+                min="1"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">PIDs 上限（可选）</span>
+              <input
+                v-model="createForm.containerPidsLimit"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如 256"
+                type="number"
+                min="1"
+              />
+            </label>
+
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-semibold text-muted-foreground">
+                容器环境变量（每行 `KEY=VALUE`）
+              </span>
+              <textarea
+                v-model="createForm.containerEnv"
+                class="min-h-[120px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                placeholder="PORT=8080&#10;NODE_ENV=development"
+              />
+            </label>
+
+            <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="text-xs font-semibold text-muted-foreground">项目级 Runner 模板</p>
+                  <p class="mt-1 text-[11px] text-muted-foreground">
+                    默认继承 `backend/runner/` 下三份模板；只有填写的项才会覆盖项目级配置。
+                  </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
+                    type="button"
+                    @click="applyDefaultRunnerTemplates"
+                  >
+                    载入默认模板
+                  </button>
+                  <button
+                    class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
+                    type="button"
+                    @click="clearRunnerTemplateOverrides"
+                  >
+                    清空并回退全局
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">Dockerfile.runner</span>
+              <textarea
+                v-model="createForm.runnerDockerfile"
+                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                placeholder="输入项目级 Dockerfile.runner"
+                spellcheck="false"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">sandbox.nginx.conf</span>
+              <textarea
+                v-model="createForm.runnerSandboxNginxConf"
+                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                placeholder="输入项目级 sandbox.nginx.conf"
+                spellcheck="false"
+              />
+            </label>
+
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-semibold text-muted-foreground">sandbox.supervisord.conf</span>
+              <textarea
+                v-model="createForm.runnerSandboxSupervisordConf"
+                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                placeholder="输入项目级 sandbox.supervisord.conf"
+                spellcheck="false"
               />
             </label>
 
