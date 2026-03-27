@@ -148,13 +148,8 @@ const createService = () => {
 
 describe('TaskCommandService.remove', () => {
   it('should clean up task runtime before soft deleting the task', async () => {
-    const {
-      service,
-      taskRepository,
-      taskRuntimeService,
-      taskLogService,
-      taskAccessService,
-    } = createService();
+    const { service, taskRepository, taskRuntimeService, taskAccessService } =
+      createService();
     const task = createTask();
     const project = createProject();
     const currentUser = createCurrentUser();
@@ -251,13 +246,8 @@ describe('TaskCommandService.remove', () => {
   });
 
   it('should delete tasks without a stored worktree identifier', async () => {
-    const {
-      service,
-      taskRepository,
-      taskRuntimeService,
-      taskLogService,
-      taskAccessService,
-    } = createService();
+    const { service, taskRepository, taskRuntimeService, taskAccessService } =
+      createService();
     const task = createTask({ gitWorktree: null });
     const project = createProject();
     const currentUser = createCurrentUser();
