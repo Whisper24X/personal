@@ -24,8 +24,6 @@ import type {
   TaskWorkspacePreview,
   TaskWorkspaceTree,
   UpdateTaskPayload,
-  StepSummariesPayload,
-  StepSummariesResponse,
   SuggestTaskTitlePayload,
   SuggestTaskTitleResponse,
 } from '@/types/api/tasks'
@@ -85,10 +83,6 @@ export const tasksApi = {
 
   messages(taskId: string) {
     return apiHttp.get<TaskMessage[]>(`/tasks/${taskId}/messages`)
-  },
-
-  stepSummaries(taskId: string, payload: StepSummariesPayload) {
-    return apiHttp.post<StepSummariesResponse>(`/tasks/${taskId}/step-summaries`, payload)
   },
 
   retry(taskId: string, payload: RetryTaskPayload) {

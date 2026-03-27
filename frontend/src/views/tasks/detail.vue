@@ -7,7 +7,6 @@ import ExecutionPanel from '@/components/tasks/detail/ExecutionPanel.vue'
 import ReplyCard from '@/components/tasks/detail/ReplyCard.vue'
 import ReviewCard from '@/components/tasks/detail/ReviewCard.vue'
 import RightPanelSection from '@/components/tasks/detail/RightPanelSection.vue'
-import { removeStepSummaryCacheForTask } from '@/components/tasks/detail/cli/stepSummaryCache'
 import TaskDialogs, { type TaskEditFormValue } from '@/components/tasks/detail/TaskDialogs.vue'
 import TaskExecutionContextBar from '@/components/tasks/detail/TaskExecutionContextBar.vue'
 import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
@@ -17,7 +16,6 @@ import type {
   RetryTaskPayload,
   Task,
   TaskDetail,
-  TaskGitChangedFile,
   TaskLog,
   TaskMessage,
   TaskNode,
@@ -890,7 +888,6 @@ const removeTask = async () => {
 
   try {
     await tasksApi.remove(taskId.value)
-    removeStepSummaryCacheForTask(taskId.value)
     deleteOpen.value = false
     message.success('任务已删除')
     void refreshSidebarRecentTasks()
@@ -917,12 +914,6 @@ watch(
     immediate: true,
   },
 )
-
-function openArtifactFromChip(file: TaskGitChangedFile) {
-  artifactFilePath.value = file.path
-  artifactOpenNonce.value += 1
-  isRightPanelVisible.value = true
-}
 
 watch(
   () => taskId.value,
@@ -1075,11 +1066,6 @@ function startDrag(e: MouseEvent) {
             :stream-connected="streamConnected"
             :messages="executionMessages"
             :format-date="formatDate"
-            :task-id="taskId"
-            :task-node-id="executionTaskNodeId"
-            :git-worktree="task?.gitWorktree || null"
-            :branch-files-refresh-token="rightPanelRefreshToken"
-            @open-artifact="openArtifactFromChip"
           />
 
           <ReplyCard

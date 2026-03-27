@@ -1,24 +1,16 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseGeminiMessages } from './parser'
-import { groupGeminiEntries, type GeminiMessageGroup, type GeminiTaskGroup } from './groupEntries'
+import { groupGeminiEntries, type GeminiMessageGroup } from './groupEntries'
 import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from './UserMessage.vue'
 import AssistantMessage from './AssistantMessage.vue'
 import AssistantMessageShell from '../AssistantMessageShell.vue'
-import AssistantTaskStepBar from '../AssistantTaskStepBar.vue'
 import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
 import { mergeAssistantTurns } from '../mergeAssistantTurns'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { assistantStepSummariesKey } from '../stepSummaryKeys'
-import {
-  buildStepBarClaudeLike,
-  mergeStepBarLabelsWithSummaries,
-  prepareTaskGroupsForStepBar,
-  type StepBarModel,
-} from '../taskGroupStepState'
 import { assistantTurnTimeLabel, getString } from '../utils'
 
 defineOptions({ name: 'CliGeminiRenderer' })
@@ -27,21 +19,10 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
-const stepSummaries = inject(assistantStepSummariesKey, undefined)
-
 const entries = computed(() => parseGeminiMessages(props.messages))
 const groups = computed(() => groupGeminiEntries(entries.value))
 const turns = computed(() =>
   mergeAssistantTurns(groups.value, (g: GeminiMessageGroup) => g.type === 'other' && g.entry.type === 'user_message'),
-)
-
-const assistantStepBars = computed(() =>
-  turns.value.map((turn, tIdx) => {
-    if (turn.kind !== 'assistant') return null
-    const model = geminiStepBarModel(turn.items)
-    if (!model) return null
-    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
-  }),
 )
 
 function isResultEntry(entry: NormalizedEntry) {
@@ -55,13 +36,6 @@ function isInitEntry(entry: NormalizedEntry) {
 function formatStatus(entry: NormalizedEntry): string {
   const status = getString(entry.metadata?.resultStatus)
   return status ? status.replace(/[_-]+/g, ' ') : 'completed'
-}
-
-function geminiStepBarModel(items: GeminiMessageGroup[]): StepBarModel | null {
-  const allTasks = items.filter((g): g is GeminiTaskGroup => g.type === 'task')
-  const hasSessionResult = items.some((g) => g.type === 'other' && isResultEntry(g.entry))
-  const tasks = prepareTaskGroupsForStepBar(allTasks, hasSessionResult)
-  return buildStepBarClaudeLike(tasks)
 }
 
 function geminiTurnFinished(items: GeminiMessageGroup[]): boolean {
@@ -133,7 +107,6 @@ function geminiTurnFinished(items: GeminiMessageGroup[]): boolean {
               </div>
             </template>
           </AssistantTurnContentBubble>
-          <AssistantTaskStepBar v-if="assistantStepBars[tIdx]" v-bind="assistantStepBars[tIdx]!" />
         </div>
       </AssistantMessageShell>
     </template>
