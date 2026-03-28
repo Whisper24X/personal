@@ -1,9 +1,15 @@
 import { ConfigService } from '@nestjs/config';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { ContainerExecutionConfigService } from './container-execution-config.service';
 import { ProjectRunnerImageService } from './project-runner-image.service';
 import { ProjectRunnerTemplateDefaultsService } from './project-runner-template-defaults.service';
 
 describe('ProjectRunnerImageService', () => {
+  const originalRunnerAssetDir = process.env.AINATIVE_RUNNER_ASSET_DIR;
+  const originalCwd = process.cwd();
+
   const createService = () => {
     const configService = {
       get: jest.fn((key: string) => {
@@ -35,6 +41,15 @@ describe('ProjectRunnerImageService', () => {
     createdAt: new Date('2026-03-27T10:00:00.000Z'),
     updatedAt: new Date('2026-03-27T10:00:00.000Z'),
     deletedAt: null,
+  });
+
+  afterEach(() => {
+    if (originalRunnerAssetDir === undefined) {
+      delete process.env.AINATIVE_RUNNER_ASSET_DIR;
+    } else {
+      process.env.AINATIVE_RUNNER_ASSET_DIR = originalRunnerAssetDir;
+    }
+    process.chdir(originalCwd);
   });
 
   it('should fall back to the global runner image when template config is absent', async () => {
@@ -193,5 +208,82 @@ describe('ProjectRunnerImageService', () => {
       'ainative/test:tag',
       '/tmp/project-runner-build',
     ]);
+  });
+
+  it('should prefer the configured runner asset directory when provided', async () => {
+    const service = createService();
+    const configuredRoot = await mkdtemp(
+      path.join(tmpdir(), 'runner-assets-configured-'),
+    );
+    const cwdRoot = await mkdtemp(path.join(tmpdir(), 'runner-assets-cwd-'));
+
+    try {
+      const configuredRunnerDir = path.join(configuredRoot, 'runner-assets');
+      const cwdRunnerDir = path.join(cwdRoot, 'backend', 'runner');
+
+      await mkdir(configuredRunnerDir, { recursive: true });
+      await mkdir(cwdRunnerDir, { recursive: true });
+      await writeFile(
+        path.join(configuredRunnerDir, 'entrypoint.sh'),
+        '#!/bin/sh\necho configured\n',
+        'utf-8',
+      );
+      await writeFile(
+        path.join(cwdRunnerDir, 'entrypoint.sh'),
+        '#!/bin/sh\necho cwd\n',
+        'utf-8',
+      );
+
+      process.env.AINATIVE_RUNNER_ASSET_DIR = configuredRunnerDir;
+      process.chdir(cwdRoot);
+
+      const runnerAssets = await (service as any).readRunnerAssetBundle({
+        dockerfileRunner: 'FROM node:20',
+        sandboxNginxConf: 'events {}',
+        sandboxSupervisordConf: '[supervisord]',
+      });
+
+      expect(runnerAssets.entrypointSh).toContain('configured');
+    } finally {
+      await rm(configuredRoot, { recursive: true, force: true });
+      await rm(cwdRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('should fall back to repo-style runner assets from the current working directory', async () => {
+    const service = createService();
+    const cwdRoot = await mkdtemp(
+      path.join(tmpdir(), 'runner-assets-fallback-'),
+    );
+
+    try {
+      const cwdRunnerDir = path.join(cwdRoot, 'backend', 'runner');
+      await mkdir(path.join(cwdRunnerDir, 'ssh'), { recursive: true });
+      await writeFile(
+        path.join(cwdRunnerDir, 'entrypoint.sh'),
+        '#!/bin/sh\necho cwd-fallback\n',
+        'utf-8',
+      );
+      await writeFile(
+        path.join(cwdRunnerDir, 'ssh', 'known_hosts'),
+        'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA\n',
+        'utf-8',
+      );
+
+      delete process.env.AINATIVE_RUNNER_ASSET_DIR;
+      process.chdir(cwdRoot);
+
+      const runnerAssets = await (service as any).readRunnerAssetBundle({
+        dockerfileRunner: 'FROM node:20',
+        sandboxNginxConf: 'events {}',
+        sandboxSupervisordConf: '[supervisord]',
+      });
+
+      expect(runnerAssets.entrypointSh).toContain('cwd-fallback');
+      expect(runnerAssets.sshKnownHosts).toContain('github.com');
+      expect(runnerAssets.sshIdEd25519).toBeNull();
+    } finally {
+      await rm(cwdRoot, { recursive: true, force: true });
+    }
   });
 });

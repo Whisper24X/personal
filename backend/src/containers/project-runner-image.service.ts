@@ -229,13 +229,15 @@ export class ProjectRunnerImageService {
   }
 
   private resolveRunnerAssetSourceDir(): string {
+    const configuredRunnerAssetDir = this.readRunnerAssetDirFromEnv();
     const candidateDirs = [
+      configuredRunnerAssetDir,
       path.resolve(process.cwd(), 'backend', 'runner'),
       path.resolve(process.cwd(), 'runner'),
       path.resolve(process.cwd(), '..', 'backend', 'runner'),
       path.resolve(__dirname, '..', '..', '..', 'backend', 'runner'),
       path.resolve(__dirname, '..', '..', '..', '..', 'backend', 'runner'),
-    ];
+    ].filter((candidate): candidate is string => Boolean(candidate));
 
     for (const candidate of candidateDirs) {
       if (existsSync(path.join(candidate, 'entrypoint.sh'))) {
@@ -246,6 +248,15 @@ export class ProjectRunnerImageService {
     throw new Error(
       'Runner asset directory with entrypoint.sh not found for project image build',
     );
+  }
+
+  private readRunnerAssetDirFromEnv(): string | null {
+    const configuredPath = process.env.AINATIVE_RUNNER_ASSET_DIR?.trim();
+    if (!configuredPath) {
+      return null;
+    }
+
+    return path.resolve(configuredPath);
   }
 
   private async readRunnerAssetBundle(

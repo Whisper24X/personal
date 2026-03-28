@@ -129,6 +129,6 @@
 - 任务终态清理容器：**`backend/src/tasks/application/task-status.service.ts`**
 - 节点执行不在收尾拆容器：**`backend/src/tasks/application/task-node-execution.service.ts`**
 - 槽位表迁移：**`backend/src/database/migrations/`** 下创建 `project_execution_slots` 的迁移
-- Runner 镜像定义：**`backend/runner/Dockerfile.runner`**；可选沙箱入口脚本：**`backend/runner/entrypoint.sh`**，以及 **`backend/runner/sandbox.*.conf`**
+- Runner 镜像构建时会在临时 build context 下生成 **`backend/runner/Dockerfile.runner`** 与 **`backend/runner/sandbox.*.conf`**；仓库内需要长期保留的静态 runner 资产是 **`backend/runner/entrypoint.sh`**（以及可选的 **`backend/runner/ssh/*`**）。
 
 以上即当前「任务隔离容器」方案的完整轮廓：轻量默认可 exec、可选全沙箱画像、宿主控制面 + 容器执行面、槽位与心跳、以及 **仅在 `done` 时回收** 的生命周期。
