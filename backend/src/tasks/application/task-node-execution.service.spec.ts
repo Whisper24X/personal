@@ -1030,6 +1030,112 @@ describe('TaskNodeExecutionService', () => {
     );
   });
 
+  it('should clear stale agent session id when runner requests session reset on failure', async () => {
+    jest.useFakeTimers();
+
+    const task = createTask();
+    const project = createProject();
+    const runningNode = {
+      ...createNode(TaskStatus.inProgress),
+      agentCliSessionId: 'stale-thread-1',
+    };
+
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue(task),
+    };
+    const taskNodeRepository = {
+      findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeService = {
+      ensureRuntime: jest.fn().mockResolvedValue({
+        gitBranch: 'feature/task-1',
+        gitBaseBranch: 'main',
+        gitWorktree: 'wk-task-1',
+        worktreePath: '/tmp/worktrees/wk-task-1',
+      }),
+    };
+    const agentRunnerService = {
+      executeAgentNode: jest.fn().mockResolvedValue({
+        success: false,
+        interrupted: false,
+        exitCode: 1,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json'],
+        cwd: '/tmp/worktrees/wk-task-1',
+        durationMs: 250,
+        stdout: '',
+        stderr: 'Error: thread/resume failed',
+        prompt: 'Run task',
+        sessionId: null,
+        errorMessage: 'Agent execution exited with code 1',
+        clearPreviousSessionId: true,
+      } satisfies AgentRunnerResult),
+      interruptExecution: jest.fn(),
+    };
+    const taskConfigResolver = {
+      normalizeOptionalString: jest.fn().mockReturnValue('stale-thread-1'),
+      readNodeLoopConfig: jest.fn().mockReturnValue({
+        enabled: false,
+        loopCount: 0,
+        maxLoops: 1,
+      }),
+      readNodeRequiresApproval: jest.fn().mockReturnValue(false),
+      readNodeEarlyExitMarkerConfig: jest
+        .fn()
+        .mockReturnValue({ enabled: false, fileName: null }),
+    };
+    const taskOutputService = {
+      clearNodeOutputJsonl: jest.fn().mockResolvedValue(undefined),
+      appendNodeOutputJsonlRecords: jest.fn().mockResolvedValue(0),
+      extractJsonLinesFromContent: jest.fn().mockReturnValue([]),
+      appendNodeOutputJsonlLines: jest.fn().mockResolvedValue(0),
+      resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
+      writeNodeOutputJsonl: jest.fn().mockResolvedValue('/tmp/node-1.jsonl'),
+    };
+    const taskLogService = {
+      appendLog: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskStatusService = {
+      recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeOrchestrator = {
+      createRuntimeTaskSnapshot: jest.fn().mockImplementation(() => task),
+    };
+
+    const service = new TaskNodeExecutionService(
+      taskRepository as never,
+      taskNodeRepository as never,
+      taskRuntimeService as unknown as TaskRuntimeService,
+      agentRunnerService as never,
+      taskConfigResolver as never,
+      taskOutputService as never,
+      taskLogService as never,
+      taskStatusService as never,
+      taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
+    );
+
+    const executionPromise = service.runNode({
+      taskId: task.id,
+      nodeId: runningNode.id,
+      project,
+    });
+
+    await jest.advanceTimersByTimeAsync(150);
+    await executionPromise;
+
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      runningNode.id,
+      expect.objectContaining({
+        status: TaskStatus.inReview,
+        agentCliSessionId: null,
+      }),
+    );
+  });
+
   it('should fail before agent launch when strict docker handoff has no container ref', async () => {
     jest.useFakeTimers();
 

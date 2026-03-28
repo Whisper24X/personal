@@ -242,7 +242,9 @@ const {
   syncFromRunnerTemplate,
   validateRunnerTemplate,
   buildProjectConfigJson: buildRunnerTemplateConfigJson,
-} = useProjectRunnerTemplateForm(configForm)
+} = useProjectRunnerTemplateForm(configForm, {
+  getSandboxProfile: () => configForm.containerSandboxProfile,
+})
 
 const formatDate = (value?: string) => {
   if (!value) return '-'
@@ -1685,9 +1687,7 @@ onBeforeUnmount(() => {
   <div class="fade-up w-full min-h-0 space-y-6 pb-8 md:pb-10">
     <section v-if="!workflowOnlyMode" class="space-y-2">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <RouterLink to="/projects" class="hover:text-foreground hover:underline"
-          >项目列表</RouterLink
-        >
+        <span>项目</span>
         <span>/</span>
         <span class="font-mono">{{ projectId }}</span>
       </div>
@@ -2922,7 +2922,7 @@ onBeforeUnmount(() => {
                 <div>
                   <p class="text-xs font-semibold text-muted-foreground">项目级 Runner 模板</p>
                   <p class="mt-1 text-[11px] text-muted-foreground">
-                    默认继承 `backend/runner/` 下三份模板；只有填写的项才会覆盖项目级配置。
+                    默认根据隔离容器设置自动生成；只有填写的项才会覆盖项目级配置。
                   </p>
                 </div>
                 <div class="flex flex-wrap gap-2">

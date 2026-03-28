@@ -79,6 +79,7 @@ WORKDIR /usr/src/app
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./
+COPY --from=build /app/runner ./runner
 
 # ── 启动脚本 ──
 # wait-for-it.sh — 等待依赖服务（如数据库）就绪后再启动应用

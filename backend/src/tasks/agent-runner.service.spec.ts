@@ -1761,6 +1761,175 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should fallback to fresh codex exec when resume thread is invalid', async () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+    const callbacks = {
+      onPrepared: jest.fn(),
+    };
+
+    jest
+      .spyOn(serviceAny, 'resolveRunnerConfig')
+      .mockResolvedValueOnce({
+        adapter: 'codex',
+        command: 'codex',
+        args: [
+          'exec',
+          'resume',
+          '--json',
+          '--skip-git-repo-check',
+          'thread-1',
+          '-',
+        ],
+        cwd: '/tmp/worktree',
+        env: {},
+      })
+      .mockResolvedValueOnce({
+        adapter: 'codex',
+        command: 'codex',
+        args: ['exec', '--json', '--skip-git-repo-check', '-'],
+        cwd: '/tmp/worktree',
+        env: {},
+      });
+    jest
+      .spyOn(serviceAny, 'resolvePrompt')
+      .mockReturnValueOnce('continue prompt')
+      .mockReturnValueOnce('fresh prompt');
+    jest
+      .spyOn(serviceAny, 'resolveContainerExecRefForTask')
+      .mockResolvedValue(null);
+    const runWithConfig = jest
+      .spyOn(serviceAny, 'runWithConfig')
+      .mockResolvedValueOnce({
+        success: false,
+        interrupted: false,
+        exitCode: 1,
+        signal: null,
+        command: 'codex',
+        args: [
+          'exec',
+          'resume',
+          '--json',
+          '--skip-git-repo-check',
+          'thread-1',
+          '-',
+        ],
+        cwd: '/tmp/worktree',
+        durationMs: 120,
+        stdout: '',
+        stderr:
+          'Error: thread/resume: thread/resume failed: no rollout found for thread id thread-1',
+        prompt: 'continue prompt',
+        sessionId: null,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        interrupted: false,
+        exitCode: 0,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json', '--skip-git-repo-check', '-'],
+        cwd: '/tmp/worktree',
+        durationMs: 220,
+        stdout: '{"event":"session.started","session_id":"thread-2"}',
+        stderr: '',
+        prompt: 'fresh prompt',
+        sessionId: 'thread-2',
+      });
+
+    const result = await service.executeAgentNode({
+      task: createTask(),
+      node: {
+        ...createNode(),
+        agentCliSessionId: 'thread-1',
+      },
+      project: createProject({
+        agentAdapter: 'codex',
+      }),
+      callbacks,
+    });
+
+    expect(runWithConfig).toHaveBeenCalledTimes(2);
+    expect(callbacks.onPrepared).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ prompt: 'continue prompt' }),
+    );
+    expect(callbacks.onPrepared).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ prompt: 'fresh prompt' }),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      sessionId: 'thread-2',
+      clearPreviousSessionId: true,
+    });
+  });
+
+  it('should not fallback for generic codex execution failures', async () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    jest.spyOn(serviceAny, 'resolveRunnerConfig').mockResolvedValue({
+      adapter: 'codex',
+      command: 'codex',
+      args: [
+        'exec',
+        'resume',
+        '--json',
+        '--skip-git-repo-check',
+        'thread-1',
+        '-',
+      ],
+      cwd: '/tmp/worktree',
+      env: {},
+    });
+    jest.spyOn(serviceAny, 'resolvePrompt').mockReturnValue('continue prompt');
+    jest
+      .spyOn(serviceAny, 'resolveContainerExecRefForTask')
+      .mockResolvedValue(null);
+    const runWithConfig = jest
+      .spyOn(serviceAny, 'runWithConfig')
+      .mockResolvedValue({
+        success: false,
+        interrupted: false,
+        exitCode: 1,
+        signal: null,
+        command: 'codex',
+        args: [
+          'exec',
+          'resume',
+          '--json',
+          '--skip-git-repo-check',
+          'thread-1',
+          '-',
+        ],
+        cwd: '/tmp/worktree',
+        durationMs: 120,
+        stdout: '',
+        stderr: 'Error: network timeout',
+        prompt: 'continue prompt',
+        sessionId: null,
+      });
+
+    const result = await service.executeAgentNode({
+      task: createTask(),
+      node: {
+        ...createNode(),
+        agentCliSessionId: 'thread-1',
+      },
+      project: createProject({
+        agentAdapter: 'codex',
+      }),
+    });
+
+    expect(runWithConfig).toHaveBeenCalledTimes(1);
+    expect(result.clearPreviousSessionId).toBeUndefined();
+  });
+
   it('should use follow-up message only when resuming an existing cli session', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,

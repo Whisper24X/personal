@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { projectsApi } from '@/api/projects'
+import { computed, reactive, ref, watch } from 'vue'
 import AppSelect from '@/components/core/select'
 import {
   createProjectContainerRuntimeFormState,
@@ -12,23 +11,23 @@ import {
 } from '@/composables/useProjectRunnerTemplateForm'
 import type {
   ProjectContainerRuntimeConfig,
+  ProjectRunnerImageBuildStatus,
   ProjectRunnerTemplateConfig,
 } from '@/types/api/projects'
-import { toErrorMessage } from '@/utils/http/to-error-message'
+
+defineOptions({
+  name: 'ProjectRuntimeSettingsModal',
+})
 
 const props = defineProps<{
   open: boolean
-  mode: 'create' | 'edit'
-  businessLineId?: string
   submitting: boolean
-  initialName: string
-  initialDescription: string
-  initialGitUrl: string
-  initialDefaultBranch: string
+  projectName: string
+  projectGitUrl: string
   initialContainerRuntime?: ProjectContainerRuntimeConfig | null
   initialRunnerTemplate?: ProjectRunnerTemplateConfig | null
+  buildStatus?: ProjectRunnerImageBuildStatus | null
   errorMessage?: string
-  size?: 'default' | 'large'
 }>()
 
 const emit = defineEmits<{
@@ -36,54 +35,15 @@ const emit = defineEmits<{
   (
     event: 'submit',
     payload: {
-      name: string
-      description: string
-      gitUrl: string
-      defaultBranch: string
       containerRuntime?: ProjectContainerRuntimeConfig
       runnerTemplate?: ProjectRunnerTemplateConfig
     },
   ): void
 }>()
 
-const name = ref('')
-const description = ref('')
-const gitUrl = ref('')
-const defaultBranch = ref('main')
 const validationMessage = ref('')
-const branchOptions = ref<string[]>([])
-const inspectingRepository = ref(false)
-const inspectionErrorMessage = ref('')
-const nameEditedByUser = ref(false)
-const defaultBranchEditedByUser = ref(false)
-const autoFilledName = ref('')
 const containerRuntimeForm = reactive(createProjectContainerRuntimeFormState())
 const runnerTemplateForm = reactive(createProjectRunnerTemplateFormState())
-let inspectTimer: ReturnType<typeof setTimeout> | null = null
-let inspectRequestId = 0
-
-const modalTitle = computed(() => {
-  return props.mode === 'edit' ? '编辑项目' : '新建项目'
-})
-
-const sectionClass = computed(() => {
-  return props.size === 'large'
-    ? 'relative z-10 flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl'
-    : 'relative z-10 w-full max-w-xl rounded-2xl border border-border bg-background shadow-2xl'
-})
-
-const formClass = computed(() => {
-  return props.size === 'large'
-    ? 'max-h-[calc(95vh-56px)] space-y-3 overflow-y-auto px-4 py-4'
-    : 'space-y-3 px-4 py-4'
-})
-
-const branchSelectOptions = computed(() => {
-  return branchOptions.value.map((branch) => ({
-    label: branch,
-    value: branch,
-  }))
-})
 
 const {
   containerSandboxProfileOptions,
@@ -103,163 +63,77 @@ const {
   getSandboxProfile: () => containerRuntimeForm.containerSandboxProfile,
 })
 
-const PROJECT_FORM_SELECT_PANEL_Z_INDEX = 130
+const PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX = 140
 
-const clearInspectTimer = () => {
-  if (inspectTimer) {
-    clearTimeout(inspectTimer)
-    inspectTimer = null
+const modalTitle = computed(() => {
+  return '隔离容器设置'
+})
+
+const formatStatusTime = (value?: string | null) => {
+  if (!value) {
+    return '-'
   }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return parsed.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
-const clearInspectionMeta = () => {
-  branchOptions.value = []
-  inspectingRepository.value = false
-  inspectionErrorMessage.value = ''
-}
+const buildStatusLabel = computed(() => {
+  if (!props.buildStatus) {
+    return '尚未触发重建'
+  }
 
-const resetAutoFillState = () => {
-  nameEditedByUser.value = false
-  defaultBranchEditedByUser.value = false
-  autoFilledName.value = ''
-  clearInspectionMeta()
-}
+  if (props.buildStatus.status === 'building') {
+    return '构建中'
+  }
+
+  if (props.buildStatus.status === 'success') {
+    return '构建成功'
+  }
+
+  return '构建失败'
+})
+
+const buildStatusToneClass = computed(() => {
+  if (!props.buildStatus) {
+    return 'text-muted-foreground'
+  }
+
+  if (props.buildStatus.status === 'building') {
+    return 'text-primary'
+  }
+
+  if (props.buildStatus.status === 'success') {
+    return 'text-emerald-600'
+  }
+
+  return 'text-destructive'
+})
 
 const syncFormValues = () => {
-  name.value = props.initialName
-  description.value = props.initialDescription
-  gitUrl.value = props.initialGitUrl
-  defaultBranch.value = props.initialDefaultBranch || 'main'
   syncFromContainerRuntime(props.initialContainerRuntime ?? null)
   syncFromRunnerTemplate(props.initialRunnerTemplate ?? null, {
     whenMissing: 'empty',
   })
   validationMessage.value = ''
-  resetAutoFillState()
 }
 
 const close = () => {
   emit('update:open', false)
 }
 
-const markNameAsEdited = () => {
-  if (props.mode !== 'create') {
-    return
-  }
-
-  nameEditedByUser.value = true
-}
-
-const markDefaultBranchAsEdited = () => {
-  if (props.mode !== 'create') {
-    return
-  }
-
-  defaultBranchEditedByUser.value = true
-}
-
-const applyRepositoryInspection = (inspection: {
-  repoName: string
-  branches: string[]
-  recommendedDefaultBranch: string | null
-}) => {
-  branchOptions.value = inspection.branches
-
-  if (
-    inspection.repoName &&
-    (!nameEditedByUser.value ||
-      !name.value.trim() ||
-      name.value.trim() === autoFilledName.value)
-  ) {
-    name.value = inspection.repoName
-    autoFilledName.value = inspection.repoName
-  }
-
-  if (!inspection.branches.length) {
-    return
-  }
-
-  const recommendedBranch =
-    inspection.recommendedDefaultBranch ?? inspection.branches[0]
-
-  if (!recommendedBranch) {
-    return
-  }
-
-  if (!defaultBranchEditedByUser.value) {
-    defaultBranch.value = recommendedBranch
-    return
-  }
-
-  if (!inspection.branches.includes(defaultBranch.value.trim())) {
-    defaultBranch.value = recommendedBranch
-  }
-}
-
-const inspectRepository = async () => {
-  const businessLineId = props.businessLineId?.trim() ?? ''
-  const normalizedGitUrl = gitUrl.value.trim()
-
-  if (!businessLineId || !normalizedGitUrl) {
-    clearInspectionMeta()
-    return
-  }
-
-  const currentRequestId = ++inspectRequestId
-  inspectingRepository.value = true
-  inspectionErrorMessage.value = ''
-
-  try {
-    const inspection = await projectsApi.inspectRepository({
-      businessLineId,
-      gitUrl: normalizedGitUrl,
-    })
-
-    if (currentRequestId !== inspectRequestId) {
-      return
-    }
-
-    applyRepositoryInspection(inspection)
-  } catch (error) {
-    if (currentRequestId !== inspectRequestId) {
-      return
-    }
-
-    clearInspectionMeta()
-    inspectionErrorMessage.value = toErrorMessage(
-      error,
-      '读取仓库信息失败，请检查 Git 地址和访问权限',
-    )
-  } finally {
-    if (currentRequestId === inspectRequestId) {
-      inspectingRepository.value = false
-    }
-  }
-}
-
-const scheduleRepositoryInspection = () => {
-  clearInspectTimer()
-  inspectTimer = setTimeout(() => {
-    void inspectRepository()
-  }, 450)
-}
-
 const submit = () => {
-  if (!name.value.trim()) {
-    validationMessage.value = '项目名称不能为空'
-    return
-  }
-
-  if (!gitUrl.value.trim()) {
-    validationMessage.value = '仓库地址不能为空'
-    return
-  }
-
-  if (!defaultBranch.value.trim()) {
-    validationMessage.value = '默认分支不能为空'
-    return
-  }
-
   const containerRuntimeValidationMessage = validateContainerRuntime()
   if (containerRuntimeValidationMessage) {
     validationMessage.value = containerRuntimeValidationMessage
@@ -274,10 +148,6 @@ const submit = () => {
 
   validationMessage.value = ''
   emit('submit', {
-    name: name.value.trim(),
-    description: description.value,
-    gitUrl: gitUrl.value.trim(),
-    defaultBranch: defaultBranch.value.trim(),
     containerRuntime: buildContainerRuntimeConfig(),
     runnerTemplate: buildRunnerTemplateConfig(),
   })
@@ -286,69 +156,32 @@ const submit = () => {
 watch(
   () => props.open,
   (open) => {
-    if (!open) {
-      return
+    if (open) {
+      syncFormValues()
     }
-
-    syncFormValues()
   },
 )
 
 watch(
-  () => [
-    props.initialName,
-    props.initialDescription,
-    props.initialGitUrl,
-    props.initialDefaultBranch,
-    props.initialContainerRuntime,
-    props.initialRunnerTemplate,
-    props.mode,
-  ],
+  () => [props.initialContainerRuntime, props.initialRunnerTemplate, props.projectName],
   () => {
-    if (!props.open) {
-      return
+    if (props.open) {
+      syncFormValues()
     }
-
-    syncFormValues()
   },
 )
-
-watch(
-  () => [props.open, props.mode, props.businessLineId, gitUrl.value],
-  ([open, mode]) => {
-    clearInspectTimer()
-    inspectRequestId += 1
-
-    if (!open || mode !== 'create') {
-      clearInspectionMeta()
-      return
-    }
-
-    if (!gitUrl.value.trim() || !props.businessLineId?.trim()) {
-      clearInspectionMeta()
-      return
-    }
-
-    scheduleRepositoryInspection()
-  },
-)
-
-onBeforeUnmount(() => {
-  clearInspectTimer()
-  inspectRequestId += 1
-})
 </script>
 
 <template>
   <Teleport to="body">
     <div
       v-if="props.open"
-      class="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6"
+      class="fixed inset-0 z-[130] flex items-center justify-center p-3 sm:p-6"
       @keydown.esc.prevent.stop="close"
     >
       <button
         type="button"
-        aria-label="关闭项目表单弹窗"
+        aria-label="关闭隔离容器设置弹窗"
         class="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
         @click="close"
       />
@@ -356,10 +189,15 @@ onBeforeUnmount(() => {
       <section
         aria-modal="true"
         role="dialog"
-        :class="sectionClass"
+        class="relative z-10 flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
       >
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 class="text-sm font-semibold">{{ modalTitle }}</h2>
+          <div class="min-w-0">
+            <h2 class="text-sm font-semibold">{{ modalTitle }}</h2>
+            <p class="mt-1 truncate text-xs text-muted-foreground">
+              {{ props.projectName || '未命名项目' }}
+            </p>
+          </div>
           <button
             type="button"
             aria-label="关闭"
@@ -384,60 +222,45 @@ onBeforeUnmount(() => {
           </button>
         </header>
 
-        <form :class="formClass" @submit.prevent="submit">
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">仓库地址</span>
-            <input
-              v-model="gitUrl"
-              type="text"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="git@gitlab.example.com:group/project.git"
-            />
-          </label>
+        <form class="grid max-h-[calc(95vh-56px)] gap-3 overflow-y-auto px-4 py-4 md:grid-cols-2" @submit.prevent="submit">
+          <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
+            <p class="text-xs font-semibold text-muted-foreground">当前项目</p>
+            <p class="mt-1 text-sm font-medium text-foreground">
+              {{ props.projectName || '未命名项目' }}
+            </p>
+            <p class="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+              {{ props.projectGitUrl || '-' }}
+            </p>
+          </div>
 
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
-            <AppSelect
-              v-if="props.mode === 'create' && branchOptions.length > 0"
-              v-model="defaultBranch"
-              aria-label="默认分支"
-              :options="branchSelectOptions"
-              :panel-z-index="PROJECT_FORM_SELECT_PANEL_Z_INDEX"
-              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
-              @change="markDefaultBranchAsEdited"
-            />
-            <input
-              v-else
-              v-model="defaultBranch"
-              type="text"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="main"
-              @input="markDefaultBranchAsEdited"
-            />
-          </label>
+          <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">基础镜像重建状态</p>
+                <p class="mt-1 text-sm font-medium" :class="buildStatusToneClass">
+                  {{ buildStatusLabel }}
+                </p>
+              </div>
+              <p
+                v-if="props.buildStatus?.imageTag"
+                class="max-w-full break-all font-mono text-[11px] text-muted-foreground"
+              >
+                {{ props.buildStatus.imageTag }}
+              </p>
+            </div>
+            <div class="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+              <p>开始时间：{{ formatStatusTime(props.buildStatus?.startedAt) }}</p>
+              <p>结束时间：{{ formatStatusTime(props.buildStatus?.finishedAt) }}</p>
+            </div>
+            <p v-if="props.buildStatus?.errorMessage" class="mt-2 text-sm text-destructive">
+              {{ props.buildStatus.errorMessage }}
+            </p>
+            <p v-else-if="props.buildStatus?.status === 'building'" class="mt-2 text-[11px] text-muted-foreground">
+              保存成功后会自动轮询状态，直到本次镜像重建完成。
+            </p>
+          </div>
 
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">项目名称</span>
-            <input
-              v-model="name"
-              type="text"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="输入项目名称"
-              @input="markNameAsEdited"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
-            <input
-              v-model="description"
-              type="text"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="输入项目描述"
-            />
-          </label>
-
-          <div class="rounded-xl border border-border bg-background/60 p-3">
+          <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
             <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
             <p class="mt-1 text-[11px] text-muted-foreground">
               留空表示跟随全局配置，仅覆盖当前项目隔离容器启动参数。
@@ -450,7 +273,7 @@ onBeforeUnmount(() => {
               v-model="containerRuntimeForm.containerSandboxProfile"
               aria-label="Sandbox Profile"
               :options="containerSandboxProfileOptions"
-              :panel-z-index="PROJECT_FORM_SELECT_PANEL_Z_INDEX"
+              :panel-z-index="PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX"
               trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
             />
           </label>
@@ -461,7 +284,7 @@ onBeforeUnmount(() => {
               v-model="containerRuntimeForm.containerNetworkMode"
               aria-label="容器网络模式"
               :options="containerNetworkModeOptions"
-              :panel-z-index="PROJECT_FORM_SELECT_PANEL_Z_INDEX"
+              :panel-z-index="PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX"
               trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
             />
           </label>
@@ -472,7 +295,7 @@ onBeforeUnmount(() => {
               v-model="containerRuntimeForm.containerExposeMode"
               aria-label="端口映射"
               :options="containerExposeModeOptions"
-              :panel-z-index="PROJECT_FORM_SELECT_PANEL_Z_INDEX"
+              :panel-z-index="PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX"
               trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
             />
           </label>
@@ -531,7 +354,7 @@ onBeforeUnmount(() => {
             />
           </label>
 
-          <label class="block space-y-1">
+          <label class="block space-y-1 md:col-span-2">
             <span class="text-xs font-semibold text-muted-foreground">
               容器环境变量（每行 `KEY=VALUE`）
             </span>
@@ -542,12 +365,12 @@ onBeforeUnmount(() => {
             />
           </label>
 
-          <div class="rounded-xl border border-border bg-background/60 p-3">
+          <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p class="text-xs font-semibold text-muted-foreground">项目级 Runner 模板</p>
                 <p class="mt-1 text-[11px] text-muted-foreground">
-                    默认根据隔离容器设置自动生成；只有填写的项才会覆盖项目级配置。
+                  默认根据隔离容器设置自动生成；只有填写的项才会覆盖项目级配置。
                 </p>
               </div>
               <div class="flex flex-wrap gap-2">
@@ -556,7 +379,7 @@ onBeforeUnmount(() => {
                   class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
                   @click="applyDefaultRunnerTemplates"
                 >
-                    载入默认模板
+                  载入默认模板
                 </button>
                 <button
                   type="button"
@@ -599,17 +422,14 @@ onBeforeUnmount(() => {
             />
           </label>
 
-          <p v-if="props.mode === 'create' && inspectingRepository" class="text-xs text-muted-foreground">
-            正在读取仓库信息...
+          <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">
+            {{ validationMessage }}
           </p>
-          <p v-else-if="props.mode === 'create' && inspectionErrorMessage" class="text-xs text-destructive">
-            {{ inspectionErrorMessage }}
+          <p v-else-if="props.errorMessage" class="text-sm text-destructive md:col-span-2">
+            {{ props.errorMessage }}
           </p>
 
-          <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
-          <p v-else-if="props.errorMessage" class="text-sm text-destructive">{{ props.errorMessage }}</p>
-
-          <div class="flex justify-end gap-2 pt-1">
+          <div class="flex justify-end gap-2 pt-1 md:col-span-2">
             <button
               type="button"
               class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
@@ -622,7 +442,7 @@ onBeforeUnmount(() => {
               class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="props.submitting"
             >
-              {{ props.submitting ? '保存中...' : props.mode === 'edit' ? '保存修改' : '新建项目' }}
+              {{ props.submitting ? '保存中...' : '保存并重建镜像' }}
             </button>
           </div>
         </form>

@@ -549,7 +549,6 @@ export const useLayout = () => {
 
     if (route.name === 'home') return ['工作区', '首页']
     if (route.name === 'business-lines-manage') return ['工作区', '业务线管理']
-    if (route.name === 'projects-list') return ['工作区', '项目列表']
     if (route.name === 'dashboard') return ['项目菜单', '仪表盘']
     if (route.name === 'project-workflows') return ['项目菜单', '工作流']
     if (route.name === 'project-workflows-by-id') return ['项目菜单', '工作流']

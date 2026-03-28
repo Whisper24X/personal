@@ -314,10 +314,6 @@ export const ROUTE_ACCESS_CONFIG = {
     title: '业务线管理',
     capabilities: [],
   },
-  projects: {
-    title: '项目列表',
-    capabilities: [],
-  },
   projectWorkflows: {
     title: '项目工作流',
     capabilities: ['project.workflow.read'],

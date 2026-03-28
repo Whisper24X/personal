@@ -30,6 +30,14 @@ export type ProjectRunnerTemplateConfig = {
   sandboxSupervisordConf?: string
 }
 
+export type ProjectRunnerImageBuildStatus = {
+  status: 'building' | 'success' | 'failed'
+  startedAt: string
+  finishedAt?: string | null
+  errorMessage?: string | null
+  imageTag?: string | null
+}
+
 export type ProjectMemberRole = 'owner' | 'maintainer' | 'developer' | 'viewer'
 
 export type ProjectMember = {
@@ -62,6 +70,9 @@ export type CreateProjectPayload = {
 }
 
 export type UpdateProjectPayload = Partial<CreateProjectPayload>
+  & {
+    rebuildRunnerImage?: boolean
+  }
 
 export type CreateProjectMemberPayload = {
   userId: string

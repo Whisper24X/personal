@@ -90,6 +90,7 @@ export type AgentRunnerResult = {
   prompt: string;
   sessionId?: string | null;
   errorMessage?: string;
+  clearPreviousSessionId?: boolean;
 };
 
 @Injectable()
@@ -132,39 +133,68 @@ export class AgentRunnerService {
     /** Docker container id or name for `docker exec`; host mode ignores */
     containerExecRef?: string;
   }): Promise<AgentRunnerResult> {
-    const config = await this.resolveRunnerConfig(
+    const executionContext = {
+      taskId: task.id,
+      nodeId: node.id,
+      projectId: project.id,
+      businessLineId: project.businessLineId,
+    };
+    const preparedExecution = await this.prepareExecution(
       project,
       task,
       node,
       runtimeContext,
+      callbacks,
     );
-    const prompt = this.resolvePrompt(
-      task,
-      node,
-      project,
-      config,
-      runtimeContext,
-    );
-    await callbacks?.onPrepared?.({
-      adapter: config.adapter,
-      prompt,
-      preparedAt: new Date(),
-    });
     const resolvedRef =
       containerExecRef ?? (await this.resolveContainerExecRefForTask(task));
-
-    return this.runWithConfig(
-      config,
-      prompt,
-      {
-        taskId: task.id,
-        nodeId: node.id,
-        projectId: project.id,
-        businessLineId: project.businessLineId,
-      },
+    const firstResult = await this.runWithConfig(
+      preparedExecution.config,
+      preparedExecution.prompt,
+      executionContext,
       callbacks,
       resolvedRef ?? undefined,
     );
+
+    if (
+      !this.shouldFallbackCodexInvalidResume({
+        node,
+        config: preparedExecution.config,
+        result: firstResult,
+      })
+    ) {
+      return firstResult;
+    }
+
+    this.logger.warn(
+      `agent_runner_invalid_resume_fallback ${JSON.stringify({
+        ...executionContext,
+        staleSessionId: node.agentCliSessionId ?? null,
+        stderrPreview: this.truncateForLog(firstResult.stderr),
+      })}`,
+    );
+    const fallbackExecution = await this.prepareExecution(
+      project,
+      task,
+      {
+        ...node,
+        agentCliSessionId: null,
+      },
+      runtimeContext,
+      callbacks,
+    );
+    const fallbackResult = await this.runWithConfig(
+      fallbackExecution.config,
+      fallbackExecution.prompt,
+      executionContext,
+      callbacks,
+      resolvedRef ?? undefined,
+    );
+
+    return {
+      ...fallbackResult,
+      clearPreviousSessionId: true,
+    };
   }
 
   /**
@@ -204,6 +234,41 @@ export class AgentRunnerService {
       undefined,
       resolvedRef ?? undefined,
     );
+  }
+
+  private async prepareExecution(
+    project: Project,
+    task: Task,
+    node: TaskNode,
+    runtimeContext: PromptTemplateRuntimeContext | undefined,
+    callbacks: AgentRunnerStreamCallbacks | undefined,
+  ): Promise<{
+    config: AgentRunnerConfig;
+    prompt: string;
+  }> {
+    const config = await this.resolveRunnerConfig(
+      project,
+      task,
+      node,
+      runtimeContext,
+    );
+    const prompt = this.resolvePrompt(
+      task,
+      node,
+      project,
+      config,
+      runtimeContext,
+    );
+    await callbacks?.onPrepared?.({
+      adapter: config.adapter,
+      prompt,
+      preparedAt: new Date(),
+    });
+
+    return {
+      config,
+      prompt,
+    };
   }
 
   interruptExecution(nodeId: string): boolean {
@@ -1279,6 +1344,37 @@ export class AgentRunnerService {
 
   private resolveDefaultArgs(adapter: AgentAdapter): string[] {
     return this.agentCliAdapterRegistry.getById(adapter).defaultArgs();
+  }
+
+  private shouldFallbackCodexInvalidResume({
+    node,
+    config,
+    result,
+  }: {
+    node: TaskNode;
+    config: AgentRunnerConfig;
+    result: AgentRunnerResult;
+  }): boolean {
+    if (
+      config.adapter !== 'codex' ||
+      !config.args.includes('resume') ||
+      !this.normalizeOptionalString(node.agentCliSessionId) ||
+      result.success ||
+      result.interrupted
+    ) {
+      return false;
+    }
+
+    const diagnostic = `${result.stderr}\n${result.errorMessage ?? ''}`;
+    return this.isInvalidCodexResumeError(diagnostic);
+  }
+
+  private isInvalidCodexResumeError(value: string): boolean {
+    const normalizedValue = value.toLowerCase();
+    return (
+      normalizedValue.includes('thread/resume failed') &&
+      normalizedValue.includes('no rollout found for thread id')
+    );
   }
 
   private resolvePrompt(

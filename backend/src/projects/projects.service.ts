@@ -49,6 +49,10 @@ import { UpdateProjectCustomRoleDto } from './dto/update-project-custom-role.dto
 import { WorkflowTemplateRepository } from '../workflow-templates/infrastructure/persistence/workflow-template.repository';
 import { ContainerExecutionConfigService } from '../containers/container-execution-config.service';
 import { IsolatedRunnerContainerService } from '../containers/isolated-runner-container.service';
+import {
+  ProjectRunnerImageBuildStatus,
+  ProjectRunnerImageRebuildService,
+} from '../containers/project-runner-image-rebuild.service';
 import { SlotAccessMetadata } from '../containers/domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from '../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import {
@@ -95,6 +99,7 @@ export class ProjectsService {
     private readonly slotRepository: ProjectExecutionSlotRepository,
     private readonly containerConfig: ContainerExecutionConfigService,
     private readonly isolatedRunner: IsolatedRunnerContainerService,
+    private readonly projectRunnerImageRebuild: ProjectRunnerImageRebuildService,
     private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
@@ -335,6 +340,29 @@ export class ProjectsService {
       }
     }
 
+    const shouldTriggerRunnerImageRebuild =
+      updateProjectDto.rebuildRunnerImage === true ||
+      (updateProjectDto.configJson !== undefined &&
+        this.shouldTriggerRunnerImageRebuild(
+          currentProject.configJson,
+          updateProjectDto.configJson,
+        ));
+    const pendingRunnerImageBuildStatus = shouldTriggerRunnerImageRebuild
+      ? this.projectRunnerImageRebuild.createPendingStatus()
+      : null;
+    const rebuildConfigSource =
+      updateProjectDto.configJson ??
+      (shouldTriggerRunnerImageRebuild
+        ? (currentProject.configJson ?? {})
+        : undefined);
+    const nextConfigJson =
+      rebuildConfigSource !== undefined
+        ? this.buildUpdatedProjectConfigJson(
+            rebuildConfigSource,
+            pendingRunnerImageBuildStatus,
+          )
+        : undefined;
+
     const updatedProject = await this.projectRepository.update(id, {
       ...(updateProjectDto.name !== undefined
         ? { name: updateProjectDto.name }
@@ -348,9 +376,7 @@ export class ProjectsService {
       ...(updateProjectDto.defaultBranch !== undefined
         ? { defaultBranch: updateProjectDto.defaultBranch }
         : {}),
-      ...(updateProjectDto.configJson !== undefined
-        ? { configJson: updateProjectDto.configJson }
-        : {}),
+      ...(nextConfigJson !== undefined ? { configJson: nextConfigJson } : {}),
       ...(updateProjectDto.businessLineId !== undefined
         ? { businessLineId: updateProjectDto.businessLineId }
         : {}),
@@ -374,7 +400,52 @@ export class ProjectsService {
       );
     }
 
+    if (shouldTriggerRunnerImageRebuild) {
+      this.projectRunnerImageRebuild.scheduleProjectRebuild(updatedProject.id);
+    }
+
     return updatedProject;
+  }
+
+  private shouldTriggerRunnerImageRebuild(
+    currentConfigJson: Record<string, unknown> | null | undefined,
+    nextConfigJson: Record<string, unknown> | null | undefined,
+  ): boolean {
+    return (
+      this.serializeRunnerImageConfig(currentConfigJson) !==
+      this.serializeRunnerImageConfig(nextConfigJson)
+    );
+  }
+
+  private buildUpdatedProjectConfigJson(
+    nextConfigJson: Record<string, unknown>,
+    runnerImageBuildStatus: ProjectRunnerImageBuildStatus | null,
+  ): Record<string, unknown> {
+    if (!runnerImageBuildStatus) {
+      return nextConfigJson;
+    }
+
+    return this.projectRunnerImageRebuild.mergeBuildStatus(
+      nextConfigJson,
+      runnerImageBuildStatus,
+    );
+  }
+
+  private serializeRunnerImageConfig(
+    configJson: Record<string, unknown> | null | undefined,
+  ): string {
+    const safeConfig = configJson ?? {};
+
+    return JSON.stringify({
+      containerRuntime:
+        safeConfig.containerRuntime !== undefined
+          ? safeConfig.containerRuntime
+          : null,
+      runnerTemplate:
+        safeConfig.runnerTemplate !== undefined
+          ? safeConfig.runnerTemplate
+          : null,
+    });
   }
 
   async remove(id: Project['id'], currentUser: JwtPayloadType): Promise<void> {

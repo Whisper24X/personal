@@ -84,15 +84,6 @@ export const systemRoutes: AppRouteRecord[] = [
     }),
   },
   {
-    path: '/projects',
-    name: 'projects-list',
-    component: () => import('@/views/projects/index.vue'),
-    meta: buildRouteAccessMeta('projects', {
-      layout: 'workspace-page',
-      contentMode: 'full',
-    }),
-  },
-  {
     path: '/projects/workflows',
     name: 'project-workflows',
     component: () => import('@/views/projects/detail.vue'),

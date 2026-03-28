@@ -1,15 +1,52 @@
-import type { ProjectContainerRuntimeConfig } from '@/types/api/projects'
+import { Injectable } from '@nestjs/common';
+import { Project } from '../projects/domain/project';
+import {
+  ContainerExecutionConfigService,
+  SandboxProfile,
+} from './container-execution-config.service';
 
-export const DEFAULT_PROJECT_RUNNER_DOCKERFILE = `# ============================================================
-# All-in-One AI 编码沙箱镜像
+export type GeneratedRunnerTemplateDefaults = {
+  dockerfileRunner: string;
+  sandboxNginxConf: string;
+  sandboxSupervisordConf: string;
+};
+
+@Injectable()
+export class ProjectRunnerTemplateDefaultsService {
+  constructor(
+    private readonly containerConfig: ContainerExecutionConfigService,
+  ) {}
+
+  build(project?: Project | null): GeneratedRunnerTemplateDefaults {
+    const profile = this.containerConfig.getSandboxProfile(project);
+    return {
+      dockerfileRunner: this.renderDockerfile(profile),
+      sandboxNginxConf:
+        profile === 'full-dev-sandbox'
+          ? this.renderFullDevSandboxNginxConfig()
+          : this.renderRepoNginxConfig(profile),
+      sandboxSupervisordConf:
+        profile === 'full-dev-sandbox'
+          ? this.renderFullDevSandboxSupervisordConfig()
+          : this.renderRepoSupervisordConfig(profile),
+    };
+  }
+
+  private renderDockerfile(profile: SandboxProfile): string {
+    const profileLabel =
+      profile === 'full-dev-sandbox'
+        ? 'full-dev-sandbox'
+        : profile === 'preview-web'
+          ? 'preview-web'
+          : 'runner-only';
+
+    return `# ============================================================
+# AINative Runner 镜像（profile: ${profileLabel}）
 # ============================================================
 #
-# 基于 golang:1.23-bookworm (Debian)，预装 Go 工具链 + Node 22/pnpm + protoc
-# 使用 glibc 以兼容 Taro @tarojs/binding-linux-x64-gnu（Alpine musl 不支持）
-# runner-only profile 默认由编排层追加 \`sleep infinity\`
-# preview/full-dev-sandbox profile 使用镜像内入口脚本启动 Supervisor + Nginx
-#
-# 构建: docker compose build  或  ./sandbox/sandbox.sh build
+# 该文件由隔离容器设置自动生成。
+# preview-web / runner-only 默认按 repo workspace 运行；
+# full-dev-sandbox 默认按 ainative-backend/shadow/app 三项目运行。
 # ============================================================
 
 FROM golang:1.23-bookworm
@@ -115,9 +152,148 @@ WORKDIR /workspace
 EXPOSE 8080
 
 CMD ["/usr/local/bin/ainative-runner-entrypoint"]
-`
+`;
+  }
 
-export const DEFAULT_PROJECT_RUNNER_NGINX_CONF = `worker_processes auto;
+  private renderRepoNginxConfig(profile: SandboxProfile): string {
+    return `# Generated from containerRuntime.sandboxProfile=${profile}
+worker_processes auto;
+error_log /dev/stderr warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log /dev/stdout;
+    sendfile on;
+    keepalive_timeout 65;
+
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+
+    server {
+        listen 8080;
+        server_name localhost;
+        charset utf-8;
+
+        location /health {
+            return 200 'OK';
+            add_header Content-Type text/plain;
+        }
+
+        location /api/ {
+            proxy_pass http://127.0.0.1:9000/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location /ws {
+            proxy_pass http://127.0.0.1:9000/ws;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location / {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
+`;
+  }
+
+  private renderRepoSupervisordConfig(profile: SandboxProfile): string {
+    return `; Generated from containerRuntime.sandboxProfile=${profile}
+[supervisord]
+nodaemon=true
+logfile=/workspace/logs/supervisord.log
+logfile_maxbytes=10MB
+logfile_backups=1
+pidfile=/run/supervisord.pid
+user=root
+
+[unix_http_server]
+file=/run/supervisor.sock
+chmod=0700
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl=unix:///run/supervisor.sock
+
+[program:nginx]
+command=/usr/sbin/nginx -g "daemon off;"
+autostart=true
+autorestart=true
+priority=30
+redirect_stderr=true
+stdout_logfile=/workspace/logs/nginx.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=2
+
+[program:backend]
+command=/bin/bash -lc "if [ -f /workspace/backend/package.json ]; then cd /workspace/backend && if [ ! -x node_modules/.bin/nest ]; then npm ci --no-audit --no-fund || npm install --no-audit --no-fund; fi && exec npm run start:dev; else echo 'backend project not found, skipping.' && exec sleep infinity; fi"
+directory=/workspace/backend
+environment=NODE_ENV="development",APP_PORT="9000"
+autostart=true
+autorestart=true
+startsecs=10
+startretries=3
+priority=100
+redirect_stderr=true
+stdout_logfile=/workspace/logs/backend.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=2
+
+[program:frontend]
+command=/bin/bash -lc "if [ -f /workspace/frontend/package.json ]; then cd /workspace/frontend && if [ ! -x node_modules/.bin/vite ]; then npm ci --no-audit --no-fund --include=optional || npm install --no-audit --no-fund --include=optional; fi && exec npm run dev -- --host 0.0.0.0 --port 8000; else echo 'frontend project not found, skipping.' && exec sleep infinity; fi"
+directory=/workspace/frontend
+environment=NODE_ENV="development",CI="true",BROWSER="none"
+autostart=true
+autorestart=true
+startsecs=10
+startretries=3
+priority=110
+redirect_stderr=true
+stdout_logfile=/workspace/logs/frontend.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=2
+
+[group:infrastructure]
+programs=nginx
+priority=10
+
+[group:services]
+programs=backend,frontend
+priority=100
+`;
+  }
+
+  private renderFullDevSandboxNginxConfig(): string {
+    return `worker_processes auto;
 error_log /dev/stderr warn;
 pid /var/run/nginx.pid;
 
@@ -239,9 +415,11 @@ http {
         }
     }
 }
-`
+`;
+  }
 
-export const DEFAULT_PROJECT_RUNNER_SUPERVISORD_CONF = `[supervisord]
+  private renderFullDevSandboxSupervisordConfig(): string {
+    return `[supervisord]
 nodaemon=true
 logfile=/workspace/logs/supervisord.log
 logfile_maxbytes=10MB
@@ -318,153 +496,6 @@ priority=10
 [group:services]
 programs=backend,shadow,app
 priority=100
-`
-
-export const DEFAULT_REPO_PROJECT_RUNNER_NGINX_CONF = `worker_processes auto;
-error_log /dev/stderr warn;
-pid /var/run/nginx.pid;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    access_log /dev/stdout;
-    sendfile on;
-    keepalive_timeout 65;
-
-    map $http_upgrade $connection_upgrade {
-        default upgrade;
-        '' close;
-    }
-
-    server {
-        listen 8080;
-        server_name localhost;
-        charset utf-8;
-
-        location /health {
-            return 200 'OK';
-            add_header Content-Type text/plain;
-        }
-
-        location /api/ {
-            proxy_pass http://127.0.0.1:9000/;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $connection_upgrade;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location /ws {
-            proxy_pass http://127.0.0.1:9000/ws;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $connection_upgrade;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location / {
-            proxy_pass http://127.0.0.1:8000;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $connection_upgrade;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-}
-`
-
-export const DEFAULT_REPO_PROJECT_RUNNER_SUPERVISORD_CONF = `[supervisord]
-nodaemon=true
-logfile=/workspace/logs/supervisord.log
-logfile_maxbytes=10MB
-logfile_backups=1
-pidfile=/run/supervisord.pid
-user=root
-
-[unix_http_server]
-file=/run/supervisor.sock
-chmod=0700
-
-[rpcinterface:supervisor]
-supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-
-[supervisorctl]
-serverurl=unix:///run/supervisor.sock
-
-[program:nginx]
-command=/usr/sbin/nginx -g "daemon off;"
-autostart=true
-autorestart=true
-priority=30
-redirect_stderr=true
-stdout_logfile=/workspace/logs/nginx.log
-stdout_logfile_maxbytes=10MB
-stdout_logfile_backups=2
-
-[program:backend]
-command=/bin/bash -lc "if [ -f /workspace/backend/package.json ]; then cd /workspace/backend && if [ ! -x node_modules/.bin/nest ]; then npm ci --no-audit --no-fund || npm install --no-audit --no-fund; fi && exec npm run start:dev; else echo 'backend project not found, skipping.' && exec sleep infinity; fi"
-directory=/workspace/backend
-environment=NODE_ENV="development",APP_PORT="9000"
-autostart=true
-autorestart=true
-startsecs=10
-startretries=3
-priority=100
-redirect_stderr=true
-stdout_logfile=/workspace/logs/backend.log
-stdout_logfile_maxbytes=20MB
-stdout_logfile_backups=2
-
-[program:frontend]
-command=/bin/bash -lc "if [ -f /workspace/frontend/package.json ]; then cd /workspace/frontend && if [ ! -x node_modules/.bin/vite ]; then npm ci --no-audit --no-fund --include=optional || npm install --no-audit --no-fund --include=optional; fi && exec npm run dev -- --host 0.0.0.0 --port 8000; else echo 'frontend project not found, skipping.' && exec sleep infinity; fi"
-directory=/workspace/frontend
-environment=NODE_ENV="development",CI="true",BROWSER="none"
-autostart=true
-autorestart=true
-startsecs=10
-startretries=3
-priority=110
-redirect_stderr=true
-stdout_logfile=/workspace/logs/frontend.log
-stdout_logfile_maxbytes=10MB
-stdout_logfile_backups=2
-
-[group:infrastructure]
-programs=nginx
-priority=10
-
-[group:services]
-programs=backend,frontend
-priority=100
-`
-
-type SandboxProfile = ProjectContainerRuntimeConfig['sandboxProfile'] | '' | null | undefined
-
-export const resolveDefaultProjectRunnerTemplates = (sandboxProfile?: SandboxProfile) => {
-  if (sandboxProfile === 'full-dev-sandbox') {
-    return {
-      dockerfileRunner: DEFAULT_PROJECT_RUNNER_DOCKERFILE,
-      sandboxNginxConf: DEFAULT_PROJECT_RUNNER_NGINX_CONF,
-      sandboxSupervisordConf: DEFAULT_PROJECT_RUNNER_SUPERVISORD_CONF,
-    }
-  }
-
-  return {
-    dockerfileRunner: DEFAULT_PROJECT_RUNNER_DOCKERFILE,
-    sandboxNginxConf: DEFAULT_REPO_PROJECT_RUNNER_NGINX_CONF,
-    sandboxSupervisordConf: DEFAULT_REPO_PROJECT_RUNNER_SUPERVISORD_CONF,
+`;
   }
 }

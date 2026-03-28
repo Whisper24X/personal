@@ -232,6 +232,15 @@ beforeEach(() => {
     gitUrl: 'git@gitlab.example.com:group/guard-console.git',
     defaultBranch: 'main',
   })
+  projectsApi.update.mockResolvedValue({
+    id: 'project-1',
+    businessLineId: 'line-1',
+    name: 'Guard Backend',
+    description: 'Main service',
+    gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
+    defaultBranch: 'main',
+    configJson: null,
+  })
 
   usersApi.list.mockResolvedValue({
     data: [],
@@ -452,7 +461,7 @@ describe('BusinessLineManagementPanel', () => {
     })
   })
 
-  it('navigates to the standalone projects list page from the projects tab', async () => {
+  it('opens runtime settings modal from the projects tab and saves configJson overrides', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {
       props: buildProps(true),
@@ -465,14 +474,149 @@ describe('BusinessLineManagementPanel', () => {
     })
     await flushPromises()
 
-    const projectsListButton = wrapper
+    const runtimeSettingsButton = wrapper
       .findAll('button')
-      .find((button) => button.text().trim() === '查看项目列表')
+      .find((button) => button.text().trim() === '容器设置')
 
-    expect(projectsListButton).toBeDefined()
-    await projectsListButton!.trigger('click')
+    expect(runtimeSettingsButton).toBeDefined()
+    await runtimeSettingsButton!.trigger('click')
+    await flushPromises()
 
-    expect(routerPush).toHaveBeenCalledWith({ path: '/projects' })
+    const runtimeSettingsModal = wrapper.findComponent({
+      name: 'ProjectRuntimeSettingsModal',
+    })
+    expect(runtimeSettingsModal.exists()).toBe(true)
+
+    runtimeSettingsModal.vm.$emit('submit', {
+      containerRuntime: {
+        sandboxProfile: 'preview-web',
+        networkMode: 'bridge',
+      },
+      runnerTemplate: {
+        sandboxNginxConf: 'events {}',
+      },
+    })
+    await flushPromises()
+
+    expect(projectsApi.update).toHaveBeenCalledWith('project-1', {
+      name: 'Guard Backend',
+      description: 'Main service',
+      gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
+      defaultBranch: 'main',
+      rebuildRunnerImage: true,
+      configJson: {
+        containerRuntime: {
+          sandboxProfile: 'preview-web',
+          networkMode: 'bridge',
+        },
+        runnerTemplate: {
+          sandboxNginxConf: 'events {}',
+        },
+      },
+    })
+    expect(wrapper.emitted('request-refresh')).toBeTruthy()
+  })
+
+  it('polls project detail and shows rebuild status after saving runtime settings', async () => {
+    vi.useFakeTimers()
+    projectsApi.update.mockResolvedValueOnce({
+      id: 'project-1',
+      businessLineId: 'line-1',
+      name: 'Guard Backend',
+      description: 'Main service',
+      gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
+      defaultBranch: 'main',
+      configJson: {
+        containerRuntime: {
+          sandboxProfile: 'preview-web',
+        },
+        runnerImageBuild: {
+          status: 'building',
+          startedAt: '2026-03-27T15:00:00.000Z',
+          finishedAt: null,
+          errorMessage: null,
+          imageTag: null,
+        },
+      },
+    })
+    projectsApi.detail.mockResolvedValueOnce({
+      id: 'project-1',
+      businessLineId: 'line-1',
+      name: 'Guard Backend',
+      description: 'Main service',
+      gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
+      defaultBranch: 'main',
+      configJson: {
+        containerRuntime: {
+          sandboxProfile: 'preview-web',
+        },
+        runnerImageBuild: {
+          status: 'success',
+          startedAt: '2026-03-27T15:00:00.000Z',
+          finishedAt: '2026-03-27T15:00:10.000Z',
+          errorMessage: null,
+          imageTag: 'ainative/project-runner:project-1',
+        },
+      },
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const runtimeSettingsButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '容器设置')
+    await runtimeSettingsButton!.trigger('click')
+    await flushPromises()
+
+    const runtimeSettingsModal = wrapper.findComponent({
+      name: 'ProjectRuntimeSettingsModal',
+    })
+    runtimeSettingsModal.vm.$emit('submit', {
+      containerRuntime: {
+        sandboxProfile: 'preview-web',
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('基础镜像重建状态')
+    expect(wrapper.text()).toContain('构建中')
+
+    await vi.advanceTimersByTimeAsync(1600)
+    await flushPromises()
+
+    expect(projectsApi.detail).toHaveBeenCalledWith('project-1')
+    expect(wrapper.text()).toContain('构建成功')
+    expect(wrapper.text()).toContain('ainative/project-runner:project-1')
+
+    vi.useRealTimers()
+  })
+
+  it('shows clearer project action labels and runtime summary on project cards', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('容器设置：当前使用默认容器配置')
+    expect(wrapper.text()).toContain('容器设置')
+    expect(wrapper.text()).toContain('编辑基础信息')
   })
 
   it('emits select-project when choosing a project as current', async () => {

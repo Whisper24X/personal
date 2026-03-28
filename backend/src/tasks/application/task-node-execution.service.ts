@@ -359,6 +359,7 @@ export class TaskNodeExecutionService {
         node,
         agentClioutput,
         agentCliSessionId: executionResult.sessionId ?? null,
+        clearAgentCliSessionId: executionResult.clearPreviousSessionId === true,
         earlyExitDecision: await this.resolveEarlyExitDecision({
           taskId,
           nodeId,
@@ -441,6 +442,7 @@ export class TaskNodeExecutionService {
       nodeId,
       agentClioutput,
       agentCliSessionId: executionResult.sessionId ?? null,
+      clearAgentCliSessionId: executionResult.clearPreviousSessionId === true,
     });
 
     await this.taskLogService.appendLog({
@@ -688,11 +690,13 @@ export class TaskNodeExecutionService {
     node,
     agentClioutput,
     agentCliSessionId,
+    clearAgentCliSessionId,
     earlyExitDecision,
   }: {
     node: TaskNode;
     agentClioutput: string;
     agentCliSessionId?: string | null;
+    clearAgentCliSessionId?: boolean;
     earlyExitDecision?: {
       completed: boolean;
       reason: string | null;
@@ -733,7 +737,9 @@ export class TaskNodeExecutionService {
       startedAt: queuedNextLoop ? null : (node.startedAt ?? null),
       finishedAt: queuedNextLoop ? null : new Date(),
       agentClioutput,
-      agentCliSessionId: agentCliSessionId ?? node.agentCliSessionId ?? null,
+      agentCliSessionId: clearAgentCliSessionId
+        ? (agentCliSessionId ?? null)
+        : (agentCliSessionId ?? node.agentCliSessionId ?? null),
       runtimeJson: null,
     });
 
@@ -912,10 +918,12 @@ export class TaskNodeExecutionService {
     nodeId,
     agentClioutput,
     agentCliSessionId,
+    clearAgentCliSessionId,
   }: {
     nodeId: string;
     agentClioutput: string;
     agentCliSessionId?: string | null;
+    clearAgentCliSessionId?: boolean;
   }): Promise<void> {
     const latestNode = await this.taskNodeRepository.findById(nodeId);
 
@@ -927,8 +935,9 @@ export class TaskNodeExecutionService {
       status: TaskStatus.inReview,
       finishedAt: new Date(),
       agentClioutput,
-      agentCliSessionId:
-        agentCliSessionId ?? latestNode.agentCliSessionId ?? null,
+      agentCliSessionId: clearAgentCliSessionId
+        ? (agentCliSessionId ?? null)
+        : (agentCliSessionId ?? latestNode.agentCliSessionId ?? null),
       runtimeJson: null,
     });
   }

@@ -1,14 +1,19 @@
 import {
-  DEFAULT_PROJECT_RUNNER_DOCKERFILE,
-  DEFAULT_PROJECT_RUNNER_NGINX_CONF,
-  DEFAULT_PROJECT_RUNNER_SUPERVISORD_CONF,
+  resolveDefaultProjectRunnerTemplates,
 } from '@/constants/project-runner-template-defaults'
-import type { ProjectRunnerTemplateConfig } from '@/types/api/projects'
+import type {
+  ProjectContainerRuntimeConfig,
+  ProjectRunnerTemplateConfig,
+} from '@/types/api/projects'
 
 export type ProjectRunnerTemplateFormState = {
   runnerDockerfile: string
   runnerSandboxNginxConf: string
   runnerSandboxSupervisordConf: string
+}
+
+type ProjectRunnerTemplateFormContext = ProjectRunnerTemplateFormState & {
+  containerSandboxProfile?: string
 }
 
 export const createProjectRunnerTemplateFormState = (): ProjectRunnerTemplateFormState => ({
@@ -27,11 +32,33 @@ const normalizeTemplateContent = (value: unknown) => {
   return typeof value === 'string' ? value : ''
 }
 
-export const useProjectRunnerTemplateForm = (form: ProjectRunnerTemplateFormState) => {
+const normalizeSandboxProfile = (
+  value: string | undefined,
+): ProjectContainerRuntimeConfig['sandboxProfile'] | undefined => {
+  return value === 'runner-only' || value === 'preview-web' || value === 'full-dev-sandbox'
+    ? value
+    : undefined
+}
+
+export const useProjectRunnerTemplateForm = (
+  form: ProjectRunnerTemplateFormContext,
+  options?: {
+    getSandboxProfile?: () => string | undefined
+  },
+) => {
+  const resolveCurrentDefaults = () =>
+    resolveDefaultProjectRunnerTemplates(
+      normalizeSandboxProfile(
+        options?.getSandboxProfile?.() ??
+          ('containerSandboxProfile' in form ? form.containerSandboxProfile : undefined),
+      ),
+    )
+
   const applyDefaultRunnerTemplates = () => {
-    form.runnerDockerfile = DEFAULT_PROJECT_RUNNER_DOCKERFILE
-    form.runnerSandboxNginxConf = DEFAULT_PROJECT_RUNNER_NGINX_CONF
-    form.runnerSandboxSupervisordConf = DEFAULT_PROJECT_RUNNER_SUPERVISORD_CONF
+    const defaults = resolveCurrentDefaults()
+    form.runnerDockerfile = defaults.dockerfileRunner
+    form.runnerSandboxNginxConf = defaults.sandboxNginxConf
+    form.runnerSandboxSupervisordConf = defaults.sandboxSupervisordConf
   }
 
   const clearRunnerTemplateOverrides = () => {

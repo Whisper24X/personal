@@ -10,7 +10,6 @@ describe('systemRoutes compatibility redirects', () => {
 
   it('redirects legacy settings routes to dashboard settings sections', () => {
     const businessLinesRoute = findByPath('/business-lines')
-    const projectsRoute = findByPath('/projects')
     const usersRoute = findByPath('/users')
     const settingsRoute = findByPath('/settings')
 
@@ -18,10 +17,6 @@ describe('systemRoutes compatibility redirects', () => {
     expect(typeof businessLinesRoute?.component).toBe('function')
     expect(businessLinesRoute?.meta?.layout).toBe('workspace-page')
     expect(businessLinesRoute?.meta?.contentMode).toBe('full')
-    expect(projectsRoute?.name).toBe('projects-list')
-    expect(typeof projectsRoute?.component).toBe('function')
-    expect(projectsRoute?.meta?.layout).toBe('workspace-page')
-    expect(projectsRoute?.meta?.contentMode).toBe('full')
     expect(usersRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'users' } })
     expect(settingsRoute?.name).toBe('settings')
     expect(typeof settingsRoute?.component).toBe('function')

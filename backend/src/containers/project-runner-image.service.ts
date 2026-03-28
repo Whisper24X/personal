@@ -14,6 +14,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Project } from '../projects/domain/project';
 import { ContainerExecutionConfigService } from './container-execution-config.service';
+import { ProjectRunnerTemplateDefaultsService } from './project-runner-template-defaults.service';
 
 export type ProjectRunnerTemplateConfig = {
   dockerfileRunner?: string;
@@ -37,17 +38,26 @@ export class ProjectRunnerImageService {
 
   constructor(
     private readonly containerConfig: ContainerExecutionConfigService,
+    private readonly runnerTemplateDefaults: ProjectRunnerTemplateDefaultsService,
   ) {}
 
   async resolveRunnerImage(project?: Project | null): Promise<string> {
-    const runnerAssets = await this.readRunnerAssetBundle();
-    const runnerTemplate = this.resolveEffectiveRunnerTemplateConfig(
-      project,
-      runnerAssets,
-    );
-    if (!project?.id || !runnerTemplate) {
+    const globalDefaults = this.runnerTemplateDefaults.build();
+    const projectDefaults = this.runnerTemplateDefaults.build(project);
+    if (
+      !this.shouldBuildProjectRunnerImage(
+        project,
+        projectDefaults,
+        globalDefaults,
+      )
+    ) {
       return this.containerConfig.getRunnerImage();
     }
+    const runnerAssets = await this.readRunnerAssetBundle(projectDefaults);
+    const runnerTemplate = this.resolveEffectiveRunnerTemplateConfig(
+      project,
+      projectDefaults,
+    );
 
     const imageTag = this.buildProjectImageTag(
       project.id,
@@ -111,25 +121,22 @@ export class ProjectRunnerImageService {
 
   private resolveEffectiveRunnerTemplateConfig(
     project?: Project | null,
-    runnerAssets?: RunnerAssetBundle,
-  ): ProjectRunnerTemplateConfig | null {
+    defaultTemplate?: ProjectRunnerTemplateConfig,
+  ): ProjectRunnerTemplateConfig {
     const projectTemplate = this.readProjectRunnerTemplateConfig(project);
-    if (!projectTemplate) {
-      return null;
+    if (!defaultTemplate) {
+      throw new Error(
+        'Runner template defaults are required to resolve template config',
+      );
     }
 
-    if (!runnerAssets) {
-      throw new Error('Runner assets are required to resolve template config');
-    }
-
-    const defaultTemplate = runnerAssets;
     return {
       dockerfileRunner:
-        projectTemplate.dockerfileRunner ?? defaultTemplate.dockerfileRunner,
+        projectTemplate?.dockerfileRunner ?? defaultTemplate.dockerfileRunner,
       sandboxNginxConf:
-        projectTemplate.sandboxNginxConf ?? defaultTemplate.sandboxNginxConf,
+        projectTemplate?.sandboxNginxConf ?? defaultTemplate.sandboxNginxConf,
       sandboxSupervisordConf:
-        projectTemplate.sandboxSupervisordConf ??
+        projectTemplate?.sandboxSupervisordConf ??
         defaultTemplate.sandboxSupervisordConf,
     };
   }
@@ -200,6 +207,27 @@ export class ProjectRunnerImageService {
     );
   }
 
+  private shouldBuildProjectRunnerImage(
+    project: Project | null | undefined,
+    projectDefaults: ProjectRunnerTemplateConfig,
+    globalDefaults: ProjectRunnerTemplateConfig,
+  ): project is Project {
+    if (!project?.id) {
+      return false;
+    }
+
+    if (this.readProjectRunnerTemplateConfig(project)) {
+      return true;
+    }
+
+    return (
+      projectDefaults.dockerfileRunner !== globalDefaults.dockerfileRunner ||
+      projectDefaults.sandboxNginxConf !== globalDefaults.sandboxNginxConf ||
+      projectDefaults.sandboxSupervisordConf !==
+        globalDefaults.sandboxSupervisordConf
+    );
+  }
+
   private resolveRunnerAssetSourceDir(): string {
     const candidateDirs = [
       path.resolve(process.cwd(), 'backend', 'runner'),
@@ -215,31 +243,25 @@ export class ProjectRunnerImageService {
       }
     }
 
-    throw new Error('Runner asset directory not found for project image build');
+    throw new Error(
+      'Runner asset directory with entrypoint.sh not found for project image build',
+    );
   }
 
-  private async readRunnerAssetBundle(): Promise<RunnerAssetBundle> {
+  private async readRunnerAssetBundle(
+    defaultTemplate: ProjectRunnerTemplateConfig,
+  ): Promise<RunnerAssetBundle> {
     const sourceRunnerDir = this.resolveRunnerAssetSourceDir();
-    const [
-      dockerfileRunner,
-      sandboxNginxConf,
-      sandboxSupervisordConf,
-      entrypointSh,
-      sshIdEd25519,
-      sshKnownHosts,
-    ] = await Promise.all([
-      readFile(path.join(sourceRunnerDir, 'Dockerfile.runner'), 'utf-8'),
-      readFile(path.join(sourceRunnerDir, 'sandbox.nginx.conf'), 'utf-8'),
-      readFile(path.join(sourceRunnerDir, 'sandbox.supervisord.conf'), 'utf-8'),
+    const [entrypointSh, sshIdEd25519, sshKnownHosts] = await Promise.all([
       readFile(path.join(sourceRunnerDir, 'entrypoint.sh'), 'utf-8'),
       this.readOptionalFile(path.join(sourceRunnerDir, 'ssh', 'id_ed25519')),
       this.readOptionalFile(path.join(sourceRunnerDir, 'ssh', 'known_hosts')),
     ]);
 
     return {
-      dockerfileRunner,
-      sandboxNginxConf,
-      sandboxSupervisordConf,
+      dockerfileRunner: defaultTemplate.dockerfileRunner ?? '',
+      sandboxNginxConf: defaultTemplate.sandboxNginxConf ?? '',
+      sandboxSupervisordConf: defaultTemplate.sandboxSupervisordConf ?? '',
       entrypointSh,
       sshIdEd25519,
       sshKnownHosts,
@@ -308,7 +330,6 @@ export class ProjectRunnerImageService {
   ): Promise<void> {
     const args = [
       'build',
-      '--progress=plain',
       '-f',
       path.join(buildContext, 'backend', 'runner', 'Dockerfile.runner'),
       '-t',
