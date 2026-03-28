@@ -155,7 +155,7 @@ function assertGoalAgentCliForGeneration(
 
 /**
  * Cursor/Claude 等 CLI 使用 stream-json 时 stdout 为 NDJSON，不能整段当单个 JSON 解析。
- * 与 task-title-suggestion / task-step-label-summary 一致：先抽取 type=assistant 的正文再解析目标 JSON。
+ * 与 task-title-suggestion 一致：先抽取 type=assistant 的正文再解析目标 JSON。
  */
 function findMatchingJsonObjectEnd(s: string, start: number): number {
   let depth = 0;

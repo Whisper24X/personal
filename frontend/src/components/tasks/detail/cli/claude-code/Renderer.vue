@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseClaudeCodeMessages } from './parser'
 import { groupClaudeEntries } from './groupEntries'
@@ -7,19 +7,11 @@ import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from './UserMessage.vue'
 import AssistantMessage from './AssistantMessage.vue'
 import AssistantMessageShell from '../AssistantMessageShell.vue'
-import AssistantTaskStepBar from '../AssistantTaskStepBar.vue'
 import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
 import { mergeAssistantTurns } from '../mergeAssistantTurns'
-import type { ClaudeMessageGroup, ClaudeTaskGroup } from './groupEntries'
+import type { ClaudeMessageGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { assistantStepSummariesKey } from '../stepSummaryKeys'
-import {
-  buildStepBarClaudeLike,
-  mergeStepBarLabelsWithSummaries,
-  prepareTaskGroupsForStepBar,
-  type StepBarModel,
-} from '../taskGroupStepState'
 import { assistantTurnTimeLabel, getNumber, getString } from '../utils'
 
 defineOptions({ name: 'CliClaudeCodeRenderer' })
@@ -28,21 +20,10 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
-const stepSummaries = inject(assistantStepSummariesKey, undefined)
-
 const entries = computed(() => parseClaudeCodeMessages(props.messages))
 const groups = computed(() => groupClaudeEntries(entries.value))
 const turns = computed(() =>
   mergeAssistantTurns(groups.value, (g: ClaudeMessageGroup) => g.type === 'other' && g.entry.type === 'user_message'),
-)
-
-const assistantStepBars = computed(() =>
-  turns.value.map((turn, tIdx) => {
-    if (turn.kind !== 'assistant') return null
-    const model = claudeStepBarModel(turn.items)
-    if (!model) return null
-    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
-  }),
 )
 
 function isResultEntry(entry: NormalizedEntry) {
@@ -104,13 +85,6 @@ function formatInitMeta(entry: NormalizedEntry): string {
   if (cwdName) parts.push(`cwd: ${cwdName}`)
   if (version) parts.push(`v${version}`)
   return parts.join(' · ')
-}
-
-function claudeStepBarModel(items: ClaudeMessageGroup[]): StepBarModel | null {
-  const allTasks = items.filter((g): g is ClaudeTaskGroup => g.type === 'task')
-  const hasSessionResult = items.some((g) => g.type === 'other' && isResultEntry(g.entry))
-  const tasks = prepareTaskGroupsForStepBar(allTasks, hasSessionResult)
-  return buildStepBarClaudeLike(tasks)
 }
 
 function claudeTurnFinished(items: ClaudeMessageGroup[]): boolean {
@@ -195,7 +169,6 @@ function claudeTurnFinished(items: ClaudeMessageGroup[]): boolean {
               </div>
             </template>
           </AssistantTurnContentBubble>
-          <AssistantTaskStepBar v-if="assistantStepBars[tIdx]" v-bind="assistantStepBars[tIdx]!" />
         </div>
       </AssistantMessageShell>
     </template>

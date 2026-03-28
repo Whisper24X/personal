@@ -197,7 +197,7 @@ export class TaskCommandService {
 
     const promptTrimmed = createTaskDto.prompt?.trim() ?? '';
     const titleForCreate = initialTitleFromPrompt(
-      promptTrimmed || createTaskDto.title?.trim() || '',
+      createTaskDto.title?.trim() || promptTrimmed || '',
     );
 
     const task = await this.taskRepository.create({
@@ -470,18 +470,21 @@ export class TaskCommandService {
       }
     }
 
-    await this.taskLogService.appendLog({
-      taskId: task.id,
-      taskNodeId: null,
-      level: TaskLogLevel.info,
-      message: 'Task deleted',
-      payload: {
-        deletedBy: currentUser.sub,
-        gitWorktree: task.gitWorktree ?? null,
-      },
-    });
+    this.logger.log(
+      `task_deleted ${JSON.stringify({ taskId: task.id, deletedBy: currentUser.sub, gitWorktree: task.gitWorktree ?? null })}`,
+    );
 
     await this.taskRepository.remove(task.id);
+
+    if (task.projectId) {
+      const project = await this.taskAccessService
+        .getProjectByIdOrThrow(task.projectId)
+        .catch(() => null);
+
+      if (project) {
+        await this.taskRuntimeService.cleanupTaskDataDir(task, project);
+      }
+    }
   }
 
   private normalizeOptionalString(value?: string | null): string | null {

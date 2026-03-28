@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseCursorAgentMessages } from './parser'
 import { groupCursorEntries } from './groupEntries'
@@ -7,19 +7,11 @@ import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from './UserMessage.vue'
 import AssistantMessage from './AssistantMessage.vue'
 import AssistantMessageShell from '../AssistantMessageShell.vue'
-import AssistantTaskStepBar from '../AssistantTaskStepBar.vue'
 import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
 import { mergeAssistantTurns } from '../mergeAssistantTurns'
-import type { CursorMessageGroup, CursorTaskGroup } from './groupEntries'
+import type { CursorMessageGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { assistantStepSummariesKey } from '../stepSummaryKeys'
-import {
-  buildStepBarClaudeLike,
-  mergeStepBarLabelsWithSummaries,
-  prepareTaskGroupsForStepBar,
-  type StepBarModel,
-} from '../taskGroupStepState'
 import { assistantTurnTimeLabel, getNumber, getString } from '../utils'
 
 defineOptions({ name: 'CliCursorAgentRenderer' })
@@ -28,21 +20,10 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
-const stepSummaries = inject(assistantStepSummariesKey, undefined)
-
 const entries = computed(() => parseCursorAgentMessages(props.messages))
 const groups = computed(() => groupCursorEntries(entries.value))
 const turns = computed(() =>
   mergeAssistantTurns(groups.value, (g: CursorMessageGroup) => g.type === 'other' && g.entry.type === 'user_message'),
-)
-
-const assistantStepBars = computed(() =>
-  turns.value.map((turn, tIdx) => {
-    if (turn.kind !== 'assistant') return null
-    const model = cursorStepBarModel(turn.items)
-    if (!model) return null
-    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
-  }),
 )
 
 function isResultEntry(entry: NormalizedEntry) {
@@ -66,13 +47,6 @@ function formatUsage(entry: NormalizedEntry): string {
 
 function hasModel(entry: NormalizedEntry): boolean {
   return getString(entry.metadata?.model) !== undefined
-}
-
-function cursorStepBarModel(items: CursorMessageGroup[]): StepBarModel | null {
-  const allTasks = items.filter((g): g is CursorTaskGroup => g.type === 'task')
-  const hasSessionResult = items.some((g) => g.type === 'other' && isResultEntry(g.entry))
-  const tasks = prepareTaskGroupsForStepBar(allTasks, hasSessionResult)
-  return buildStepBarClaudeLike(tasks)
 }
 
 function cursorTurnFinished(items: CursorMessageGroup[]): boolean {
@@ -147,7 +121,6 @@ function cursorTurnFinished(items: CursorMessageGroup[]): boolean {
               </div>
             </template>
           </AssistantTurnContentBubble>
-          <AssistantTaskStepBar v-if="assistantStepBars[tIdx]" v-bind="assistantStepBars[tIdx]!" />
         </div>
       </AssistantMessageShell>
     </template>

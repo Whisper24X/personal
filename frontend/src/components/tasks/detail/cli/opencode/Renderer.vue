@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseOpencodeMessages } from './parser'
 import { groupOpencodeEntries } from './groupEntries'
@@ -7,18 +7,10 @@ import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from './UserMessage.vue'
 import AssistantMessage from './AssistantMessage.vue'
 import AssistantMessageShell from '../AssistantMessageShell.vue'
-import AssistantTaskStepBar from '../AssistantTaskStepBar.vue'
 import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
 import { mergeAssistantTurns } from '../mergeAssistantTurns'
-import type { OpencodeMessageGroup, OpencodeTaskGroup } from './groupEntries'
+import type { OpencodeMessageGroup } from './groupEntries'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { assistantStepSummariesKey } from '../stepSummaryKeys'
-import {
-  buildStepBarOpencode,
-  mergeStepBarLabelsWithSummaries,
-  prepareTaskGroupsForStepBar,
-  type StepBarModel,
-} from '../taskGroupStepState'
 import { assistantTurnTimeLabel } from '../utils'
 
 defineOptions({ name: 'CliOpencodeRenderer' })
@@ -27,29 +19,11 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
-const stepSummaries = inject(assistantStepSummariesKey, undefined)
-
 const entries = computed(() => parseOpencodeMessages(props.messages))
 const groups = computed(() => groupOpencodeEntries(entries.value))
 const turns = computed(() =>
   mergeAssistantTurns(groups.value, (g: OpencodeMessageGroup) => g.type === 'other' && g.entry.type === 'user_message'),
 )
-
-const assistantStepBars = computed(() =>
-  turns.value.map((turn, tIdx) => {
-    if (turn.kind !== 'assistant') return null
-    const model = opencodeStepBarModel(turn.items)
-    if (!model) return null
-    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
-  }),
-)
-
-function opencodeStepBarModel(items: OpencodeMessageGroup[]): StepBarModel | null {
-  const allTasks = items.filter((g): g is OpencodeTaskGroup => g.type === 'task')
-  const hasFinalAssistant = items.some((g) => g.type === 'other' && g.entry.type === 'assistant_message')
-  const tasks = prepareTaskGroupsForStepBar(allTasks, hasFinalAssistant)
-  return buildStepBarOpencode(tasks)
-}
 
 function opencodeTurnFinished(items: OpencodeMessageGroup[]): boolean {
   return items.some((g) => g.type === 'other' && g.entry.type === 'assistant_message')
@@ -113,7 +87,6 @@ function opencodeTurnFinished(items: OpencodeMessageGroup[]): boolean {
               </div>
             </template>
           </AssistantTurnContentBubble>
-          <AssistantTaskStepBar v-if="assistantStepBars[tIdx]" v-bind="assistantStepBars[tIdx]!" />
         </div>
       </AssistantMessageShell>
     </template>

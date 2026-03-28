@@ -1,4 +1,4 @@
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { goalsApi } from '@/api/goals'
 import { workflowApi } from '@/api/workflow'
@@ -18,6 +18,28 @@ export const GOAL_SELECT_PANEL_PLACEMENT = 'top' as const
 
 export type GoalDetailTab = 'prd' | 'plan'
 
+type GoalGenerationFlags = { generatingPrd: boolean; generatingPlan: boolean }
+
+/** 按需求 ID 持久化「生成中」状态，避免离开详情页再返回时按钮被错误解除禁用 */
+const goalGenerationByGoalId = reactive<Record<string, GoalGenerationFlags>>({})
+
+function ensureGoalGeneration(id: string): GoalGenerationFlags {
+  return (goalGenerationByGoalId[id] ??= {
+    generatingPrd: false,
+    generatingPlan: false,
+  })
+}
+
+function clearGoalGenerationEntryIfIdle(id: string) {
+  const entry = goalGenerationByGoalId[id]
+  if (!entry) {
+    return
+  }
+  if (!entry.generatingPrd && !entry.generatingPlan) {
+    delete goalGenerationByGoalId[id]
+  }
+}
+
 export function useGoalDetailData() {
   const route = useRoute()
   const router = useRouter()
@@ -25,8 +47,22 @@ export function useGoalDetailData() {
 
   const goalId = computed(() => String(route.params.goalId ?? ''))
   const loading = ref(false)
-  const generatingPrd = ref(false)
-  const generatingPlan = ref(false)
+
+  const generatingPrd = computed(() => {
+    const id = goalId.value
+    if (!id) {
+      return false
+    }
+    return goalGenerationByGoalId[id]?.generatingPrd ?? false
+  })
+
+  const generatingPlan = computed(() => {
+    const id = goalId.value
+    if (!id) {
+      return false
+    }
+    return goalGenerationByGoalId[id]?.generatingPlan ?? false
+  })
   const detail = ref<GoalDetailType | null>(null)
   const tab = ref<GoalDetailTab>('prd')
 
@@ -166,13 +202,17 @@ export function useGoalDetailData() {
       )
       return
     }
+    const id = goalId.value
+    if (!id) {
+      return
+    }
     message.info('PRD 生成中，预计需数十秒，请稍候…', {
       duration: 12_000,
       dedupeKey: 'goal-generate-prd',
     })
-    generatingPrd.value = true
+    ensureGoalGeneration(id).generatingPrd = true
     try {
-      await goalsApi.generatePrd(goalId.value, {
+      await goalsApi.generatePrd(id, {
         overwrite: true,
         ...goalGenerationAgentPayload(),
       })
@@ -182,7 +222,11 @@ export function useGoalDetailData() {
     } catch (e) {
       message.error(toErrorMessage(e, '生成 PRD 失败'))
     } finally {
-      generatingPrd.value = false
+      const entry = goalGenerationByGoalId[id]
+      if (entry) {
+        entry.generatingPrd = false
+      }
+      clearGoalGenerationEntryIfIdle(id)
     }
   }
 
@@ -194,13 +238,17 @@ export function useGoalDetailData() {
       )
       return
     }
+    const id = goalId.value
+    if (!id) {
+      return
+    }
     message.info('任务计划生成中，预计需数十秒，请稍候…', {
       duration: 12_000,
       dedupeKey: 'goal-generate-plan',
     })
-    generatingPlan.value = true
+    ensureGoalGeneration(id).generatingPlan = true
     try {
-      await goalsApi.generatePlan(goalId.value, {
+      await goalsApi.generatePlan(id, {
         granularity: 'standard',
         overwrite: true,
         ...goalGenerationAgentPayload(),
@@ -211,7 +259,11 @@ export function useGoalDetailData() {
     } catch (e) {
       message.error(toErrorMessage(e, '生成任务计划失败'))
     } finally {
-      generatingPlan.value = false
+      const entry = goalGenerationByGoalId[id]
+      if (entry) {
+        entry.generatingPlan = false
+      }
+      clearGoalGenerationEntryIfIdle(id)
     }
   }
 

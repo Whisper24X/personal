@@ -42,9 +42,6 @@ describe('TasksController', () => {
       stopSession: jest.fn(),
       openSessionStream: jest.fn(),
     };
-    const taskStepLabelSummaryService = {
-      summarizeStepLabels: jest.fn(),
-    };
     const taskTitleSuggestionService = {
       suggestTitle: jest.fn(),
     };
@@ -57,7 +54,6 @@ describe('TasksController', () => {
       taskWorkspaceService as never,
       taskGitService as never,
       taskTerminalService as never,
-      taskStepLabelSummaryService as never,
       taskTitleSuggestionService as never,
       taskWorkspaceWatchService as never,
     );
@@ -126,9 +122,6 @@ describe('TasksController', () => {
       stopSession: jest.fn(),
       openSessionStream: jest.fn(),
     };
-    const taskStepLabelSummaryService = {
-      summarizeStepLabels: jest.fn(),
-    };
     const taskTitleSuggestionService = {
       suggestTitle: jest.fn(),
     };
@@ -150,7 +143,6 @@ describe('TasksController', () => {
       taskWorkspaceService as never,
       taskGitService as never,
       taskTerminalService as never,
-      taskStepLabelSummaryService as never,
       taskTitleSuggestionService as never,
       taskWorkspaceWatchService as never,
     );
