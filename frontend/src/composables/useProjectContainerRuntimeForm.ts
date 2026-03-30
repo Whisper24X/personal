@@ -12,6 +12,7 @@ export type ProjectContainerRuntimeFormState = {
   containerMemoryMb: string
   containerPidsLimit: string
   containerEnv: string
+  containerRunnerOrchestration: string
 }
 
 export const createProjectContainerRuntimeFormState = (): ProjectContainerRuntimeFormState => ({
@@ -24,6 +25,7 @@ export const createProjectContainerRuntimeFormState = (): ProjectContainerRuntim
   containerMemoryMb: '',
   containerPidsLimit: '',
   containerEnv: '',
+  containerRunnerOrchestration: '',
 })
 
 export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeFormState) => {
@@ -31,7 +33,6 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
     { label: '跟随全局默认', value: '' },
     { label: 'runner-only', value: 'runner-only' },
     { label: 'preview-web', value: 'preview-web' },
-    { label: 'full-dev-sandbox', value: 'full-dev-sandbox' },
   ]
 
   const containerNetworkModeOptions = [
@@ -93,6 +94,54 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
     return { env, invalidLines }
   }
 
+  const serializeRunnerOrchestration = (value: unknown) => {
+    if (!isObjectRecord(value)) {
+      return ''
+    }
+
+    return `${JSON.stringify(value, null, 2)}\n`
+  }
+
+  const parseRunnerOrchestrationInput = (value: string) => {
+    const raw = value.trim()
+    if (!raw) {
+      return {
+        config: undefined,
+        error: '',
+      }
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (!isObjectRecord(parsed)) {
+        return {
+          config: undefined,
+          error: '服务编排配置必须是一个 JSON 对象',
+        }
+      }
+
+      if (!Array.isArray(parsed.services)) {
+        return {
+          config: undefined,
+          error: '服务编排配置必须包含 services 数组',
+        }
+      }
+
+      return {
+        config: parsed as ProjectContainerRuntimeConfig['runnerOrchestration'],
+        error: '',
+      }
+    } catch (error) {
+      return {
+        config: undefined,
+        error:
+          error instanceof Error
+            ? `服务编排配置 JSON 解析失败：${error.message}`
+            : '服务编排配置 JSON 解析失败',
+      }
+    }
+  }
+
   const syncFromContainerRuntime = (value?: unknown) => {
     const containerRuntime = isObjectRecord(value) ? value : {}
     const resourceLimits = isObjectRecord(containerRuntime.resourceLimits)
@@ -101,8 +150,7 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
 
     form.containerSandboxProfile =
       containerRuntime.sandboxProfile === 'runner-only' ||
-      containerRuntime.sandboxProfile === 'preview-web' ||
-      containerRuntime.sandboxProfile === 'full-dev-sandbox'
+      containerRuntime.sandboxProfile === 'preview-web'
         ? containerRuntime.sandboxProfile
         : ''
     form.containerNetworkMode =
@@ -122,6 +170,9 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
     form.containerMemoryMb = toPositiveNumberText(resourceLimits.memoryMb)
     form.containerPidsLimit = toPositiveNumberText(resourceLimits.pidsLimit)
     form.containerEnv = serializeContainerEnv(containerRuntime.env)
+    form.containerRunnerOrchestration = serializeRunnerOrchestration(
+      containerRuntime.runnerOrchestration,
+    )
   }
 
   const buildContainerRuntimeConfig = (): ProjectContainerRuntimeConfig | undefined => {
@@ -129,8 +180,7 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
 
     if (
       form.containerSandboxProfile === 'runner-only' ||
-      form.containerSandboxProfile === 'preview-web' ||
-      form.containerSandboxProfile === 'full-dev-sandbox'
+      form.containerSandboxProfile === 'preview-web'
     ) {
       runtimeConfig.sandboxProfile = form.containerSandboxProfile
     }
@@ -173,6 +223,13 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
       runtimeConfig.env = parsedEnv.env
     }
 
+    const parsedRunnerOrchestration = parseRunnerOrchestrationInput(
+      form.containerRunnerOrchestration,
+    )
+    if (parsedRunnerOrchestration.config) {
+      runtimeConfig.runnerOrchestration = parsedRunnerOrchestration.config
+    }
+
     return Object.keys(runtimeConfig).length > 0 ? runtimeConfig : undefined
   }
 
@@ -182,11 +239,20 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
       return `容器环境变量格式错误：${parsedEnv.invalidLines.join('，')}`
     }
 
+    const parsedRunnerOrchestration = parseRunnerOrchestrationInput(
+      form.containerRunnerOrchestration,
+    )
+    if (parsedRunnerOrchestration.error) {
+      return parsedRunnerOrchestration.error
+    }
+
     return ''
   }
 
   const buildProjectConfigJson = (currentConfigJson?: Record<string, unknown> | null) => {
     const nextConfigJson = isObjectRecord(currentConfigJson) ? { ...currentConfigJson } : {}
+    delete nextConfigJson.runnerTemplate
+    delete nextConfigJson.runnerImageBuild
     const containerRuntime = buildContainerRuntimeConfig()
 
     if (containerRuntime) {
@@ -204,6 +270,7 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
     containerExposeModeOptions,
     syncFromContainerRuntime,
     parseContainerEnvInput,
+    parseRunnerOrchestrationInput,
     validateContainerRuntime,
     buildContainerRuntimeConfig,
     buildProjectConfigJson,

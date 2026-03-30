@@ -8,9 +8,8 @@ import { ContainerOrchestrationService } from './container-orchestration.service
 import { ProjectExecutionSlotEntity } from './infrastructure/persistence/relational/entities/project-execution-slot.entity';
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { IsolatedRunnerContainerService } from './isolated-runner-container.service';
-import { ProjectRunnerImageRebuildService } from './project-runner-image-rebuild.service';
+import { RunnerOrchestrationService } from './runner-orchestration.service';
 import { ProjectRunnerImageService } from './project-runner-image.service';
-import { ProjectRunnerTemplateDefaultsService } from './project-runner-template-defaults.service';
 
 @Module({
   imports: [
@@ -20,9 +19,8 @@ import { ProjectRunnerTemplateDefaultsService } from './project-runner-template-
   ],
   providers: [
     ContainerExecutionConfigService,
-    ProjectRunnerTemplateDefaultsService,
+    RunnerOrchestrationService,
     ProjectRunnerImageService,
-    ProjectRunnerImageRebuildService,
     IsolatedRunnerContainerService,
     AgentProcessLauncherService,
     ProjectExecutionSlotRepository,
@@ -30,9 +28,8 @@ import { ProjectRunnerTemplateDefaultsService } from './project-runner-template-
   ],
   exports: [
     ContainerExecutionConfigService,
-    ProjectRunnerTemplateDefaultsService,
+    RunnerOrchestrationService,
     ProjectRunnerImageService,
-    ProjectRunnerImageRebuildService,
     ContainerOrchestrationService,
     AgentProcessLauncherService,
     ProjectExecutionSlotRepository,

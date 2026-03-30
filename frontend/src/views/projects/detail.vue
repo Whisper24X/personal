@@ -9,10 +9,6 @@ import {
   createProjectContainerRuntimeFormState,
   useProjectContainerRuntimeForm,
 } from '@/composables/useProjectContainerRuntimeForm'
-import {
-  createProjectRunnerTemplateFormState,
-  useProjectRunnerTemplateForm,
-} from '@/composables/useProjectRunnerTemplateForm'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import { usersApi } from '@/api/users'
@@ -225,7 +221,6 @@ const configForm = reactive({
   runnerArgs: '',
   runnerTimeoutSeconds: '600',
   ...createProjectContainerRuntimeFormState(),
-  ...createProjectRunnerTemplateFormState(),
 })
 
 const {
@@ -236,15 +231,6 @@ const {
   validateContainerRuntime,
   buildProjectConfigJson: buildContainerRuntimeConfigJson,
 } = useProjectContainerRuntimeForm(configForm)
-const {
-  applyDefaultRunnerTemplates,
-  clearRunnerTemplateOverrides,
-  syncFromRunnerTemplate,
-  validateRunnerTemplate,
-  buildProjectConfigJson: buildRunnerTemplateConfigJson,
-} = useProjectRunnerTemplateForm(configForm, {
-  getSandboxProfile: () => configForm.containerSandboxProfile,
-})
 
 const formatDate = (value?: string) => {
   if (!value) return '-'
@@ -1306,9 +1292,6 @@ const syncConfigForm = (currentProject: Project) => {
       ? String(runnerConfig.timeoutSeconds)
       : '600'
   syncFromContainerRuntime(configJson.containerRuntime)
-  syncFromRunnerTemplate(configJson.runnerTemplate ?? null, {
-    whenMissing: 'empty',
-  })
 }
 
 const loadProjectContext = async () => {
@@ -1551,11 +1534,6 @@ const saveConfig = async () => {
       validationMessage.value = containerRuntimeValidationMessage
       return
     }
-    const runnerTemplateValidationMessage = validateRunnerTemplate()
-    if (runnerTemplateValidationMessage) {
-      validationMessage.value = runnerTemplateValidationMessage
-      return
-    }
 
     const currentConfigJson = isObjectRecord(project.value.configJson)
       ? { ...(project.value.configJson as Record<string, unknown>) }
@@ -1593,16 +1571,12 @@ const saveConfig = async () => {
       delete configJson.worktreeBaseDir
     }
 
-    const mergedConfigJson = buildRunnerTemplateConfigJson(
-      buildContainerRuntimeConfigJson(configJson),
-    )
-
     await projectsApi.update(projectId.value, {
       name: configForm.name.trim(),
       description: configForm.description.trim() || undefined,
       gitUrl: configForm.gitUrl.trim(),
       defaultBranch: configForm.defaultBranch.trim() || 'main',
-      configJson: mergedConfigJson,
+      configJson: buildContainerRuntimeConfigJson(configJson),
     })
 
     await loadProjectData()
@@ -2927,61 +2901,19 @@ onBeforeUnmount(() => {
               />
             </label>
 
-            <div class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p class="text-xs font-semibold text-muted-foreground">项目级 Runner 模板</p>
-                  <p class="mt-1 text-[11px] text-muted-foreground">
-                    默认根据隔离容器设置自动生成；只有填写的项才会覆盖项目级配置。
-                  </p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
-                    type="button"
-                    @click="applyDefaultRunnerTemplates"
-                  >
-                    载入默认模板
-                  </button>
-                  <button
-                    class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
-                    type="button"
-                    @click="clearRunnerTemplateOverrides"
-                  >
-                    清空并回退全局
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">Dockerfile.runner</span>
-              <textarea
-                v-model="configForm.runnerDockerfile"
-                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                placeholder="输入项目级 Dockerfile.runner"
-                spellcheck="false"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">sandbox.nginx.conf</span>
-              <textarea
-                v-model="configForm.runnerSandboxNginxConf"
-                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                placeholder="输入项目级 sandbox.nginx.conf"
-                spellcheck="false"
-              />
-            </label>
-
             <label class="space-y-1 md:col-span-2">
-              <span class="text-xs font-semibold text-muted-foreground">sandbox.supervisord.conf</span>
+              <span class="text-xs font-semibold text-muted-foreground">
+                结构化服务编排配置（JSON）
+              </span>
               <textarea
-                v-model="configForm.runnerSandboxSupervisordConf"
-                class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                placeholder="输入项目级 sandbox.supervisord.conf"
+                v-model="configForm.containerRunnerOrchestration"
+                class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;backend&quot;,&#10;      &quot;workdir&quot;: &quot;backend&quot;,&#10;      &quot;command&quot;: &quot;npm run start:dev&quot;,&#10;      &quot;port&quot;: 9000&#10;    }&#10;  ],&#10;  &quot;routes&quot;: [&#10;    {&#10;      &quot;path&quot;: &quot;/api/&quot;,&#10;      &quot;service&quot;: &quot;backend&quot;,&#10;      &quot;upstreamPath&quot;: &quot;/&quot;,&#10;      &quot;websocket&quot;: true&#10;    }&#10;  ]&#10;}"
                 spellcheck="false"
               />
+              <p class="text-[11px] text-muted-foreground">
+                平台配置是唯一真源；如项目配置了本地仓库路径，保存后会写出仓库根目录 `ainative.runner.json`。
+              </p>
             </label>
 
             <label class="space-y-1 md:col-span-2">

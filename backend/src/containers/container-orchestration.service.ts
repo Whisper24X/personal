@@ -3,6 +3,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { createServer } from 'net';
 import { Project } from '../projects/domain/project';
@@ -14,6 +15,7 @@ import { IsolatedRunnerContainerService } from './isolated-runner-container.serv
 import { SlotAccessMetadata } from './domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { ProjectRunnerImageService } from './project-runner-image.service';
+import { RunnerOrchestrationService } from './runner-orchestration.service';
 
 @Injectable()
 export class ContainerOrchestrationService
@@ -30,6 +32,8 @@ export class ContainerOrchestrationService
     private readonly isolatedRunner: IsolatedRunnerContainerService,
     private readonly slotRepository: ProjectExecutionSlotRepository,
     private readonly taskRepository: TaskRepository,
+    @Optional()
+    private readonly runnerOrchestration: RunnerOrchestrationService | null = null,
   ) {}
 
   onModuleInit(): void {
@@ -432,6 +436,21 @@ export class ContainerOrchestrationService
           : [];
 
       try {
+        const runnerConfig =
+          this.runnerOrchestration?.buildProjectRunnerConfigFile(
+            params.project,
+          ) ?? null;
+        const containerEnv = {
+          ...this.config.getRunnerEnv(params.project),
+          AINATIVE_RUNNER_LISTEN_PORT: String(
+            this.config.getRunnerExposeContainerPort(params.project),
+          ),
+          ...(runnerConfig
+            ? {
+                AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
+              }
+            : {}),
+        };
         const result = await this.isolatedRunner.run({
           containerName: params.containerName,
           image: params.runnerImage,
@@ -440,11 +459,16 @@ export class ContainerOrchestrationService
           command: this.config.usesSandboxEntrypoint(params.project)
             ? ['/usr/local/bin/ainative-runner-entrypoint']
             : ['sleep', 'infinity'],
-          anonymousVolumeMounts: this.config.getRunnerAnonymousVolumeMounts(
-            this.config.getRunnerWorkspace(),
-            params.project,
-          ),
-          env: this.config.getRunnerEnv(params.project),
+          anonymousVolumeMounts:
+            this.runnerOrchestration?.buildAnonymousVolumeMounts(
+              this.config.getRunnerWorkspace(),
+              params.project,
+            ) ??
+            this.config.getRunnerAnonymousVolumeMounts(
+              this.config.getRunnerWorkspace(),
+              params.project,
+            ),
+          env: containerEnv,
           resourceLimits: this.config.resourceLimitsForProfile(params.project),
           readinessProbeUrl: this.config.getRunnerReadinessProbeUrl(
             params.project,

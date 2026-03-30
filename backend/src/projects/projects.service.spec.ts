@@ -90,22 +90,6 @@ const createProjectsService = () => {
   const isolatedRunner = {
     inspect: jest.fn().mockResolvedValue(null),
   };
-  const projectRunnerImageRebuild = {
-    createPendingStatus: jest.fn().mockReturnValue({
-      status: 'building',
-      startedAt: '2026-03-27T15:00:00.000Z',
-      finishedAt: null,
-      errorMessage: null,
-      imageTag: null,
-    }),
-    mergeBuildStatus: jest
-      .fn()
-      .mockImplementation((configJson, buildStatus) => ({
-        ...(configJson ?? {}),
-        runnerImageBuild: buildStatus,
-      })),
-    scheduleProjectRebuild: jest.fn(),
-  };
   const configService = {
     get: jest.fn().mockReturnValue('/tmp/ainative-data-root'),
   };
@@ -127,7 +111,6 @@ const createProjectsService = () => {
     slotRepository as never,
     containerConfig as never,
     isolatedRunner as never,
-    projectRunnerImageRebuild as never,
     configService as never,
     agentRunnerService as never,
   );
@@ -145,7 +128,6 @@ const createProjectsService = () => {
     slotRepository,
     containerConfig,
     isolatedRunner,
-    projectRunnerImageRebuild,
     agentRunnerService,
   };
 };
@@ -445,27 +427,39 @@ describe('ProjectsService', () => {
     });
   });
 
-  it('should mark image rebuild as building and schedule async rebuild after runtime config changes', async () => {
-    const { service, projectRepository, projectRunnerImageRebuild } =
-      createProjectsService();
+  it('should persist runtime config changes and drop legacy runner fields', async () => {
+    const { service, projectRepository } = createProjectsService();
     const serviceAny = service as any;
     const currentUser = createCurrentUser();
-    const currentProject = createProject();
+    const currentProject = {
+      ...createProject(),
+      configJson: {
+        runnerTemplate: {
+          dockerfileRunner: 'FROM node:20',
+        },
+        runnerImageBuild: {
+          status: 'failed',
+          startedAt: '2026-03-27T14:39:51.174Z',
+        },
+      },
+    };
     const nextConfigJson = {
       containerRuntime: {
         sandboxProfile: 'preview-web',
+      },
+      runnerTemplate: {
+        dockerfileRunner: 'FROM node:22',
+      },
+      runnerImageBuild: {
+        status: 'building',
+        startedAt: '2026-03-27T15:00:00.000Z',
       },
     };
     const updatedProject = {
       ...currentProject,
       configJson: {
-        ...nextConfigJson,
-        runnerImageBuild: {
-          status: 'building',
-          startedAt: '2026-03-27T15:00:00.000Z',
-          finishedAt: null,
-          errorMessage: null,
-          imageTag: null,
+        containerRuntime: {
+          sandboxProfile: 'preview-web',
         },
       },
     };
@@ -484,88 +478,12 @@ describe('ProjectsService', () => {
     );
 
     expect(result).toEqual(updatedProject);
-    expect(projectRunnerImageRebuild.createPendingStatus).toHaveBeenCalledTimes(
-      1,
-    );
-    expect(projectRunnerImageRebuild.mergeBuildStatus).toHaveBeenCalledWith(
-      nextConfigJson,
-      expect.objectContaining({
-        status: 'building',
-      }),
-    );
     expect(projectRepository.update).toHaveBeenCalledWith(
       currentProject.id,
       expect.objectContaining({
         configJson: updatedProject.configJson,
       }),
     );
-    expect(
-      projectRunnerImageRebuild.scheduleProjectRebuild,
-    ).toHaveBeenCalledWith(currentProject.id);
-  });
-
-  it('should schedule image rebuild when explicitly requested without config changes', async () => {
-    const { service, projectRepository, projectRunnerImageRebuild } =
-      createProjectsService();
-    const serviceAny = service as any;
-    const currentUser = createCurrentUser();
-    const currentProject = {
-      ...createProject(),
-      configJson: {
-        containerRuntime: {
-          sandboxProfile: 'preview-web',
-        },
-        runnerImageBuild: {
-          status: 'failed',
-          startedAt: '2026-03-27T14:39:51.174Z',
-          finishedAt: '2026-03-27T14:39:51.194Z',
-          errorMessage: 'previous error',
-          imageTag: null,
-        },
-      },
-    };
-    const updatedProject = {
-      ...currentProject,
-      configJson: {
-        containerRuntime: {
-          sandboxProfile: 'preview-web',
-        },
-        runnerImageBuild: {
-          status: 'building',
-          startedAt: '2026-03-27T15:00:00.000Z',
-          finishedAt: null,
-          errorMessage: null,
-          imageTag: null,
-        },
-      },
-    };
-
-    jest
-      .spyOn(serviceAny, 'ensureCanUpdateProjectItem')
-      .mockResolvedValue(currentProject);
-    projectRepository.update.mockResolvedValue(updatedProject);
-
-    const result = await service.update(
-      currentProject.id,
-      {
-        rebuildRunnerImage: true,
-      } as never,
-      currentUser,
-    );
-
-    expect(result).toEqual(updatedProject);
-    expect(projectRunnerImageRebuild.createPendingStatus).toHaveBeenCalledTimes(
-      1,
-    );
-    expect(projectRunnerImageRebuild.mergeBuildStatus).toHaveBeenCalledWith(
-      currentProject.configJson,
-      expect.objectContaining({
-        status: 'building',
-      }),
-    );
-    expect(
-      projectRunnerImageRebuild.scheduleProjectRebuild,
-    ).toHaveBeenCalledWith(currentProject.id);
   });
 
   it('should inject runtime preview url when project config has no preview url', async () => {

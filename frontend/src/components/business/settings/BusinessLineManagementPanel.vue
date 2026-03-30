@@ -16,18 +16,12 @@ import {
   createProjectContainerRuntimeFormState,
   useProjectContainerRuntimeForm,
 } from '@/composables/useProjectContainerRuntimeForm'
-import {
-  createProjectRunnerTemplateFormState,
-  useProjectRunnerTemplateForm,
-} from '@/composables/useProjectRunnerTemplateForm'
 import { usersApi } from '@/api/users'
 import { workflowApi } from '@/api/workflow'
 import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
 import type {
   Project,
   ProjectContainerRuntimeConfig,
-  ProjectRunnerImageBuildStatus,
-  ProjectRunnerTemplateConfig,
   ProjectCustomRole,
 } from '@/types/api/projects'
 import type { User } from '@/types/api/users'
@@ -184,7 +178,6 @@ const projectFormInitialDescription = ref('')
 const projectFormInitialGitUrl = ref('')
 const projectFormInitialDefaultBranch = ref('main')
 const projectFormInitialContainerRuntime = ref<ProjectContainerRuntimeConfig | null>(null)
-const projectFormInitialRunnerTemplate = ref<ProjectRunnerTemplateConfig | null>(null)
 const projectFormInitialConfigJson = ref<Record<string, unknown> | null>(null)
 const editingProjectId = ref('')
 const projectRuntimeSettingsModalOpen = ref(false)
@@ -192,10 +185,7 @@ const projectRuntimeSettingsSubmitting = ref(false)
 const projectRuntimeSettingsError = ref('')
 const projectRuntimeSettingsProject = ref<ProjectItem | null>(null)
 const projectRuntimeSettingsInitialContainerRuntime = ref<ProjectContainerRuntimeConfig | null>(null)
-const projectRuntimeSettingsInitialRunnerTemplate = ref<ProjectRunnerTemplateConfig | null>(null)
 const projectRuntimeSettingsInitialConfigJson = ref<Record<string, unknown> | null>(null)
-const projectRuntimeSettingsBuildStatus = ref<ProjectRunnerImageBuildStatus | null>(null)
-let projectRuntimeSettingsStatusTimer: ReturnType<typeof setTimeout> | null = null
 
 const memberPermissionModalOpen = ref(false)
 const memberPermissionModalMode = ref<'create' | 'edit'>('create')
@@ -557,12 +547,6 @@ const summarizeProjectRuntimeConfig = (project: ProjectItem) => {
   const containerRuntime = toProjectContainerRuntimeConfig(
     project.configJson?.containerRuntime,
   )
-  const runnerTemplate = toProjectRunnerTemplateConfig(
-    project.configJson?.runnerTemplate,
-  )
-  const buildStatus = toProjectRunnerImageBuildStatus(
-    project.configJson?.runnerImageBuild,
-  )
 
   const summary: string[] = []
 
@@ -578,17 +562,8 @@ const summarizeProjectRuntimeConfig = (project: ProjectItem) => {
   if (containerRuntime?.resourceLimits?.pidsLimit) {
     summary.push(`PIDs: ${containerRuntime.resourceLimits.pidsLimit}`)
   }
-  if (
-    runnerTemplate?.dockerfileRunner ||
-    runnerTemplate?.sandboxNginxConf ||
-    runnerTemplate?.sandboxSupervisordConf
-  ) {
-    summary.push('已覆盖模板')
-  }
-  if (buildStatus?.status === 'building') {
-    summary.push('镜像重建中')
-  } else if (buildStatus?.status === 'failed') {
-    summary.push('镜像重建失败')
+  if (Array.isArray(containerRuntime?.runnerOrchestration?.services)) {
+    summary.push(`服务: ${containerRuntime.runnerOrchestration.services.length}`)
   }
 
   return summary.length > 0 ? summary.join(' · ') : '当前使用默认容器配置'
@@ -606,49 +581,8 @@ const toProjectContainerRuntimeConfig = (value: unknown) => {
     : null
 }
 
-const toProjectRunnerTemplateConfig = (value: unknown) => {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as ProjectRunnerTemplateConfig)
-    : null
-}
-
-const toProjectRunnerImageBuildStatus = (value: unknown) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
-  }
-
-  const buildStatus = value as Record<string, unknown>
-  const status = buildStatus.status
-  const startedAt = buildStatus.startedAt
-
-  if (
-    (status !== 'building' && status !== 'success' && status !== 'failed') ||
-    typeof startedAt !== 'string' ||
-    !startedAt
-  ) {
-    return null
-  }
-
-  return {
-    status,
-    startedAt,
-    finishedAt:
-      typeof buildStatus.finishedAt === 'string' ? buildStatus.finishedAt : null,
-    errorMessage:
-      typeof buildStatus.errorMessage === 'string' ? buildStatus.errorMessage : null,
-    imageTag: typeof buildStatus.imageTag === 'string' ? buildStatus.imageTag : null,
-  } satisfies ProjectRunnerImageBuildStatus
-}
-
 const projectContainerRuntimeForm = useProjectContainerRuntimeForm(
   createProjectContainerRuntimeFormState(),
-)
-const projectRunnerTemplateForm = useProjectRunnerTemplateForm(
-  createProjectRunnerTemplateFormState(),
-  {
-    getSandboxProfile: () =>
-      projectContainerRuntimeForm.buildContainerRuntimeConfig()?.sandboxProfile,
-  },
 )
 
 const mapProjectItem = (project: Project): ProjectItem => {
@@ -676,32 +610,13 @@ const replaceLineProject = (project: Project) => {
   )
 }
 
-const clearProjectRuntimeSettingsStatusTimer = () => {
-  if (projectRuntimeSettingsStatusTimer !== null) {
-    window.clearTimeout(projectRuntimeSettingsStatusTimer)
-    projectRuntimeSettingsStatusTimer = null
-  }
-}
-
-const shouldPollProjectRuntimeSettingsBuildStatus = (
-  buildStatus?: ProjectRunnerImageBuildStatus | null,
-) => {
-  return buildStatus?.status === 'building'
-}
-
 const applyProjectRuntimeSettingsProject = (project: Project | ProjectItem) => {
   projectRuntimeSettingsProject.value = mapProjectItem(project as Project)
   projectRuntimeSettingsInitialContainerRuntime.value = toProjectContainerRuntimeConfig(
     project.configJson?.containerRuntime,
   )
-  projectRuntimeSettingsInitialRunnerTemplate.value = toProjectRunnerTemplateConfig(
-    project.configJson?.runnerTemplate,
-  )
   projectRuntimeSettingsInitialConfigJson.value = toProjectConfigJsonRecord(
     project.configJson,
-  )
-  projectRuntimeSettingsBuildStatus.value = toProjectRunnerImageBuildStatus(
-    project.configJson?.runnerImageBuild,
   )
 }
 
@@ -2219,7 +2134,6 @@ const openCreateProjectModal = () => {
   projectFormInitialGitUrl.value = ''
   projectFormInitialDefaultBranch.value = 'main'
   projectFormInitialContainerRuntime.value = null
-  projectFormInitialRunnerTemplate.value = null
   projectFormInitialConfigJson.value = null
   projectFormError.value = ''
   projectFormModalOpen.value = true
@@ -2239,9 +2153,6 @@ const openEditProjectModal = (project: ProjectItem) => {
   projectFormInitialContainerRuntime.value = toProjectContainerRuntimeConfig(
     project.configJson?.containerRuntime,
   )
-  projectFormInitialRunnerTemplate.value = toProjectRunnerTemplateConfig(
-    project.configJson?.runnerTemplate,
-  )
   projectFormInitialConfigJson.value = toProjectConfigJsonRecord(project.configJson)
   projectFormError.value = ''
   projectFormModalOpen.value = true
@@ -2252,49 +2163,13 @@ const openProjectRuntimeSettingsModal = (project: ProjectItem) => {
     return
   }
 
-  clearProjectRuntimeSettingsStatusTimer()
   applyProjectRuntimeSettingsProject(project)
   projectRuntimeSettingsError.value = ''
   projectRuntimeSettingsModalOpen.value = true
-
-  if (shouldPollProjectRuntimeSettingsBuildStatus(projectRuntimeSettingsBuildStatus.value)) {
-    projectRuntimeSettingsStatusTimer = setTimeout(() => {
-      void refreshProjectRuntimeSettingsBuildStatus(project.id)
-    }, 1500)
-  }
 }
 
 const handleProjectRuntimeSettingsModalOpenChange = (open: boolean) => {
   projectRuntimeSettingsModalOpen.value = open
-  if (!open) {
-    clearProjectRuntimeSettingsStatusTimer()
-  }
-}
-
-const refreshProjectRuntimeSettingsBuildStatus = async (projectId: string) => {
-  if (!projectRuntimeSettingsModalOpen.value || projectRuntimeSettingsProject.value?.id !== projectId) {
-    return
-  }
-
-  try {
-    projectRuntimeSettingsError.value = ''
-    const project = await projectsApi.detail(projectId)
-    if (!projectRuntimeSettingsModalOpen.value || project.id !== projectRuntimeSettingsProject.value?.id) {
-      return
-    }
-
-    applyProjectRuntimeSettingsProject(project)
-    replaceLineProject(project)
-
-    if (shouldPollProjectRuntimeSettingsBuildStatus(projectRuntimeSettingsBuildStatus.value)) {
-      clearProjectRuntimeSettingsStatusTimer()
-      projectRuntimeSettingsStatusTimer = setTimeout(() => {
-        void refreshProjectRuntimeSettingsBuildStatus(project.id)
-      }, 2000)
-    }
-  } catch (error) {
-    projectRuntimeSettingsError.value = toErrorMessage(error, '刷新镜像重建状态失败')
-  }
 }
 
 const submitProjectForm = async (payload: {
@@ -2303,7 +2178,6 @@ const submitProjectForm = async (payload: {
   gitUrl: string
   defaultBranch: string
   containerRuntime?: ProjectContainerRuntimeConfig
-  runnerTemplate?: ProjectRunnerTemplateConfig
 }) => {
   if (!activeLineId.value) {
     return
@@ -2314,7 +2188,6 @@ const submitProjectForm = async (payload: {
 
   try {
     projectContainerRuntimeForm.syncFromContainerRuntime(payload.containerRuntime)
-    projectRunnerTemplateForm.syncFromRunnerTemplate(payload.runnerTemplate)
 
     if (projectFormMode.value === 'create') {
       if (!canCreateProjectItem.value) {
@@ -2326,9 +2199,7 @@ const submitProjectForm = async (payload: {
         description: normalizeOptionalText(payload.description),
         gitUrl: payload.gitUrl.trim(),
         defaultBranch: payload.defaultBranch.trim() || 'main',
-        configJson: projectRunnerTemplateForm.buildProjectConfigJson(
-          projectContainerRuntimeForm.buildProjectConfigJson(undefined),
-        ),
+        configJson: projectContainerRuntimeForm.buildProjectConfigJson(undefined),
       })
     } else {
       if (!editingProjectId.value || !canUpdateProjectItem.value) {
@@ -2340,9 +2211,7 @@ const submitProjectForm = async (payload: {
         description: payload.description.trim(),
         gitUrl: payload.gitUrl.trim(),
         defaultBranch: payload.defaultBranch.trim() || 'main',
-        configJson: projectRunnerTemplateForm.buildProjectConfigJson(
-          projectContainerRuntimeForm.buildProjectConfigJson(projectFormInitialConfigJson.value),
-        ),
+        configJson: projectContainerRuntimeForm.buildProjectConfigJson(projectFormInitialConfigJson.value),
       })
     }
 
@@ -2360,7 +2229,6 @@ const submitProjectForm = async (payload: {
 
 const submitProjectRuntimeSettings = async (payload: {
   containerRuntime?: ProjectContainerRuntimeConfig
-  runnerTemplate?: ProjectRunnerTemplateConfig
 }) => {
   const project = projectRuntimeSettingsProject.value
   if (!project || !canUpdateProjectItem.value) {
@@ -2372,34 +2240,21 @@ const submitProjectRuntimeSettings = async (payload: {
 
   try {
     projectContainerRuntimeForm.syncFromContainerRuntime(payload.containerRuntime)
-    projectRunnerTemplateForm.syncFromRunnerTemplate(payload.runnerTemplate)
 
     const updatedProject = await projectsApi.update(project.id, {
       name: project.name.trim(),
       description: project.description?.trim() ?? '',
       gitUrl: project.gitUrl.trim(),
       defaultBranch: project.defaultBranch.trim() || 'main',
-      rebuildRunnerImage: true,
-      configJson: projectRunnerTemplateForm.buildProjectConfigJson(
-        projectContainerRuntimeForm.buildProjectConfigJson(
-          projectRuntimeSettingsInitialConfigJson.value,
-        ),
+      configJson: projectContainerRuntimeForm.buildProjectConfigJson(
+        projectRuntimeSettingsInitialConfigJson.value,
       ),
     })
 
-    clearProjectRuntimeSettingsStatusTimer()
     applyProjectRuntimeSettingsProject(updatedProject)
     replaceLineProject(updatedProject)
     emit('request-refresh')
-
-    if (shouldPollProjectRuntimeSettingsBuildStatus(projectRuntimeSettingsBuildStatus.value)) {
-      projectRuntimeSettingsStatusTimer = setTimeout(() => {
-        void refreshProjectRuntimeSettingsBuildStatus(updatedProject.id)
-      }, 1500)
-      message.success('保存成功，正在重建镜像')
-    } else {
-      message.success('保存隔离容器设置成功')
-    }
+    message.success('保存隔离容器设置成功')
   } catch (error) {
     const errMsg = toErrorMessage(error, '保存隔离容器设置失败')
     projectRuntimeSettingsError.value = errMsg
@@ -2410,7 +2265,7 @@ const submitProjectRuntimeSettings = async (payload: {
 }
 
 onBeforeUnmount(() => {
-  clearProjectRuntimeSettingsStatusTimer()
+  projectRuntimeSettingsModalOpen.value = false
 })
 
 const openProjectDeleteModal = (project: ProjectItem) => {
@@ -4362,7 +4217,6 @@ watch(
         :initial-git-url="projectFormInitialGitUrl"
         :initial-default-branch="projectFormInitialDefaultBranch"
         :initial-container-runtime="projectFormInitialContainerRuntime"
-        :initial-runner-template="projectFormInitialRunnerTemplate"
         :error-message="projectFormError"
         @update:open="projectFormModalOpen = $event"
         @submit="submitProjectForm"
@@ -4374,8 +4228,6 @@ watch(
         :project-name="projectRuntimeSettingsProject?.name ?? ''"
         :project-git-url="projectRuntimeSettingsProject?.gitUrl ?? ''"
         :initial-container-runtime="projectRuntimeSettingsInitialContainerRuntime"
-        :initial-runner-template="projectRuntimeSettingsInitialRunnerTemplate"
-        :build-status="projectRuntimeSettingsBuildStatus"
         :error-message="projectRuntimeSettingsError"
         @update:open="handleProjectRuntimeSettingsModalOpenChange"
         @submit="submitProjectRuntimeSettings"

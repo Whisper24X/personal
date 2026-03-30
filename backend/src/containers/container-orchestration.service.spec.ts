@@ -238,7 +238,10 @@ describe('ContainerOrchestrationService', () => {
       expect.objectContaining({
         containerName: 'ainative-task-task-1',
         image: 'ainative/runner:project-1',
-        env: { PORT: '4173' },
+        env: {
+          PORT: '4173',
+          AINATIVE_RUNNER_LISTEN_PORT: '4173',
+        },
         resourceLimits: { memoryMb: 3072, pidsLimit: 300 },
         networkMode: 'bridge',
         startTimeoutMs: 90000,

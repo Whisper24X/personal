@@ -1,7 +1,10 @@
 {
-  "name": "ainative",
+  "name": "ainative-cli",
   "version": "0.0.0",
   "private": true,
+  "bin": {
+    "ainative": "./cli/ainative-cli.mjs"
+  },
   "scripts": {
     "dev": "sh -c 'pnpm --dir backend run start:dev & backend_pid=$!; trap \"kill $backend_pid\" EXIT INT TERM; until node -e \"fetch(\\\"http://127.0.0.1:9000/\\\").then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))\"; do sleep 1; done; pnpm --dir frontend dev'",
     "dev:backend": "pnpm --dir backend run start:dev",
@@ -22,7 +25,8 @@
     "docker:logs": "docker compose logs -f",
     "docker:restart": "docker compose restart",
     "docker:clean": "docker compose down -v",
-    "clean": "rm -rf frontend/node_modules frontend/dist backend/node_modules backend/dist"
+    "clean": "rm -rf frontend/node_modules frontend/dist backend/node_modules backend/dist",
+    "cli": "node ./cli/ainative-cli.mjs"
   },
   "devDependencies": {
     "husky": "^9.1.7",

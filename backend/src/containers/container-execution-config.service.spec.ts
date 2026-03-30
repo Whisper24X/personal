@@ -43,12 +43,12 @@ describe('ContainerExecutionConfigService', () => {
     ]);
   });
 
-  it('should use sandbox defaults for full-dev-sandbox profile', () => {
+  it('should use sandbox defaults for preview-web profile', () => {
     const service = createService({
-      AINATIVE_TASK_SANDBOX_PROFILE: 'full-dev-sandbox',
+      AINATIVE_TASK_SANDBOX_PROFILE: 'preview-web',
     });
 
-    expect(service.getSandboxProfile()).toBe('full-dev-sandbox');
+    expect(service.getSandboxProfile()).toBe('preview-web');
     expect(service.usesSandboxEntrypoint()).toBe(true);
     expect(service.getRunnerNetworkMode()).toBe('bridge');
     expect(service.shouldExposeSandboxPort()).toBe(true);
@@ -61,6 +61,10 @@ describe('ContainerExecutionConfigService', () => {
       '/workspace/frontend/node_modules',
       '/workspace/logs',
     ]);
+    expect(service.resourceLimitsForProfile()).toEqual({
+      memoryMb: 2048,
+      pidsLimit: 256,
+    });
   });
 
   it('should respect sandbox overrides when provided', () => {

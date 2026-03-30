@@ -8,14 +8,11 @@
 # 基于 golang:1.23-bookworm (Debian)，预装 Go 工具链 + Node 22/pnpm + protoc
 # 使用 glibc 以兼容 Taro @tarojs/binding-linux-x64-gnu（Alpine musl 不支持）
 #
-# 运行模式（由入口脚本 entrypoint.sh 自动判断）:
-#   - sandbox 模式: 检测到 ainative-backend + ainative-shadow + ainative-app 三个目录
-#                   → 使用预置的 sandbox.nginx.conf + sandbox.supervisord.conf
-#   - repo 模式:    检测到 backend/ 或 frontend/ 目录
-#                   → 动态生成 nginx + supervisord 配置
-#   - runner-only:  编排层追加 `sleep infinity`，仅作为 AI agent 执行环境
+# 运行模式：
+#   - 仅支持结构化 runner 编排 JSON
+#   - 平台通过环境变量注入，或本地通过仓库根目录 ainative.runner.json 启动
 #
-# 构建: docker compose build  或  ./sandbox/sandbox.sh build
+# 构建: docker build -f runner/Dockerfile.runner -t ainative/runner:latest .
 # ============================================================
 
 FROM golang:1.23-bookworm
@@ -89,8 +86,8 @@ RUN cd /tmp \
 # SSH + Git（用于拉取 gitlab.yc345.tv 私有依赖）
 # ============================================================
 
-COPY backend/runner/ssh/id_ed25519 /root/.ssh/id_ed25519
-COPY backend/runner/ssh/known_hosts /root/.ssh/known_hosts
+COPY ssh/id_ed25519 /root/.ssh/id_ed25519
+COPY ssh/known_hosts /root/.ssh/known_hosts
 RUN chmod 700 /root/.ssh \
     && chmod 600 /root/.ssh/id_ed25519 \
     && chmod 644 /root/.ssh/known_hosts \
@@ -175,13 +172,10 @@ ENV CGO_ENABLED=1
 # 配置文件 & 入口脚本
 # ============================================================
 
-# sandbox 模式下的预置配置（ainative-backend + ainative-shadow + ainative-app 三合一）
-COPY backend/runner/sandbox.nginx.conf /etc/ainative/sandbox.nginx.conf
-COPY backend/runner/sandbox.supervisord.conf /etc/ainative/sandbox.supervisord.conf
-
-# 入口脚本：根据 /workspace 下的目录结构自动判断运行模式
-COPY backend/runner/entrypoint.sh /usr/local/bin/ainative-runner-entrypoint
+COPY runner/render-runner-config.mjs /usr/local/bin/ainative-render-runner-config
+COPY runner/entrypoint.sh /usr/local/bin/ainative-runner-entrypoint
 RUN chmod +x /usr/local/bin/ainative-runner-entrypoint \
+    && chmod +x /usr/local/bin/ainative-render-runner-config \
     && mkdir -p /var/log/nginx /run/nginx /etc/ainative /var/log/supervisor /workspace/logs
 
 WORKDIR /workspace

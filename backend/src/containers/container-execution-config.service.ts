@@ -3,9 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { networkInterfaces } from 'os';
 import { Project } from '../projects/domain/project';
 import { Task } from '../tasks/domain/task';
+import { RunnerNetworkMode } from './runner-orchestration.types';
+export type { RunnerNetworkMode } from './runner-orchestration.types';
 
-export type SandboxProfile = 'runner-only' | 'preview-web' | 'full-dev-sandbox';
-export type RunnerNetworkMode = 'host' | 'bridge';
+export type SandboxProfile = 'runner-only' | 'preview-web';
 export type ProjectContainerRuntimeConfig = {
   sandboxProfile?: SandboxProfile;
   networkMode?: RunnerNetworkMode;
@@ -18,6 +19,7 @@ export type ProjectContainerRuntimeConfig = {
     pidsLimit?: number;
   };
   env?: Record<string, string>;
+  runnerOrchestration?: Record<string, unknown>;
 };
 
 @Injectable()
@@ -78,7 +80,7 @@ export class ContainerExecutionConfigService {
       .get<string>('AINATIVE_TASK_SANDBOX_PROFILE', { infer: true })
       ?.trim()
       .toLowerCase();
-    if (profile === 'preview-web' || profile === 'full-dev-sandbox') {
+    if (profile === 'preview-web') {
       return profile;
     }
     return 'runner-only';
@@ -110,7 +112,8 @@ export class ContainerExecutionConfigService {
     return (
       this.configService
         .get<string>('AINATIVE_RUNNER_READINESS_URL', { infer: true })
-        ?.trim() || 'http://127.0.0.1:8080/health'
+        ?.trim() ||
+      `http://127.0.0.1:${this.getRunnerExposeContainerPort(project)}/health`
     );
   }
 
@@ -230,11 +233,7 @@ export class ContainerExecutionConfigService {
     const profile = this.getSandboxProfile(project);
     const projectConfig = this.readProjectContainerRuntimeConfig(project);
     const defaultLimits =
-      profile === 'full-dev-sandbox'
-        ? { memoryMb: 4096, pidsLimit: 512 }
-        : profile === 'preview-web'
-          ? { memoryMb: 2048, pidsLimit: 256 }
-          : {};
+      profile === 'preview-web' ? { memoryMb: 2048, pidsLimit: 256 } : {};
 
     return {
       ...defaultLimits,
@@ -299,6 +298,9 @@ export class ContainerExecutionConfigService {
     );
     const resourceLimitsSource = this.toObjectRecord(rawConfig.resourceLimits);
     const env = this.resolveStringEnv(this.toObjectRecord(rawConfig.env));
+    const runnerOrchestration = this.toObjectRecord(
+      rawConfig.runnerOrchestration,
+    );
 
     return {
       ...(sandboxProfile ? { sandboxProfile } : {}),
@@ -332,6 +334,7 @@ export class ContainerExecutionConfigService {
           }
         : {}),
       ...(Object.keys(env).length ? { env } : {}),
+      ...(runnerOrchestration ? { runnerOrchestration } : {}),
     };
   }
 
@@ -343,11 +346,7 @@ export class ContainerExecutionConfigService {
   }
 
   private resolveSandboxProfile(value: unknown): SandboxProfile | null {
-    if (
-      value === 'runner-only' ||
-      value === 'preview-web' ||
-      value === 'full-dev-sandbox'
-    ) {
+    if (value === 'runner-only' || value === 'preview-web') {
       return value;
     }
     return null;

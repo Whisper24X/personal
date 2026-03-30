@@ -5,15 +5,7 @@ import {
   createProjectContainerRuntimeFormState,
   useProjectContainerRuntimeForm,
 } from '@/composables/useProjectContainerRuntimeForm'
-import {
-  createProjectRunnerTemplateFormState,
-  useProjectRunnerTemplateForm,
-} from '@/composables/useProjectRunnerTemplateForm'
-import type {
-  ProjectContainerRuntimeConfig,
-  ProjectRunnerImageBuildStatus,
-  ProjectRunnerTemplateConfig,
-} from '@/types/api/projects'
+import type { ProjectContainerRuntimeConfig } from '@/types/api/projects'
 
 defineOptions({
   name: 'ProjectRuntimeSettingsModal',
@@ -25,25 +17,16 @@ const props = defineProps<{
   projectName: string
   projectGitUrl: string
   initialContainerRuntime?: ProjectContainerRuntimeConfig | null
-  initialRunnerTemplate?: ProjectRunnerTemplateConfig | null
-  buildStatus?: ProjectRunnerImageBuildStatus | null
   errorMessage?: string
 }>()
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
-  (
-    event: 'submit',
-    payload: {
-      containerRuntime?: ProjectContainerRuntimeConfig
-      runnerTemplate?: ProjectRunnerTemplateConfig
-    },
-  ): void
+  (event: 'submit', payload: { containerRuntime?: ProjectContainerRuntimeConfig }): void
 }>()
 
 const validationMessage = ref('')
 const containerRuntimeForm = reactive(createProjectContainerRuntimeFormState())
-const runnerTemplateForm = reactive(createProjectRunnerTemplateFormState())
 
 const {
   containerSandboxProfileOptions,
@@ -53,15 +36,6 @@ const {
   validateContainerRuntime,
   buildContainerRuntimeConfig,
 } = useProjectContainerRuntimeForm(containerRuntimeForm)
-const {
-  applyDefaultRunnerTemplates,
-  clearRunnerTemplateOverrides,
-  syncFromRunnerTemplate,
-  validateRunnerTemplate,
-  buildRunnerTemplateConfig,
-} = useProjectRunnerTemplateForm(runnerTemplateForm, {
-  getSandboxProfile: () => containerRuntimeForm.containerSandboxProfile,
-})
 
 const PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX = 140
 
@@ -69,63 +43,8 @@ const modalTitle = computed(() => {
   return '隔离容器设置'
 })
 
-const formatStatusTime = (value?: string | null) => {
-  if (!value) {
-    return '-'
-  }
-
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) {
-    return value
-  }
-
-  return parsed.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-const buildStatusLabel = computed(() => {
-  if (!props.buildStatus) {
-    return '尚未触发重建'
-  }
-
-  if (props.buildStatus.status === 'building') {
-    return '构建中'
-  }
-
-  if (props.buildStatus.status === 'success') {
-    return '构建成功'
-  }
-
-  return '构建失败'
-})
-
-const buildStatusToneClass = computed(() => {
-  if (!props.buildStatus) {
-    return 'text-muted-foreground'
-  }
-
-  if (props.buildStatus.status === 'building') {
-    return 'text-primary'
-  }
-
-  if (props.buildStatus.status === 'success') {
-    return 'text-emerald-600'
-  }
-
-  return 'text-destructive'
-})
-
 const syncFormValues = () => {
   syncFromContainerRuntime(props.initialContainerRuntime ?? null)
-  syncFromRunnerTemplate(props.initialRunnerTemplate ?? null, {
-    whenMissing: 'empty',
-  })
   validationMessage.value = ''
 }
 
@@ -140,16 +59,9 @@ const submit = () => {
     return
   }
 
-  const runnerTemplateValidationMessage = validateRunnerTemplate()
-  if (runnerTemplateValidationMessage) {
-    validationMessage.value = runnerTemplateValidationMessage
-    return
-  }
-
   validationMessage.value = ''
   emit('submit', {
     containerRuntime: buildContainerRuntimeConfig(),
-    runnerTemplate: buildRunnerTemplateConfig(),
   })
 }
 
@@ -162,14 +74,11 @@ watch(
   },
 )
 
-watch(
-  () => [props.initialContainerRuntime, props.initialRunnerTemplate, props.projectName],
-  () => {
-    if (props.open) {
-      syncFormValues()
-    }
-  },
-)
+watch(() => [props.initialContainerRuntime, props.projectName], () => {
+  if (props.open) {
+    syncFormValues()
+  }
+})
 </script>
 
 <template>
@@ -230,33 +139,6 @@ watch(
             </p>
             <p class="mt-1 break-all font-mono text-[11px] text-muted-foreground">
               {{ props.projectGitUrl || '-' }}
-            </p>
-          </div>
-
-          <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p class="text-xs font-semibold text-muted-foreground">基础镜像重建状态</p>
-                <p class="mt-1 text-sm font-medium" :class="buildStatusToneClass">
-                  {{ buildStatusLabel }}
-                </p>
-              </div>
-              <p
-                v-if="props.buildStatus?.imageTag"
-                class="max-w-full break-all font-mono text-[11px] text-muted-foreground"
-              >
-                {{ props.buildStatus.imageTag }}
-              </p>
-            </div>
-            <div class="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
-              <p>开始时间：{{ formatStatusTime(props.buildStatus?.startedAt) }}</p>
-              <p>结束时间：{{ formatStatusTime(props.buildStatus?.finishedAt) }}</p>
-            </div>
-            <p v-if="props.buildStatus?.errorMessage" class="mt-2 text-sm text-destructive">
-              {{ props.buildStatus.errorMessage }}
-            </p>
-            <p v-else-if="props.buildStatus?.status === 'building'" class="mt-2 text-[11px] text-muted-foreground">
-              保存成功后会自动轮询状态，直到本次镜像重建完成。
             </p>
           </div>
 
@@ -365,61 +247,19 @@ watch(
             />
           </label>
 
-          <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p class="text-xs font-semibold text-muted-foreground">项目级 Runner 模板</p>
-                <p class="mt-1 text-[11px] text-muted-foreground">
-                  默认根据隔离容器设置自动生成；只有填写的项才会覆盖项目级配置。
-                </p>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
-                  @click="applyDefaultRunnerTemplates"
-                >
-                  载入默认模板
-                </button>
-                <button
-                  type="button"
-                  class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
-                  @click="clearRunnerTemplateOverrides"
-                >
-                  清空并回退全局
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">Dockerfile.runner</span>
-            <textarea
-              v-model="runnerTemplateForm.runnerDockerfile"
-              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-              spellcheck="false"
-              placeholder="输入项目级 Dockerfile.runner"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">sandbox.nginx.conf</span>
-            <textarea
-              v-model="runnerTemplateForm.runnerSandboxNginxConf"
-              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-              spellcheck="false"
-              placeholder="输入项目级 sandbox.nginx.conf"
-            />
-          </label>
-
           <label class="block space-y-1 md:col-span-2">
-            <span class="text-xs font-semibold text-muted-foreground">sandbox.supervisord.conf</span>
+            <span class="text-xs font-semibold text-muted-foreground">
+              结构化服务编排配置（JSON）
+            </span>
             <textarea
-              v-model="runnerTemplateForm.runnerSandboxSupervisordConf"
-              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              v-model="containerRuntimeForm.containerRunnerOrchestration"
+              class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
               spellcheck="false"
-              placeholder="输入项目级 sandbox.supervisord.conf"
+              placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;backend&quot;,&#10;      &quot;workdir&quot;: &quot;backend&quot;,&#10;      &quot;command&quot;: &quot;npm run start:dev&quot;,&#10;      &quot;port&quot;: 9000&#10;    }&#10;  ],&#10;  &quot;routes&quot;: [&#10;    {&#10;      &quot;path&quot;: &quot;/api/&quot;,&#10;      &quot;service&quot;: &quot;backend&quot;,&#10;      &quot;upstreamPath&quot;: &quot;/&quot;,&#10;      &quot;websocket&quot;: true&#10;    }&#10;  ]&#10;}"
             />
+            <p class="text-[11px] text-muted-foreground">
+              平台配置是唯一真源；保存后会导出仓库根目录 `ainative.runner.json` 作为本地启动备份。
+            </p>
           </label>
 
           <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">
@@ -442,7 +282,7 @@ watch(
               class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="props.submitting"
             >
-              {{ props.submitting ? '保存中...' : '保存并重建镜像' }}
+              {{ props.submitting ? '保存中...' : '保存设置' }}
             </button>
           </div>
         </form>

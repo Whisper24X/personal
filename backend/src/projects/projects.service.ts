@@ -9,6 +9,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
   forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -53,12 +54,9 @@ import { UpdateProjectCustomRoleDto } from './dto/update-project-custom-role.dto
 import { WorkflowTemplateRepository } from '../workflow-templates/infrastructure/persistence/workflow-template.repository';
 import { ContainerExecutionConfigService } from '../containers/container-execution-config.service';
 import { IsolatedRunnerContainerService } from '../containers/isolated-runner-container.service';
-import {
-  ProjectRunnerImageBuildStatus,
-  ProjectRunnerImageRebuildService,
-} from '../containers/project-runner-image-rebuild.service';
 import { SlotAccessMetadata } from '../containers/domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from '../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
+import { RunnerOrchestrationService } from '../containers/runner-orchestration.service';
 import {
   ALL_PROJECT_CAPABILITIES,
   PROJECT_DEFAULT_ROLE_TEMPLATES,
@@ -103,10 +101,11 @@ export class ProjectsService {
     private readonly slotRepository: ProjectExecutionSlotRepository,
     private readonly containerConfig: ContainerExecutionConfigService,
     private readonly isolatedRunner: IsolatedRunnerContainerService,
-    private readonly projectRunnerImageRebuild: ProjectRunnerImageRebuildService,
     private readonly configService: ConfigService = new ConfigService(),
     @Inject(forwardRef(() => AgentRunnerService))
     private readonly agentRunnerService: AgentRunnerService,
+    @Optional()
+    private readonly runnerOrchestration: RunnerOrchestrationService | null = null,
   ) {}
 
   async create(
@@ -142,7 +141,7 @@ export class ProjectsService {
         description: createProjectDto.description ?? null,
         gitUrl: createProjectDto.gitUrl,
         defaultBranch: createProjectDto.defaultBranch ?? 'main',
-        configJson: createProjectDto.configJson ?? null,
+        configJson: this.sanitizeProjectConfigJson(createProjectDto.configJson),
       });
     } catch (error) {
       throw this.mapDatabaseErrorToHttpException(
@@ -152,7 +151,8 @@ export class ProjectsService {
     }
 
     try {
-      await this.ensureProjectRepository(project);
+      const repositoryRoot = await this.ensureProjectRepository(project);
+      await this.syncRunnerConfigBackup(project, repositoryRoot);
     } catch (error) {
       await this.rollbackCreatedProject(project.id);
       throw new BadRequestException(
@@ -346,27 +346,9 @@ export class ProjectsService {
       }
     }
 
-    const shouldTriggerRunnerImageRebuild =
-      updateProjectDto.rebuildRunnerImage === true ||
-      (updateProjectDto.configJson !== undefined &&
-        this.shouldTriggerRunnerImageRebuild(
-          currentProject.configJson,
-          updateProjectDto.configJson,
-        ));
-    const pendingRunnerImageBuildStatus = shouldTriggerRunnerImageRebuild
-      ? this.projectRunnerImageRebuild.createPendingStatus()
-      : null;
-    const rebuildConfigSource =
-      updateProjectDto.configJson ??
-      (shouldTriggerRunnerImageRebuild
-        ? (currentProject.configJson ?? {})
-        : undefined);
     const nextConfigJson =
-      rebuildConfigSource !== undefined
-        ? this.buildUpdatedProjectConfigJson(
-            rebuildConfigSource,
-            pendingRunnerImageBuildStatus,
-          )
+      updateProjectDto.configJson !== undefined
+        ? this.sanitizeProjectConfigJson(updateProjectDto.configJson)
         : undefined;
 
     const updatedProject = await this.projectRepository.update(id, {
@@ -406,57 +388,32 @@ export class ProjectsService {
       );
     }
 
-    if (shouldTriggerRunnerImageRebuild) {
-      this.projectRunnerImageRebuild.scheduleProjectRebuild(updatedProject.id);
-    }
+    await this.syncRunnerConfigBackup(updatedProject);
 
     return updatedProject;
-  }
-
-  private shouldTriggerRunnerImageRebuild(
-    currentConfigJson: Record<string, unknown> | null | undefined,
-    nextConfigJson: Record<string, unknown> | null | undefined,
-  ): boolean {
-    return (
-      this.serializeRunnerImageConfig(currentConfigJson) !==
-      this.serializeRunnerImageConfig(nextConfigJson)
-    );
-  }
-
-  private buildUpdatedProjectConfigJson(
-    nextConfigJson: Record<string, unknown>,
-    runnerImageBuildStatus: ProjectRunnerImageBuildStatus | null,
-  ): Record<string, unknown> {
-    if (!runnerImageBuildStatus) {
-      return nextConfigJson;
-    }
-
-    return this.projectRunnerImageRebuild.mergeBuildStatus(
-      nextConfigJson,
-      runnerImageBuildStatus,
-    );
-  }
-
-  private serializeRunnerImageConfig(
-    configJson: Record<string, unknown> | null | undefined,
-  ): string {
-    const safeConfig = configJson ?? {};
-
-    return JSON.stringify({
-      containerRuntime:
-        safeConfig.containerRuntime !== undefined
-          ? safeConfig.containerRuntime
-          : null,
-      runnerTemplate:
-        safeConfig.runnerTemplate !== undefined
-          ? safeConfig.runnerTemplate
-          : null,
-    });
   }
 
   async remove(id: Project['id'], currentUser: JwtPayloadType): Promise<void> {
     await this.ensureCanDeleteProjectItem(id, currentUser);
     await this.projectRepository.remove(id);
+  }
+
+  private sanitizeProjectConfigJson(
+    configJson?: Record<string, unknown> | null,
+  ): Record<string, unknown> | null {
+    if (
+      !configJson ||
+      typeof configJson !== 'object' ||
+      Array.isArray(configJson)
+    ) {
+      return null;
+    }
+
+    const nextConfigJson = { ...configJson };
+    delete nextConfigJson.runnerTemplate;
+    delete nextConfigJson.runnerImageBuild;
+
+    return Object.keys(nextConfigJson).length > 0 ? nextConfigJson : null;
   }
 
   async getDeployInfo(
@@ -2676,6 +2633,42 @@ export class ProjectsService {
       await this.syncProjectRepositoryContent(project, repositoryRoot, options);
       return repositoryRoot;
     });
+  }
+
+  private async syncRunnerConfigBackup(
+    project: Project,
+    repositoryRoot?: string,
+  ): Promise<void> {
+    if (!this.shouldWriteRunnerConfigBackup(project)) {
+      return;
+    }
+    if (!this.runnerOrchestration) {
+      return;
+    }
+
+    try {
+      const resolvedRepositoryRoot =
+        repositoryRoot ??
+        (await this.ensureProjectRepository(project, { syncRemote: false }));
+      await this.runnerOrchestration.writeProjectRunnerConfigFile(
+        project,
+        resolvedRepositoryRoot,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `runner_config_backup_sync_failed ${JSON.stringify({
+          projectId: project.id,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })}`,
+      );
+    }
+  }
+
+  private shouldWriteRunnerConfigBackup(project: Project): boolean {
+    const config = (project.configJson ?? {}) as Record<string, unknown>;
+    return Boolean(
+      typeof config.repoLocalPath === 'string' && config.repoLocalPath.trim(),
+    );
   }
 
   private async withRepositorySyncLock<T>(

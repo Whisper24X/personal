@@ -6,14 +6,7 @@ import {
   createProjectContainerRuntimeFormState,
   useProjectContainerRuntimeForm,
 } from '@/composables/useProjectContainerRuntimeForm'
-import {
-  createProjectRunnerTemplateFormState,
-  useProjectRunnerTemplateForm,
-} from '@/composables/useProjectRunnerTemplateForm'
-import type {
-  ProjectContainerRuntimeConfig,
-  ProjectRunnerTemplateConfig,
-} from '@/types/api/projects'
+import type { ProjectContainerRuntimeConfig } from '@/types/api/projects'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const props = defineProps<{
@@ -26,7 +19,6 @@ const props = defineProps<{
   initialGitUrl: string
   initialDefaultBranch: string
   initialContainerRuntime?: ProjectContainerRuntimeConfig | null
-  initialRunnerTemplate?: ProjectRunnerTemplateConfig | null
   errorMessage?: string
   size?: 'default' | 'large'
 }>()
@@ -41,7 +33,6 @@ const emit = defineEmits<{
       gitUrl: string
       defaultBranch: string
       containerRuntime?: ProjectContainerRuntimeConfig
-      runnerTemplate?: ProjectRunnerTemplateConfig
     },
   ): void
 }>()
@@ -58,7 +49,6 @@ const nameEditedByUser = ref(false)
 const defaultBranchEditedByUser = ref(false)
 const autoFilledName = ref('')
 const containerRuntimeForm = reactive(createProjectContainerRuntimeFormState())
-const runnerTemplateForm = reactive(createProjectRunnerTemplateFormState())
 let inspectTimer: ReturnType<typeof setTimeout> | null = null
 let inspectRequestId = 0
 
@@ -93,15 +83,6 @@ const {
   validateContainerRuntime,
   buildContainerRuntimeConfig,
 } = useProjectContainerRuntimeForm(containerRuntimeForm)
-const {
-  applyDefaultRunnerTemplates,
-  clearRunnerTemplateOverrides,
-  syncFromRunnerTemplate,
-  validateRunnerTemplate,
-  buildRunnerTemplateConfig,
-} = useProjectRunnerTemplateForm(runnerTemplateForm, {
-  getSandboxProfile: () => containerRuntimeForm.containerSandboxProfile,
-})
 
 const PROJECT_FORM_SELECT_PANEL_Z_INDEX = 130
 
@@ -131,9 +112,6 @@ const syncFormValues = () => {
   gitUrl.value = props.initialGitUrl
   defaultBranch.value = props.initialDefaultBranch || 'main'
   syncFromContainerRuntime(props.initialContainerRuntime ?? null)
-  syncFromRunnerTemplate(props.initialRunnerTemplate ?? null, {
-    whenMissing: 'empty',
-  })
   validationMessage.value = ''
   resetAutoFillState()
 }
@@ -266,12 +244,6 @@ const submit = () => {
     return
   }
 
-  const runnerTemplateValidationMessage = validateRunnerTemplate()
-  if (runnerTemplateValidationMessage) {
-    validationMessage.value = runnerTemplateValidationMessage
-    return
-  }
-
   validationMessage.value = ''
   emit('submit', {
     name: name.value.trim(),
@@ -279,7 +251,6 @@ const submit = () => {
     gitUrl: gitUrl.value.trim(),
     defaultBranch: defaultBranch.value.trim(),
     containerRuntime: buildContainerRuntimeConfig(),
-    runnerTemplate: buildRunnerTemplateConfig(),
   })
 }
 
@@ -301,7 +272,6 @@ watch(
     props.initialGitUrl,
     props.initialDefaultBranch,
     props.initialContainerRuntime,
-    props.initialRunnerTemplate,
     props.mode,
   ],
   () => {
@@ -542,61 +512,19 @@ onBeforeUnmount(() => {
             />
           </label>
 
-          <div class="rounded-xl border border-border bg-background/60 p-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p class="text-xs font-semibold text-muted-foreground">项目级 Runner 模板</p>
-                <p class="mt-1 text-[11px] text-muted-foreground">
-                    默认根据隔离容器设置自动生成；只有填写的项才会覆盖项目级配置。
-                </p>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
-                  @click="applyDefaultRunnerTemplates"
-                >
-                    载入默认模板
-                </button>
-                <button
-                  type="button"
-                  class="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
-                  @click="clearRunnerTemplateOverrides"
-                >
-                  清空并回退全局
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">Dockerfile.runner</span>
-            <textarea
-              v-model="runnerTemplateForm.runnerDockerfile"
-              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-              spellcheck="false"
-              placeholder="输入项目级 Dockerfile.runner"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">sandbox.nginx.conf</span>
-            <textarea
-              v-model="runnerTemplateForm.runnerSandboxNginxConf"
-              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-              spellcheck="false"
-              placeholder="输入项目级 sandbox.nginx.conf"
-            />
-          </label>
-
           <label class="block space-y-1 md:col-span-2">
-            <span class="text-xs font-semibold text-muted-foreground">sandbox.supervisord.conf</span>
+            <span class="text-xs font-semibold text-muted-foreground">
+              结构化服务编排配置（JSON）
+            </span>
             <textarea
-              v-model="runnerTemplateForm.runnerSandboxSupervisordConf"
-              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              v-model="containerRuntimeForm.containerRunnerOrchestration"
+              class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
               spellcheck="false"
-              placeholder="输入项目级 sandbox.supervisord.conf"
+              placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;backend&quot;,&#10;      &quot;workdir&quot;: &quot;backend&quot;,&#10;      &quot;command&quot;: &quot;npm run start:dev&quot;,&#10;      &quot;port&quot;: 9000&#10;    }&#10;  ],&#10;  &quot;routes&quot;: [&#10;    {&#10;      &quot;path&quot;: &quot;/api/&quot;,&#10;      &quot;service&quot;: &quot;backend&quot;,&#10;      &quot;upstreamPath&quot;: &quot;/&quot;,&#10;      &quot;websocket&quot;: true&#10;    }&#10;  ]&#10;}"
             />
+            <p class="text-[11px] text-muted-foreground">
+              平台配置是唯一真源；如配置了本地仓库路径，保存后会写出仓库根目录 `ainative.runner.json`。
+            </p>
           </label>
 
           <p v-if="props.mode === 'create' && inspectingRepository" class="text-xs text-muted-foreground">

@@ -10,8 +10,54 @@ export type Project = {
   updatedAt?: string
 }
 
+export type RunnerServiceConfig = {
+  name: string
+  workdir: string
+  command: string
+  port?: number
+  env?: Record<string, string>
+  installCommand?: string
+  installCheckPath?: string
+  priority?: number
+  startsecs?: number
+  startretries?: number
+}
+
+export type RunnerRouteConfig = {
+  path: string
+  action?: 'proxy' | 'redirect'
+  match?: 'prefix' | 'exact' | 'regex'
+  service?: string
+  targetPort?: number
+  upstreamPath?: string
+  websocket?: boolean
+  redirectTo?: string
+  redirectCode?: number
+}
+
+export type RunnerHomepageConfig = {
+  title?: string
+  description?: string
+  links?: Array<{
+    label: string
+    path: string
+  }>
+}
+
+export type RunnerNamedVolumeConfig = {
+  name: string
+  target: string
+}
+
+export type RunnerOrchestrationConfig = {
+  services: RunnerServiceConfig[]
+  routes?: RunnerRouteConfig[]
+  homepage?: RunnerHomepageConfig
+  sharedVolumes?: RunnerNamedVolumeConfig[]
+}
+
 export type ProjectContainerRuntimeConfig = {
-  sandboxProfile?: 'runner-only' | 'preview-web' | 'full-dev-sandbox'
+  sandboxProfile?: 'runner-only' | 'preview-web'
   networkMode?: 'host' | 'bridge'
   exposeLocal?: boolean
   exposeHostIp?: string
@@ -22,20 +68,7 @@ export type ProjectContainerRuntimeConfig = {
     pidsLimit?: number
   }
   env?: Record<string, string>
-}
-
-export type ProjectRunnerTemplateConfig = {
-  dockerfileRunner?: string
-  sandboxNginxConf?: string
-  sandboxSupervisordConf?: string
-}
-
-export type ProjectRunnerImageBuildStatus = {
-  status: 'building' | 'success' | 'failed'
-  startedAt: string
-  finishedAt?: string | null
-  errorMessage?: string | null
-  imageTag?: string | null
+  runnerOrchestration?: RunnerOrchestrationConfig
 }
 
 export type ProjectMemberRole = 'owner' | 'maintainer' | 'developer' | 'viewer'
@@ -70,9 +103,6 @@ export type CreateProjectPayload = {
 }
 
 export type UpdateProjectPayload = Partial<CreateProjectPayload>
-  & {
-    rebuildRunnerImage?: boolean
-  }
 
 export type CreateProjectMemberPayload = {
   userId: string
