@@ -3,13 +3,10 @@ import {
   CreateDateColumn,
   Entity,
   Index,
-  JoinColumn,
-  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
-import { GoalEntity } from './goal.entity';
 
 @Entity({ name: 'goal_plan_items', comment: '任务计划功能组（父级，不物化）' })
 export class GoalPlanItemEntity extends EntityRelationalHelper {
@@ -19,13 +16,6 @@ export class GoalPlanItemEntity extends EntityRelationalHelper {
   @Index('IDX_goal_plan_items_goal_id')
   @Column({ type: 'uuid', comment: '所属需求' })
   goalId: string;
-
-  @ManyToOne(() => GoalEntity, {
-    onDelete: 'CASCADE',
-    createForeignKeyConstraints: false,
-  })
-  @JoinColumn({ name: 'goalId' })
-  goal?: GoalEntity;
 
   @Column({ type: String, length: 240, comment: '标题' })
   title: string;
