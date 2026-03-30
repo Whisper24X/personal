@@ -28,7 +28,9 @@ describe('GoalsService.remove', () => {
       remove: jest.fn(),
     };
     const goalsMetrics = {} as GoalsMetricsService;
-    const gitService = {};
+    const gitService = {
+      deleteLocalBranch: jest.fn().mockResolvedValue(undefined),
+    };
 
     const service = new GoalsService(
       goalRepository as never,
@@ -45,6 +47,7 @@ describe('GoalsService.remove', () => {
       projectsService,
       taskRepository,
       tasksService,
+      gitService,
     };
   };
 
@@ -55,6 +58,7 @@ describe('GoalsService.remove', () => {
       projectsService,
       taskRepository,
       tasksService,
+      gitService,
     } = createService();
 
     goalRepository.findById.mockResolvedValue({
@@ -86,6 +90,11 @@ describe('GoalsService.remove', () => {
     expect(tasksService.remove).toHaveBeenCalledTimes(2);
     expect(tasksService.remove).toHaveBeenNthCalledWith(1, 'task-a', user);
     expect(tasksService.remove).toHaveBeenNthCalledWith(2, 'task-b', user);
+    expect(gitService.deleteLocalBranch).toHaveBeenCalledWith(
+      'project-1',
+      'feature/goal-x',
+      user,
+    );
     expect(projectsService.removeGoalDocsSubtree).toHaveBeenCalledWith(
       'project-1',
       'goal-1',
@@ -104,6 +113,7 @@ describe('GoalsService.remove', () => {
       projectsService,
       taskRepository,
       tasksService,
+      gitService,
     } = createService();
 
     goalRepository.findById.mockResolvedValue({
@@ -130,6 +140,11 @@ describe('GoalsService.remove', () => {
     await service.remove('goal-2', user);
 
     expect(tasksService.remove).not.toHaveBeenCalled();
+    expect(gitService.deleteLocalBranch).toHaveBeenCalledWith(
+      'project-2',
+      'feature/goal-y',
+      user,
+    );
     expect(projectsService.removeGoalDocsSubtree).toHaveBeenCalledWith(
       'project-2',
       'goal-2',

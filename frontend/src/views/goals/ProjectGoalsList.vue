@@ -9,10 +9,14 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { goalStatusLabel } from '@/constants/goal-status-labels'
-import { formatTaskShortTime } from '@/hooks/useSidebarRecentTasks'
+import {
+  formatTaskShortTime,
+  requestSidebarRecentTasksRefresh,
+} from '@/hooks/useSidebarRecentTasks'
 import type { Goal, GoalStatus } from '@/types/api/goals'
 import { useMessage } from '@/hooks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
+import { refreshSidebarRecentTasks } from '@/utils/sidebar-recent-tasks-refresh'
 
 const GOAL_LIST_SELECT_Z = 130
 /** 在触发器下方展开，避免向上弹出显得突兀 */
@@ -106,6 +110,8 @@ async function confirmRemoveGoal() {
   deletingId.value = goal.id
   try {
     await goalsApi.remove(goal.id)
+    requestSidebarRecentTasksRefresh()
+    void refreshSidebarRecentTasks()
     message.success('已删除')
     setDeleteConfirmOpen(false)
     await load()

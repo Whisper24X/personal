@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { GitService } from './git.service';
 
 const createCurrentUser = () => ({
@@ -240,5 +240,176 @@ describe('GitService', () => {
     await expect(
       service.createBranch('project-1', '..bad', 'main', createCurrentUser()),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should not delete protected branch names (no lock)', async () => {
+    const { service, projectsService } = createGitService();
+
+    await service.deleteLocalBranch('project-1', 'main', createCurrentUser());
+
+    expect(projectsService.runWithProjectRepositoryLock).not.toHaveBeenCalled();
+  });
+
+  it('should no-op deleteLocalBranch when branch does not exist locally', async () => {
+    const { service, projectsService } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('main'))
+      .mockResolvedValueOnce(createGitCommandResult('main\nfeature/other'))
+      .mockResolvedValueOnce(
+        createGitCommandResult('origin/main\norigin/feature/other'),
+      );
+
+    await service.deleteLocalBranch(
+      'project-1',
+      'feature/missing',
+      createCurrentUser(),
+    );
+
+    expect(projectsService.runWithProjectRepositoryLock).toHaveBeenCalled();
+    expect(runCommandSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('should delete local branch when it exists and is not checked out', async () => {
+    const { service, projectsService } = createGitService();
+
+    projectsService.runWithProjectRepositoryLock.mockImplementation(
+      async (
+        _projectId: string,
+        _user: unknown,
+        _options: unknown,
+        operation: (ctx: {
+          project: { defaultBranch: string };
+          repositoryRoot: string;
+        }) => Promise<unknown>,
+      ) =>
+        operation({
+          project: { defaultBranch: 'main' },
+          repositoryRoot: '/tmp/project-repo',
+        }),
+    );
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('main'))
+      .mockResolvedValueOnce(createGitCommandResult('main\nfeature/to-delete'))
+      .mockResolvedValueOnce(createGitCommandResult('origin/main'))
+      .mockResolvedValueOnce(createGitCommandResult(''));
+
+    await service.deleteLocalBranch(
+      'project-1',
+      'feature/to-delete',
+      createCurrentUser(),
+    );
+
+    expect(projectsService.runWithProjectRepositoryLock).toHaveBeenCalledWith(
+      'project-1',
+      createCurrentUser(),
+      { syncRemote: false },
+      expect.any(Function),
+    );
+    expect(runCommandSpy).toHaveBeenLastCalledWith([
+      '-C',
+      '/tmp/project-repo',
+      'branch',
+      '-D',
+      'feature/to-delete',
+    ]);
+  });
+
+  it('should switch to default branch before deleting when target is checked out', async () => {
+    const { service, projectsService } = createGitService();
+
+    projectsService.runWithProjectRepositoryLock.mockImplementation(
+      async (
+        _projectId: string,
+        _user: unknown,
+        _options: unknown,
+        operation: (ctx: {
+          project: { defaultBranch: string };
+          repositoryRoot: string;
+        }) => Promise<unknown>,
+      ) =>
+        operation({
+          project: { defaultBranch: 'main' },
+          repositoryRoot: '/tmp/project-repo',
+        }),
+    );
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/on'))
+      .mockResolvedValueOnce(createGitCommandResult('main\nfeature/on'))
+      .mockResolvedValueOnce(createGitCommandResult('origin/main'))
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(createGitCommandResult(''));
+
+    await service.deleteLocalBranch(
+      'project-1',
+      'feature/on',
+      createCurrentUser(),
+    );
+
+    expect(runCommandSpy.mock.calls).toEqual([
+      [['-C', '/tmp/project-repo', 'rev-parse', '--abbrev-ref', 'HEAD']],
+      [
+        [
+          '-C',
+          '/tmp/project-repo',
+          'for-each-ref',
+          '--format=%(refname:short)',
+          'refs/heads',
+        ],
+      ],
+      [
+        [
+          '-C',
+          '/tmp/project-repo',
+          'for-each-ref',
+          '--format=%(refname:short)',
+          'refs/remotes/origin',
+        ],
+      ],
+      [['-C', '/tmp/project-repo', 'switch', 'main']],
+      [['-C', '/tmp/project-repo', 'branch', '-D', 'feature/on']],
+    ]);
+  });
+
+  it('should throw ConflictException when branch delete fails', async () => {
+    const { service, projectsService } = createGitService();
+
+    projectsService.runWithProjectRepositoryLock.mockImplementation(
+      async (
+        _projectId: string,
+        _user: unknown,
+        _options: unknown,
+        operation: (ctx: {
+          project: { defaultBranch: string };
+          repositoryRoot: string;
+        }) => Promise<unknown>,
+      ) =>
+        operation({
+          project: { defaultBranch: 'main' },
+          repositoryRoot: '/tmp/project-repo',
+        }),
+    );
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('main'))
+      .mockResolvedValueOnce(createGitCommandResult('main\nfeature/bad'))
+      .mockResolvedValueOnce(createGitCommandResult('origin/main'))
+      .mockResolvedValueOnce(
+        createGitCommandResult('', { success: false, stderr: 'cannot delete' }),
+      );
+
+    await expect(
+      service.deleteLocalBranch(
+        'project-1',
+        'feature/bad',
+        createCurrentUser(),
+      ),
+    ).rejects.toThrow(ConflictException);
   });
 });
