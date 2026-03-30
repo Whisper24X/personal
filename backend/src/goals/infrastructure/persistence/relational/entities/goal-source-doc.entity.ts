@@ -3,13 +3,10 @@ import {
   CreateDateColumn,
   Entity,
   Index,
-  JoinColumn,
-  ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { GoalSourceDocType } from '../../../../dto/goal-source-doc-type.enum';
-import { GoalEntity } from './goal.entity';
 
 @Entity({ name: 'goal_source_docs', comment: '需求输入资料' })
 export class GoalSourceDocEntity extends EntityRelationalHelper {
@@ -19,13 +16,6 @@ export class GoalSourceDocEntity extends EntityRelationalHelper {
   @Index('IDX_goal_source_docs_goal_id')
   @Column({ type: 'uuid', comment: '所属需求' })
   goalId: string;
-
-  @ManyToOne(() => GoalEntity, {
-    onDelete: 'CASCADE',
-    createForeignKeyConstraints: false,
-  })
-  @JoinColumn({ name: 'goalId' })
-  goal?: GoalEntity;
 
   @Column({ type: String, length: 500, comment: '项目 docs 相对路径' })
   projectDocPath: string;
