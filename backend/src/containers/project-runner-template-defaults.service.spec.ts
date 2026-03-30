@@ -40,6 +40,9 @@ describe('ProjectRunnerTemplateDefaultsService', () => {
     );
 
     expect(defaults.dockerfileRunner).toContain('profile: preview-web');
+    expect(defaults.dockerfileRunner).toContain(
+      'GOPROXY=https://goproxy.cn,direct',
+    );
     expect(defaults.sandboxNginxConf).toContain(
       'proxy_pass http://127.0.0.1:9000/',
     );

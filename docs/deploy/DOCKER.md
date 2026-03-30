@@ -12,14 +12,21 @@
 项目统一使用 [docker-compose.yml](./docker-compose.yml) 进行本地构建和运行。
 
 ```bash
-NODE_ENV=development pnpm run docker
+NODE_ENV=development pnpm run docker:up
 ```
 
-必须显式设置 `NODE_ENV`。Compose 会加载 `backend/.env.${NODE_ENV}`，并把同一个 `NODE_ENV` 传给后端容器；如果没有这个环境变量，`docker compose` 会直接报错。
+必须显式设置 `NODE_ENV`。Compose 会加载 `backend/.env.${NODE_ENV}`，并将该文件中的变量注入后端容器；如果没有这个环境变量，`docker compose` 会直接报错。
+
+后端容器默认以 `backend/.env.${NODE_ENV}` 作为配置来源，不再由 compose 覆盖 `NODE_ENV`、`DATABASE_*` 等同名变量。请确保选中的 env 文件本身就是一份可直接运行的完整配置，并且其中的地址对容器可达：
+
+- 连接宿主机服务时，优先使用 `host.docker.internal`
+- 连接 compose 内服务时，使用服务名，例如 `postgres`、`redis`
+
+唯一保留的 compose 覆盖项是 `AINATIVE_DATA_ROOT_DIR`。这是为了让后端容器经由宿主机 `docker.sock` 启动任务容器时，bind mount 使用宿主机绝对路径。
 
 ```bash
-NODE_ENV=production pnpm run docker
-NODE_ENV=local pnpm run docker
+NODE_ENV=production pnpm run docker:up
+NODE_ENV=local pnpm run docker:up
 ```
 
 该命令会执行：
@@ -37,6 +44,12 @@ NODE_ENV=local pnpm run docker
 
 ```bash
 NODE_ENV=development pnpm run docker:build
+```
+
+如果要重建并启动：
+
+```bash
+NODE_ENV=development pnpm run docker:up:build
 ```
 
 同样支持通过 `NODE_ENV` 选择对应的后端配置文件：

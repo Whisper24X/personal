@@ -53,7 +53,7 @@ FROM golang:1.23-bookworm
 
 ENV TZ=Asia/Shanghai \\
     GO_ENV=development \\
-    GOPROXY=https://proxy.golang.org,direct \\
+    GOPROXY=https://goproxy.cn,direct \\
     GOPRIVATE=gitlab.yc345.tv \\
     CGO_ENABLED=1 \\
     NODE_ENV=development
