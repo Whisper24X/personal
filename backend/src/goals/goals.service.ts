@@ -683,6 +683,15 @@ export class GoalsService {
       await this.tasksService.remove(task.id, currentUser);
     }
 
+    const goalBranch = goal.gitBranch?.trim();
+    if (goalBranch) {
+      await this.gitService.deleteLocalBranch(
+        goal.projectId,
+        goalBranch,
+        currentUser,
+      );
+    }
+
     await this.projectsService.removeGoalDocsSubtree(
       goal.projectId,
       id,

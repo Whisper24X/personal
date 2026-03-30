@@ -747,34 +747,10 @@ onBeforeUnmount(() => {
         </form>
       </template>
     </div>
-
-    <Teleport to="body">
-      <Transition name="create-goal-overlay">
-        <div
-          v-if="submitting"
-          class="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <p class="px-6 text-center text-base font-medium text-foreground">正在创建需求，请稍后...</p>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.create-goal-overlay-enter-active,
-.create-goal-overlay-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.create-goal-overlay-enter-from,
-.create-goal-overlay-leave-to {
-  opacity: 0;
-}
-
 .headline-fade-enter-active,
 .headline-fade-leave-active {
   transition: opacity 0.45s ease;
