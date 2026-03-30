@@ -124,8 +124,10 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
     const providerName = this.normalizeOptionalString(
       typeof raw.provider_name === 'string' ? raw.provider_name : null,
     );
-    const baseUrl = this.normalizeOptionalString(
-      typeof raw.base_url === 'string' ? raw.base_url : null,
+    const baseUrl = this.normalizeCodexBaseUrl(
+      this.normalizeOptionalString(
+        typeof raw.base_url === 'string' ? raw.base_url : null,
+      ),
     );
     const sandbox = this.resolveCodexSandbox(raw.sandbox);
     const executionMode = this.resolveCodexExecutionMode(raw.execution_mode);
@@ -205,6 +207,12 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
     args.push('-');
 
     return args;
+  }
+
+  private normalizeCodexBaseUrl(url: string | null): string | null {
+    if (!url) return null;
+    const trimmed = url.replace(/\/+$/, '');
+    return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`;
   }
 
   private resolveCodexExecutionMode(
