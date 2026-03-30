@@ -1114,14 +1114,7 @@ function startDrag(e: MouseEvent) {
 <template>
   <div class="fade-up flex h-full min-h-0 w-full">
     <section
-      v-if="pageLoading"
-      class="panel-card flex h-full w-full items-center justify-center p-6 text-sm text-muted-foreground"
-    >
-      加载中...
-    </section>
-
-    <section
-      v-else
+      v-if="!pageLoading"
       ref="containerRef"
       class="flex h-full w-full min-w-0 overflow-hidden"
     >
@@ -1245,5 +1238,26 @@ function startDrag(e: MouseEvent) {
       @save="saveEdit"
       @remove="removeTask"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="pageLoading"
+        class="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-7 bg-black/5 backdrop-blur-md transition-opacity duration-300"
+        role="status"
+        aria-live="polite"
+      >
+        <svg
+          class="size-9 animate-spin text-muted-foreground/50"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.15" />
+          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+        <p class="text-sm font-medium text-muted-foreground">正在加载任务</p>
+      </div>
+    </Teleport>
   </div>
 </template>
+
