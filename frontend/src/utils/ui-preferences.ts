@@ -3,7 +3,7 @@ import { STORAGE_KEYS } from '@/types/common/storage'
 export const APPEARANCE_MODES = ['light', 'dark'] as const
 export type AppearanceMode = (typeof APPEARANCE_MODES)[number]
 
-export const THEME_COLORS = ['amber', 'ocean', 'forest', 'rose', 'violet', 'teal', 'slate'] as const
+export const THEME_COLORS = ['mono', 'amber', 'ocean', 'forest', 'rose', 'violet', 'teal', 'slate'] as const
 export type ThemeColor = (typeof THEME_COLORS)[number]
 
 export const BACKGROUND_STYLES = ['grid', 'plain', 'glow'] as const
@@ -32,7 +32,7 @@ export const resolveAppearanceMode = (value: string | null) => {
 }
 
 export const resolveThemeColor = (value: string | null) => {
-  return asKnownValue(value, THEME_COLORS, 'amber')
+  return asKnownValue(value, THEME_COLORS, 'mono')
 }
 
 export const resolveBackgroundStyle = (value: string | null) => {

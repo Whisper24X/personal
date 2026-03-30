@@ -17,6 +17,7 @@ import { TaskStatusService } from './task-status.service';
 import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
+import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 @Injectable()
 export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
@@ -66,6 +67,7 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly containerExecutionConfig: ContainerExecutionConfigService,
     private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
     private readonly containerOrchestration: ContainerOrchestrationService,
+    private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
     private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
@@ -352,6 +354,7 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
         await this.taskRepository.update(task.id, {
           ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
         });
+        await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
 
         await this.taskLogService.appendLog({
           taskId: task.id,

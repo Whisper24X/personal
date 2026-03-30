@@ -9,6 +9,8 @@ import { Project } from '../projects/domain/project';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
+import { TaskMode } from './dto/task-mode.enum';
+import { TaskStatus } from './dto/task-status.enum';
 import {
   PromptTemplateRuntimeContext,
   PromptTemplateService,
@@ -271,6 +273,66 @@ export class AgentRunnerService {
     };
   }
 
+  /**
+   * 需求 PRD/任务计划生成：与对话任务相同的 CLI + 业务线 Agent 工具配置（api key 等）。
+   */
+  async executeGoalPrompt(params: {
+    project: Project;
+    repositoryRoot: string;
+    prompt: string;
+    agentCliId: string;
+    agentCliConfigId: string;
+  }): Promise<AgentRunnerResult> {
+    const taskId = `goal-gen-${randomUUID()}`;
+    const nodeId = randomUUID();
+    const task = new Task();
+    task.id = taskId;
+    task.projectId = params.project.id;
+    task.businessLineId = params.project.businessLineId;
+    task.goalId = null;
+    task.mode = TaskMode.conversation;
+    task.title = 'Goal LLM generation';
+    task.prompt = null;
+    task.status = TaskStatus.todo;
+    task.gitBranch = null;
+    task.gitBaseBranch = null;
+    task.gitWorktree = null;
+    task.configJson = null;
+    task.createdBy = null;
+    task.startedAt = null;
+    task.finishedAt = null;
+    task.createdAt = new Date();
+    task.updatedAt = new Date();
+    task.deletedAt = null;
+
+    const node = new TaskNode();
+    node.id = nodeId;
+    node.taskId = taskId;
+    node.nodeOrder = 1;
+    node.name = 'goal-generation';
+    node.input = null;
+    node.agentCliId = params.agentCliId;
+    node.agentCliConfigId = params.agentCliConfigId;
+    node.agentClioutput = null;
+    node.agentCliSessionId = null;
+    node.configJson = null;
+    node.loopJson = null;
+    node.runtimeJson = null;
+    node.status = TaskStatus.todo;
+    node.startedAt = null;
+    node.finishedAt = null;
+    node.createdAt = new Date();
+    node.updatedAt = new Date();
+
+    return this.runWithCustomPrompt({
+      task,
+      node,
+      project: params.project,
+      runtimeContext: { gitWorktreePath: params.repositoryRoot },
+      prompt: params.prompt,
+    });
+  }
+
   interruptExecution(nodeId: string): boolean {
     const activeExecution = this.activeExecutions.get(nodeId);
 
@@ -294,11 +356,15 @@ export class AgentRunnerService {
         ? (project.configJson as Record<string, unknown>)
         : {};
 
-    const adapter = this.resolveAdapter({
-      ...configJson,
-      ...executionToolConfig,
-    });
-    const baseRunnerConfig = this.readRunnerConfig(configJson);
+    const adapter = this.resolveAdapterForExecution(
+      configJson,
+      executionToolConfig,
+      node,
+    );
+    // 节点/Goal 显式选择 CLI 时，一律不继承项目 configJson.agentRunner（常为 codex 的 command/args），避免误 spawn codex。
+    const baseRunnerConfig = node.agentCliId
+      ? {}
+      : this.readRunnerConfig(configJson);
     const agentToolConfig = await this.resolveAgentToolConfig(
       {
         ...configJson,
@@ -374,10 +440,17 @@ export class AgentRunnerService {
     );
     if (runtimeWorktreePath) {
       const cwd = path.resolve(runtimeWorktreePath);
-      const allowedRoot = this.resolveWorktreeAllowedRoot(project);
-      if (!this.isPathWithinAllowedRoot(cwd, allowedRoot)) {
+      const allowedRoots = [
+        this.resolveWorktreeAllowedRoot(project),
+        /** 主仓库 clone（如 .../projects/<id>/ainative-test）与 per-task worktree 同级，需在项目存储根下放行 */
+        this.resolveProjectStorageBaseDir(project),
+      ];
+      const ok = allowedRoots.some((root) =>
+        this.isPathWithinAllowedRoot(cwd, root),
+      );
+      if (!ok) {
         throw new Error(
-          `Task worktree path ${cwd} is outside allowed root ${allowedRoot}`,
+          `Task worktree path ${cwd} is outside allowed roots: ${allowedRoots.join(' | ')}`,
         );
       }
       return cwd;
@@ -1280,15 +1353,36 @@ export class AgentRunnerService {
   }
 
   private resolveAdapter(configJson: Record<string, unknown>): AgentAdapter {
-    const rawAdapter = configJson.agentAdapter;
-    if (typeof rawAdapter === 'string') {
-      const normalized = this.toAgentAdapter(rawAdapter);
-      if (normalized) {
-        return normalized;
+    for (const key of ['agentAdapter', 'toolId', 'agentCliId'] as const) {
+      const raw = configJson[key];
+      if (typeof raw === 'string') {
+        const normalized = this.toAgentAdapter(raw);
+        if (normalized) {
+          return normalized;
+        }
       }
     }
 
     return 'codex';
+  }
+
+  private resolveAdapterForExecution(
+    projectConfigJson: Record<string, unknown>,
+    executionToolConfig: Record<string, unknown>,
+    node: TaskNode,
+  ): AgentAdapter {
+    const nodeCli = this.normalizeOptionalString(node.agentCliId);
+    if (nodeCli) {
+      const fromNode = this.toAgentAdapter(nodeCli);
+      if (fromNode) {
+        return fromNode;
+      }
+    }
+
+    return this.resolveAdapter({
+      ...projectConfigJson,
+      ...executionToolConfig,
+    });
   }
 
   private resolveDefaultCommand(adapter: AgentAdapter): string {
@@ -1393,13 +1487,6 @@ export class AgentRunnerService {
         : {};
     const pendingUserMessage = this.readPendingUserMessage(node);
 
-    if (
-      pendingUserMessage &&
-      this.normalizeOptionalString(node.agentCliSessionId)
-    ) {
-      return pendingUserMessage;
-    }
-
     const hasExplicitNodeInput =
       input.nodeInput !== undefined && input.nodeInput !== null;
     const nodePrompt = hasExplicitNodeInput
@@ -1420,6 +1507,15 @@ export class AgentRunnerService {
       agentToolConfigId: config.agentToolConfigId ?? null,
       agentToolConfigName: config.agentToolConfigName ?? null,
     };
+    const renderedPendingUserMessage = pendingUserMessage
+      ? this.promptTemplateService.renderPromptTemplate(pendingUserMessage, {
+          task,
+          node,
+          project,
+          runtime: templateRuntimeContext,
+        })
+      : '';
+
     const renderedNodePrompt = nodePrompt
       ? this.promptTemplateService.renderPromptTemplate(nodePrompt, {
           task,
@@ -1429,7 +1525,16 @@ export class AgentRunnerService {
         })
       : '';
 
-    const sections = [renderedNodePrompt, pendingUserMessage].filter(Boolean);
+    if (
+      renderedPendingUserMessage &&
+      this.normalizeOptionalString(node.agentCliSessionId)
+    ) {
+      return renderedPendingUserMessage;
+    }
+
+    const sections = [renderedNodePrompt, renderedPendingUserMessage].filter(
+      Boolean,
+    );
 
     return sections.join('\n\n');
   }

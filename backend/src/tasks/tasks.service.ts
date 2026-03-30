@@ -210,7 +210,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     query: FindTaskLogsDto;
     currentUser: JwtPayloadType;
   }): Promise<{
-    history: TaskLog[];
     subscribe: (listener: (log: TaskLog) => void) => () => void;
   }> {
     return this.taskQueryService.openLogStream({

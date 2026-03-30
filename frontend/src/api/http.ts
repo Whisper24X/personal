@@ -1,4 +1,5 @@
 import { http } from '@/utils/http'
+import { HttpError } from '@/utils/http/error'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 const API_PREFIX = '/api/v1'
@@ -75,6 +76,7 @@ export type SseEvent = {
 export type SseCallbacks = {
   onEvent: (event: SseEvent) => void
   onError?: (error: Error) => void
+  onOpen?: () => void | Promise<void>
   signal?: AbortSignal
 }
 
@@ -132,12 +134,11 @@ const consumeSseResponse = async (
     } catch {
       /* ignore parse error */
     }
-    const err = new Error(message) as Error & { status: number }
-    err.status = response.status
-    throw err
+    throw new HttpError(message, response.status)
   }
 
   const reader = response.body.getReader()
+  await callbacks.onOpen?.()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick } from 'vue'
 import type { TaskNode } from '@/types/api/tasks'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
@@ -14,6 +15,17 @@ const props = defineProps<{
 const emit = defineEmits<{
   selectNode: [nodeId: string]
 }>()
+
+const nodeButtonRefs = new Map<string, HTMLButtonElement>()
+
+const setNodeButtonRef = (nodeId: string, element: HTMLButtonElement | null) => {
+  if (element) {
+    nodeButtonRefs.set(nodeId, element)
+    return
+  }
+
+  nodeButtonRefs.delete(nodeId)
+}
 
 const resolveLoopDisplay = (node: TaskNode) => {
   const lj = node.loopJson
@@ -56,6 +68,20 @@ const nodeDotClass = (node: TaskNode) => {
   }
   return 'bg-muted-foreground/40'
 }
+
+const scrollToNode = async (nodeId: string) => {
+  await nextTick()
+  const button = nodeButtonRefs.get(nodeId)
+  button?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'nearest',
+    inline: 'center',
+  })
+}
+
+defineExpose({
+  scrollToNode,
+})
 </script>
 
 <template>
@@ -77,6 +103,7 @@ const nodeDotClass = (node: TaskNode) => {
                 ]"
                 type="button"
                 :title="node.name"
+                :ref="(element) => setNodeButtonRef(node.id, element as HTMLButtonElement | null)"
                 @click="emit('selectNode', node.id)"
               >
                 <span class="h-2 w-2 rounded-full shrink-0" :class="nodeDotClass(node)" />

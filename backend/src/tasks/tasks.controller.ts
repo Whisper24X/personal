@@ -77,16 +77,12 @@ import { ListWorktreeFilesDto } from './dto/list-worktree-files.dto';
 import { TaskWorkspaceService } from './task-workspace.service';
 import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
-import { TaskStepLabelSummaryService } from './application/task-step-label-summary.service';
-import {
-  StepSummariesRequestDto,
-  StepSummariesResponseDto,
-} from './dto/step-summaries.dto';
 import {
   SuggestTaskTitleRequestDto,
   SuggestTaskTitleResponseDto,
 } from './dto/suggest-task-title.dto';
 import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
+import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -101,8 +97,8 @@ export class TasksController {
     private readonly taskWorkspaceService: TaskWorkspaceService,
     private readonly taskGitService: TaskGitService,
     private readonly taskTerminalService: TaskTerminalService,
-    private readonly taskStepLabelSummaryService: TaskStepLabelSummaryService,
     private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
+    private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
   ) {}
 
   @Post('suggest-title')
@@ -223,23 +219,6 @@ export class TasksController {
   @HttpCode(HttpStatus.OK)
   messages(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasksService.listMessages(id, request.user);
-  }
-
-  @Post(':id/step-summaries')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiBody({ type: StepSummariesRequestDto })
-  @ApiOkResponse({ type: StepSummariesResponseDto })
-  @HttpCode(HttpStatus.OK)
-  summarizeStepLabels(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: StepSummariesRequestDto,
-  ): Promise<StepSummariesResponseDto> {
-    return this.taskStepLabelSummaryService.summarizeStepLabels(
-      id,
-      request.user,
-      body,
-    );
   }
 
   @Post(':id/execute')
@@ -699,14 +678,6 @@ export class TasksController {
     });
 
     return new Observable<MessageEvent>((subscriber) => {
-      for (const historyLog of stream.history) {
-        subscriber.next({
-          id: historyLog.id,
-          type: 'task-log',
-          data: historyLog,
-        });
-      }
-
       const unsubscribe = stream.subscribe((log) => {
         subscriber.next({
           id: log.id,
@@ -714,9 +685,20 @@ export class TasksController {
           data: log,
         });
       });
+      const unsubscribeWorkspace = this.taskWorkspaceWatchService.subscribe(
+        taskId,
+        (event) => {
+          subscriber.next({
+            id: event.id,
+            type: 'task-workspace-change',
+            data: event,
+          });
+        },
+      );
 
       return () => {
         unsubscribe();
+        unsubscribeWorkspace();
       };
     });
   }

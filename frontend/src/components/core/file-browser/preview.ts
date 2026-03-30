@@ -785,6 +785,111 @@ export const highlightTaskCodeLine = (line: string, language: TaskCodeLanguage) 
   }
 }
 
+/** JSON / YAML / XML 等：无独立渲染，仅适合源码视图（预览 Tab 关闭）。 */
+export function isSourceOnlyTextPreview(
+  preview: FileBrowserPreview | null | undefined,
+  selectedPath: string | null | undefined,
+): boolean {
+  if (!preview || preview.previewType !== 'text' || preview.tooLarge) {
+    return false
+  }
+
+  const mime = (preview.mimeType ?? '').toLowerCase()
+  if (mime.includes('svg')) {
+    return false
+  }
+  if (mime.includes('html') || mime.includes('xhtml')) {
+    return false
+  }
+
+  const p = (selectedPath ?? preview.path ?? '').toLowerCase()
+
+  if (mime.includes('json')) {
+    return true
+  }
+  if (mime.includes('yaml') || mime.includes('x-yaml')) {
+    return true
+  }
+  if (mime.includes('xml')) {
+    return true
+  }
+
+  if (/\.(json|jsonc|json5)$/i.test(p)) {
+    return true
+  }
+  if (/\.(ya?ml)$/i.test(p)) {
+    return true
+  }
+  if (/\.(xml|xsl|xslt|xsd)$/i.test(p)) {
+    return true
+  }
+
+  return false
+}
+
+export function canShowPreviewTab(
+  preview: FileBrowserPreview | null | undefined,
+  selectedPath: string | null | undefined,
+  options?: { loading?: boolean; errorMessage?: string },
+): boolean {
+  if (options?.loading) {
+    return false
+  }
+  if (options?.errorMessage) {
+    return false
+  }
+  if (!preview || !selectedPath?.trim()) {
+    return false
+  }
+
+  if (isSourceOnlyTextPreview(preview, selectedPath)) {
+    return false
+  }
+
+  return true
+}
+
+export function canShowSourceTab(
+  preview: FileBrowserPreview | null | undefined,
+  options?: { loading?: boolean; errorMessage?: string },
+): boolean {
+  if (options?.loading) {
+    return false
+  }
+  if (options?.errorMessage) {
+    return false
+  }
+
+  return Boolean(preview && typeof preview.text === 'string')
+}
+
+export function resolveDefaultPreviewMode(
+  preview: FileBrowserPreview | null | undefined,
+  selectedPath: string | null | undefined,
+  options?: { loading?: boolean; errorMessage?: string },
+): 'preview' | 'source' {
+  if (options?.loading || options?.errorMessage || !selectedPath?.trim()) {
+    return 'preview'
+  }
+  if (!preview) {
+    return 'preview'
+  }
+
+  const canP = canShowPreviewTab(preview, selectedPath, options)
+  const canS = canShowSourceTab(preview, options)
+
+  if (!canP && canS) {
+    return 'source'
+  }
+  if (canP && !canS) {
+    return 'preview'
+  }
+  if (!canP && !canS) {
+    return 'preview'
+  }
+
+  return 'preview'
+}
 
 export const formatPreviewSize = formatTaskPreviewSize
 export const isHtmlPreview = isTaskHtmlPreview

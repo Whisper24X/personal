@@ -115,9 +115,22 @@ export const useLayout = () => {
   }))
 
   const menuItems = computed<MenuItem[]>(() => {
-    return baseMenuItems.filter((item) => {
-      return hasSomeAccess(item.capabilities, (capability) => accessStore.hasCapability(capability))
-    })
+    const pid = selectedProjectId.value.trim()
+    const goalsListTo = pid ? `/projects/${pid}/goals` : '/dashboard'
+
+    return baseMenuItems
+      .filter((item) => {
+        return hasSomeAccess(item.capabilities, (capability) => accessStore.hasCapability(capability))
+      })
+      .map((item) => {
+        if (item.id === 'goals') {
+          return {
+            ...item,
+            to: goalsListTo,
+          }
+        }
+        return item
+      })
   })
 
   const resolveMenuPathFromPath = (path: string) => {
@@ -143,6 +156,40 @@ export const useLayout = () => {
       const tasksMenuPath = menuItems.value.find((item) => item.id === 'tasks')?.to
       if (tasksMenuPath) {
         return tasksMenuPath
+      }
+    }
+
+    if (route.name === 'goal-create') {
+      const pid = normalizeQueryValue(route.query.projectId).trim()
+      if (pid) {
+        return `/projects/${pid}/goals`
+      }
+    }
+
+    if (route.name === 'project-goals') {
+      const raw = route.params.projectId
+      const pid = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] ?? '' : ''
+      if (pid) {
+        return `/projects/${pid}/goals`
+      }
+    }
+
+    if (route.name === 'goal-detail') {
+      const storedMenuPath = loadStoredSelectedMenuPath()
+      const rememberedGoalMenuPath = menuItems.value.find((item) => {
+        if (item.to !== storedMenuPath) {
+          return false
+        }
+        return item.id === 'goals' || item.id === 'tasks'
+      })?.to
+
+      if (rememberedGoalMenuPath) {
+        return rememberedGoalMenuPath
+      }
+
+      const goalsMenuPath = menuItems.value.find((item) => item.id === 'goals')?.to
+      if (goalsMenuPath) {
+        return goalsMenuPath
       }
     }
 
@@ -181,13 +228,26 @@ export const useLayout = () => {
     return menuItems.value[0]?.to ?? '/home'
   }
 
-  const projectNavigationTo = (projectId: string): RouteLocationRaw => {
+  const PROJECT_GOALS_LIST_PATH = /^\/projects\/[^/]+\/goals$/
+
+  const buildProjectNavigationTarget = (projectId: string, menuPath: string): RouteLocationRaw => {
+    if (PROJECT_GOALS_LIST_PATH.test(menuPath)) {
+      return {
+        name: 'project-goals',
+        params: { projectId },
+      }
+    }
+
     return {
-      path: resolveProjectMenuPath(),
+      path: menuPath,
       query: {
         projectId,
       },
     }
+  }
+
+  const projectNavigationTo = (projectId: string): RouteLocationRaw => {
+    return buildProjectNavigationTarget(projectId, resolveProjectMenuPath())
   }
 
   const availableSettingsSections = computed<SettingsSection[]>(() => {
@@ -202,6 +262,7 @@ export const useLayout = () => {
     dashboard: ['M3 3h8v8H3z', 'M13 3h8v5h-8z', 'M13 10h8v11h-8z', 'M3 13h8v8H3z'],
     workflow: ['M5 6h14', 'M5 18h14', 'M12 6v12', 'm8 10 4-4 4 4', 'm8 14 4 4 4-4'],
     tasks: ['m9 11 2 2 4-4', 'M5 11h.01', 'M5 18h.01', 'm9 18 2 2 4-4', 'M14 11h5', 'M14 18h5', 'M3 6h18'],
+    goals: ['M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2', 'M12 8v8', 'M8 12h8'],
     knowledge: ['M4 19.5A2.5 2.5 0 0 1 6.5 17H20', 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z', 'M8 7h8', 'M8 11h8'],
     kanban: ['M4 5h6v14H4z', 'M14 5h6v8h-6z', 'M14 15h6v4h-6z'],
     automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
@@ -470,17 +531,22 @@ export const useLayout = () => {
       return
     }
 
+    if (PROJECT_GOALS_LIST_PATH.test(fallbackMenuPath)) {
+      const currentProjectId = getProjectIdFromRoute()
+      if (route.name === 'project-goals' && currentProjectId === normalizedProjectId) {
+        return
+      }
+
+      await router.replace(buildProjectNavigationTarget(normalizedProjectId, fallbackMenuPath))
+      return
+    }
+
     const currentProjectId = normalizeQueryValue(route.query.projectId).trim()
     if (route.path === fallbackMenuPath && currentProjectId === normalizedProjectId) {
       return
     }
 
-    await router.replace({
-      path: fallbackMenuPath,
-      query: {
-        projectId: normalizedProjectId,
-      },
-    })
+    await router.replace(buildProjectNavigationTarget(normalizedProjectId, fallbackMenuPath))
   }
 
   const refreshAccessContext = async (context?: { businessLineId?: string; projectId?: string }) => {
@@ -559,6 +625,9 @@ export const useLayout = () => {
     if (route.name === 'automations') return ['项目菜单', '自动化']
     if (route.name === 'tasks') return ['项目菜单', '新建任务']
     if (route.name === 'task-detail') return ['项目菜单', '新建任务', '任务详情']
+    if (route.name === 'project-goals') return ['项目菜单', '需求']
+    if (route.name === 'goal-create') return ['项目菜单', '需求', '新建需求']
+    if (route.name === 'goal-detail') return ['项目菜单', '需求', '需求详情']
     return ['项目菜单']
   })
 
@@ -632,6 +701,7 @@ export const useLayout = () => {
 
   const sidebarCoreTasksKnowledge = computed(() => {
     return {
+      goals: menuItems.value.find((item) => item.id === 'goals'),
       tasks: menuItems.value.find((item) => item.id === 'tasks'),
       knowledge: menuItems.value.find((item) => item.id === 'knowledge'),
     }
@@ -682,12 +752,7 @@ export const useLayout = () => {
 
     const currentProjectId = normalizeQueryValue(route.query.projectId)
     if (route.path !== targetMenuPath || currentProjectId !== projectId) {
-      void router.push({
-        path: targetMenuPath,
-        query: {
-          projectId,
-        },
-      })
+      void router.push(buildProjectNavigationTarget(projectId, targetMenuPath))
     }
 
   }

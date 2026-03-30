@@ -3,10 +3,13 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { QueryFailedError } from 'typeorm';
@@ -41,6 +44,7 @@ import { UsersService } from '../users/users.service';
 import { ProjectMemberRole } from './dto/project-member-role.enum';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
+import { AgentRunnerService } from '../tasks/agent-runner.service';
 import { AccessService } from '../access/access.service';
 import { ProjectCustomRoleRepository } from './infrastructure/persistence/project-custom-role.repository';
 import { ProjectCustomRole } from './domain/project-custom-role';
@@ -65,7 +69,7 @@ import {
   normalizeProjectCapabilities,
 } from '../access/access.constants';
 
-type EnsureProjectRepositoryOptions = {
+export type EnsureProjectRepositoryOptions = {
   syncRemote?: boolean;
 };
 
@@ -101,6 +105,8 @@ export class ProjectsService {
     private readonly isolatedRunner: IsolatedRunnerContainerService,
     private readonly projectRunnerImageRebuild: ProjectRunnerImageRebuildService,
     private readonly configService: ConfigService = new ConfigService(),
+    @Inject(forwardRef(() => AgentRunnerService))
+    private readonly agentRunnerService: AgentRunnerService,
   ) {}
 
   async create(
@@ -564,6 +570,21 @@ export class ProjectsService {
         }
 
         await this.runCommand('git', ['-C', mainRepoPath, 'fetch', '--all']);
+
+        const currentMainBranch = await this.resolveCurrentBranch(mainRepoPath);
+        const reset = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'reset',
+          '--hard',
+          `origin/${currentMainBranch}`,
+        ]);
+        if (!reset.success) {
+          emit('stdout', {
+            text: '[pre-deploy] 主仓库状态异常，无法对齐远程，部署中止\n',
+          });
+          throw new BadRequestException('主仓库状态异常，请联系管理员');
+        }
       }
 
       const originalBranch = await this.resolveCurrentBranch(execCwd);
@@ -1214,6 +1235,41 @@ export class ProjectsService {
     }
   }
 
+  /**
+   * Runs an operation while holding the per-repository sync lock, after clone/fetch.
+   * Use for mutating git commands (e.g. create branch) so they serialize with clone/fetch.
+   */
+  async runWithProjectRepositoryLock<T>(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+    options: EnsureProjectRepositoryOptions = {},
+    operation: (ctx: {
+      project: Project;
+      repositoryRoot: string;
+    }) => Promise<T>,
+  ): Promise<T> {
+    const project = await this.ensureCanAccessProject(projectId, currentUser);
+    const repositoryRoot = this.resolveRepositoryRoot(project);
+
+    try {
+      return await this.withRepositorySyncLock(repositoryRoot, async () => {
+        await this.syncProjectRepositoryContent(
+          project,
+          repositoryRoot,
+          options,
+        );
+        return operation({ project, repositoryRoot });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new BadRequestException(
+        this.formatGitSyncFailureMessage(error, project.gitUrl),
+      );
+    }
+  }
+
   private readonly maxTextPreviewBytes = 256 * 1024;
   private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
 
@@ -1547,6 +1603,55 @@ export class ProjectsService {
     };
   }
 
+  /**
+   * Writes raw bytes from multipart upload (upsert). Avoids JSON + base64 size limits.
+   */
+  async uploadProjectDoc(
+    projectId: Project['id'],
+    rawPath: string,
+    file: Buffer,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(rawPath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+
+    const existing = await fs.stat(absolutePath).catch(() => null);
+    if (existing?.isDirectory()) {
+      throw new ConflictException('Project doc path is a directory');
+    }
+
+    const parentDir = path.dirname(absolutePath);
+    const parentStat = await fs.stat(parentDir).catch(() => null);
+    if (parentStat?.isFile()) {
+      const parentRelative = path
+        .relative(docsRoot, parentDir)
+        .replace(/\\/g, '/');
+      throw new ConflictException(
+        `路径「${parentRelative}」已存在为文件，无法在其下创建子文件。请删除该文件或选择其他路径。`,
+      );
+    }
+
+    await fs.mkdir(parentDir, { recursive: true });
+    await fs.writeFile(absolutePath, file);
+
+    return this.readDoc(projectId, relativePath, currentUser);
+  }
+
   async createDoc(
     projectId: Project['id'],
     payload: SaveProjectDocDto,
@@ -1656,6 +1761,44 @@ export class ProjectsService {
     }
 
     await fs.unlink(absolutePath);
+  }
+
+  /**
+   * 递归删除 docs/goals/{goalId}/ 下全部内容（PRD、task-plan、input 等）。
+   * goalId 须为合法 UUID；目录不存在时直接返回。
+   */
+  async removeGoalDocsSubtree(
+    projectId: Project['id'],
+    goalId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    const trimmed = goalId?.trim();
+    if (
+      !trimmed ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        trimmed,
+      )
+    ) {
+      throw new BadRequestException('Invalid goal id');
+    }
+
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(`goals/${trimmed}`);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat) {
+      return;
+    }
+
+    await fs.rm(absolutePath, { recursive: true, force: true });
   }
 
   async queryDocs(
@@ -2047,6 +2190,55 @@ export class ProjectsService {
     });
   }
 
+  /**
+   * 在已就绪的项目仓库上下文中执行 Agent。
+   * 若同时传入 agentCliId + agentCliConfigId，则与对话任务节点一致走 AgentRunner（业务线工具配置、api key 等）；
+   * 否则回退为项目级 agentAdapter 的 codex/cursor spawn（与知识问答相同）。
+   */
+  async executeProjectAgentPrompt(
+    projectId: Project['id'],
+    prompt: string,
+    currentUser: JwtPayloadType,
+    options?: {
+      agentCliId?: string;
+      agentCliConfigId?: string;
+    },
+  ): Promise<{ success: boolean; stdout: string; stderr: string }> {
+    const { project, repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+
+    const cliId = options?.agentCliId?.trim();
+    const cliConfigId = options?.agentCliConfigId?.trim();
+
+    if (cliId && cliConfigId) {
+      const agentResult = await this.agentRunnerService.executeGoalPrompt({
+        project,
+        repositoryRoot,
+        prompt,
+        agentCliId: cliId,
+        agentCliConfigId: cliConfigId,
+      });
+      const stderr =
+        [agentResult.stderr, agentResult.errorMessage]
+          .filter(Boolean)
+          .join('\n') || '';
+      return {
+        success: agentResult.success,
+        stdout: agentResult.stdout.trim(),
+        stderr: stderr.trim(),
+      };
+    }
+
+    return this.executeKnowledgeAgent({
+      project,
+      repositoryRoot,
+      prompt,
+    });
+  }
+
   private buildFallbackAnswer(
     citations: Array<{ path: string; snippet: string }>,
     errorMessage: string,
@@ -2409,72 +2601,79 @@ export class ProjectsService {
     );
   }
 
+  private async syncProjectRepositoryContent(
+    project: Project,
+    repositoryRoot: string,
+    options: EnsureProjectRepositoryOptions = {},
+  ): Promise<void> {
+    const defaultBranch = project.defaultBranch?.trim() || 'main';
+    const gitDirPath = path.join(repositoryRoot, '.git');
+    const hasGit = await this.pathExists(gitDirPath);
+    const shouldSyncRemote = options.syncRemote ?? true;
+
+    if (!hasGit) {
+      try {
+        await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
+      } catch (mkdirError) {
+        const msg =
+          mkdirError instanceof Error ? mkdirError.message : 'Unknown error';
+        throw new Error(
+          `Cannot create project repository directory: ${this.truncateError(msg)}`,
+        );
+      }
+
+      const cloneResult = await this.runCommand('git', [
+        'clone',
+        '--origin',
+        'origin',
+        '--branch',
+        defaultBranch,
+        project.gitUrl,
+        repositoryRoot,
+      ]);
+
+      if (!cloneResult.success) {
+        throw new Error(
+          cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
+        );
+      }
+    } else if (shouldSyncRemote) {
+      const setUrlResult = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'remote',
+        'set-url',
+        'origin',
+        project.gitUrl,
+      ]);
+
+      if (!setUrlResult.success) {
+        throw new Error(setUrlResult.stderr || 'git remote set-url failed');
+      }
+    }
+
+    if (shouldSyncRemote) {
+      const fetchResult = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'fetch',
+        '--all',
+        '--prune',
+      ]);
+
+      if (!fetchResult.success) {
+        throw new Error(fetchResult.stderr || 'git fetch failed');
+      }
+    }
+  }
+
   private async ensureProjectRepository(
     project: Project,
     options: EnsureProjectRepositoryOptions = {},
   ): Promise<string> {
     const repositoryRoot = this.resolveRepositoryRoot(project);
-    const defaultBranch = project.defaultBranch?.trim() || 'main';
     return this.withRepositorySyncLock(repositoryRoot, async () => {
-      const gitDirPath = path.join(repositoryRoot, '.git');
-      const hasGit = await this.pathExists(gitDirPath);
-      const shouldSyncRemote = options.syncRemote ?? true;
-
-      if (!hasGit) {
-        try {
-          await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
-        } catch (mkdirError) {
-          const msg =
-            mkdirError instanceof Error ? mkdirError.message : 'Unknown error';
-          throw new Error(
-            `Cannot create project repository directory: ${this.truncateError(msg)}`,
-          );
-        }
-
-        const cloneResult = await this.runCommand('git', [
-          'clone',
-          '--origin',
-          'origin',
-          '--branch',
-          defaultBranch,
-          project.gitUrl,
-          repositoryRoot,
-        ]);
-
-        if (!cloneResult.success) {
-          throw new Error(
-            cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
-          );
-        }
-      } else if (shouldSyncRemote) {
-        const setUrlResult = await this.runCommand('git', [
-          '-C',
-          repositoryRoot,
-          'remote',
-          'set-url',
-          'origin',
-          project.gitUrl,
-        ]);
-
-        if (!setUrlResult.success) {
-          throw new Error(setUrlResult.stderr || 'git remote set-url failed');
-        }
-      }
-
-      if (shouldSyncRemote) {
-        const fetchResult = await this.runCommand('git', [
-          '-C',
-          repositoryRoot,
-          'fetch',
-          '--all',
-          '--prune',
-        ]);
-
-        if (!fetchResult.success) {
-          throw new Error(fetchResult.stderr || 'git fetch failed');
-        }
-      }
-
+      await this.syncProjectRepositoryContent(project, repositoryRoot, options);
       return repositoryRoot;
     });
   }
@@ -2544,7 +2743,7 @@ export class ProjectsService {
     return path.resolve(cacheBaseDir, `${repositoryDirName}-${project.id}`);
   }
 
-  private normalizeProjectDocPath(value: string): string {
+  normalizeProjectDocPath(value: string): string {
     const raw = value?.trim();
     if (!raw) {
       throw new BadRequestException('Project doc path is required');

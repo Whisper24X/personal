@@ -45,6 +45,9 @@ export class AuthController {
     return this.service.validateLogin(loginDto);
   }
 
+  @SerializeOptions({
+    groups: ['me'],
+  })
   @Post('login')
   @ApiOkResponse({
     type: LoginResponseDto,

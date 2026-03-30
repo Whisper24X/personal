@@ -8,6 +8,7 @@ import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { Project } from '../projects/domain/project';
 import { TaskAccessService } from './application/task-access.service';
 import {
   TaskGitActionResultDto,
@@ -28,6 +29,7 @@ import {
   TaskWorkspaceTreeQueryDto,
 } from './dto/task-workspace.dto';
 import { TaskRuntimeService } from './task-runtime.service';
+import { buildPullRequestUrl } from '../git/pull-request-url.util';
 
 type GitExecutionResult = {
   success: boolean;
@@ -57,7 +59,7 @@ export class TaskGitService {
   private readonly maxTextPreviewBytes = 256 * 1024;
   private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
   private readonly fallbackCommitAuthorName =
-    process.env.AINATIVE_GIT_USER_NAME?.trim() || 'Ainative Bot';
+    process.env.AINATIVE_GIT_USER_NAME?.trim() || 'AINative Bot';
   private readonly fallbackCommitAuthorEmail =
     process.env.AINATIVE_GIT_USER_EMAIL?.trim() || 'ainative@example.com';
 
@@ -459,46 +461,18 @@ export class TaskGitService {
       taskId,
       currentUser,
     );
-    const changedFiles = await this.listArtifactFiles(worktreePath);
 
-    if (!changedFiles.length) {
-      return {
-        committed: false,
-        skippedReason: 'no_changes',
-      };
-    }
+    return this.commitIfChangedInWorktree(worktreePath, message);
+  }
 
-    const stageResult = await this.runGitCommand(worktreePath, [
-      'add',
-      '-A',
-      '--',
-      '.',
-    ]);
-    if (!stageResult.success) {
-      throw this.toGitException('Failed to stage changed files', stageResult);
-    }
+  async commitIfChangedForTask(
+    task: Task,
+    project: Project,
+    message: string,
+  ): Promise<TaskGitCommitIfChangedResult> {
+    const worktreePath = await this.resolveTaskGitWorktreePath(task, project);
 
-    const result = await this.commitInTaskWorktree(
-      taskId,
-      message,
-      currentUser,
-    );
-    if (!result.success) {
-      throw this.toGitException('Failed to commit changes', result);
-    }
-
-    const [headResult, subjectResult] = await Promise.all([
-      this.runGitCommand(worktreePath, ['rev-parse', 'HEAD']),
-      this.runGitCommand(worktreePath, ['log', '-1', '--pretty=%s']),
-    ]);
-
-    return {
-      committed: true,
-      commitSha: headResult.success ? headResult.stdout.trim() : null,
-      subject: subjectResult.success
-        ? subjectResult.stdout.trim()
-        : message.trim(),
-    };
+    return this.commitIfChangedInWorktree(worktreePath, message);
   }
 
   async merge(
@@ -655,7 +629,7 @@ export class TaskGitService {
     }
 
     return {
-      url: this.buildPullRequestUrl(remoteUrl, baseBranch, headBranch),
+      url: buildPullRequestUrl(remoteUrl, baseBranch, headBranch),
     };
   }
 
@@ -669,6 +643,16 @@ export class TaskGitService {
         currentUser,
       );
 
+    return {
+      task,
+      worktreePath: await this.resolveTaskGitWorktreePath(task, project),
+    };
+  }
+
+  private async resolveTaskGitWorktreePath(
+    task: Task,
+    project: Project,
+  ): Promise<string> {
     if (!task.gitWorktree?.trim()) {
       throw new ConflictException('Task workspace is not initialized');
     }
@@ -691,10 +675,7 @@ export class TaskGitService {
       throw new BadRequestException('Task workspace is not a git repository');
     }
 
-    return {
-      task,
-      worktreePath,
-    };
+    return worktreePath;
   }
 
   private async commitInTaskWorktree(
@@ -721,6 +702,54 @@ export class TaskGitService {
     ]);
   }
 
+  private async commitIfChangedInWorktree(
+    worktreePath: string,
+    message: string,
+  ): Promise<TaskGitCommitIfChangedResult> {
+    const changedFiles = await this.listArtifactFiles(worktreePath);
+
+    if (!changedFiles.length) {
+      return {
+        committed: false,
+        skippedReason: 'no_changes',
+      };
+    }
+
+    const stageResult = await this.runGitCommand(worktreePath, [
+      'add',
+      '-A',
+      '--',
+      '.',
+    ]);
+    if (!stageResult.success) {
+      throw this.toGitException('Failed to stage changed files', stageResult);
+    }
+
+    await this.ensureCommitIdentityConfigured(worktreePath);
+
+    const result = await this.runGitCommand(worktreePath, [
+      'commit',
+      '-m',
+      message.trim(),
+    ]);
+    if (!result.success) {
+      throw this.toGitException('Failed to commit changes', result);
+    }
+
+    const [headResult, subjectResult] = await Promise.all([
+      this.runGitCommand(worktreePath, ['rev-parse', 'HEAD']),
+      this.runGitCommand(worktreePath, ['log', '-1', '--pretty=%s']),
+    ]);
+
+    return {
+      committed: true,
+      commitSha: headResult.success ? headResult.stdout.trim() : null,
+      subject: subjectResult.success
+        ? subjectResult.stdout.trim()
+        : message.trim(),
+    };
+  }
+
   private async ensureCommitIdentityConfigured(
     worktreePath: string,
   ): Promise<void> {
@@ -729,40 +758,37 @@ export class TaskGitService {
       this.runGitCommand(worktreePath, ['config', '--get', 'user.email']),
     ]);
 
-    const updates: Promise<GitExecutionResult>[] = [];
+    const updateArgsList: string[][] = [];
 
     if (!nameResult.success || !nameResult.stdout.trim()) {
-      updates.push(
-        this.runGitCommand(worktreePath, [
-          'config',
-          'user.name',
-          this.fallbackCommitAuthorName,
-        ]),
-      );
+      updateArgsList.push([
+        'config',
+        'user.name',
+        this.fallbackCommitAuthorName,
+      ]);
     }
 
     if (!emailResult.success || !emailResult.stdout.trim()) {
-      updates.push(
-        this.runGitCommand(worktreePath, [
-          'config',
-          'user.email',
-          this.fallbackCommitAuthorEmail,
-        ]),
-      );
+      updateArgsList.push([
+        'config',
+        'user.email',
+        this.fallbackCommitAuthorEmail,
+      ]);
     }
 
-    if (!updates.length) {
+    if (!updateArgsList.length) {
       return;
     }
 
-    const results = await Promise.all(updates);
-    const failedResult = results.find((result) => !result.success);
+    for (const args of updateArgsList) {
+      const result = await this.runGitCommand(worktreePath, args);
 
-    if (failedResult) {
-      throw this.toGitException(
-        'Failed to configure git commit identity',
-        failedResult,
-      );
+      if (!result.success) {
+        throw this.toGitException(
+          'Failed to configure git commit identity',
+          result,
+        );
+      }
     }
   }
 
@@ -1275,88 +1301,5 @@ export class TaskGitService {
         : normalizedDetails;
 
     return `${summary}: ${boundedDetails}`;
-  }
-
-  private parseRemoteUrl(
-    remoteUrl: string,
-  ): { host: string; path: string; protocol: string } | null {
-    const trimmed = remoteUrl.trim().replace(/\.git$/i, '');
-    if (!trimmed) {
-      return null;
-    }
-
-    if (
-      trimmed.startsWith('http://') ||
-      trimmed.startsWith('https://') ||
-      trimmed.startsWith('ssh://')
-    ) {
-      try {
-        const parsedUrl = new URL(trimmed);
-
-        return {
-          host: parsedUrl.host,
-          path: parsedUrl.pathname.replace(/^\/+/, ''),
-          protocol: parsedUrl.protocol.replace(':', '') || 'https',
-        };
-      } catch {
-        return null;
-      }
-    }
-
-    const scpMatch = trimmed.match(/^(?:[^@]+@)?([^:]+):(.+)$/);
-    if (scpMatch) {
-      return {
-        host: scpMatch[1],
-        path: scpMatch[2],
-        protocol: 'https',
-      };
-    }
-
-    return null;
-  }
-
-  private buildRepositoryUrl(remoteUrl: string): string | null {
-    const parsed = this.parseRemoteUrl(remoteUrl);
-    if (!parsed) {
-      return null;
-    }
-
-    const protocol = parsed.protocol === 'http' ? 'http' : 'https';
-
-    return `${protocol}://${parsed.host}/${parsed.path}`;
-  }
-
-  private buildPullRequestUrl(
-    remoteUrl: string,
-    baseBranch: string,
-    headBranch: string,
-  ): string | null {
-    const parsed = this.parseRemoteUrl(remoteUrl);
-    if (!parsed) {
-      return null;
-    }
-
-    const repositoryUrl = this.buildRepositoryUrl(remoteUrl);
-    if (!repositoryUrl) {
-      return null;
-    }
-
-    const encodedBaseBranch = encodeURIComponent(baseBranch);
-    const encodedHeadBranch = encodeURIComponent(headBranch);
-    const host = parsed.host.toLowerCase();
-
-    if (host.includes('github.com')) {
-      return `${repositoryUrl}/compare/${encodedBaseBranch}...${encodedHeadBranch}?expand=1`;
-    }
-
-    if (host.includes('gitlab')) {
-      return `${repositoryUrl}/-/merge_requests/new?merge_request[source_branch]=${encodedHeadBranch}&merge_request[target_branch]=${encodedBaseBranch}`;
-    }
-
-    if (host.includes('bitbucket')) {
-      return `${repositoryUrl}/pull-requests/new?source=${encodedHeadBranch}&dest=${encodedBaseBranch}`;
-    }
-
-    return null;
   }
 }

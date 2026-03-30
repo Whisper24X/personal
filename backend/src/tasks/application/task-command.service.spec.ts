@@ -88,6 +88,7 @@ const createService = () => {
   const taskRuntimeService = {
     ensureRuntime: jest.fn(),
     cleanupRuntime: jest.fn().mockResolvedValue({ cleaned: true }),
+    cleanupTaskDataDir: jest.fn().mockResolvedValue(undefined),
   };
   const taskConfigResolver = {
     mergeTaskConfig: jest.fn(),
@@ -126,6 +127,9 @@ const createService = () => {
   const projectExecutionSlotRepository = {
     findByProjectId: jest.fn().mockResolvedValue(null),
   };
+  const taskWorkspaceWatchService = {
+    syncTaskWatch: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new TaskCommandService(
     taskRepository as never,
@@ -141,6 +145,7 @@ const createService = () => {
     taskTitleSuggestionService as never,
     containerOrchestration as never,
     projectExecutionSlotRepository as never,
+    taskWorkspaceWatchService as never,
   );
 
   return {
@@ -152,8 +157,88 @@ const createService = () => {
     taskAccessService,
     containerOrchestration,
     projectExecutionSlotRepository,
+    taskWorkspaceWatchService,
+    taskConfigResolver,
+    projectsService,
+    taskRuntimeOrchestrator,
   };
 };
+
+describe('TaskCommandService.create', () => {
+  it('should persist title from createTaskDto when prompt is longer (goal plan materialize)', async () => {
+    const {
+      service,
+      taskRepository,
+      projectsService,
+      taskConfigResolver,
+      taskRuntimeOrchestrator,
+    } = createService();
+    const project = createProject();
+    const currentUser = createCurrentUser();
+
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+
+    taskConfigResolver.mergeTaskConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.toObjectRecord.mockImplementation((value) =>
+      value && typeof value === 'object' ? (value as object) : {},
+    );
+    taskConfigResolver.readTaskWorkflowTemplateId.mockReturnValue(null);
+    taskConfigResolver.readNodeExecutionConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.resolveRequiredNodeExecutionConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.buildTaskNodeInput.mockReturnValue({});
+    taskConfigResolver.resolveNodeLoopJson.mockReturnValue(null);
+    taskConfigResolver.normalizeOptionalString.mockImplementation((value) =>
+      typeof value === 'string' ? value.trim() || null : null,
+    );
+    taskConfigResolver.normalizeGitBranch.mockImplementation((value) =>
+      typeof value === 'string' ? value.trim() || null : null,
+    );
+
+    taskRepository.findByGitWorktree.mockResolvedValue(null);
+    const createdTask = createTask({
+      id: 'new-task',
+      title: '计划子任务标题',
+      prompt: 'long',
+    });
+    taskRepository.create.mockResolvedValue(createdTask);
+    taskRuntimeOrchestrator.initializeTaskRuntime.mockResolvedValue({
+      task: createdTask,
+    });
+
+    const longPrompt = `${'x'.repeat(180)} prompt body`;
+
+    await service.create(
+      {
+        projectId: project.id,
+        mode: TaskMode.conversation,
+        title: '计划子任务标题',
+        prompt: longPrompt,
+        gitBaseBranch: 'main',
+        configJson: {
+          agentCliId: 'cli-1',
+          agentCliConfigId: 'cfg-1',
+        },
+      } as never,
+      currentUser as never,
+    );
+
+    expect(taskRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '计划子任务标题',
+        prompt: longPrompt,
+      }),
+    );
+  });
+});
 
 describe('TaskCommandService.remove', () => {
   it('should clean up task runtime before soft deleting the task', async () => {
@@ -201,6 +286,10 @@ describe('TaskCommandService.remove', () => {
       },
     });
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(taskRuntimeService.cleanupTaskDataDir).toHaveBeenCalledWith(
+      task,
+      project,
+    );
     expect(
       taskRuntimeService.cleanupRuntime.mock.invocationCallOrder[0],
     ).toBeLessThan(taskRepository.remove.mock.invocationCallOrder[0]);
@@ -252,6 +341,9 @@ describe('TaskCommandService.remove', () => {
       .mockImplementation(() => undefined);
 
     taskAccessService.getTaskOrThrow.mockResolvedValue(task);
+    taskAccessService.getProjectByIdOrThrow.mockRejectedValue(
+      new Error('project removed'),
+    );
 
     await service.remove(task.id, currentUser as never);
 
@@ -371,9 +463,11 @@ describe('TaskCommandService.remove', () => {
       containerOrchestration,
     } = createService();
     const task = createTask({ gitWorktree: null, gitBranch: null });
+    const project = createProject();
     const currentUser = createCurrentUser();
 
     taskAccessService.getTaskOrThrow.mockResolvedValue(task);
+    taskAccessService.getProjectByIdOrThrow.mockResolvedValue(project);
 
     await service.remove(task.id, currentUser as never);
 
@@ -393,5 +487,9 @@ describe('TaskCommandService.remove', () => {
       containerOrchestration.removeContainerForTask,
     ).not.toHaveBeenCalled();
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(taskRuntimeService.cleanupTaskDataDir).toHaveBeenCalledWith(
+      task,
+      project,
+    );
   });
 });

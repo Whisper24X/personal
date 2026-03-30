@@ -82,6 +82,11 @@ describe('TaskStatusService', () => {
     const containerOrchestration = {
       removeContainerForTask: jest.fn().mockResolvedValue(undefined),
     };
+    const goalsService = {
+      syncPlanSubTaskStatusFromLinkedTask: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    };
 
     const service = new TaskStatusService(
       taskRepository as never,
@@ -91,6 +96,7 @@ describe('TaskStatusService', () => {
       taskConfigResolver as never,
       containerExecutionConfig as never,
       containerOrchestration as never,
+      goalsService as never,
     );
 
     await service.recalculateTaskStatus('task-1');
@@ -105,6 +111,9 @@ describe('TaskStatusService', () => {
     expect(
       containerOrchestration.removeContainerForTask,
     ).not.toHaveBeenCalled();
+    expect(
+      goalsService.syncPlanSubTaskStatusFromLinkedTask,
+    ).toHaveBeenCalledWith('task-1', TaskStatus.inReview);
     expect(taskLogService.appendLog).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: 'task-1',
@@ -141,6 +150,11 @@ describe('TaskStatusService', () => {
     const containerOrchestration = {
       removeContainerForTask: jest.fn().mockResolvedValue(undefined),
     };
+    const goalsService = {
+      syncPlanSubTaskStatusFromLinkedTask: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    };
 
     const service = new TaskStatusService(
       taskRepository as never,
@@ -150,6 +164,7 @@ describe('TaskStatusService', () => {
       taskConfigResolver as never,
       containerExecutionConfig as never,
       containerOrchestration as never,
+      goalsService as never,
     );
 
     await service.recalculateTaskStatus('task-1');
@@ -158,6 +173,9 @@ describe('TaskStatusService', () => {
       'task-1',
       'project-1',
     );
+    expect(
+      goalsService.syncPlanSubTaskStatusFromLinkedTask,
+    ).toHaveBeenCalledWith('task-1', TaskStatus.done);
     expect(taskLogService.appendLog).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: 'task-1',

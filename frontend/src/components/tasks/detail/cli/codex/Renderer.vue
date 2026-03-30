@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseCodexMessages } from './parser'
 import { groupCodexEntries } from './groupEntries'
@@ -9,19 +9,11 @@ import AssistantMessage from './AssistantMessage.vue'
 import TodoListCard from './TodoListCard.vue'
 import FileChangeCard from './FileChangeCard.vue'
 import AssistantMessageShell from '../AssistantMessageShell.vue'
-import AssistantTaskStepBar from '../AssistantTaskStepBar.vue'
 import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
 import { mergeAssistantTurns } from '../mergeAssistantTurns'
-import type { CodexMessageGroup, CodexTaskGroup } from './groupEntries'
+import type { CodexMessageGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { assistantStepSummariesKey } from '../stepSummaryKeys'
-import {
-  buildStepBarCodex,
-  mergeStepBarLabelsWithSummaries,
-  prepareTaskGroupsForStepBar,
-  type StepBarModel,
-} from '../taskGroupStepState'
 import { asRecord, assistantTurnTimeLabel, getString, tryParseJson } from '../utils'
 
 defineOptions({ name: 'CliCodexRenderer' })
@@ -30,21 +22,10 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
-const stepSummaries = inject(assistantStepSummariesKey, undefined)
-
 const entries = computed(() => parseCodexMessages(props.messages))
 const groups = computed(() => groupCodexEntries(entries.value))
 const turns = computed(() =>
   mergeAssistantTurns(groups.value, (g: CodexMessageGroup) => g.type === 'other' && g.entry.type === 'user_message'),
-)
-
-const assistantStepBars = computed(() =>
-  turns.value.map((turn, tIdx) => {
-    if (turn.kind !== 'assistant') return null
-    const model = codexStepBarModel(turn.items)
-    if (!model) return null
-    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
-  }),
 )
 
 function isPatchEvent(entry: NormalizedEntry) {
@@ -114,13 +95,6 @@ function resolveErrorDisplay(entry: NormalizedEntry): {
 
 function isTurnCompletedEvent(entry: NormalizedEntry): boolean {
   return getString(entry.metadata?.codexEventType) === 'turn_completed'
-}
-
-function codexStepBarModel(items: CodexMessageGroup[]): StepBarModel | null {
-  const allTasks = items.filter((g): g is CodexTaskGroup => g.type === 'task')
-  const hasTurnOutcome = items.some((g) => g.type === 'other' && isTurnCompletedEvent(g.entry))
-  const tasks = prepareTaskGroupsForStepBar(allTasks, hasTurnOutcome)
-  return buildStepBarCodex(tasks)
 }
 
 function codexTurnFinished(items: CodexMessageGroup[]): boolean {
@@ -218,7 +192,6 @@ function codexTurnFinished(items: CodexMessageGroup[]): boolean {
               </div>
             </template>
           </AssistantTurnContentBubble>
-          <AssistantTaskStepBar v-if="assistantStepBars[tIdx]" v-bind="assistantStepBars[tIdx]!" />
         </div>
       </AssistantMessageShell>
     </template>

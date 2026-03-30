@@ -128,7 +128,7 @@ const onRegisterSubmit = async () => {
 </script>
 
 <template>
-  <div class="auth-stage relative h-[var(--app-viewport-height)] overflow-hidden text-foreground">
+  <div class="login-view auth-stage relative h-[var(--app-viewport-height)] overflow-hidden text-foreground">
     <div aria-hidden="true" class="pointer-events-none absolute inset-0">
       <div class="auth-orb auth-orb-primary" />
       <div class="auth-orb auth-orb-secondary" />
@@ -669,5 +669,51 @@ const onRegisterSubmit = async () => {
   50% {
     transform: translate3d(0, -12px, 0);
   }
+}
+</style>
+
+<style>
+/* 非 scoped：scoped 内 :global(html)…子选择器会被错误合并到 html，导致整页 display:none */
+html[data-theme-color='mono'] .login-view.auth-stage {
+  background: var(--background);
+}
+
+html[data-theme-color='mono'] .login-view .auth-orb {
+  display: none;
+}
+
+html[data-theme-color='mono'] .login-view .auth-noise {
+  opacity: 0;
+}
+
+html[data-theme-color='mono'] .login-view .auth-panel {
+  background: var(--card);
+  box-shadow:
+    0 24px 56px -36px color-mix(in oklab, black 40%, transparent),
+    0 1px 0 color-mix(in oklab, white 40%, transparent) inset;
+}
+
+html[data-theme-color='mono'] .login-view .auth-panel::before {
+  background: var(--primary);
+}
+
+html[data-theme-color='mono'] .login-view .auth-logo-badge {
+  background: var(--primary);
+  box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 58%, transparent);
+}
+
+html[data-theme-color='mono'] .login-view .auth-mode-button.is-active {
+  background: var(--primary);
+}
+
+html[data-theme-color='mono'] .login-view .auth-submit {
+  background: var(--primary);
+  box-shadow:
+    0 14px 28px -16px color-mix(in oklab, var(--primary) 62%, transparent),
+    0 1px 0 color-mix(in oklab, white 42%, transparent) inset;
+}
+
+html[data-theme-color='mono'] .login-view .auth-submit:hover:not(:disabled) {
+  filter: none;
 }
 </style>

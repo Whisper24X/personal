@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
@@ -7,7 +7,6 @@ import ExecutionPanel from '@/components/tasks/detail/ExecutionPanel.vue'
 import ReplyCard from '@/components/tasks/detail/ReplyCard.vue'
 import ReviewCard from '@/components/tasks/detail/ReviewCard.vue'
 import RightPanelSection from '@/components/tasks/detail/RightPanelSection.vue'
-import { removeStepSummaryCacheForTask } from '@/components/tasks/detail/cli/stepSummaryCache'
 import TaskDialogs, { type TaskEditFormValue } from '@/components/tasks/detail/TaskDialogs.vue'
 import TaskExecutionContextBar from '@/components/tasks/detail/TaskExecutionContextBar.vue'
 import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
@@ -17,10 +16,10 @@ import type {
   RetryTaskPayload,
   Task,
   TaskDetail,
-  TaskGitChangedFile,
   TaskLog,
   TaskMessage,
   TaskNode,
+  TaskWorkspaceChange,
 } from '@/types/api/tasks'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
@@ -64,6 +63,8 @@ const detail = ref<TaskDetail | null>(null)
 const logs = ref<TaskLog[]>([])
 const messages = ref<TaskMessage[]>([])
 const selectedWorkflowNodeId = ref<string | null>(null)
+const workflowCardRef = ref<{ scrollToNode: (nodeId: string) => Promise<void> | void } | null>(null)
+const lastWorkflowAutoSyncSignature = ref<string | null>(null)
 
 const editOpen = ref(false)
 const deleteOpen = ref(false)
@@ -84,7 +85,10 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let sidebarRecentTasksDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
-let taskDataRequestId = 0
+let rightPanelWorkspaceRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let streamLogFlushTimer: ReturnType<typeof setTimeout> | null = null
+let detailRequestId = 0
+let pendingStreamLogs: TaskLog[] = []
 
 const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
   'Node execution started',
@@ -199,6 +203,16 @@ const taskModeLabel = computed(() => {
 
 const showWorkflowCard = computed(() => {
   return task.value?.mode === 'workflow' && sortedNodes.value.length > 0
+})
+
+const workflowNodeStatusSignature = computed(() => {
+  if (task.value?.mode !== 'workflow' || sortedNodes.value.length === 0) {
+    return null
+  }
+
+  return sortedNodes.value
+    .map((node) => `${node.id}:${node.nodeOrder}:${node.status}`)
+    .join('|')
 })
 
 const currentReviewNode = computed(() => {
@@ -399,15 +413,90 @@ const upsertLog = (nextLog: TaskLog) => {
 
   if (existedIndex >= 0) {
     logs.value[existedIndex] = nextLog
-  } else {
-    logs.value.push(nextLog)
+    return false
   }
+
+  logs.value.push(nextLog)
 
   logs.value.sort((left, right) => {
     const leftAt = new Date(left.createdAt).getTime()
     const rightAt = new Date(right.createdAt).getTime()
     return leftAt - rightAt
   })
+
+  return true
+}
+
+const getLastLogCursor = () => {
+  const lastLog = logs.value.length > 0 ? logs.value[logs.value.length - 1] : null
+  if (!lastLog) {
+    return null
+  }
+
+  return {
+    since: lastLog.createdAt,
+    afterId: lastLog.id,
+  }
+}
+
+const applyTaskLog = (payload: TaskLog) => {
+  const isFresh = upsertLog(payload)
+  if (!isFresh) {
+    return
+  }
+
+  if (isAgentOutputLog(payload)) {
+    scheduleRefreshMessages()
+  }
+  if (shouldRefreshRightPanelForNodeStatusLog(payload)) {
+    rightPanelRefreshToken.value += 1
+  }
+  if (shouldRefreshTaskDetailForLog(payload)) {
+    scheduleRefreshTaskDetail()
+  }
+  if (payload.message?.includes('Task title generated')) {
+    if (sidebarRecentTasksDebounceTimer) clearTimeout(sidebarRecentTasksDebounceTimer)
+    sidebarRecentTasksDebounceTimer = setTimeout(() => {
+      sidebarRecentTasksDebounceTimer = null
+      void refreshSidebarRecentTasks()
+    }, 300)
+  }
+}
+
+const clearStreamLogFlushTimer = () => {
+  if (!streamLogFlushTimer) {
+    return
+  }
+
+  clearTimeout(streamLogFlushTimer)
+  streamLogFlushTimer = null
+}
+
+const flushPendingStreamLogs = () => {
+  clearStreamLogFlushTimer()
+
+  const nextBatch = pendingStreamLogs.splice(0, 20)
+  for (const log of nextBatch) {
+    applyTaskLog(log)
+  }
+
+  if (pendingStreamLogs.length > 0) {
+    streamLogFlushTimer = setTimeout(() => {
+      flushPendingStreamLogs()
+    }, 16)
+  }
+}
+
+const queueTaskLog = (payload: TaskLog) => {
+  pendingStreamLogs.push(payload)
+
+  if (streamLogFlushTimer) {
+    return
+  }
+
+  streamLogFlushTimer = setTimeout(() => {
+    flushPendingStreamLogs()
+  }, 16)
 }
 
 const shouldRefreshTaskDetailForLog = (log: TaskLog) => {
@@ -436,6 +525,20 @@ const clearMessageRefreshTimer = () => {
   messageRefreshDebounceTimer = null
 }
 
+const clearRightPanelWorkspaceRefreshTimer = () => {
+  if (!rightPanelWorkspaceRefreshDebounceTimer) {
+    return
+  }
+
+  clearTimeout(rightPanelWorkspaceRefreshDebounceTimer)
+  rightPanelWorkspaceRefreshDebounceTimer = null
+}
+
+const clearPendingStreamLogs = () => {
+  pendingStreamLogs = []
+  clearStreamLogFlushTimer()
+}
+
 const scheduleRefreshMessages = (delay = 120) => {
   if (!taskId.value) {
     return
@@ -448,9 +551,38 @@ const scheduleRefreshMessages = (delay = 120) => {
   }, delay)
 }
 
+const scheduleRefreshTaskDetail = (delay = 300) => {
+  if (!taskId.value) {
+    return
+  }
+
+  if (detailRefreshDebounceTimer) {
+    clearTimeout(detailRefreshDebounceTimer)
+  }
+
+  detailRefreshDebounceTimer = setTimeout(() => {
+    detailRefreshDebounceTimer = null
+    void refreshTaskDetail()
+  }, delay)
+}
+
+const scheduleRightPanelWorkspaceRefresh = (delay = 250) => {
+  if (!taskId.value || !isRightPanelVisible.value) {
+    return
+  }
+
+  clearRightPanelWorkspaceRefreshTimer()
+  rightPanelWorkspaceRefreshDebounceTimer = setTimeout(() => {
+    rightPanelWorkspaceRefreshDebounceTimer = null
+    rightPanelRefreshToken.value += 1
+  }, delay)
+}
+
 const disconnectStream = () => {
   clearReconnectTimer()
   clearMessageRefreshTimer()
+  clearRightPanelWorkspaceRefreshTimer()
+  clearPendingStreamLogs()
   if (detailRefreshDebounceTimer) {
     clearTimeout(detailRefreshDebounceTimer)
     detailRefreshDebounceTimer = null
@@ -485,50 +617,48 @@ const connectStream = async () => {
   }
 
   disconnectStream()
+  const currentTaskId = taskId.value
+  const reconnectCursor = getLastLogCursor()
+
+  await syncIncrementalLogs(currentTaskId, reconnectCursor)
+
+  if (taskId.value !== currentTaskId) {
+    return
+  }
 
   streamAbortController = new AbortController()
-
-  const lastLog = logs.value.length > 0 ? logs.value[logs.value.length - 1] : undefined
 
   try {
     streamConnected.value = true
 
     await openSseStream(
       `/tasks/${taskId.value}/stream`,
-      {
-        since: lastLog?.createdAt,
-        afterId: lastLog?.id,
-      },
+      undefined,
       {
         signal: streamAbortController.signal,
+        onOpen: async () => {
+          await syncIncrementalLogs(currentTaskId, reconnectCursor)
+        },
         onEvent: (event) => {
+          if (event.event === 'task-workspace-change') {
+            try {
+              const payload = JSON.parse(event.data) as TaskWorkspaceChange
+              if (payload.changes.length > 0 || payload.truncated) {
+                scheduleRightPanelWorkspaceRefresh()
+              }
+            } catch {
+              // ignore malformed task-workspace-change payload
+            }
+            return
+          }
+
           if (event.event && event.event !== 'task-log') {
             return
           }
 
           try {
             const payload = JSON.parse(event.data) as TaskLog
-            upsertLog(payload)
-            if (isAgentOutputLog(payload) || shouldRefreshTaskDetailForLog(payload)) {
-              scheduleRefreshMessages()
-            }
-            if (shouldRefreshRightPanelForNodeStatusLog(payload)) {
-              rightPanelRefreshToken.value += 1
-            }
-            if (shouldRefreshTaskDetailForLog(payload)) {
-              if (detailRefreshDebounceTimer) clearTimeout(detailRefreshDebounceTimer)
-              detailRefreshDebounceTimer = setTimeout(() => {
-                detailRefreshDebounceTimer = null
-                void loadTaskData()
-              }, 300)
-            }
-            if (payload.message?.includes('Task title generated')) {
-              if (sidebarRecentTasksDebounceTimer) clearTimeout(sidebarRecentTasksDebounceTimer)
-              sidebarRecentTasksDebounceTimer = setTimeout(() => {
-                sidebarRecentTasksDebounceTimer = null
-                void refreshSidebarRecentTasks()
-              }, 300)
-            }
+            queueTaskLog(payload)
           } catch {
             // ignore malformed task-log payload
           }
@@ -567,6 +697,33 @@ const refreshMessages = async () => {
   }
 }
 
+const syncIncrementalLogs = async (
+  currentTaskId: string,
+  cursor: { since: string; afterId: string } | null,
+) => {
+  if (!cursor) {
+    return
+  }
+
+  try {
+    const incrementalLogs = await tasksApi.logs(currentTaskId, {
+      since: cursor.since,
+      afterId: cursor.afterId,
+      limit: 300,
+    })
+
+    if (taskId.value !== currentTaskId) {
+      return
+    }
+
+    for (const log of incrementalLogs) {
+      applyTaskLog(log)
+    }
+  } catch {
+    // ignore reconnect catch-up failures and rely on subsequent reconnects
+  }
+}
+
 const refreshAccessContext = async (projectId: string) => {
   try {
     await accessStore.loadContext((projectId ? { projectId } : {}))
@@ -581,14 +738,16 @@ const resetTaskState = () => {
   logs.value = []
   messages.value = []
   selectedWorkflowNodeId.value = null
+  lastWorkflowAutoSyncSignature.value = null
+  clearPendingStreamLogs()
 }
 
-const loadTaskData = async () => {
+const loadInitialTaskData = async () => {
   if (!taskId.value) {
     return
   }
 
-  const requestId = ++taskDataRequestId
+  const requestId = ++detailRequestId
   loading.value = true
 
   try {
@@ -598,13 +757,13 @@ const loadTaskData = async () => {
       tasksApi.messages(taskId.value),
     ])
 
-    if (requestId !== taskDataRequestId) {
+    if (requestId !== detailRequestId) {
       return
     }
 
     await refreshAccessContext(detailResponse.task.projectId || queryProjectId.value)
 
-    if (requestId !== taskDataRequestId) {
+    if (requestId !== detailRequestId) {
       return
     }
 
@@ -616,12 +775,34 @@ const loadTaskData = async () => {
     })
     messages.value = messageResponse
   } catch (error) {
-    if (requestId === taskDataRequestId) {
+    if (requestId === detailRequestId) {
       message.error(toErrorMessage(error, '加载任务详情失败'))
     }
   } finally {
-    if (requestId === taskDataRequestId) {
+    if (requestId === detailRequestId) {
       loading.value = false
+    }
+  }
+}
+
+const refreshTaskDetail = async () => {
+  if (!taskId.value) {
+    return
+  }
+
+  const requestId = ++detailRequestId
+
+  try {
+    const detailResponse = await tasksApi.detailWithNodes(taskId.value)
+
+    if (requestId !== detailRequestId) {
+      return
+    }
+
+    detail.value = detailResponse
+  } catch (error) {
+    if (requestId === detailRequestId) {
+      message.error(toErrorMessage(error, '加载任务详情失败'))
     }
   }
 }
@@ -734,6 +915,38 @@ const resolveAutoSelectedWorkflowNodeId = (nodes: TaskNode[]) => {
   return nodes[0]?.id || null
 }
 
+const syncWorkflowSelectionIfNeeded = async (force = false) => {
+  const signature = workflowNodeStatusSignature.value
+  if (!signature || sortedNodes.value.length === 0) {
+    selectedWorkflowNodeId.value = null
+    if (!signature) {
+      lastWorkflowAutoSyncSignature.value = null
+    }
+    return
+  }
+
+  const shouldAutoSync =
+    force ||
+    lastWorkflowAutoSyncSignature.value === null ||
+    lastWorkflowAutoSyncSignature.value !== signature
+
+  if (!shouldAutoSync) {
+    return
+  }
+
+  lastWorkflowAutoSyncSignature.value = signature
+
+  const nextNodeId = resolveAutoSelectedWorkflowNodeId(sortedNodes.value)
+  selectedWorkflowNodeId.value = nextNodeId
+
+  if (!nextNodeId) {
+    return
+  }
+
+  await nextTick()
+  await workflowCardRef.value?.scrollToNode(nextNodeId)
+}
+
 const handleReply = async (replyMessage: string) => {
   if (!taskId.value || replyDisabled.value) {
     return
@@ -809,7 +1022,6 @@ const removeTask = async () => {
 
   try {
     await tasksApi.remove(taskId.value)
-    removeStepSummaryCacheForTask(taskId.value)
     deleteOpen.value = false
     message.success('任务已删除')
     void refreshSidebarRecentTasks()
@@ -822,32 +1034,27 @@ const removeTask = async () => {
 }
 
 watch(
-  () => sortedNodes.value,
-  (nodes) => {
-    if (nodes.length === 0) {
+  [() => task.value?.mode, workflowNodeStatusSignature],
+  async ([mode]) => {
+    if (mode !== 'workflow') {
       selectedWorkflowNodeId.value = null
+      lastWorkflowAutoSyncSignature.value = null
       return
     }
 
-    selectedWorkflowNodeId.value = resolveAutoSelectedWorkflowNodeId(nodes)
+    await syncWorkflowSelectionIfNeeded()
   },
   {
     immediate: true,
   },
 )
 
-function openArtifactFromChip(file: TaskGitChangedFile) {
-  artifactFilePath.value = file.path
-  artifactOpenNonce.value += 1
-  isRightPanelVisible.value = true
-}
-
 watch(
   () => taskId.value,
   async (nextTaskId, previousTaskId) => {
     if (!nextTaskId) {
       disconnectStream()
-      taskDataRequestId += 1
+      detailRequestId += 1
       resetTaskState()
       loading.value = false
       return
@@ -858,7 +1065,7 @@ watch(
       resetTaskState()
     }
 
-    await loadTaskData()
+    await loadInitialTaskData()
     await connectStream()
   },
   {
@@ -929,8 +1136,23 @@ function startDrag(e: MouseEvent) {
         }"
       >
         <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
+          <div
+            v-if="detail?.goalSummary"
+            class="border-border/60 bg-muted/30 text-foreground flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-xs"
+          >
+            <span class="text-muted-foreground">所属需求</span>
+            <RouterLink
+              :to="{ name: 'goal-detail', params: { goalId: detail.goalSummary.id } }"
+              class="text-primary font-medium hover:underline"
+            >
+              {{ detail.goalSummary.title }}
+            </RouterLink>
+            <span class="text-muted-foreground">（{{ detail.goalSummary.status }}）</span>
+          </div>
+
           <WorkflowCard
             v-if="showWorkflowCard"
+            ref="workflowCardRef"
             :nodes="sortedNodes"
             :selected-node-id="selectedWorkflowNodeId"
             @select-node="handleSelectWorkflowNode"
@@ -963,7 +1185,7 @@ function startDrag(e: MouseEvent) {
             @execute="executeTask"
             @re-execute="reExecuteTask"
             @abort-workflow="interruptExecution"
-            @refresh="loadTaskData"
+            @refresh="loadInitialTaskData"
             @remove="deleteOpen = true"
             @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
           />
@@ -978,11 +1200,6 @@ function startDrag(e: MouseEvent) {
             :stream-connected="streamConnected"
             :messages="executionMessages"
             :format-date="formatDate"
-            :task-id="taskId"
-            :task-node-id="executionTaskNodeId"
-            :git-worktree="task?.gitWorktree || null"
-            :branch-files-refresh-token="rightPanelRefreshToken"
-            @open-artifact="openArtifactFromChip"
           />
 
           <ReplyCard

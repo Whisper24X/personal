@@ -330,6 +330,18 @@ export const ROUTE_ACCESS_CONFIG = {
     title: '任务',
     capabilities: ['project.task.read'],
   },
+  goalCreate: {
+    title: '新建需求',
+    capabilities: ['project.task.read'],
+  },
+  projectGoals: {
+    title: '需求',
+    capabilities: ['project.task.read'],
+  },
+  goalDetail: {
+    title: '需求详情',
+    capabilities: ['project.task.read'],
+  },
   taskDetail: {
     title: '任务详情',
     capabilities: ['project.task.read'],
@@ -347,7 +359,17 @@ export const ROUTE_ACCESS_CONFIG = {
 export type RouteAccessKey = keyof typeof ROUTE_ACCESS_CONFIG
 
 export type ProjectMenuAccessItem = {
-  id: 'dashboard' | 'workflow' | 'tasks' | 'knowledge' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
+  id:
+    | 'dashboard'
+    | 'workflow'
+    | 'tasks'
+    | 'goals'
+    | 'knowledge'
+    | 'kanban'
+    | 'automations'
+    | 'skills'
+    | 'mcp'
+    | 'git'
   label: string
   to: string
   capabilities: readonly AccessCapabilityCode[]
@@ -355,6 +377,7 @@ export type ProjectMenuAccessItem = {
 
 export const PROJECT_MENU_ACCESS_CONFIG = [
   { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.dashboard.read'] },
+  { id: 'goals', label: '需求', to: '/dashboard', capabilities: ['project.task.read'] },
   { id: 'tasks', label: '新建任务', to: '/tasks', capabilities: ['project.task.read'] },
   { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.read'] },
   { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.automation.read'] },

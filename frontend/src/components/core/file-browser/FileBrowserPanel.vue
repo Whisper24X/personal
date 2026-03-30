@@ -61,6 +61,8 @@ const preview = ref<FileBrowserPreview | null>(null)
 const previewLoading = ref(false)
 const previewErrorMessage = ref('')
 const refreshInFlight = ref(false)
+const pendingRefresh = ref(false)
+const pendingRefreshPreserveExpanded = ref(false)
 const TREE_ROW_BASE_WIDTH = 72
 const TREE_ROW_DEPTH_WIDTH = 10
 const FILE_NAME_FONT = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
@@ -180,12 +182,7 @@ const autoExpandSingleDirChain = async (initialNodes: FileTreeNode[], expanded: 
   return nextNodes
 }
 
-const loadWorkspaceRoot = async (options?: { preserveExpanded?: boolean }) => {
-  if (refreshInFlight.value) {
-    return
-  }
-
-  refreshInFlight.value = true
+const performLoadWorkspaceRoot = async (options?: { preserveExpanded?: boolean }) => {
   treeLoading.value = true
   treeErrorMessage.value = ''
 
@@ -218,15 +215,45 @@ const loadWorkspaceRoot = async (options?: { preserveExpanded?: boolean }) => {
     treeErrorMessage.value = toErrorMessage(error, props.treeLoadErrorText)
   } finally {
     treeLoading.value = false
-    refreshInFlight.value = false
   }
 }
 
-const refreshTree = async () => {
-  await loadWorkspaceRoot({ preserveExpanded: true })
+const runRefreshTree = async (options?: { preserveExpanded?: boolean }) => {
+  await performLoadWorkspaceRoot(options)
 
   if (selectedPath.value) {
     await loadPreview(selectedPath.value)
+  }
+}
+
+const refreshTree = async (options?: { preserveExpanded?: boolean }) => {
+  if (refreshInFlight.value) {
+    pendingRefresh.value = true
+    pendingRefreshPreserveExpanded.value =
+      pendingRefreshPreserveExpanded.value || Boolean(options?.preserveExpanded)
+    return
+  }
+
+  refreshInFlight.value = true
+
+  try {
+    let nextOptions = options
+
+    do {
+      pendingRefresh.value = false
+      pendingRefreshPreserveExpanded.value = false
+      await runRefreshTree(nextOptions)
+
+      if (!pendingRefresh.value) {
+        break
+      }
+
+      nextOptions = {
+        preserveExpanded: pendingRefreshPreserveExpanded.value,
+      }
+    } while (pendingRefresh.value)
+  } finally {
+    refreshInFlight.value = false
   }
 }
 
@@ -271,7 +298,7 @@ watch(
   [() => props.sourceKey, () => props.rootPath],
   async () => {
     resetState()
-    await loadWorkspaceRoot()
+    await refreshTree()
   },
   {
     immediate: true,
@@ -281,7 +308,7 @@ watch(
 watch(
   () => props.refreshToken,
   async () => {
-    await refreshTree()
+    await refreshTree({ preserveExpanded: true })
   },
 )
 </script>
@@ -300,7 +327,7 @@ watch(
         <button
           class="h-6 rounded-md border border-border/60 bg-background px-2 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           type="button"
-          @click="refreshTree"
+          @click="refreshTree({ preserveExpanded: true })"
         >
           刷新
         </button>

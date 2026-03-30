@@ -10,6 +10,8 @@ export abstract class TaskRepository {
 
   abstract findById(id: Task['id']): Promise<NullableType<Task>>;
 
+  abstract findByGoalId(goalId: string): Promise<Task[]>;
+
   abstract findByGitWorktree(gitWorktree: string): Promise<NullableType<Task>>;
 
   abstract findMaxGitWorktreeSequence(prefix: string): Promise<number>;

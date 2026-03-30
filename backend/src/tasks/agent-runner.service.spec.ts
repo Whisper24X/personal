@@ -142,7 +142,7 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.adapter).toBe('codex');
-    expect(result.command).toBe('codex-global');
+    expect(result.command).toBe('codex');
     expect(result.args).toEqual([
       'exec',
       '--json',
@@ -155,7 +155,6 @@ describe('AgentRunnerService', () => {
       '-',
     ]);
     expect(result.env).toMatchObject({
-      BASE_ENV: 'base',
       PROFILE_ENV: 'retail',
       AINATIVE_BUSINESS_LINE_ID: 'business-line-1',
       AINATIVE_AGENT_TOOL_CONFIG_ID: 'cfg-retail-codex',
@@ -314,7 +313,7 @@ describe('AgentRunnerService', () => {
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBe('cfg-global-codex');
   });
 
-  it('should ignore invalid persisted config json and keep legacy runner config', async () => {
+  it('should ignore legacy project agentRunner when node selects a different CLI adapter', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
       id: 'cfg-invalid',
@@ -345,7 +344,8 @@ describe('AgentRunnerService', () => {
       agentCliId: 'gemini-cli',
     });
 
-    expect(result.command).toBe('legacy-command');
+    expect(result.adapter).toBe('gemini');
+    expect(result.command).toBe('gemini');
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBeUndefined();
   });
 
@@ -372,7 +372,7 @@ describe('AgentRunnerService', () => {
 
     expect(result.adapter).toBe('gemini');
     expect(result.command).toBe('gemini');
-    expect(result.args).toEqual(['-p']);
+    expect(result.args).toEqual(['--output-format', 'stream-json', '--yolo']);
   });
 
   it('should use stream-json defaults for gemini cli', async () => {
@@ -1930,19 +1930,19 @@ describe('AgentRunnerService', () => {
     expect(result.clearPreviousSessionId).toBeUndefined();
   });
 
-  it('should use follow-up message only when resuming an existing cli session', () => {
+  it('should use rendered follow-up message only when resuming an existing cli session', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,
     );
     const serviceAny = service as any;
 
     const prompt = serviceAny.resolvePrompt(
-      createTask(),
+      createTask({ gitBranch: 'feature/runtime-branch' }),
       {
         ...createNode(),
         agentCliSessionId: 'session-1',
         runtimeJson: {
-          pendingUserMessage: 'Please continue from the previous result',
+          pendingUserMessage: 'Please continue from {{gitBranch}}',
         },
       },
       createProject(),
@@ -1951,7 +1951,7 @@ describe('AgentRunnerService', () => {
       },
     );
 
-    expect(prompt).toBe('Please continue from the previous result');
+    expect(prompt).toBe('Please continue from feature/runtime-branch');
   });
 
   it('should compose node prompt and follow-up message before a session is established', () => {
@@ -2046,7 +2046,7 @@ describe('AgentRunnerService', () => {
     );
   });
 
-  it('should not render pending follow-up message placeholders', () => {
+  it('should render pending follow-up message placeholders before execution', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,
     );
@@ -2079,7 +2079,7 @@ describe('AgentRunnerService', () => {
     );
 
     expect(prompt).toBe(
-      ['Run task', 'Please continue on {{gitBranch}}'].join('\n\n'),
+      ['Run task', 'Please continue on feature/runtime-branch'].join('\n\n'),
     );
   });
 

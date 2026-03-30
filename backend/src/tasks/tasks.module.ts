@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
@@ -27,15 +27,17 @@ import { TaskCommandService } from './application/task-command.service';
 import { TaskInteractionService } from './application/task-interaction.service';
 import { TaskNodeExecutionService } from './application/task-node-execution.service';
 import { TaskSchedulerService } from './application/task-scheduler.service';
-import { TaskStepLabelSummaryService } from './application/task-step-label-summary.service';
 import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
 import { ContainersModule } from '../containers/containers.module';
+import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
+import { GoalsModule } from '../goals/goals.module';
 
 @Module({
   imports: [
     RelationalTaskPersistenceModule,
     ContainersModule,
-    ProjectsModule,
+    forwardRef(() => GoalsModule),
+    forwardRef(() => ProjectsModule),
     WorkflowTemplatesModule,
     NotificationsModule,
     RelationalBusinessLinePersistenceModule,
@@ -63,10 +65,15 @@ import { ContainersModule } from '../containers/containers.module';
     TaskInteractionService,
     TaskNodeExecutionService,
     TaskSchedulerService,
-    TaskStepLabelSummaryService,
     TaskTitleSuggestionService,
+    TaskWorkspaceWatchService,
     TerminalGateway,
   ],
-  exports: [TasksService, TaskRuntimeService, RelationalTaskPersistenceModule],
+  exports: [
+    TasksService,
+    TaskRuntimeService,
+    AgentRunnerService,
+    RelationalTaskPersistenceModule,
+  ],
 })
 export class TasksModule {}

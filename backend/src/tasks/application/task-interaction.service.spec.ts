@@ -106,6 +106,9 @@ const createService = () => {
       skippedReason: 'no_changes',
     }),
   };
+  const taskWorkspaceWatchService = {
+    syncTaskWatch: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new TaskInteractionService(
     taskRepository as never,
@@ -121,6 +124,7 @@ const createService = () => {
     taskSchedulerService as never,
     projectExecutionSlotRepository as never,
     taskGitService as never,
+    taskWorkspaceWatchService as never,
   );
 
   return {
@@ -137,6 +141,7 @@ const createService = () => {
     taskSchedulerService,
     projectExecutionSlotRepository,
     taskGitService,
+    taskWorkspaceWatchService,
   };
 };
 
@@ -224,6 +229,43 @@ describe('TaskInteractionService', () => {
       finishedAt: null,
       runtimeJson:
         taskConfigResolver.buildPendingReplyRuntimeJson('Please continue'),
+    });
+  });
+
+  it('should persist the raw reply template before execution-time rendering', async () => {
+    const { service, taskNodeRepository, taskConfigResolver, taskLogService } =
+      createService();
+    const currentUser = createCurrentUser();
+    const todoNode = createNode({
+      id: 'node-todo',
+      status: TaskStatus.todo,
+    });
+
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      todoNode,
+    );
+
+    await service.reply(
+      'task-1',
+      { message: 'Please continue on {{gitBranch}}' } as never,
+      currentUser as never,
+    );
+
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        taskNodeId: null,
+        message: 'Please continue on {{gitBranch}}',
+      }),
+    );
+    expect(
+      taskConfigResolver.buildPendingReplyRuntimeJson,
+    ).toHaveBeenCalledWith('Please continue on {{gitBranch}}');
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-todo', {
+      runtimeJson: taskConfigResolver.buildPendingReplyRuntimeJson(
+        'Please continue on {{gitBranch}}',
+      ),
     });
   });
 

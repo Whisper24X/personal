@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
 import { RelationalProjectPersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
@@ -8,6 +8,7 @@ import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persist
 import { AccessModule } from '../access/access.module';
 import { RelationalWorkflowTemplatePersistenceModule } from '../workflow-templates/infrastructure/persistence/relational/relational-persistence.module';
 import { ContainersModule } from '../containers/containers.module';
+import { TasksModule } from '../tasks/tasks.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ContainersModule } from '../containers/containers.module';
     UsersModule,
     BusinessLinesModule,
     AccessModule,
+    forwardRef(() => TasksModule),
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService],

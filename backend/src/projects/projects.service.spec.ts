@@ -110,6 +110,10 @@ const createProjectsService = () => {
     get: jest.fn().mockReturnValue('/tmp/ainative-data-root'),
   };
 
+  const agentRunnerService = {
+    executeGoalPrompt: jest.fn(),
+  };
+
   const service = new ProjectsService(
     projectRepository as never,
     projectMemberRepository as never,
@@ -125,6 +129,7 @@ const createProjectsService = () => {
     isolatedRunner as never,
     projectRunnerImageRebuild as never,
     configService as never,
+    agentRunnerService as never,
   );
 
   return {
@@ -141,6 +146,7 @@ const createProjectsService = () => {
     containerConfig,
     isolatedRunner,
     projectRunnerImageRebuild,
+    agentRunnerService,
   };
 };
 

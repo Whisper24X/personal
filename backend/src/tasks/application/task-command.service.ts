@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import path from 'path';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { Project } from '../../projects/domain/project';
@@ -31,6 +32,7 @@ import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.serv
 import { TaskQueryService } from './task-query.service';
 import { TaskAccessService } from './task-access.service';
 import { TaskTitleSuggestionService } from './task-title-suggestion.service';
+import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
 
@@ -52,6 +54,7 @@ export class TaskCommandService {
     private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
     private readonly containerOrchestration: ContainerOrchestrationService,
     private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
+    private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
   ) {}
 
   async create(
@@ -198,12 +201,13 @@ export class TaskCommandService {
 
     const promptTrimmed = createTaskDto.prompt?.trim() ?? '';
     const titleForCreate = initialTitleFromPrompt(
-      promptTrimmed || createTaskDto.title?.trim() || '',
+      createTaskDto.title?.trim() || promptTrimmed || '',
     );
 
     const task = await this.taskRepository.create({
       projectId: createTaskDto.projectId,
       businessLineId: project.businessLineId,
+      goalId: createTaskDto.goalId ?? null,
       mode: resolvedMode,
       title: titleForCreate,
       prompt: createTaskDto.prompt ?? null,
@@ -362,6 +366,10 @@ export class TaskCommandService {
       updatePayload,
     );
     const effectiveTask = updatedTask ?? task;
+
+    if (updatePayload.gitWorktree !== undefined) {
+      await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
+    }
 
     if (
       updatePayload.configJson !== undefined ||
@@ -525,7 +533,21 @@ export class TaskCommandService {
       },
     });
 
+    this.logger.log(
+      `task_deleted ${JSON.stringify({ taskId: task.id, deletedBy: currentUser.sub, gitWorktree: task.gitWorktree ?? null })}`,
+    );
+
     await this.taskRepository.remove(task.id);
+
+    if (task.projectId) {
+      const project = await this.taskAccessService
+        .getProjectByIdOrThrow(task.projectId)
+        .catch(() => null);
+
+      if (project) {
+        await this.taskRuntimeService.cleanupTaskDataDir(task, project);
+      }
+    }
   }
 
   private normalizeOptionalString(value?: string | null): string | null {
@@ -569,8 +591,11 @@ export class TaskCommandService {
   private buildTaskNameId(): string {
     const now = new Date();
     const datePrefix = this.formatTaskNameDate(now);
+    const timePart = this.formatTaskNameTime(now);
+    const ms = `${now.getMilliseconds()}`.padStart(3, '0');
+    const salt = randomInt(0, 10_000).toString().padStart(4, '0');
 
-    return `${datePrefix}-${this.formatTaskNameTime(now)}`;
+    return `${datePrefix}-${timePart}${ms}${salt}`;
   }
 
   private formatTaskNameDate(date: Date): string {

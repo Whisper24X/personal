@@ -6,6 +6,7 @@ export class TaskMapper {
     const domainEntity = new Task();
     domainEntity.id = raw.id;
     domainEntity.projectId = raw.projectId;
+    domainEntity.goalId = raw.goalId ?? null;
     domainEntity.businessLineId = raw.businessLineId;
     domainEntity.mode = raw.mode;
     domainEntity.title = raw.title;
@@ -33,6 +34,7 @@ export class TaskMapper {
     }
 
     persistenceEntity.projectId = domainEntity.projectId;
+    persistenceEntity.goalId = domainEntity.goalId ?? null;
     persistenceEntity.businessLineId = domainEntity.businessLineId;
     persistenceEntity.mode = domainEntity.mode;
     persistenceEntity.title = domainEntity.title;

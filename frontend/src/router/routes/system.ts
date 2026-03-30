@@ -122,6 +122,30 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: buildRouteAccessMeta('tasks'),
   },
   {
+    path: '/goals',
+    name: 'goal-create',
+    component: () => import('@/views/goals/index.vue'),
+    meta: buildRouteAccessMeta('goalCreate', {
+      contentMode: 'full',
+    }),
+  },
+  {
+    path: '/projects/:projectId/goals',
+    name: 'project-goals',
+    component: () => import('@/views/goals/ProjectGoalsList.vue'),
+    meta: buildRouteAccessMeta('projectGoals', {
+      contentMode: 'full',
+    }),
+  },
+  {
+    path: '/goals/:goalId',
+    name: 'goal-detail',
+    component: () => import('@/views/goals/GoalDetail.vue'),
+    meta: buildRouteAccessMeta('goalDetail', {
+      contentMode: 'full',
+    }),
+  },
+  {
     path: '/task-detail/:id',
     name: 'task-detail',
     component: () => import('@/views/tasks/detail.vue'),
