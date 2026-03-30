@@ -267,11 +267,14 @@ const isRecentTaskActive = (taskId: string) => {
     </SidebarContent>
 
     <SidebarFooter class="border-t border-sidebar-border p-2">
-      <SidebarMenu class="grid grid-cols-2 gap-1">
+      <SidebarMenu
+        class="grid w-full min-w-0 grid-cols-2 gap-1 group-data-[collapsible=icon]:grid-cols-1 group-data-[collapsible=icon]:justify-items-center"
+      >
         <SidebarMenuItem>
           <SidebarMenuButton
             as-child
-            class="h-9 w-full justify-center gap-1.5 text-xs"
+            tooltip="业务线"
+            class="h-9 w-full justify-center gap-1.5 text-xs group-data-[collapsible=icon]:[&_span]:hidden"
             :is-active="props.isBusinessLineManageActive"
           >
             <RouterLink to="/business-lines" @click="setOpenMobile(false)">
@@ -283,7 +286,8 @@ const isRecentTaskActive = (taskId: string) => {
         <SidebarMenuItem>
           <SidebarMenuButton
             as-child
-            class="h-9 w-full justify-center gap-1.5 text-xs"
+            tooltip="设置"
+            class="h-9 w-full justify-center gap-1.5 text-xs group-data-[collapsible=icon]:[&_span]:hidden"
             :is-active="props.isSettingsActive"
           >
             <RouterLink to="/settings" @click="setOpenMobile(false)">

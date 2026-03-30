@@ -32,6 +32,7 @@ type PanelType = 'account' | 'appearance' | 'notifications'
 type BrowserPermissionState = NotificationPermission | 'unsupported'
 
 const THEME_COLOR_OPTIONS: Array<{ value: ThemeColor; label: string }> = [
+  { value: 'mono', label: '黑白' },
   { value: 'amber', label: '琥珀' },
   { value: 'ocean', label: '海蓝' },
   { value: 'forest', label: '森绿' },
@@ -42,6 +43,7 @@ const THEME_COLOR_OPTIONS: Array<{ value: ThemeColor; label: string }> = [
 ]
 
 const THEME_COLOR_SWATCH_CLASS: Record<ThemeColor, string> = {
+  mono: 'bg-gradient-to-br from-neutral-950 to-neutral-100',
   amber: 'bg-amber-500',
   ocean: 'bg-sky-500',
   forest: 'bg-emerald-500',
@@ -66,7 +68,7 @@ const props = defineProps<{
   externalTab?: PersonalSettingsTab
 }>()
 
-const themeColor = ref<ThemeColor>('amber')
+const themeColor = ref<ThemeColor>('mono')
 const appearanceMode = ref<AppearanceMode>('light')
 const backgroundStyle = ref<BackgroundStyle>('grid')
 const activeTab = ref<PersonalSettingsTab>('profile')
