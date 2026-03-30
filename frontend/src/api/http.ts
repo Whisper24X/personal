@@ -76,6 +76,7 @@ export type SseEvent = {
 export type SseCallbacks = {
   onEvent: (event: SseEvent) => void
   onError?: (error: Error) => void
+  onOpen?: () => void | Promise<void>
   signal?: AbortSignal
 }
 
@@ -138,6 +139,7 @@ const consumeSseResponse = async (
   }
 
   const reader = response.body.getReader()
+  await callbacks.onOpen?.()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
 

@@ -678,14 +678,6 @@ export class TasksController {
     });
 
     return new Observable<MessageEvent>((subscriber) => {
-      for (const historyLog of stream.history) {
-        subscriber.next({
-          id: historyLog.id,
-          type: 'task-log',
-          data: historyLog,
-        });
-      }
-
       const unsubscribe = stream.subscribe((log) => {
         subscriber.next({
           id: log.id,

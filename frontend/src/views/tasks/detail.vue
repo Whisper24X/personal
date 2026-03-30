@@ -86,7 +86,9 @@ let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let sidebarRecentTasksDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let rightPanelWorkspaceRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
-let taskDataRequestId = 0
+let streamLogFlushTimer: ReturnType<typeof setTimeout> | null = null
+let detailRequestId = 0
+let pendingStreamLogs: TaskLog[] = []
 
 const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
   'Node execution started',
@@ -411,15 +413,90 @@ const upsertLog = (nextLog: TaskLog) => {
 
   if (existedIndex >= 0) {
     logs.value[existedIndex] = nextLog
-  } else {
-    logs.value.push(nextLog)
+    return false
   }
+
+  logs.value.push(nextLog)
 
   logs.value.sort((left, right) => {
     const leftAt = new Date(left.createdAt).getTime()
     const rightAt = new Date(right.createdAt).getTime()
     return leftAt - rightAt
   })
+
+  return true
+}
+
+const getLastLogCursor = () => {
+  const lastLog = logs.value.length > 0 ? logs.value[logs.value.length - 1] : null
+  if (!lastLog) {
+    return null
+  }
+
+  return {
+    since: lastLog.createdAt,
+    afterId: lastLog.id,
+  }
+}
+
+const applyTaskLog = (payload: TaskLog) => {
+  const isFresh = upsertLog(payload)
+  if (!isFresh) {
+    return
+  }
+
+  if (isAgentOutputLog(payload)) {
+    scheduleRefreshMessages()
+  }
+  if (shouldRefreshRightPanelForNodeStatusLog(payload)) {
+    rightPanelRefreshToken.value += 1
+  }
+  if (shouldRefreshTaskDetailForLog(payload)) {
+    scheduleRefreshTaskDetail()
+  }
+  if (payload.message?.includes('Task title generated')) {
+    if (sidebarRecentTasksDebounceTimer) clearTimeout(sidebarRecentTasksDebounceTimer)
+    sidebarRecentTasksDebounceTimer = setTimeout(() => {
+      sidebarRecentTasksDebounceTimer = null
+      void refreshSidebarRecentTasks()
+    }, 300)
+  }
+}
+
+const clearStreamLogFlushTimer = () => {
+  if (!streamLogFlushTimer) {
+    return
+  }
+
+  clearTimeout(streamLogFlushTimer)
+  streamLogFlushTimer = null
+}
+
+const flushPendingStreamLogs = () => {
+  clearStreamLogFlushTimer()
+
+  const nextBatch = pendingStreamLogs.splice(0, 20)
+  for (const log of nextBatch) {
+    applyTaskLog(log)
+  }
+
+  if (pendingStreamLogs.length > 0) {
+    streamLogFlushTimer = setTimeout(() => {
+      flushPendingStreamLogs()
+    }, 16)
+  }
+}
+
+const queueTaskLog = (payload: TaskLog) => {
+  pendingStreamLogs.push(payload)
+
+  if (streamLogFlushTimer) {
+    return
+  }
+
+  streamLogFlushTimer = setTimeout(() => {
+    flushPendingStreamLogs()
+  }, 16)
 }
 
 const shouldRefreshTaskDetailForLog = (log: TaskLog) => {
@@ -457,6 +534,11 @@ const clearRightPanelWorkspaceRefreshTimer = () => {
   rightPanelWorkspaceRefreshDebounceTimer = null
 }
 
+const clearPendingStreamLogs = () => {
+  pendingStreamLogs = []
+  clearStreamLogFlushTimer()
+}
+
 const scheduleRefreshMessages = (delay = 120) => {
   if (!taskId.value) {
     return
@@ -466,6 +548,21 @@ const scheduleRefreshMessages = (delay = 120) => {
   messageRefreshDebounceTimer = setTimeout(() => {
     messageRefreshDebounceTimer = null
     void refreshMessages()
+  }, delay)
+}
+
+const scheduleRefreshTaskDetail = (delay = 300) => {
+  if (!taskId.value) {
+    return
+  }
+
+  if (detailRefreshDebounceTimer) {
+    clearTimeout(detailRefreshDebounceTimer)
+  }
+
+  detailRefreshDebounceTimer = setTimeout(() => {
+    detailRefreshDebounceTimer = null
+    void refreshTaskDetail()
   }, delay)
 }
 
@@ -485,6 +582,7 @@ const disconnectStream = () => {
   clearReconnectTimer()
   clearMessageRefreshTimer()
   clearRightPanelWorkspaceRefreshTimer()
+  clearPendingStreamLogs()
   if (detailRefreshDebounceTimer) {
     clearTimeout(detailRefreshDebounceTimer)
     detailRefreshDebounceTimer = null
@@ -519,22 +617,28 @@ const connectStream = async () => {
   }
 
   disconnectStream()
+  const currentTaskId = taskId.value
+  const reconnectCursor = getLastLogCursor()
+
+  await syncIncrementalLogs(currentTaskId, reconnectCursor)
+
+  if (taskId.value !== currentTaskId) {
+    return
+  }
 
   streamAbortController = new AbortController()
-
-  const lastLog = logs.value.length > 0 ? logs.value[logs.value.length - 1] : undefined
 
   try {
     streamConnected.value = true
 
     await openSseStream(
       `/tasks/${taskId.value}/stream`,
-      {
-        since: lastLog?.createdAt,
-        afterId: lastLog?.id,
-      },
+      undefined,
       {
         signal: streamAbortController.signal,
+        onOpen: async () => {
+          await syncIncrementalLogs(currentTaskId, reconnectCursor)
+        },
         onEvent: (event) => {
           if (event.event === 'task-workspace-change') {
             try {
@@ -554,27 +658,7 @@ const connectStream = async () => {
 
           try {
             const payload = JSON.parse(event.data) as TaskLog
-            upsertLog(payload)
-            if (isAgentOutputLog(payload) || shouldRefreshTaskDetailForLog(payload)) {
-              scheduleRefreshMessages()
-            }
-            if (shouldRefreshRightPanelForNodeStatusLog(payload)) {
-              rightPanelRefreshToken.value += 1
-            }
-            if (shouldRefreshTaskDetailForLog(payload)) {
-              if (detailRefreshDebounceTimer) clearTimeout(detailRefreshDebounceTimer)
-              detailRefreshDebounceTimer = setTimeout(() => {
-                detailRefreshDebounceTimer = null
-                void loadTaskData()
-              }, 300)
-            }
-            if (payload.message?.includes('Task title generated')) {
-              if (sidebarRecentTasksDebounceTimer) clearTimeout(sidebarRecentTasksDebounceTimer)
-              sidebarRecentTasksDebounceTimer = setTimeout(() => {
-                sidebarRecentTasksDebounceTimer = null
-                void refreshSidebarRecentTasks()
-              }, 300)
-            }
+            queueTaskLog(payload)
           } catch {
             // ignore malformed task-log payload
           }
@@ -613,6 +697,33 @@ const refreshMessages = async () => {
   }
 }
 
+const syncIncrementalLogs = async (
+  currentTaskId: string,
+  cursor: { since: string; afterId: string } | null,
+) => {
+  if (!cursor) {
+    return
+  }
+
+  try {
+    const incrementalLogs = await tasksApi.logs(currentTaskId, {
+      since: cursor.since,
+      afterId: cursor.afterId,
+      limit: 300,
+    })
+
+    if (taskId.value !== currentTaskId) {
+      return
+    }
+
+    for (const log of incrementalLogs) {
+      applyTaskLog(log)
+    }
+  } catch {
+    // ignore reconnect catch-up failures and rely on subsequent reconnects
+  }
+}
+
 const refreshAccessContext = async (projectId: string) => {
   try {
     await accessStore.loadContext((projectId ? { projectId } : {}))
@@ -628,14 +739,15 @@ const resetTaskState = () => {
   messages.value = []
   selectedWorkflowNodeId.value = null
   lastWorkflowAutoSyncSignature.value = null
+  clearPendingStreamLogs()
 }
 
-const loadTaskData = async () => {
+const loadInitialTaskData = async () => {
   if (!taskId.value) {
     return
   }
 
-  const requestId = ++taskDataRequestId
+  const requestId = ++detailRequestId
   loading.value = true
 
   try {
@@ -645,13 +757,13 @@ const loadTaskData = async () => {
       tasksApi.messages(taskId.value),
     ])
 
-    if (requestId !== taskDataRequestId) {
+    if (requestId !== detailRequestId) {
       return
     }
 
     await refreshAccessContext(detailResponse.task.projectId || queryProjectId.value)
 
-    if (requestId !== taskDataRequestId) {
+    if (requestId !== detailRequestId) {
       return
     }
 
@@ -663,12 +775,34 @@ const loadTaskData = async () => {
     })
     messages.value = messageResponse
   } catch (error) {
-    if (requestId === taskDataRequestId) {
+    if (requestId === detailRequestId) {
       message.error(toErrorMessage(error, '加载任务详情失败'))
     }
   } finally {
-    if (requestId === taskDataRequestId) {
+    if (requestId === detailRequestId) {
       loading.value = false
+    }
+  }
+}
+
+const refreshTaskDetail = async () => {
+  if (!taskId.value) {
+    return
+  }
+
+  const requestId = ++detailRequestId
+
+  try {
+    const detailResponse = await tasksApi.detailWithNodes(taskId.value)
+
+    if (requestId !== detailRequestId) {
+      return
+    }
+
+    detail.value = detailResponse
+  } catch (error) {
+    if (requestId === detailRequestId) {
+      message.error(toErrorMessage(error, '加载任务详情失败'))
     }
   }
 }
@@ -920,7 +1054,7 @@ watch(
   async (nextTaskId, previousTaskId) => {
     if (!nextTaskId) {
       disconnectStream()
-      taskDataRequestId += 1
+      detailRequestId += 1
       resetTaskState()
       loading.value = false
       return
@@ -931,7 +1065,7 @@ watch(
       resetTaskState()
     }
 
-    await loadTaskData()
+    await loadInitialTaskData()
     await connectStream()
   },
   {
@@ -1051,7 +1185,7 @@ function startDrag(e: MouseEvent) {
             @execute="executeTask"
             @re-execute="reExecuteTask"
             @abort-workflow="interruptExecution"
-            @refresh="loadTaskData"
+            @refresh="loadInitialTaskData"
             @remove="deleteOpen = true"
             @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
           />

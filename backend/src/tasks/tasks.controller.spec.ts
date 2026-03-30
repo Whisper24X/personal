@@ -5,16 +5,16 @@ describe('TasksController', () => {
   it('should pass through afterId query when opening stream', async () => {
     const tasksService = {
       openLogStream: jest.fn().mockResolvedValue({
-        history: [
-          {
-            id: 'log-1',
+        subscribe: jest.fn().mockImplementation((listener) => {
+          listener({
+            id: 'log-2',
             taskId: 'task-1',
             level: 'info',
-            message: 'history',
+            message: 'live',
             createdAt: new Date(),
-          },
-        ],
-        subscribe: jest.fn().mockReturnValue(() => undefined),
+          });
+          return () => undefined;
+        }),
       }),
       listLogs: jest.fn().mockResolvedValue([]),
     };
@@ -75,7 +75,7 @@ describe('TasksController', () => {
 
     expect(emitted.data).toEqual(
       expect.objectContaining({
-        id: 'log-1',
+        id: 'log-2',
       }),
     );
     expect(tasksService.openLogStream).toHaveBeenCalledWith({
@@ -94,7 +94,6 @@ describe('TasksController', () => {
   it('should emit workspace change events from the shared task stream', async () => {
     const tasksService = {
       openLogStream: jest.fn().mockResolvedValue({
-        history: [],
         subscribe: jest.fn().mockReturnValue(() => undefined),
       }),
     };

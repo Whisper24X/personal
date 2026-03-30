@@ -54,7 +54,6 @@ const createTasksService = () => {
       .fn()
       .mockResolvedValue({ path: 'README.md', content: 'hello' }),
     openLogStream: jest.fn().mockResolvedValue({
-      history: [],
       subscribe: jest.fn().mockReturnValue(() => undefined),
     }),
   };

@@ -209,10 +209,12 @@ describe('TaskDetailView toasts', () => {
     })
 
     await flushPromises()
+    await vi.advanceTimersByTimeAsync(16)
     await vi.advanceTimersByTimeAsync(300)
     await flushPromises()
 
     expect(tasksApi.detailWithNodes).toHaveBeenCalledTimes(2)
+    expect(tasksApi.messages).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('节点待审批')
     expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('节点待审批')
@@ -221,6 +223,8 @@ describe('TaskDetailView toasts', () => {
   })
 
   it('refreshes the right panel when SSE reports a node status change', async () => {
+    vi.useFakeTimers()
+
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -254,8 +258,11 @@ describe('TaskDetailView toasts', () => {
     })
 
     await flushPromises()
+    await vi.advanceTimersByTimeAsync(16)
 
     expect(wrapper.get('[data-testid="right-panel"]').attributes('data-refresh-token')).toBe('1')
+
+    vi.useRealTimers()
   })
 
   it('refreshes the right panel when SSE reports workspace changes', async () => {
@@ -300,6 +307,92 @@ describe('TaskDetailView toasts', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="right-panel"]').attributes('data-refresh-token')).toBe('1')
+
+    vi.useRealTimers()
+  })
+
+  it('fetches incremental logs over HTTP before reconnecting the realtime stream', async () => {
+    vi.useFakeTimers()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.logs
+      .mockResolvedValueOnce([
+        {
+          id: 'log-1',
+          taskId: 'task-1',
+          taskNodeId: null,
+          level: 'info',
+          message: 'initial log',
+          createdAt: '2026-02-27T10:00:00.000Z',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'log-2',
+          taskId: 'task-1',
+          taskNodeId: null,
+          level: 'info',
+          message: 'missed log',
+          createdAt: '2026-02-27T10:00:01.000Z',
+        },
+      ])
+      .mockResolvedValueOnce([])
+
+    openSseStream
+      .mockImplementationOnce(async (_url, _query, options) => {
+        await options?.onOpen?.()
+        options?.onError?.(new Error('disconnect'))
+      })
+      .mockImplementationOnce(async (_url, _query, options) => {
+        await options?.onOpen?.()
+      })
+
+    mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(openSseStream).toHaveBeenNthCalledWith(
+      1,
+      '/tasks/task-1/stream',
+      undefined,
+      expect.any(Object),
+    )
+
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    expect(openSseStream).toHaveBeenNthCalledWith(
+      2,
+      '/tasks/task-1/stream',
+      undefined,
+      expect.any(Object),
+    )
+
+    expect(
+      tasksApi.logs.mock.calls.some(
+        ([taskId, params]) =>
+          taskId === 'task-1' &&
+          params?.since === '2026-02-27T10:00:00.000Z' &&
+          params?.afterId === 'log-1' &&
+          params?.limit === 300,
+      ),
+    ).toBe(true)
 
     vi.useRealTimers()
   })
@@ -367,6 +460,7 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).toMatch(/待执行/)
     expect(wrapper.text()).toContain('Codex')
 
+    await vi.advanceTimersByTimeAsync(16)
     await vi.advanceTimersByTimeAsync(300)
     await flushPromises()
 
@@ -1232,6 +1326,7 @@ describe('TaskDetailView toasts', () => {
     const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
 
+    await vi.advanceTimersByTimeAsync(16)
     await vi.advanceTimersByTimeAsync(300)
     await flushPromises()
 
