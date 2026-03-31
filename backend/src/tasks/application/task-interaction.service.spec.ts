@@ -86,6 +86,7 @@ const createService = () => {
   };
   const taskOutputService = {
     writeNodeOutputJsonl: jest.fn(),
+    resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
   };
   const taskStatusService = {
     recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
@@ -131,6 +132,7 @@ const createService = () => {
     taskRuntimeOrchestrator,
     taskConfigResolver,
     taskLogService,
+    taskOutputService,
     taskStatusService,
     taskQueryService,
     taskSchedulerService,
@@ -261,6 +263,48 @@ describe('TaskInteractionService', () => {
         'Please continue on {{gitBranch}}',
       ),
     });
+  });
+
+  it('should cancel a running node without overwriting existing output jsonl', async () => {
+    const {
+      service,
+      task,
+      taskNodeRepository,
+      taskOutputService,
+      taskStatusService,
+      taskSchedulerService,
+      taskQueryService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const runningNode = createNode({
+      status: TaskStatus.inProgress,
+      finishedAt: null,
+      agentClioutput: null,
+    });
+
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(runningNode);
+
+    await service.cancel('task-1', currentUser as never);
+
+    expect(taskOutputService.writeNodeOutputJsonl).not.toHaveBeenCalled();
+    expect(taskOutputService.resolveNodeOutputPath).toHaveBeenCalledWith(
+      task,
+      runningNode,
+    );
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-1', {
+      status: TaskStatus.inReview,
+      finishedAt: expect.any(Date),
+      agentClioutput: '/tmp/node-1.jsonl',
+      runtimeJson: null,
+    });
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-1',
+    );
+    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
+    expect(taskQueryService.detailById).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
   });
 
   it('should auto-commit workspace changes before approving a node', async () => {

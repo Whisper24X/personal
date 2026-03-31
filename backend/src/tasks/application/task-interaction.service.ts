@@ -424,21 +424,15 @@ export class TaskInteractionService {
       throw new ConflictException('Task has no in-progress node to cancel');
     }
 
+    const cancelledAt = new Date();
+    const agentClioutput =
+      runningNode.agentClioutput ??
+      this.taskOutputService.resolveNodeOutputPath(task, runningNode);
+
     await this.taskNodeRepository.update(runningNode.id, {
       status: TaskStatus.inReview,
-      finishedAt: new Date(),
-      agentClioutput: await this.taskOutputService.writeNodeOutputJsonl({
-        task,
-        node: runningNode,
-        output: {
-          summary: 'Execution cancelled by user',
-          finishedAt: new Date().toISOString(),
-          error: {
-            code: 'CANCELLED',
-            message: 'Execution cancelled by user',
-          },
-        },
-      }),
+      finishedAt: cancelledAt,
+      agentClioutput,
       runtimeJson: null,
     });
 
