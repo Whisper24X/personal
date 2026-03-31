@@ -11,6 +11,7 @@ import { ReplyTaskDto } from '../dto/reply-task.dto';
 import { RetryTaskDto } from '../dto/retry-task.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
+import { TaskMode } from '../dto/task-mode.enum';
 import { TaskMessageRole } from '../dto/task-message.dto';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
@@ -388,18 +389,42 @@ export class TaskInteractionService {
       throw new ConflictException('Task already has an in-progress node');
     }
 
-    const targetNode = retryTaskDto.nodeId
+    const requestedNode = retryTaskDto.nodeId
       ? await this.taskNodeRepository.findById(retryTaskDto.nodeId)
-      : await this.taskNodeRepository.findFirstByTaskIdAndStatus({
-          taskId: task.id,
-          status: TaskStatus.inReview,
-        });
+      : null;
+    let targetNode = this.isInReviewRetryCandidate(task.id, requestedNode)
+      ? requestedNode
+      : null;
+
+    if (!targetNode) {
+      targetNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+        taskId: task.id,
+        status: TaskStatus.inReview,
+      });
+    }
+
+    const recoveredFromStaleReviewState =
+      !this.isInReviewRetryCandidate(task.id, targetNode) &&
+      task.mode === TaskMode.conversation &&
+      task.status === TaskStatus.inReview;
+
+    if (recoveredFromStaleReviewState) {
+      targetNode = this.isTodoRetryRecoveryCandidate(task.id, requestedNode)
+        ? requestedNode
+        : await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+            taskId: task.id,
+            status: TaskStatus.todo,
+          });
+    }
 
     if (!targetNode || targetNode.taskId !== task.id) {
       throw new NotFoundException('Task node not found');
     }
 
-    if (targetNode.status !== TaskStatus.inReview) {
+    if (
+      targetNode.status !== TaskStatus.inReview &&
+      !(recoveredFromStaleReviewState && targetNode.status === TaskStatus.todo)
+    ) {
       throw new ConflictException('Only in_review node can be retried');
     }
 
@@ -421,6 +446,7 @@ export class TaskInteractionService {
         requestedBy: currentUser.sub,
         requestedAt: new Date().toISOString(),
         nodeOrder: targetNode.nodeOrder,
+        recoveredFromStaleReviewState,
       },
     });
 
@@ -618,6 +644,22 @@ export class TaskInteractionService {
 
   private resolveNodeFinishedAtMs(node: TaskNode): number {
     return node.finishedAt instanceof Date ? node.finishedAt.getTime() : 0;
+  }
+
+  private isInReviewRetryCandidate(
+    taskId: Task['id'],
+    node: TaskNode | null,
+  ): node is TaskNode {
+    return (
+      !!node && node.taskId === taskId && node.status === TaskStatus.inReview
+    );
+  }
+
+  private isTodoRetryRecoveryCandidate(
+    taskId: Task['id'],
+    node: TaskNode | null,
+  ): node is TaskNode {
+    return !!node && node.taskId === taskId && node.status === TaskStatus.todo;
   }
 
   private async markTaskStartedIfNeeded(task: Task): Promise<Task> {

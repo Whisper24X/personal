@@ -5,6 +5,59 @@ import {
 } from '@/composables/useProjectContainerRuntimeForm'
 
 describe('useProjectContainerRuntimeForm', () => {
+  it('fills the form with concrete defaults without persisting unchanged defaults', () => {
+    const form = createProjectContainerRuntimeFormState()
+    const containerRuntimeForm = useProjectContainerRuntimeForm(form)
+
+    containerRuntimeForm.syncFromContainerRuntime()
+
+    expect(form.containerSandboxProfile).toBe('runner-only')
+    expect(form.containerNetworkMode).toBe('bridge')
+    expect(form.containerExposeMode).toBe('enabled')
+    expect(form.containerExposeContainerPort).toBe('8080')
+    expect(form.containerStartTimeoutMs).toBe('30000')
+    expect(form.containerMemoryMb).toBe('0')
+    expect(form.containerPidsLimit).toBe('0')
+    expect(form.containerEnv).toBe('# 无额外环境变量')
+    expect(form.containerRunnerOrchestration).toContain('"services"')
+
+    const configJson = containerRuntimeForm.buildProjectConfigJson({
+      existing: true,
+    })
+
+    expect(configJson).toEqual({
+      existing: true,
+    })
+  })
+
+  it('applies preview-web defaults when only the sandbox profile is overridden', () => {
+    const form = createProjectContainerRuntimeFormState()
+    const containerRuntimeForm = useProjectContainerRuntimeForm(form)
+
+    containerRuntimeForm.syncFromContainerRuntime({
+      sandboxProfile: 'preview-web',
+    })
+
+    expect(form.containerSandboxProfile).toBe('preview-web')
+    expect(form.containerStartTimeoutMs).toBe('300000')
+    expect(form.containerMemoryMb).toBe('2048')
+    expect(form.containerPidsLimit).toBe('256')
+    expect(form.containerRunnerOrchestration).toContain('"ainative-backend"')
+    expect(form.containerRunnerOrchestration).toContain('"ainative-shadow"')
+    expect(form.containerRunnerOrchestration).toContain('"ainative-app"')
+
+    const configJson = containerRuntimeForm.buildProjectConfigJson({
+      existing: true,
+    })
+
+    expect(configJson).toEqual({
+      existing: true,
+      containerRuntime: {
+        sandboxProfile: 'preview-web',
+      },
+    })
+  })
+
   it('hydrates runner orchestration JSON from containerRuntime and writes it back into configJson', () => {
     const form = createProjectContainerRuntimeFormState()
     const containerRuntimeForm = useProjectContainerRuntimeForm(form)

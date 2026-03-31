@@ -3,7 +3,6 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
-  Optional,
 } from '@nestjs/common';
 import { createServer } from 'net';
 import { Project } from '../projects/domain/project';
@@ -32,8 +31,7 @@ export class ContainerOrchestrationService
     private readonly isolatedRunner: IsolatedRunnerContainerService,
     private readonly slotRepository: ProjectExecutionSlotRepository,
     private readonly taskRepository: TaskRepository,
-    @Optional()
-    private readonly runnerOrchestration: RunnerOrchestrationService | null = null,
+    private readonly runnerOrchestration?: RunnerOrchestrationService,
   ) {}
 
   onModuleInit(): void {

@@ -50,19 +50,37 @@ describe('RunnerOrchestrationService', () => {
       orchestration: {
         services: expect.arrayContaining([
           expect.objectContaining({
-            name: 'backend',
-            workdir: 'backend',
+            name: 'ainative-backend',
+            workdir: 'ainative-backend',
           }),
-          expect.objectContaining({ name: 'frontend', workdir: 'frontend' }),
+          expect.objectContaining({
+            name: 'ainative-shadow',
+            workdir: 'ainative-shadow',
+          }),
+          expect.objectContaining({
+            name: 'ainative-app',
+            workdir: 'ainative-app',
+          }),
         ]),
         routes: expect.arrayContaining([
           expect.objectContaining({
             path: '/api/',
-            service: 'backend',
+            service: 'ainative-backend',
             upstreamPath: '/',
           }),
-          expect.objectContaining({ path: '/', service: 'frontend' }),
+          expect.objectContaining({
+            path: '/shadow/',
+            service: 'ainative-shadow',
+          }),
+          expect.objectContaining({
+            path: '/app/',
+            service: 'ainative-app',
+          }),
+          expect.objectContaining({ path: '/', service: 'ainative-app' }),
         ]),
+        homepage: expect.objectContaining({
+          title: 'AINative Workspace',
+        }),
       },
     });
   });

@@ -1646,7 +1646,7 @@ export class AgentRunnerService {
             command: config.command,
             args: spawnArgs,
             cwd: this.containerExecutionConfig!.getRunnerWorkspace(),
-            env: mergedEnv as NodeJS.ProcessEnv,
+            env: this.buildDockerExecEnvironment(config.env),
           })
         : spawn(config.command, spawnArgs, {
             cwd: config.cwd,
@@ -1963,7 +1963,7 @@ export class AgentRunnerService {
   private buildRunnerEnvironment(
     envOverrides: Record<string, string>,
   ): NodeJS.ProcessEnv {
-    const allowedBaseEnvKeys = [
+    const baseEnv = this.pickBaseRunnerEnvironment([
       'PATH',
       'HOME',
       'USER',
@@ -1975,24 +1975,40 @@ export class AgentRunnerService {
       'LC_ALL',
       'TERM',
       'GEMINI_API_KEY',
-    ];
-    const baseEnv = allowedBaseEnvKeys.reduce<NodeJS.ProcessEnv>(
-      (result, key) => {
-        const value = this.configService.get<string>(key, { infer: true });
-
-        if (value) {
-          result[key] = value;
-        }
-
-        return result;
-      },
-      {},
-    );
+    ]);
 
     return {
       ...baseEnv,
       ...envOverrides,
     };
+  }
+
+  private buildDockerExecEnvironment(
+    envOverrides: Record<string, string>,
+  ): NodeJS.ProcessEnv {
+    const baseEnv = this.pickBaseRunnerEnvironment([
+      'LANG',
+      'LC_ALL',
+      'TERM',
+      'GEMINI_API_KEY',
+    ]);
+
+    return {
+      ...baseEnv,
+      ...envOverrides,
+    };
+  }
+
+  private pickBaseRunnerEnvironment(keys: string[]): NodeJS.ProcessEnv {
+    return keys.reduce<NodeJS.ProcessEnv>((result, key) => {
+      const value = this.configService.get<string>(key, { infer: true });
+
+      if (value) {
+        result[key] = value;
+      }
+
+      return result;
+    }, {});
   }
 
   private buildExecutionLogPayload({

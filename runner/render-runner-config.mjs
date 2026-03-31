@@ -258,7 +258,7 @@ const renderServiceWrapper = (service) => {
     }
   }
 
-  lines.push(`exec /bin/bash -lc ${shellEscape(service.command)}`)
+  lines.push(`exec /bin/bash -c ${shellEscape(service.command)}`)
   return `${lines.join('\n')}\n`
 }
 
@@ -444,7 +444,7 @@ const readNonEmptyString = (value) => {
   return trimmed ? trimmed : null
 }
 
-const readPositiveNumber = (value) => {
+function readPositiveNumber(value) {
   const parsed =
     typeof value === 'number'
       ? value

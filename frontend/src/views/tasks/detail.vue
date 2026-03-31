@@ -312,14 +312,6 @@ const executionCliId = computed(() => {
   )
 })
 
-/** 与当前执行区消息 / CLI 解析一致：优先选中工作流节点，否则首个节点（对话模式） */
-const executionTaskNodeId = computed(() => {
-  if (selectedWorkflowNodeId.value) {
-    return selectedWorkflowNodeId.value
-  }
-  return sortedNodes.value[0]?.id ?? null
-})
-
 const executionPanelTitle = computed(() => {
   const cliId = executionCliId.value
   return cliLabelMap[cliId] || cliId || 'Execution'
@@ -834,8 +826,8 @@ const reExecuteTask = async () => {
 
   try {
     const payload: RetryTaskPayload = {}
-    if (task.value?.mode === 'workflow' && executionTaskNodeId.value) {
-      payload.nodeId = executionTaskNodeId.value
+    if (task.value?.mode === 'workflow' && currentReviewNode.value?.id) {
+      payload.nodeId = currentReviewNode.value.id
     }
     detail.value = await tasksApi.retry(taskId.value, payload)
     rightPanelRefreshToken.value += 1

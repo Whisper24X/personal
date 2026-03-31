@@ -191,6 +191,48 @@ describe('ContainerOrchestrationService', () => {
         .fn()
         .mockResolvedValue('ainative/runner:project-1'),
     };
+    const runnerConfig = {
+      version: 1,
+      project: {
+        id: 'project-1',
+        name: 'AINative Web',
+        gitUrl: 'git@example.com:ainative/web.git',
+        defaultBranch: 'main',
+      },
+      runtime: {
+        networkMode: 'bridge',
+        hostIp: '192.168.50.8',
+        hostPort: 4173,
+        containerPort: 4173,
+        startTimeoutMs: 90000,
+        resourceLimits: {
+          memoryMb: 3072,
+          pidsLimit: 300,
+        },
+        env: {
+          PORT: '4173',
+        },
+      },
+      orchestration: {
+        services: [
+          {
+            name: 'backend',
+            workdir: 'backend',
+            command: 'npm run start:dev',
+            port: 9000,
+          },
+        ],
+      },
+    };
+    const runnerOrchestration = {
+      buildProjectRunnerConfigFile: jest.fn().mockReturnValue(runnerConfig),
+      buildAnonymousVolumeMounts: jest
+        .fn()
+        .mockReturnValue([
+          '/workspace/logs',
+          '/workspace/backend/node_modules',
+        ]),
+    };
     const slotRepository = {
       updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
       updateContainerId: jest.fn().mockResolvedValue(undefined),
@@ -206,6 +248,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      runnerOrchestration as never,
     );
     jest
       .spyOn(service as never, 'allocatePublishedPort' as never)
@@ -241,10 +284,15 @@ describe('ContainerOrchestrationService', () => {
         env: {
           PORT: '4173',
           AINATIVE_RUNNER_LISTEN_PORT: '4173',
+          AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
         },
         resourceLimits: { memoryMb: 3072, pidsLimit: 300 },
         networkMode: 'bridge',
         startTimeoutMs: 90000,
+        anonymousVolumeMounts: [
+          '/workspace/logs',
+          '/workspace/backend/node_modules',
+        ],
         publishedPorts: [
           {
             hostIp: '0.0.0.0',
@@ -269,6 +317,7 @@ describe('ContainerOrchestrationService', () => {
     expect(projectRunnerImageService.resolveRunnerImage).toHaveBeenCalledTimes(
       1,
     );
+    expect(runnerOrchestration.buildProjectRunnerConfigFile).toHaveBeenCalled();
   });
 
   it('should replace a running host-network container and persist derived preview metadata', async () => {

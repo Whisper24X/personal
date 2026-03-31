@@ -24,7 +24,28 @@ type TaskWatchState = {
   eventSeq: number;
   syncPromise: Promise<void> | null;
   resyncRequested: boolean;
+  reportedCapacityErrorCodes: Set<string>;
 };
+
+const DEFAULT_IGNORED_WORKTREE_SEGMENTS = new Set<string>([
+  '.git',
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  '.cache',
+  '.next',
+  '.nuxt',
+  '.output',
+  '.svelte-kit',
+  '.turbo',
+  '.vite',
+  '.yarn',
+  '.pnpm-store',
+  'tmp',
+  'logs',
+  'out',
+]);
 
 @Injectable()
 export class TaskWorkspaceWatchService implements OnModuleDestroy {
@@ -155,11 +176,7 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
     watcher.on('change', (changedPath) => enqueue('change', changedPath));
     watcher.on('unlink', (changedPath) => enqueue('unlink', changedPath));
     watcher.on('error', (error) => {
-      this.logger.warn(
-        `workspace_watch_failed taskId=${taskId} message=${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      this.handleWatcherError(taskId, state, error);
     });
 
     return watcher;
@@ -240,6 +257,7 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
 
     state.pendingChanges.clear();
     state.truncated = false;
+    state.reportedCapacityErrorCodes.clear();
 
     const previousWatcher = state.watcher;
     state.watcher = watcher;
@@ -286,6 +304,7 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
       eventSeq: 0,
       syncPromise: null,
       resyncRequested: false,
+      reportedCapacityErrorCodes: new Set<string>(),
     };
 
     this.taskStates.set(taskId, nextState);
@@ -323,7 +342,63 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
       return false;
     }
 
-    return relativePath === '.git' || relativePath.startsWith('.git/');
+    return relativePath
+      .split('/')
+      .some((segment) => DEFAULT_IGNORED_WORKTREE_SEGMENTS.has(segment));
+  }
+
+  private handleWatcherError(
+    taskId: string,
+    state: TaskWatchState,
+    error: unknown,
+  ): void {
+    const message = error instanceof Error ? error.message : String(error);
+    const capacityCode = this.readCapacityErrorCode(error, message);
+
+    if (capacityCode) {
+      if (state.reportedCapacityErrorCodes.has(capacityCode)) {
+        return;
+      }
+
+      state.reportedCapacityErrorCodes.add(capacityCode);
+      this.logger.warn(
+        `workspace_watch_failed taskId=${taskId} message=${message} note=watcher_resource_limit_reached`,
+      );
+      return;
+    }
+
+    this.logger.warn(
+      `workspace_watch_failed taskId=${taskId} message=${message}`,
+    );
+  }
+
+  private readCapacityErrorCode(
+    error: unknown,
+    message: string,
+  ): 'EMFILE' | 'ENOSPC' | null {
+    const rawCode =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string'
+        ? error.code.toUpperCase()
+        : null;
+
+    if (rawCode === 'EMFILE' || rawCode === 'ENOSPC') {
+      return rawCode;
+    }
+
+    const normalizedMessage = message.toUpperCase();
+
+    if (normalizedMessage.includes('EMFILE')) {
+      return 'EMFILE';
+    }
+
+    if (normalizedMessage.includes('ENOSPC')) {
+      return 'ENOSPC';
+    }
+
+    return null;
   }
 
   private toRelativePath(

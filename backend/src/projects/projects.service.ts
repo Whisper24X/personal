@@ -9,7 +9,6 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
-  Optional,
   forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -104,8 +103,7 @@ export class ProjectsService {
     private readonly configService: ConfigService = new ConfigService(),
     @Inject(forwardRef(() => AgentRunnerService))
     private readonly agentRunnerService: AgentRunnerService,
-    @Optional()
-    private readonly runnerOrchestration: RunnerOrchestrationService | null = null,
+    private readonly runnerOrchestration?: RunnerOrchestrationService,
   ) {}
 
   async create(

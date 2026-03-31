@@ -2802,7 +2802,7 @@ onBeforeUnmount(() => {
             <div class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
               <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
               <p class="mt-1 text-[11px] text-muted-foreground">
-                仅覆盖当前项目的容器启动参数；留空表示继续使用全局默认值。
+                已预填当前默认值；保存后仅覆盖当前项目的容器启动参数。
               </p>
             </div>
 
@@ -2873,7 +2873,7 @@ onBeforeUnmount(() => {
               <input
                 v-model="configForm.containerMemoryMb"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                min="1"
+                min="0"
                 placeholder="例如 2048"
                 type="number"
               />
@@ -2884,7 +2884,7 @@ onBeforeUnmount(() => {
               <input
                 v-model="configForm.containerPidsLimit"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                min="1"
+                min="0"
                 placeholder="例如 256"
                 type="number"
               />
@@ -2908,7 +2908,7 @@ onBeforeUnmount(() => {
               <textarea
                 v-model="configForm.containerRunnerOrchestration"
                 class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;backend&quot;,&#10;      &quot;workdir&quot;: &quot;backend&quot;,&#10;      &quot;command&quot;: &quot;npm run start:dev&quot;,&#10;      &quot;port&quot;: 9000&#10;    }&#10;  ],&#10;  &quot;routes&quot;: [&#10;    {&#10;      &quot;path&quot;: &quot;/api/&quot;,&#10;      &quot;service&quot;: &quot;backend&quot;,&#10;      &quot;upstreamPath&quot;: &quot;/&quot;,&#10;      &quot;websocket&quot;: true&#10;    }&#10;  ]&#10;}"
+                placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;ainative-backend&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-backend&quot;,&#10;      &quot;command&quot;: &quot;GOFLAGS='-p=1' air -c .air.toml&quot;,&#10;      &quot;port&quot;: 8000&#10;    },&#10;    {&#10;      &quot;name&quot;: &quot;ainative-shadow&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-shadow&quot;,&#10;      &quot;command&quot;: &quot;pnpm dev&quot;,&#10;      &quot;port&quot;: 5176&#10;    },&#10;    {&#10;      &quot;name&quot;: &quot;ainative-app&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-app&quot;,&#10;      &quot;command&quot;: &quot;npm run dev:h5:local&quot;,&#10;      &quot;port&quot;: 8200&#10;    }&#10;  ]&#10;}"
                 spellcheck="false"
               />
               <p class="text-[11px] text-muted-foreground">

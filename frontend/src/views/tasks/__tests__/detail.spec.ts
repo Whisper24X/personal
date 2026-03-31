@@ -1128,6 +1128,67 @@ describe('TaskDetailView toasts', () => {
     expect(reExecButtons.length).toBe(1)
   })
 
+  it('retries workflow tasks without a stale selected node id when no review node is present in detail', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const retryDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'workflow' as const,
+        title: 'Workflow task',
+        status: 'in_review' as const,
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Completed node',
+          status: 'done' as const,
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(retryDetail)
+    tasksApi.retry.mockResolvedValueOnce(retryDetail)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const reExecuteButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '重新执行')
+
+    expect(reExecuteButton).toBeDefined()
+
+    await reExecuteButton!.trigger('click')
+    await flushPromises()
+
+    expect(tasksApi.retry).toHaveBeenCalledWith('task-1', {})
+  })
+
   it('keeps a manually selected workflow node when detail refresh does not change node statuses', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

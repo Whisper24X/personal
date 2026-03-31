@@ -2219,6 +2219,51 @@ describe('AgentRunnerService', () => {
     }
   });
 
+  it('should not forward host PATH into docker exec environment', () => {
+    const previousPath = process.env.PATH;
+    const previousHome = process.env.HOME;
+    const previousGeminiApiKey = process.env.GEMINI_API_KEY;
+    process.env.PATH = '/host/bin:/usr/bin';
+    process.env.HOME = '/Users/fuzhifei';
+    process.env.GEMINI_API_KEY = 'gemini_secret';
+
+    try {
+      const service = new AgentRunnerService(
+        createRepositoryMock() as unknown as AgentToolConfigRepository,
+      );
+      const serviceAny = service as any;
+
+      const env = serviceAny.buildDockerExecEnvironment({
+        CURSOR_API_KEY: 'crsr_secret',
+      });
+
+      expect(env).toEqual(
+        expect.objectContaining({
+          CURSOR_API_KEY: 'crsr_secret',
+          GEMINI_API_KEY: 'gemini_secret',
+        }),
+      );
+      expect(env.PATH).toBeUndefined();
+      expect(env.HOME).toBeUndefined();
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPath;
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
+      if (previousGeminiApiKey === undefined) {
+        delete process.env.GEMINI_API_KEY;
+      } else {
+        process.env.GEMINI_API_KEY = previousGeminiApiKey;
+      }
+    }
+  });
+
   it('should return a diagnostic strict docker error when docker exec handoff is incomplete', async () => {
     const repositoryMock = createRepositoryMock();
     const containerExecutionConfig = {
@@ -2333,6 +2378,9 @@ describe('AgentRunnerService', () => {
         command: 'codex',
         args: ['exec', '--json', '-'],
         cwd: '/workspace',
+        env: expect.objectContaining({
+          OPENAI_API_KEY: 'sk-test',
+        }),
       }),
     );
     expect(spawnMock).not.toHaveBeenCalled();

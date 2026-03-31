@@ -86,8 +86,8 @@ RUN cd /tmp \
 # SSH + Git（用于拉取 gitlab.yc345.tv 私有依赖）
 # ============================================================
 
-COPY ssh/id_ed25519 /root/.ssh/id_ed25519
-COPY ssh/known_hosts /root/.ssh/known_hosts
+COPY runner/ssh/id_ed25519 /root/.ssh/id_ed25519
+COPY runner/ssh/known_hosts /root/.ssh/known_hosts
 RUN chmod 700 /root/.ssh \
     && chmod 600 /root/.ssh/id_ed25519 \
     && chmod 644 /root/.ssh/known_hosts \
@@ -145,8 +145,9 @@ RUN npm config set registry https://registry.npmmirror.com \
 # AI Coding CLI 工具
 # ============================================================
 
-# 安装脚本会将二进制放到 ~/.local/bin 或 ~/.opencode/bin，提前加入 PATH
-ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}"
+# 安装脚本会将二进制放到 ~/.local/bin 或 ~/.opencode/bin；
+# 同时把 /go/bin 暴露给运行时，确保 air/kratos 等 Go CLI 能被服务命令直接找到。
+ENV PATH="/go/bin:/root/.local/bin:/root/.opencode/bin:${PATH}"
 
 # OpenCode / Cursor CLI 为 best-effort 安装：网络或上游变更可能导致安装失败，不阻断镜像构建
 RUN bash -o pipefail -c 'curl -fsSL https://opencode.ai/install | bash' \

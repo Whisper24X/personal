@@ -177,8 +177,6 @@ const projectFormInitialName = ref('')
 const projectFormInitialDescription = ref('')
 const projectFormInitialGitUrl = ref('')
 const projectFormInitialDefaultBranch = ref('main')
-const projectFormInitialContainerRuntime = ref<ProjectContainerRuntimeConfig | null>(null)
-const projectFormInitialConfigJson = ref<Record<string, unknown> | null>(null)
 const editingProjectId = ref('')
 const projectRuntimeSettingsModalOpen = ref(false)
 const projectRuntimeSettingsSubmitting = ref(false)
@@ -2133,8 +2131,6 @@ const openCreateProjectModal = () => {
   projectFormInitialDescription.value = ''
   projectFormInitialGitUrl.value = ''
   projectFormInitialDefaultBranch.value = 'main'
-  projectFormInitialContainerRuntime.value = null
-  projectFormInitialConfigJson.value = null
   projectFormError.value = ''
   projectFormModalOpen.value = true
 }
@@ -2150,10 +2146,6 @@ const openEditProjectModal = (project: ProjectItem) => {
   projectFormInitialDescription.value = project.description ?? ''
   projectFormInitialGitUrl.value = project.gitUrl
   projectFormInitialDefaultBranch.value = project.defaultBranch
-  projectFormInitialContainerRuntime.value = toProjectContainerRuntimeConfig(
-    project.configJson?.containerRuntime,
-  )
-  projectFormInitialConfigJson.value = toProjectConfigJsonRecord(project.configJson)
   projectFormError.value = ''
   projectFormModalOpen.value = true
 }
@@ -2177,7 +2169,6 @@ const submitProjectForm = async (payload: {
   description: string
   gitUrl: string
   defaultBranch: string
-  containerRuntime?: ProjectContainerRuntimeConfig
 }) => {
   if (!activeLineId.value) {
     return
@@ -2187,8 +2178,6 @@ const submitProjectForm = async (payload: {
   projectFormError.value = ''
 
   try {
-    projectContainerRuntimeForm.syncFromContainerRuntime(payload.containerRuntime)
-
     if (projectFormMode.value === 'create') {
       if (!canCreateProjectItem.value) {
         return
@@ -2199,7 +2188,6 @@ const submitProjectForm = async (payload: {
         description: normalizeOptionalText(payload.description),
         gitUrl: payload.gitUrl.trim(),
         defaultBranch: payload.defaultBranch.trim() || 'main',
-        configJson: projectContainerRuntimeForm.buildProjectConfigJson(undefined),
       })
     } else {
       if (!editingProjectId.value || !canUpdateProjectItem.value) {
@@ -2211,7 +2199,6 @@ const submitProjectForm = async (payload: {
         description: payload.description.trim(),
         gitUrl: payload.gitUrl.trim(),
         defaultBranch: payload.defaultBranch.trim() || 'main',
-        configJson: projectContainerRuntimeForm.buildProjectConfigJson(projectFormInitialConfigJson.value),
       })
     }
 
@@ -4216,7 +4203,6 @@ watch(
         :initial-description="projectFormInitialDescription"
         :initial-git-url="projectFormInitialGitUrl"
         :initial-default-branch="projectFormInitialDefaultBranch"
-        :initial-container-runtime="projectFormInitialContainerRuntime"
         :error-message="projectFormError"
         @update:open="projectFormModalOpen = $event"
         @submit="submitProjectForm"
