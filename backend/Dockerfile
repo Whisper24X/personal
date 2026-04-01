@@ -172,6 +172,9 @@ RUN curl -fsSL https://opencode.ai/install | bash || true
 
 RUN curl -fsSL https://cursor.com/install | bash || true
 
+# OpenSpec
+RUN npm install -g @fission-ai/openspec@latest
+
 # Go 编译的 CLI（OpenCode、Codex）需要显式指定 CA 证书路径
 ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 

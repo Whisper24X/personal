@@ -19,7 +19,7 @@ const emit = defineEmits<{
 <template>
   <section
     v-if="props.node"
-    class="w-full rounded-xl border border-amber-500/30 bg-amber-50/30 shadow-sm"
+    class="w-full rounded-none border border-amber-500/30 bg-amber-50/30 shadow-sm"
   >
     <div class="flex items-center justify-between gap-3 px-4 py-3">
       <div class="min-w-0">
