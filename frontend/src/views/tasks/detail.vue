@@ -13,7 +13,7 @@ import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
 import { openSseStream } from '@/api/http'
 import { tasksApi } from '@/api/tasks'
 import type {
-  RetryTaskPayload,
+  ResetNodePayload,
   Task,
   TaskDetail,
   TaskLog,
@@ -109,6 +109,13 @@ const NODE_STATUS_CHANGE_LOG_MESSAGES = [
 ] as const
 
 const statusLabelMap: Record<Task['status'], string> = {
+  todo: '待执行',
+  in_progress: '处理中',
+  in_review: '待完成',
+  done: '已完成',
+}
+
+const nodeStatusLabelMap: Record<TaskNode['status'], string> = {
   todo: '待执行',
   in_progress: '执行中',
   in_review: '待处理',
@@ -219,12 +226,53 @@ const currentReviewNode = computed(() => {
   return sortedNodes.value.find((node) => node.status === 'in_review') ?? null
 })
 
+const showReviewCard = computed(() => {
+  return task.value?.mode === 'workflow' && currentReviewNode.value !== null
+})
+
+const hasRunningNode = computed(() => {
+  if (sortedNodes.value.some((node) => node.status === 'in_progress')) {
+    return true
+  }
+
+  // Legacy conversation responses in tests may omit nodes; fall back to task status there.
+  return (
+    task.value?.mode === 'conversation' &&
+    sortedNodes.value.length === 0 &&
+    task.value.status === 'in_progress'
+  )
+})
+
+const hasTodoNode = computed(() => {
+  if (sortedNodes.value.some((node) => node.status === 'todo')) {
+    return true
+  }
+
+  return (
+    task.value?.mode === 'conversation' &&
+    sortedNodes.value.length === 0 &&
+    task.value.status === 'todo'
+  )
+})
+
+const hasInReviewNode = computed(() => {
+  return sortedNodes.value.some((node) => node.status === 'in_review')
+})
+
 const canExecute = computed(() => {
   if (!task.value || !hasButtonAccess('executeTask')) {
     return false
   }
 
-  return task.value.status === 'todo'
+  if (task.value.status === 'done' || hasRunningNode.value || hasInReviewNode.value) {
+    return false
+  }
+
+  return hasTodoNode.value
+})
+
+const areAllNodesDone = computed(() => {
+  return sortedNodes.value.length > 0 && sortedNodes.value.every((node) => node.status === 'done')
 })
 
 const canRemove = computed(() => {
@@ -236,52 +284,59 @@ const canManageReview = computed(() => {
 })
 
 const isCliRunning = computed(() => {
-  return task.value?.status === 'in_progress'
+  return hasRunningNode.value
 })
 
 const canInterruptExecution = computed(() => {
   return isCliRunning.value && hasButtonAccess('cancelTask')
 })
 
-const canAbortWorkflow = computed(() => {
-  return task.value?.mode === 'workflow' && canInterruptExecution.value
+const canCompleteTask = computed(() => {
+  if (!task.value || !hasButtonAccess('executeTask') || actionLoading.value || isCliRunning.value) {
+    return false
+  }
+
+  return task.value.status === 'in_review' && areAllNodesDone.value
 })
 
-const canReExecute = computed(() => {
-  if (!task.value || !hasButtonAccess('executeTask') || actionLoading.value) {
-    return false
+const selectedWorkflowNode = computed(() => {
+  if (!selectedWorkflowNodeId.value) {
+    return null
   }
-  if (task.value.status === 'in_progress' || task.value.status === 'todo') {
-    return false
-  }
-  if (task.value.mode === 'conversation') {
-    return task.value.status === 'in_review' || task.value.status === 'done'
-  }
-  return task.value.status === 'in_review'
+
+  return sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null
 })
 
-/** ReviewCard 已展示「重新执行」时，不在下方上下文条重复展示 */
-const canReExecuteInContextBar = computed(() => {
-  if (!canReExecute.value) {
-    return false
-  }
+const canResetSelectedWorkflowNode = computed(() => {
   if (
-    task.value?.mode === 'workflow' &&
-    currentReviewNode.value &&
-    canManageReview.value &&
-    !isCliRunning.value
+    task.value?.mode !== 'workflow' ||
+    !hasButtonAccess('executeTask') ||
+    actionLoading.value ||
+    isCliRunning.value
   ) {
     return false
   }
-  return true
+
+  if (!selectedWorkflowNode.value) {
+    return false
+  }
+
+  return (
+    selectedWorkflowNode.value.status === 'in_review' ||
+    selectedWorkflowNode.value.status === 'done'
+  )
 })
 
 const replyDisabled = computed(() => {
-  return !task.value || actionLoading.value || isCliRunning.value
+  return !task.value || actionLoading.value || isCliRunning.value || task.value.status === 'done'
 })
 
 const replyPlaceholder = computed(() => {
-  if (task.value?.status === 'in_progress') {
+  if (task.value?.status === 'done') {
+    return '任务已完成，无法继续回复...'
+  }
+
+  if (isCliRunning.value) {
     return '任务执行中，暂不可回复...'
   }
 
@@ -310,14 +365,6 @@ const executionCliId = computed(() => {
     sortedNodes.value[0]?.agentCliId ||
     ''
   )
-})
-
-/** 与当前执行区消息 / CLI 解析一致：优先选中工作流节点，否则首个节点（对话模式） */
-const executionTaskNodeId = computed(() => {
-  if (selectedWorkflowNodeId.value) {
-    return selectedWorkflowNodeId.value
-  }
-  return sortedNodes.value[0]?.id ?? null
 })
 
 const executionPanelTitle = computed(() => {
@@ -817,7 +864,6 @@ const executeTask = async () => {
   try {
     detail.value = await tasksApi.execute(taskId.value)
     rightPanelRefreshToken.value += 1
-    message.success('任务已开始执行')
   } catch (error) {
     message.error(toErrorMessage(error, '执行任务失败'))
   } finally {
@@ -825,45 +871,59 @@ const executeTask = async () => {
   }
 }
 
-const reExecuteTask = async () => {
-  if (!taskId.value || !canReExecute.value) {
+const completeTask = async () => {
+  if (!taskId.value || !canCompleteTask.value) {
+    return
+  }
+
+  if (!areAllNodesDone.value) {
+    message.warning('请先完成所有节点后再完成任务')
     return
   }
 
   actionLoading.value = true
 
   try {
-    const payload: RetryTaskPayload = {}
-    if (task.value?.mode === 'workflow' && executionTaskNodeId.value) {
-      payload.nodeId = executionTaskNodeId.value
-    }
-    detail.value = await tasksApi.retry(taskId.value, payload)
+    detail.value = await tasksApi.complete(taskId.value)
     rightPanelRefreshToken.value += 1
-    message.success('任务已重新执行')
+    void refreshSidebarRecentTasks()
+    message.success('任务已完成')
   } catch (error) {
-    message.error(toErrorMessage(error, '重新执行失败'))
+    message.error(toErrorMessage(error, '完成任务失败'))
   } finally {
     actionLoading.value = false
   }
 }
 
-const repeatNode = async (nodeId: string) => {
-  const allowed =
-    taskId.value &&
-    hasButtonAccess('executeTask') &&
-    currentReviewNode.value?.id === nodeId
-  if (!allowed) {
+const resetSelectedWorkflowNode = async () => {
+  const targetNodeId = selectedWorkflowNode.value?.id ?? null
+
+  if (!taskId.value || !canResetSelectedWorkflowNode.value || !targetNodeId) {
     return
   }
 
   actionLoading.value = true
 
   try {
-    detail.value = await tasksApi.repeatNode(taskId.value, nodeId)
+    clearPendingStreamLogs()
+
+    const payload: ResetNodePayload = {
+      nodeId: targetNodeId,
+    }
+    detail.value = await tasksApi.resetNode(taskId.value, payload)
+    const [nextLogsResult, nextMessagesResult] = await Promise.allSettled([
+      tasksApi.logs(taskId.value, { limit: 300 }),
+      tasksApi.messages(taskId.value),
+    ])
+    if (nextLogsResult.status === 'fulfilled') {
+      logs.value = nextLogsResult.value
+    }
+    if (nextMessagesResult.status === 'fulfilled') {
+      messages.value = nextMessagesResult.value
+    }
     rightPanelRefreshToken.value += 1
-    message.success('节点已加入重跑')
   } catch (error) {
-    message.error(toErrorMessage(error, '重跑节点失败'))
+    message.error(toErrorMessage(error, '重置失败'))
   } finally {
     actionLoading.value = false
   }
@@ -881,7 +941,6 @@ const approveNode = async (node: TaskNode) => {
       nodeId: node.id,
     })
     rightPanelRefreshToken.value += 1
-    message.success('节点审批已通过')
   } catch (error) {
     message.error(toErrorMessage(error, '审批节点失败'))
   } finally {
@@ -960,7 +1019,6 @@ const handleReply = async (replyMessage: string) => {
     })
     await refreshMessages()
     rightPanelRefreshToken.value += 1
-    message.success('回复已提交')
   } catch (error) {
     message.error(toErrorMessage(error, '提交回复失败'))
   } finally {
@@ -979,7 +1037,6 @@ const interruptExecution = async () => {
     detail.value = await tasksApi.cancel(taskId.value)
     await refreshMessages()
     rightPanelRefreshToken.value += 1
-    message.success('任务已停止执行')
   } catch (error) {
     message.error(toErrorMessage(error, '停止执行失败'))
   } finally {
@@ -1152,13 +1209,11 @@ function startDrag(e: MouseEvent) {
           />
 
           <ReviewCard
+            v-if="showReviewCard"
             :node="currentReviewNode"
-            :status-label-map="statusLabelMap"
+            :status-label-map="nodeStatusLabelMap"
             :can-manage-review="canManageReview"
-            :can-repeat-review-node="canManageReview && !isCliRunning"
-            :repeat-node-loading="actionLoading"
             @approve-node="approveNode"
-            @repeat-node="(node) => repeatNode(node.id)"
           />
 
           <TaskExecutionContextBar
@@ -1171,13 +1226,13 @@ function startDrag(e: MouseEvent) {
             :subtitle="contextSubtitle"
             :action-loading="actionLoading"
             :can-execute="canExecute"
-            :can-re-execute="canReExecuteInContextBar"
-            :can-abort-workflow="canAbortWorkflow"
+            :can-complete-task="canCompleteTask"
+            :can-reset="canResetSelectedWorkflowNode"
             :can-remove="canRemove"
             :right-panel-visible="isRightPanelVisible"
             @execute="executeTask"
-            @re-execute="reExecuteTask"
-            @abort-workflow="interruptExecution"
+            @complete-task="completeTask"
+            @reset="resetSelectedWorkflowNode"
             @refresh="loadInitialTaskData"
             @remove="deleteOpen = true"
             @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
@@ -1260,4 +1315,3 @@ function startDrag(e: MouseEvent) {
     </Teleport>
   </div>
 </template>
-

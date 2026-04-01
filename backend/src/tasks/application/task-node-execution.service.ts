@@ -41,13 +41,14 @@ export class TaskNodeExecutionService {
     @Inject(TaskGitService)
     private readonly taskGitService: Pick<
       TaskGitService,
-      'commitIfChangedForTask'
+      'commitIfChangedForTask' | 'resolveHeadCommitShaForTask'
     > = {
       commitIfChangedForTask: () =>
         Promise.resolve({
           committed: false,
           skippedReason: 'no_changes',
         }),
+      resolveHeadCommitShaForTask: () => Promise.resolve(null),
     },
     private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
   ) {}
@@ -101,6 +102,15 @@ export class TaskNodeExecutionService {
         runtimeTask,
         runtime,
       );
+      const beforeRunCommitSha = await this.resolveHeadCommitShaForTask(
+        executionTask,
+        project,
+      );
+
+      await this.taskNodeRepository.update(nodeId, {
+        beforeRunCommitSha,
+        afterRunCommitSha: null,
+      });
 
       await this.taskLogService.appendLog({
         taskId,
@@ -144,6 +154,10 @@ export class TaskNodeExecutionService {
         executionTask ?? (await this.taskRepository.findById(taskId));
 
       if (latestNode && outputTask) {
+        const afterRunCommitSha = await this.resolveHeadCommitShaForTask(
+          outputTask,
+          project,
+        );
         const agentClioutput =
           await this.taskOutputService.writeNodeOutputJsonl({
             task: outputTask,
@@ -162,6 +176,7 @@ export class TaskNodeExecutionService {
           nodeId,
           agentClioutput,
           agentCliSessionId: latestNode.agentCliSessionId ?? null,
+          afterRunCommitSha,
         });
       }
 
@@ -395,11 +410,16 @@ export class TaskNodeExecutionService {
               },
             },
           });
+    const afterRunCommitSha = await this.resolveHeadCommitShaForTask(
+      task,
+      project,
+    );
 
     await this.finalizeNodeAsFailure({
       nodeId,
       agentClioutput,
       agentCliSessionId: executionResult.sessionId ?? null,
+      afterRunCommitSha,
     });
 
     await this.taskLogService.appendLog({
@@ -691,9 +711,13 @@ export class TaskNodeExecutionService {
       : pendingApproval
         ? TaskStatus.inReview
         : TaskStatus.done;
+    let afterRunCommitSha = await this.resolveHeadCommitShaForTask(
+      task,
+      project,
+    );
 
     if (!queuedNextLoop && !pendingApproval) {
-      await commitNodeWorkspaceIfChanged({
+      const autoCommitResult = await commitNodeWorkspaceIfChanged({
         taskId,
         node,
         commitMessage: buildCompleteCommitMessage(node),
@@ -705,6 +729,7 @@ export class TaskNodeExecutionService {
           'Node completion skipped auto-commit; no workspace changes',
         failedLogMessage: 'Node completion auto-commit failed',
       });
+      afterRunCommitSha = autoCommitResult.commitSha ?? afterRunCommitSha;
     }
 
     await this.taskNodeRepository.update(node.id, {
@@ -715,6 +740,7 @@ export class TaskNodeExecutionService {
       agentClioutput,
       agentCliSessionId: agentCliSessionId ?? node.agentCliSessionId ?? null,
       runtimeJson: null,
+      afterRunCommitSha,
     });
 
     return {
@@ -892,10 +918,12 @@ export class TaskNodeExecutionService {
     nodeId,
     agentClioutput,
     agentCliSessionId,
+    afterRunCommitSha,
   }: {
     nodeId: string;
     agentClioutput: string;
     agentCliSessionId?: string | null;
+    afterRunCommitSha?: string | null;
   }): Promise<void> {
     const latestNode = await this.taskNodeRepository.findById(nodeId);
 
@@ -910,7 +938,21 @@ export class TaskNodeExecutionService {
       agentCliSessionId:
         agentCliSessionId ?? latestNode.agentCliSessionId ?? null,
       runtimeJson: null,
+      afterRunCommitSha:
+        afterRunCommitSha ?? latestNode.afterRunCommitSha ?? null,
     });
+  }
+
+  private async resolveHeadCommitShaForTask(
+    task: Task,
+    project: Project,
+  ): Promise<string | null> {
+    return (
+      (await this.taskGitService.resolveHeadCommitShaForTask?.(
+        task,
+        project,
+      )) ?? null
+    );
   }
 
   private delay(ms: number): Promise<void> {

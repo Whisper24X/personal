@@ -104,6 +104,21 @@ export class TaskOutputService {
     });
   }
 
+  async removeNodeOutputFiles({
+    task,
+    node,
+  }: {
+    task: Task;
+    node: TaskNode;
+  }): Promise<void> {
+    const outputDir = path.dirname(this.resolveNodeOutputPath(task, node));
+
+    await fs.rm(outputDir, {
+      recursive: true,
+      force: true,
+    });
+  }
+
   serializeNodeOutputJsonl(output: Record<string, unknown>): string {
     const stdout =
       typeof output.stdout === 'string' && output.stdout.trim()

@@ -39,8 +39,10 @@ const createTasksService = () => {
     repeat: jest.fn().mockResolvedValue({ task, nodes: [] }),
     repeatNode: jest.fn().mockResolvedValue({ task, nodes: [] }),
     retry: jest.fn().mockResolvedValue({ task, nodes: [] }),
+    resetNode: jest.fn().mockResolvedValue({ task, nodes: [] }),
     cancel: jest.fn().mockResolvedValue({ task, nodes: [] }),
     approve: jest.fn().mockResolvedValue({ task, nodes: [] }),
+    complete: jest.fn().mockResolvedValue({ task, nodes: [] }),
     cleanupWorktree: jest.fn().mockResolvedValue({ task, nodes: [] }),
   };
   const queryService = {
@@ -179,12 +181,14 @@ describe('TasksService', () => {
       { nodeId: 'node-1' } as never,
       currentUser as never,
     );
+    await service.resetNode('task-1', 'node-1', currentUser as never);
     await service.cancel('task-1', currentUser as never);
     await service.approve(
       'task-1',
       { nodeId: 'node-1' } as never,
       currentUser as never,
     );
+    await service.complete('task-1', currentUser as never);
     await service.cleanupWorktree('task-1', currentUser as never);
 
     expect(commandService.update).toHaveBeenCalledWith(
@@ -208,11 +212,20 @@ describe('TasksService', () => {
       currentUser,
     );
     expect(interactionService.retry).toHaveBeenCalled();
+    expect(interactionService.resetNode).toHaveBeenCalledWith(
+      'task-1',
+      'node-1',
+      currentUser,
+    );
     expect(interactionService.cancel).toHaveBeenCalledWith(
       'task-1',
       currentUser,
     );
     expect(interactionService.approve).toHaveBeenCalled();
+    expect(interactionService.complete).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
     expect(interactionService.cleanupWorktree).toHaveBeenCalledWith(
       'task-1',
       currentUser,

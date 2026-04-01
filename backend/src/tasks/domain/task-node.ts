@@ -74,6 +74,22 @@ export class TaskNode {
   })
   runtimeJson?: TaskNodeRuntime | null;
 
+  @ApiProperty({
+    type: String,
+    required: false,
+    nullable: true,
+    description: 'Git HEAD commit SHA captured before this node execution',
+  })
+  beforeRunCommitSha?: string | null;
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    nullable: true,
+    description: 'Git HEAD commit SHA after this node execution settled',
+  })
+  afterRunCommitSha?: string | null;
+
   @ApiProperty({ enum: TaskStatus, enumName: 'TaskStatus' })
   status: TaskStatus;
 

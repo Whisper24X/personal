@@ -229,8 +229,8 @@ const formatDate = (value?: string) => {
 
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
-  in_progress: '执行中',
-  in_review: '待处理',
+  in_progress: '处理中',
+  in_review: '待完成',
   done: '已完成',
 }
 
@@ -1707,7 +1707,7 @@ onBeforeUnmount(() => {
             <p class="mt-2 text-2xl font-semibold">{{ recentTasks.length }}</p>
           </div>
           <div class="panel-card p-4">
-            <p class="text-xs text-muted-foreground">执行中</p>
+            <p class="text-xs text-muted-foreground">处理中</p>
             <p class="mt-2 text-2xl font-semibold">{{ runningTaskCount }}</p>
           </div>
           <div class="panel-card p-4">

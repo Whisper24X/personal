@@ -170,14 +170,14 @@ export class NotificationsService {
       status === 'done'
         ? '任务执行完成'
         : status === 'in_review'
-          ? '任务需要处理'
+          ? '任务待完成'
           : '任务状态更新';
 
     const content =
       status === 'done'
         ? `任务「${displayName}」已执行完成。`
         : status === 'in_review'
-          ? `任务「${displayName}」进入待处理状态，请审批或重试。`
+          ? `任务「${displayName}」已进入待完成状态，请确认后完成任务。`
           : `任务「${displayName}」状态更新为 ${status}。`;
     const eventType = `task.${status}`;
     const occurredAt = new Date().toISOString();
@@ -374,7 +374,7 @@ export class NotificationsService {
       : null;
 
     const statusLabel =
-      status === 'done' ? '已完成' : status === 'in_review' ? '待处理' : status;
+      status === 'done' ? '已完成' : status === 'in_review' ? '待完成' : status;
 
     const lines: Record<string, unknown>[][] = [
       [{ tag: 'text', text: content }],

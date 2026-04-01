@@ -14,4 +14,12 @@ export abstract class TaskLogRepository {
     afterId?: string;
     limit?: number;
   }): Promise<TaskLog[]>;
+
+  abstract deleteByTaskIdAndNodeIds({
+    taskId,
+    nodeIds,
+  }: {
+    taskId: TaskLog['taskId'];
+    nodeIds: string[];
+  }): Promise<number>;
 }

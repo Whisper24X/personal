@@ -209,6 +209,59 @@ describe('NotificationsService', () => {
     );
   });
 
+  it('should use pending completion wording for in_review task notifications', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest
+        .fn()
+        .mockResolvedValue(createSetting({ browserEnabled: true })),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn().mockResolvedValue(
+        createEvent({
+          eventType: 'task.in_review',
+          title: '任务待完成',
+          content: '任务「我的重要任务」已进入待完成状态，请确认后完成任务。',
+          payload: {
+            status: 'in_review',
+          },
+        }),
+      ),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+      markAllReadByUserId: jest.fn(),
+      deleteReadByUserId: jest.fn(),
+      countUnreadByUserId: jest.fn(),
+    };
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
+    );
+
+    await service.notifyTaskStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: '我的重要任务',
+      status: 'in_review',
+    });
+
+    expect(notificationEventRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'task.in_review',
+        title: '任务待完成',
+        content: '任务「我的重要任务」已进入待完成状态，请确认后完成任务。',
+        payload: {
+          status: 'in_review',
+        },
+      }),
+    );
+  });
+
   it('should fall back to taskId when taskTitle is not provided', async () => {
     const notificationSettingRepository = {
       findByUserId: jest

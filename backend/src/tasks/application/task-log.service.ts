@@ -36,4 +36,17 @@ export class TaskLogService {
 
     return log;
   }
+
+  async deleteNodeLogs({
+    taskId,
+    nodeIds,
+  }: {
+    taskId: string;
+    nodeIds: string[];
+  }): Promise<number> {
+    return this.taskLogRepository.deleteByTaskIdAndNodeIds({
+      taskId,
+      nodeIds,
+    });
+  }
 }

@@ -79,6 +79,8 @@ export type TaskNode = {
     heartbeatAt?: string | null
     [key: string]: unknown
   } | null
+  beforeRunCommitSha?: string | null
+  afterRunCommitSha?: string | null
   status: TaskStatus
 }
 
@@ -256,6 +258,10 @@ export type ReplyTaskPayload = {
 
 export type RetryTaskPayload = {
   nodeId?: string
+}
+
+export type ResetNodePayload = {
+  nodeId: string
 }
 
 export type ApproveTaskPayload = {

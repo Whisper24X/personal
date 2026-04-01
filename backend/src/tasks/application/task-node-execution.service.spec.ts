@@ -661,13 +661,16 @@ describe('TaskNodeExecutionService', () => {
     await jest.advanceTimersByTimeAsync(150);
     await executionPromise;
 
-    expect(taskNodeRepository.update).toHaveBeenCalledWith(runningNode.id, {
-      status: TaskStatus.inReview,
-      finishedAt: expect.any(Date),
-      agentClioutput: '/tmp/node-1.jsonl',
-      agentCliSessionId: null,
-      runtimeJson: null,
-    });
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      runningNode.id,
+      expect.objectContaining({
+        status: TaskStatus.inReview,
+        finishedAt: expect.any(Date),
+        agentClioutput: '/tmp/node-1.jsonl',
+        agentCliSessionId: null,
+        runtimeJson: null,
+      }),
+    );
     expect(taskNodeRepository.update).not.toHaveBeenCalledWith(
       runningNode.id,
       expect.objectContaining({

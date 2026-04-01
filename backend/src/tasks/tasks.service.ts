@@ -143,6 +143,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return this.taskInteractionService.retry(taskId, retryTaskDto, currentUser);
   }
 
+  async resetNode(
+    taskId: Task['id'],
+    nodeId: TaskNode['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    return this.taskInteractionService.resetNode(taskId, nodeId, currentUser);
+  }
+
   async cancel(
     taskId: Task['id'],
     currentUser: JwtPayloadType,
@@ -160,6 +168,13 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       approveTaskDto,
       currentUser,
     );
+  }
+
+  async complete(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    return this.taskInteractionService.complete(taskId, currentUser);
   }
 
   async cleanupWorktree(

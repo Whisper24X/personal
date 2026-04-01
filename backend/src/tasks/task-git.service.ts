@@ -475,6 +475,76 @@ export class TaskGitService {
     return this.commitIfChangedInWorktree(worktreePath, message);
   }
 
+  async resolveHeadCommitShaForTask(
+    task: Task,
+    project: Project,
+  ): Promise<string | null> {
+    try {
+      const worktreePath = await this.resolveTaskGitWorktreePath(task, project);
+      const result = await this.runGitCommand(worktreePath, [
+        'rev-parse',
+        'HEAD',
+      ]);
+
+      if (!result.success) {
+        return null;
+      }
+
+      const sha = result.stdout.trim();
+      return sha || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async resetHardToCommitForTask(
+    task: Task,
+    project: Project,
+    commitSha: string,
+  ): Promise<void> {
+    const worktreePath = await this.resolveTaskGitWorktreePath(task, project);
+    const normalizedCommitSha = commitSha.trim();
+
+    if (!normalizedCommitSha) {
+      throw new BadRequestException('Commit SHA cannot be empty');
+    }
+
+    const verifyResult = await this.runGitCommand(worktreePath, [
+      'rev-parse',
+      '--verify',
+      normalizedCommitSha,
+    ]);
+    if (!verifyResult.success) {
+      throw this.toGitException(
+        'Failed to verify reset target commit',
+        verifyResult,
+      );
+    }
+
+    const resetResult = await this.runGitCommand(worktreePath, [
+      'reset',
+      '--hard',
+      normalizedCommitSha,
+    ]);
+    if (!resetResult.success) {
+      throw this.toGitException(
+        'Failed to reset worktree to target commit',
+        resetResult,
+      );
+    }
+
+    const cleanResult = await this.runGitCommand(worktreePath, [
+      'clean',
+      '-fd',
+    ]);
+    if (!cleanResult.success) {
+      throw this.toGitException(
+        'Failed to clean worktree after reset',
+        cleanResult,
+      );
+    }
+  }
+
   async merge(
     taskId: string,
     payload: TaskGitBranchDiffQueryDto,

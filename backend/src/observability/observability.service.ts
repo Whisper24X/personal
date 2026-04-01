@@ -70,7 +70,7 @@ export class ObservabilityService {
       alerts.push({
         level: 'warn',
         code: 'TASK_NEEDS_REVIEW',
-        message: `当前有 ${statusCounts.inReview} 个任务处于 in_review。`,
+        message: `当前有 ${statusCounts.inReview} 个任务待完成。`,
       });
     }
 

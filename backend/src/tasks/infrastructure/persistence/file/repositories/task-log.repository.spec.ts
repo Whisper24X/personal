@@ -90,4 +90,39 @@ describe('TaskLogFileRepository', () => {
     expect(logs).toHaveLength(1);
     expect(logs[0].message).toBe('second');
   });
+
+  it('should delete logs for selected node ids only', async () => {
+    await repository.create({
+      taskId: 'task-1',
+      taskNodeId: 'node-1',
+      level: TaskLogLevel.info,
+      message: 'first-node',
+      payload: null,
+    });
+    await repository.create({
+      taskId: 'task-1',
+      taskNodeId: 'node-2',
+      level: TaskLogLevel.warn,
+      message: 'second-node',
+      payload: null,
+    });
+    await repository.create({
+      taskId: 'task-1',
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'task-log',
+      payload: null,
+    });
+
+    const removedCount = await repository.deleteByTaskIdAndNodeIds({
+      taskId: 'task-1',
+      nodeIds: ['node-2'],
+    });
+    const logs = await repository.findByTaskIdSince({
+      taskId: 'task-1',
+    });
+
+    expect(removedCount).toBe(1);
+    expect(logs.map((log) => log.message)).toEqual(['first-node', 'task-log']);
+  });
 });

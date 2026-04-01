@@ -82,6 +82,50 @@ export class TaskLogFileRepository implements TaskLogRepository {
     return filteredLogs.slice(0, limit ?? 200);
   }
 
+  async deleteByTaskIdAndNodeIds({
+    taskId,
+    nodeIds,
+  }: {
+    taskId: TaskLog['taskId'];
+    nodeIds: string[];
+  }): Promise<number> {
+    if (!nodeIds.length) {
+      return 0;
+    }
+
+    const task = await this.taskRepository.findById(taskId);
+    if (!task) {
+      return 0;
+    }
+
+    const filePath = this.resolveTaskLogPath(task);
+    const existingLogs = await this.readTaskLogs(task);
+    const nodeIdSet = new Set(nodeIds);
+    const filteredLogs = existingLogs.filter((log) => {
+      return !(
+        typeof log.taskNodeId === 'string' && nodeIdSet.has(log.taskNodeId)
+      );
+    });
+    const removedCount = existingLogs.length - filteredLogs.length;
+
+    if (removedCount === 0) {
+      return 0;
+    }
+
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const nextContent = filteredLogs
+      .map((log) => JSON.stringify(this.serialize(log)))
+      .join('\n');
+
+    await fs.writeFile(
+      filePath,
+      nextContent ? `${nextContent}\n` : '',
+      'utf-8',
+    );
+
+    return removedCount;
+  }
+
   private async requireTask(taskId: string): Promise<Task> {
     const task = await this.taskRepository.findById(taskId);
     if (!task) {
