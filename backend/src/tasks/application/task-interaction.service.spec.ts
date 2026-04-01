@@ -131,6 +131,9 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
   const taskWorkspaceWatchService = {
     syncTaskWatch: jest.fn().mockResolvedValue(undefined),
   };
+  const notificationsService = {
+    notifyTaskNodeStatusChanged: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new TaskInteractionService(
     taskRepository as never,
@@ -146,6 +149,7 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
     taskSchedulerService as never,
     taskGitService as never,
     taskWorkspaceWatchService as never,
+    notificationsService as never,
   );
 
   return {
@@ -163,6 +167,7 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
     taskSchedulerService,
     taskGitService,
     taskWorkspaceWatchService,
+    notificationsService,
   };
 };
 
@@ -360,6 +365,39 @@ describe('TaskInteractionService', () => {
       'task-1',
       currentUser,
     );
+  });
+
+  it('should notify when cancelling a workflow node into in_review', async () => {
+    const { service, taskNodeRepository, notificationsService } = createService(
+      {
+        createdBy: 'user-1',
+        mode: TaskMode.workflow,
+      },
+    );
+    const currentUser = createCurrentUser();
+    const runningNode = createNode({
+      id: 'node-review',
+      nodeOrder: 2,
+      name: 'Preview build',
+      status: TaskStatus.inProgress,
+      finishedAt: null,
+    });
+
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(runningNode);
+
+    await service.cancel('task-1', currentUser as never);
+
+    expect(
+      notificationsService.notifyTaskNodeStatusChanged,
+    ).toHaveBeenCalledWith({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: 'Workflow task',
+      nodeId: 'node-review',
+      nodeName: 'Preview build',
+      nodeOrder: 2,
+      status: TaskStatus.inReview,
+    });
   });
 
   it('should reject execute when task still has an in_review node', async () => {

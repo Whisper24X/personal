@@ -1415,6 +1415,64 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('已选中节点')
   })
 
+  it('hides 重置 in the more actions menu after task is completed', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        status: 'done',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Completed node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const executionContextBar = wrapper.findComponent({ name: 'TaskExecutionContextBar' })
+    expect(executionContextBar.text()).not.toContain('重置')
+    await executionContextBar.get('button[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+    expect(
+      executionContextBar
+        .findAll('button')
+        .map((button) => button.text().trim())
+        .filter((text) => text === '重置' || text === '删除'),
+    ).toEqual(['删除'])
+  })
+
   it('resets the selected workflow node via reset-node API', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -1426,7 +1484,7 @@ describe('TaskDetailView toasts', () => {
         businessLineId: 'business-line-1',
         mode: 'workflow',
         title: 'Workflow task',
-        status: 'done',
+        status: 'in_review',
         configJson: {
           agentCliId: 'codex',
         },

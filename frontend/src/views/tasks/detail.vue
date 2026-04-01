@@ -308,8 +308,12 @@ const selectedWorkflowNode = computed(() => {
 })
 
 const canResetSelectedWorkflowNode = computed(() => {
+  const currentTask = task.value
+
   if (
-    task.value?.mode !== 'workflow' ||
+    !currentTask ||
+    currentTask.mode !== 'workflow' ||
+    currentTask.status === 'done' ||
     !hasButtonAccess('executeTask') ||
     actionLoading.value ||
     isCliRunning.value

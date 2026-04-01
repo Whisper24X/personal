@@ -1,11 +1,18 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { AgentCliAdapterRegistry } from '../agent-cli/agent-cli-adapter.registry';
 import { AgentRunnerService } from '../agent-runner.service';
+import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
@@ -51,6 +58,14 @@ export class TaskNodeExecutionService {
       resolveHeadCommitShaForTask: () => Promise.resolve(null),
     },
     private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notificationsService: Pick<
+      NotificationsService,
+      'notifyTaskNodeStatusChanged'
+    > = {
+      notifyTaskNodeStatusChanged: () => Promise.resolve(null),
+    },
   ) {}
 
   async runNode({
@@ -173,6 +188,7 @@ export class TaskNodeExecutionService {
           });
 
         await this.finalizeNodeAsFailure({
+          task: outputTask,
           nodeId,
           agentClioutput,
           agentCliSessionId: latestNode.agentCliSessionId ?? null,
@@ -416,6 +432,7 @@ export class TaskNodeExecutionService {
     );
 
     await this.finalizeNodeAsFailure({
+      task,
       nodeId,
       agentClioutput,
       agentCliSessionId: executionResult.sessionId ?? null,
@@ -743,6 +760,10 @@ export class TaskNodeExecutionService {
       afterRunCommitSha,
     });
 
+    if (status === TaskStatus.inReview) {
+      await this.notifyTaskNodeInReview(task, node);
+    }
+
     return {
       status,
       loopJson: nextLoopJson,
@@ -915,11 +936,13 @@ export class TaskNodeExecutionService {
   }
 
   private async finalizeNodeAsFailure({
+    task,
     nodeId,
     agentClioutput,
     agentCliSessionId,
     afterRunCommitSha,
   }: {
+    task: Task;
     nodeId: string;
     agentClioutput: string;
     agentCliSessionId?: string | null;
@@ -941,6 +964,8 @@ export class TaskNodeExecutionService {
       afterRunCommitSha:
         afterRunCommitSha ?? latestNode.afterRunCommitSha ?? null,
     });
+
+    await this.notifyTaskNodeInReview(task, latestNode);
   }
 
   private async resolveHeadCommitShaForTask(
@@ -953,6 +978,25 @@ export class TaskNodeExecutionService {
         project,
       )) ?? null
     );
+  }
+
+  private async notifyTaskNodeInReview(
+    task: Task,
+    node: Pick<TaskNode, 'id' | 'name' | 'nodeOrder'>,
+  ): Promise<void> {
+    if (!task.createdBy || task.mode !== TaskMode.workflow) {
+      return;
+    }
+
+    await this.notificationsService.notifyTaskNodeStatusChanged({
+      userId: task.createdBy,
+      taskId: task.id,
+      taskTitle: task.title,
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeOrder: node.nodeOrder,
+      status: TaskStatus.inReview,
+    });
   }
 
   private delay(ms: number): Promise<void> {

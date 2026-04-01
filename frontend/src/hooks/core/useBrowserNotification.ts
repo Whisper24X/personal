@@ -1,17 +1,12 @@
 import { onMounted, onUnmounted } from 'vue'
 import { buildUrl } from '@/api/http'
+import { useMessage } from '@/hooks'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import NotificationWorker from '@/workers/notification-sse.worker?worker'
 
 export function useBrowserNotification() {
+  const message = useMessage()
   let worker: Worker | null = null
-
-  const requestPermission = async () => {
-    if (!('Notification' in window)) return
-    if (Notification.permission === 'default') {
-      await Notification.requestPermission()
-    }
-  }
 
   const startWorker = () => {
     worker = new NotificationWorker()
@@ -20,6 +15,13 @@ export function useBrowserNotification() {
       if (e.data?.type === 'navigate' && e.data.taskId) {
         window.focus()
         window.location.href = `/task-detail/${e.data.taskId}`
+        return
+      }
+
+      if (e.data?.type === 'notification_error' && typeof e.data.message === 'string') {
+        message.warning(e.data.message, {
+          dedupeKey: `browser-notification:${String(e.data.code ?? e.data.message)}`,
+        })
       }
     }
 
@@ -30,8 +32,7 @@ export function useBrowserNotification() {
     })
   }
 
-  onMounted(async () => {
-    await requestPermission()
+  onMounted(() => {
     startWorker()
   })
 

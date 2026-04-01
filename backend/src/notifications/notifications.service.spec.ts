@@ -18,11 +18,11 @@ const createEvent = (overrides?: Partial<any>) => ({
   id: 'event-1',
   userId: 'user-1',
   taskId: 'task-1',
-  eventType: 'task.done',
-  title: '任务执行完成',
-  content: '任务「测试任务」已执行完成。',
+  eventType: 'task.in_review',
+  title: '任务待完成',
+  content: '任务「测试任务」已进入待完成状态，请确认后完成任务。',
   payload: {
-    status: 'done',
+    status: 'in_review',
   },
   readAt: null,
   createdAt: new Date(),
@@ -71,7 +71,7 @@ describe('NotificationsService', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('should send webhook and keep browser event creation', async () => {
+  it('should send task in_review webhook and keep browser event creation', async () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn().mockResolvedValue(
         createSetting({
@@ -106,7 +106,7 @@ describe('NotificationsService', () => {
       userId: 'user-1',
       taskId: 'task-1',
       taskTitle: '测试任务',
-      status: 'done',
+      status: 'in_review',
     });
     await flushPromises();
 
@@ -155,7 +155,7 @@ describe('NotificationsService', () => {
       userId: 'user-1',
       taskId: 'task-1',
       taskTitle: '测试任务',
-      status: 'done',
+      status: 'in_review',
     });
     await flushPromises();
 
@@ -163,14 +163,14 @@ describe('NotificationsService', () => {
       userId: 'user-1',
       taskId: 'task-1',
       taskTitle: '测试任务',
-      status: 'done',
+      status: 'in_review',
     });
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should use taskTitle in notification content', async () => {
+  it('should use taskTitle in task in_review notification content', async () => {
     const notificationSettingRepository = {
       findByUserId: jest
         .fn()
@@ -199,12 +199,12 @@ describe('NotificationsService', () => {
       userId: 'user-1',
       taskId: 'task-1',
       taskTitle: '我的重要任务',
-      status: 'done',
+      status: 'in_review',
     });
 
     expect(notificationEventRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: '任务「我的重要任务」已执行完成。',
+        content: '任务「我的重要任务」已进入待完成状态，请确认后完成任务。',
       }),
     );
   });
@@ -290,12 +290,12 @@ describe('NotificationsService', () => {
     await service.notifyTaskStatusChanged({
       userId: 'user-1',
       taskId: 'task-1',
-      status: 'done',
+      status: 'in_review',
     });
 
     expect(notificationEventRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: '任务「task-1」已执行完成。',
+        content: '任务「task-1」已进入待完成状态，请确认后完成任务。',
       }),
     );
   });
@@ -393,7 +393,7 @@ describe('NotificationsService', () => {
     ).toHaveBeenCalledWith('user-1');
   });
 
-  it('should send feishu-formatted webhook when URL contains feishu.cn', async () => {
+  it('should send feishu-formatted webhook for task in_review when URL contains feishu.cn', async () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn().mockResolvedValue(
         createSetting({
@@ -429,7 +429,7 @@ describe('NotificationsService', () => {
       userId: 'user-1',
       taskId: 'task-1',
       taskTitle: '测试任务',
-      status: 'done',
+      status: 'in_review',
     });
     await flushPromises();
 
@@ -439,18 +439,18 @@ describe('NotificationsService', () => {
     const body = JSON.parse(options.body);
     expect(body.msg_type).toBe('post');
     const zhCn = body.content.post.zh_cn;
-    expect(zhCn.title).toBe('任务执行完成');
+    expect(zhCn.title).toBe('任务待完成');
     expect(zhCn.content[0][0]).toEqual({
       tag: 'text',
       text: expect.stringContaining('测试任务'),
     });
     expect(zhCn.content[2]).toEqual([
       { tag: 'text', text: '事件类型: ' },
-      { tag: 'text', text: 'task.done' },
+      { tag: 'text', text: 'task.in_review' },
     ]);
     expect(zhCn.content[3]).toEqual([
       { tag: 'text', text: '任务状态: ' },
-      { tag: 'text', text: '已完成' },
+      { tag: 'text', text: '待完成' },
     ]);
     const lastLine = zhCn.content[zhCn.content.length - 1];
     expect(lastLine[0]).toEqual({
@@ -491,10 +491,106 @@ describe('NotificationsService', () => {
       userId: 'user-1',
       taskId: 'task-1',
       taskTitle: '测试任务',
+      status: 'in_review',
+    });
+
+    expect(event).toBeNull();
+    expect(notificationEventRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('should send node in_review notification with node details', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest
+        .fn()
+        .mockResolvedValue(createSetting({ browserEnabled: true })),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn().mockResolvedValue(
+        createEvent({
+          eventType: 'task_node.in_review',
+          title: '任务节点待审核',
+          content:
+            '任务「我的重要任务」的节点「生成页面」已进入待审核状态，请确认后继续。',
+          payload: {
+            status: 'in_review',
+            nodeId: 'node-1',
+            nodeName: '生成页面',
+            nodeOrder: 2,
+          },
+        }),
+      ),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+      markAllReadByUserId: jest.fn(),
+      deleteReadByUserId: jest.fn(),
+      countUnreadByUserId: jest.fn(),
+    };
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
+    );
+
+    await service.notifyTaskNodeStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: '我的重要任务',
+      nodeId: 'node-1',
+      nodeName: '生成页面',
+      nodeOrder: 2,
+      status: 'in_review',
+    });
+
+    expect(notificationEventRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'task_node.in_review',
+        title: '任务节点待审核',
+        content:
+          '任务「我的重要任务」的节点「生成页面」已进入待审核状态，请确认后继续。',
+        payload: {
+          status: 'in_review',
+          nodeId: 'node-1',
+          nodeName: '生成页面',
+          nodeOrder: 2,
+        },
+      }),
+    );
+  });
+
+  it('should not create task notification when status is done', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn(),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+    };
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
+    );
+
+    const event = await service.notifyTaskStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: '测试任务',
       status: 'done',
     });
 
     expect(event).toBeNull();
     expect(notificationEventRepository.create).not.toHaveBeenCalled();
+    expect(notificationSettingRepository.findByUserId).not.toHaveBeenCalled();
   });
 });

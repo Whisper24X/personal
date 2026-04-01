@@ -1,9 +1,12 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { ApproveTaskDto } from '../dto/approve-task.dto';
@@ -12,6 +15,7 @@ import { RetryTaskDto } from '../dto/retry-task.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskMessageRole } from '../dto/task-message.dto';
+import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
@@ -47,6 +51,14 @@ export class TaskInteractionService {
     private readonly taskSchedulerService: TaskSchedulerService,
     private readonly taskGitService: TaskGitService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notificationsService: Pick<
+      NotificationsService,
+      'notifyTaskNodeStatusChanged'
+    > = {
+      notifyTaskNodeStatusChanged: () => Promise.resolve(null),
+    },
   ) {}
 
   async reply(
@@ -561,6 +573,8 @@ export class TaskInteractionService {
       runtimeJson: null,
     });
 
+    await this.notifyTaskNodeInReview(task, runningNode);
+
     await this.taskLogService.appendLog({
       taskId: task.id,
       taskNodeId: runningNode.id,
@@ -734,6 +748,25 @@ export class TaskInteractionService {
     });
 
     return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
+  private async notifyTaskNodeInReview(
+    task: Task,
+    node: Pick<TaskNode, 'id' | 'name' | 'nodeOrder'>,
+  ): Promise<void> {
+    if (!task.createdBy || task.mode !== TaskMode.workflow) {
+      return;
+    }
+
+    await this.notificationsService.notifyTaskNodeStatusChanged({
+      userId: task.createdBy,
+      taskId: task.id,
+      taskTitle: task.title,
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeOrder: node.nodeOrder,
+      status: TaskStatus.inReview,
+    });
   }
 
   private selectReplyFallbackNode(nodes: TaskNode[]): TaskNode | null {

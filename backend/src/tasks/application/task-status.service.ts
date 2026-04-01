@@ -91,7 +91,11 @@ export class TaskStatusService {
     if (previousStatus !== status) {
       await this.applySandboxLifecycle(task.id, task.gitWorktree, status);
 
-      if (task.createdBy && task.mode === TaskMode.workflow) {
+      if (
+        status === TaskStatus.inReview &&
+        task.createdBy &&
+        task.mode === TaskMode.workflow
+      ) {
         await this.notificationsService.notifyTaskStatusChanged({
           userId: task.createdBy,
           taskId: task.id,

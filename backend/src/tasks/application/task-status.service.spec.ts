@@ -152,11 +152,28 @@ describe('TaskStatusService', () => {
         message: 'Task completed; worktree preserved',
       }),
     );
-    expect(notificationsService.notifyTaskStatusChanged).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: 'task-1',
-        status: TaskStatus.done,
-      }),
-    );
+    expect(notificationsService.notifyTaskStatusChanged).not.toHaveBeenCalled();
+  });
+
+  it('should notify when workflow task status changes to in_review', async () => {
+    const { service, taskRepository, notificationsService } = createService();
+
+    taskRepository.findById.mockResolvedValue({
+      id: 'task-1',
+      title: 'Task 1',
+      createdBy: 'user-1',
+      mode: TaskMode.workflow,
+      gitWorktree: 'wk-1',
+      status: TaskStatus.inProgress,
+    });
+
+    await service.setTaskStatus('task-1', TaskStatus.inReview);
+
+    expect(notificationsService.notifyTaskStatusChanged).toHaveBeenCalledWith({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: 'Task 1',
+      status: TaskStatus.inReview,
+    });
   });
 });
