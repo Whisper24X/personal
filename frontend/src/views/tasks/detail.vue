@@ -1266,10 +1266,14 @@ function startDrag(e: MouseEvent) {
 
       <div
         v-if="isRightPanelVisible"
-        class="bg-border/50 h-full w-1.5 min-w-1.5 shrink-0 cursor-col-resize transition-colors hover:bg-primary/50"
-        :class="{ 'bg-primary/50': isDragging }"
+        class="group relative h-full w-1.5 min-w-1.5 shrink-0 cursor-col-resize"
         @mousedown.prevent="startDrag"
-      />
+      >
+        <div
+          class="bg-border/50 pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors group-hover:bg-primary/50"
+          :class="{ 'bg-primary/50': isDragging }"
+        />
+      </div>
 
       <RightPanelSection
         v-if="isRightPanelVisible"
