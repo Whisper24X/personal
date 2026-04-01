@@ -17,7 +17,6 @@
 
 services:
   sandbox:
-    platform: linux/amd64
     image: ${SANDBOX_PROJECT}-sandbox:latest
     build:
       context: sandbox
