@@ -154,7 +154,21 @@ export const queryAsyncTaskResult = (
 export const getChannelList = (): Promise<{
   list: { id: string; name: string }[]
 }> => {
-  return request.post('/api/shadow/v1/channel/list', {})
+  // 与 filterRepeatHttp 去重逻辑冲突：多处会并发拉同一 body 的渠道列表，被取消的请求会误判为失败
+  return request.post(
+    '/api/shadow/v1/channel/list',
+    {},
+    { params: { disabledRepeatInterceptor: true } },
+  )
+}
+
+/**
+ * 创建渠道
+ * @param name 渠道名称
+ * @returns 创建结果，包含 id
+ */
+export const createChannel = (name: string): Promise<{ id: string }> => {
+  return request.post('/api/shadow/v1/channel/create', { name })
 }
 
 /**

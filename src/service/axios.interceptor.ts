@@ -65,17 +65,28 @@ class AxiosClass {
       },
       (error) => {
         console.error('response error:', error)
-        const { skipErrorHandler } = error?.response?.config
+        // 请求被取消、重复请求被拦截等场景下可能没有 response，避免解构报错
+        const isCanceled =
+          axios.isCancel(error) ||
+          (error as { __CANCEL__?: boolean })?.__CANCEL__ === true ||
+          (error as { name?: string })?.name === 'CanceledError' ||
+          (error as { code?: string })?.code === 'ERR_CANCELED'
+        if (isCanceled) {
+          return Promise.reject(error)
+        }
+        const skipErrorHandler = error?.response?.config?.skipErrorHandler
+        const errMsg =
+          error.response?.data?.message ?? error.message ?? '请求失败'
         if (!skipErrorHandler) {
           ElNotification({
             title: '亲亲😙，出错了',
             dangerouslyUseHTMLString: true,
-            message: error.response.data.message,
+            message: errMsg,
             type: 'error',
           })
         }
 
-        if (error.response.data.code === 401) {
+        if (error.response?.data?.code === 401) {
           const userStore = useUserStore()
           userStore.reset()
           console.log('401 reset over')
@@ -84,7 +95,7 @@ class AxiosClass {
             name: 'Login',
           })
         }
-        return Promise.reject(error.response)
+        return Promise.reject(error.response ?? error)
       },
     )
   }

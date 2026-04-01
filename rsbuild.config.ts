@@ -11,6 +11,8 @@ const publicPath =
   mode === 'development'
     ? `/${projectName}`
     : `//fp.yangcong345.com/${projectName}`
+console.log(publicPath, 'publicPath')
+console.log(process.env, 'process.env')
 
 export default defineConfig({
   source: {
@@ -45,16 +47,16 @@ export default defineConfig({
   ],
   tools: {
     rspack: (config) => {
-      config.resolve = config.resolve || {};
-      config.resolve.extensions = ['.mjs', '.js', '.jsx', '.ts', '.tsx'];
-      config.module = config.module || {};
-      config.module.rules = config.module.rules || [];
-      
+      config.resolve = config.resolve || {}
+      config.resolve.extensions = ['.mjs', '.js', '.jsx', '.ts', '.tsx']
+      config.module = config.module || {}
+      config.module.rules = config.module.rules || []
+
       config.module.rules.push({
         test: /\.mjs$/,
         include: /node_modules/,
         type: 'javascript/auto',
-      });
+      })
 
       config.module.rules.push({
         test: /\.js$/,
@@ -63,16 +65,12 @@ export default defineConfig({
           {
             loader: 'babel-loader',
             options: {
-              presets: [
-                ['@babel/preset-env', { modules: false }]
-              ],
-              plugins: [
-                ['@babel/plugin-transform-runtime', { corejs: 3 }]
-              ]
-            }
-          }
-        ]
-      });
+              presets: [['@babel/preset-env', { modules: false }]],
+              plugins: [['@babel/plugin-transform-runtime', { corejs: 3 }]],
+            },
+          },
+        ],
+      })
 
       config.module.rules.push({
         test: /\.scss$/,
@@ -89,7 +87,7 @@ export default defineConfig({
             },
           },
         ],
-      });
+      })
 
       if (mode !== 'development') {
         config.plugins?.push(
@@ -110,6 +108,12 @@ export default defineConfig({
   },
   server: {
     port: 5176,
+  },
+  dev: {
+    // 沙箱环境下，HMR WebSocket 通过 Nginx 代理，使用页面自身的 host/port
+    client: process.env.SANDBOX === 'true'
+      ? { host: '', port: '' }
+      : {},
   },
   performance: {
     chunkSplit: {

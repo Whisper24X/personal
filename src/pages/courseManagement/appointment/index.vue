@@ -245,13 +245,13 @@
         </template>
       </el-table-column>
       <el-table-column
-        prop="orderPrice"
-        label="商家实收"
+        prop="receiptAmount"
+        label="实收金额"
         min-width="100"
         align="center"
       >
         <template #default="{ row }">
-          {{ row.orderPrice ? `¥${row.orderPrice}` : '-' }}
+          {{ row.receiptAmount != null && row.receiptAmount !== 0 ? `¥${Number(row.receiptAmount).toFixed(2)}` : '--' }}
         </template>
       </el-table-column>
       <el-table-column
@@ -855,8 +855,9 @@ const formatDateTime = (dateTimeString: string) => {
  * 处理课程选择变化
  * @param value 选择的课程ID
  */
-const handleCourseChange = async (value: string) => {
-  // 课程选择变化不再需要处理任何逻辑
+const handleCourseChange = async (_value: string) => {
+  // 课程选择变化不再需要处理任何逻辑，保留空实现以满足 @change 事件绑定
+  void _value
 }
 
 /**

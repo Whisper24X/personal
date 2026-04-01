@@ -125,6 +125,9 @@
 
       <!-- 额外按钮 -->
       <template #extra-buttons>
+        <el-button type="primary" @click="handleChannelConfig"
+          >渠道配置</el-button
+        >
         <el-button type="primary" @click="handleSyncWeidianOrder"
           >微店订单同步</el-button
         >
@@ -513,6 +516,12 @@
       </el-table-column>
     </CommonTable>
 
+    <!-- 渠道配置对话框 -->
+    <ChannelConfigDialog
+      v-model:visible="channelConfigDialogVisible"
+      @success="handleChannelConfigSuccess"
+    />
+
     <!-- 导入对话框 -->
     <ImportOrderDialog
       v-model:visible="importDialogVisible"
@@ -602,6 +611,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import CommonTable from '@/components/CommonTable/index.vue'
+import ChannelConfigDialog from './components/ChannelConfigDialog/index.vue'
 import ImportOrderDialog from './components/ImportOrderDialog/index.vue'
 import ImportPhoneDialog from './components/ImportPhoneDialog/index.vue'
 import CsvMappingDialog from './components/CsvMappingDialog/index.vue'
@@ -650,6 +660,7 @@ const channelOptions = ref(CHANNEL_OPTIONS)
 const router = useRouter()
 
 // 对话框显示状态
+const channelConfigDialogVisible = ref(false)
 const importDialogVisible = ref(false)
 const importPhoneDialogVisible = ref(false)
 const csvMappingDialogVisible = ref(false)
@@ -789,8 +800,6 @@ const getList = async (params: SearchForm) => {
       pageSize: params.pageSize,
     }
 
-    console.log('getList:queryParams', queryParams)
-
     const res = await getOrderList(queryParams)
     return {
       list: res.list,
@@ -814,6 +823,20 @@ const getList = async (params: SearchForm) => {
  */
 const handleSelectionChange = (rows: OrderItem[]) => {
   selectedRows.value = rows
+}
+
+/**
+ * 处理渠道配置
+ */
+const handleChannelConfig = () => {
+  channelConfigDialogVisible.value = true
+}
+
+/**
+ * 处理渠道配置成功（如新建渠道后刷新购买渠道下拉）
+ */
+const handleChannelConfigSuccess = () => {
+  loadChannelOptions()
 }
 
 /**
