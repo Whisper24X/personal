@@ -139,7 +139,8 @@ var (
 
 // 渠道相关
 var (
-	ChannelNotExists = Manager.New(http.StatusConflict, "ChannelNotExists", "渠道:%s,不存在")
+	ChannelNotExists      = Manager.New(http.StatusConflict, "ChannelNotExists", "渠道:%s,不存在")
+	ChannelDuplicateName  = Manager.New(http.StatusConflict, "ChannelDuplicateName", "渠道名称已存在")
 )
 
 // 平台商品相关

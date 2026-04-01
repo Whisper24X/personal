@@ -15,6 +15,13 @@ service Channel {
       body: "*"
     };
   }
+  //渠道-创建
+  rpc CreateChannel(CreateChannelReq) returns (CreateChannelReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/channel/create"
+      body: "*"
+    };
+  }
 }
 
 message GetChannelListReq {}
@@ -27,4 +34,12 @@ message ChannelInfo {
 
 message GetChannelListReply {
   repeated ChannelInfo list = 1; // 列表数据
+}
+
+message CreateChannelReq {
+  string name = 1; // 渠道名称
+}
+
+message CreateChannelReply {
+  string id = 1; // 渠道id
 }

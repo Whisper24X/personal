@@ -377,3 +377,209 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = GetChannelListReplyValidationError{}
+
+// Validate checks the field values on CreateChannelReq with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *CreateChannelReq) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CreateChannelReq with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// CreateChannelReqMultiError, or nil if none found.
+func (m *CreateChannelReq) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CreateChannelReq) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Name
+
+	if len(errors) > 0 {
+		return CreateChannelReqMultiError(errors)
+	}
+
+	return nil
+}
+
+// CreateChannelReqMultiError is an error wrapping multiple validation errors
+// returned by CreateChannelReq.ValidateAll() if the designated constraints
+// aren't met.
+type CreateChannelReqMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CreateChannelReqMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CreateChannelReqMultiError) AllErrors() []error { return m }
+
+// CreateChannelReqValidationError is the validation error returned by
+// CreateChannelReq.Validate if the designated constraints aren't met.
+type CreateChannelReqValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CreateChannelReqValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CreateChannelReqValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CreateChannelReqValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CreateChannelReqValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CreateChannelReqValidationError) ErrorName() string { return "CreateChannelReqValidationError" }
+
+// Error satisfies the builtin error interface
+func (e CreateChannelReqValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCreateChannelReq.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CreateChannelReqValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CreateChannelReqValidationError{}
+
+// Validate checks the field values on CreateChannelReply with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *CreateChannelReply) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CreateChannelReply with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// CreateChannelReplyMultiError, or nil if none found.
+func (m *CreateChannelReply) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CreateChannelReply) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Id
+
+	if len(errors) > 0 {
+		return CreateChannelReplyMultiError(errors)
+	}
+
+	return nil
+}
+
+// CreateChannelReplyMultiError is an error wrapping multiple validation errors
+// returned by CreateChannelReply.ValidateAll() if the designated constraints
+// aren't met.
+type CreateChannelReplyMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CreateChannelReplyMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CreateChannelReplyMultiError) AllErrors() []error { return m }
+
+// CreateChannelReplyValidationError is the validation error returned by
+// CreateChannelReply.Validate if the designated constraints aren't met.
+type CreateChannelReplyValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CreateChannelReplyValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CreateChannelReplyValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CreateChannelReplyValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CreateChannelReplyValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CreateChannelReplyValidationError) ErrorName() string {
+	return "CreateChannelReplyValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e CreateChannelReplyValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCreateChannelReply.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CreateChannelReplyValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CreateChannelReplyValidationError{}

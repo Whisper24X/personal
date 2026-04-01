@@ -1,0 +1,408 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/sys_permission.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SysPermission"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/shadow/v1/sysPermission/del": {
+      "post": {
+        "summary": "功能权限-删除",
+        "operationId": "SysPermission_SysPermissionDel",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysPermissionDelResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysPermissionDelReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysPermission"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysPermission/list": {
+      "get": {
+        "summary": "功能权限-列表",
+        "operationId": "SysPermission_SysPermissionList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysPermissionListResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysPermission"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysPermission/status": {
+      "post": {
+        "summary": "功能权限-修改权限状态",
+        "operationId": "SysPermission_SysPermissionStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysPermissionStatusResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysPermissionStatusReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysPermission"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysPermission/store": {
+      "post": {
+        "summary": "功能权限-保存",
+        "operationId": "SysPermission_SysPermissionStore",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysPermissionStoreResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysPermissionStoreReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysPermission"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1SysPermissionDelReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        }
+      },
+      "title": "功能权限-删除-请求",
+      "required": [
+        "id"
+      ]
+    },
+    "v1SysPermissionDelResp": {
+      "type": "object",
+      "title": "功能权限-删除-响应"
+    },
+    "v1SysPermissionInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        },
+        "pid": {
+          "type": "string",
+          "title": "上级菜单"
+        },
+        "type": {
+          "type": "string",
+          "title": "类型:menu_dir=菜单目录,menu=菜单项,button=页面按钮"
+        },
+        "title": {
+          "type": "string",
+          "title": "标题"
+        },
+        "name": {
+          "type": "string",
+          "title": "规则名称"
+        },
+        "path": {
+          "type": "string",
+          "title": "路由路径"
+        },
+        "icon": {
+          "type": "string",
+          "title": "图标"
+        },
+        "menuType": {
+          "type": "string",
+          "title": "菜单类型:tab=选项卡,link=链接,iframe=Iframe"
+        },
+        "url": {
+          "type": "string",
+          "title": "Url"
+        },
+        "component": {
+          "type": "string",
+          "title": "组件路径"
+        },
+        "extend": {
+          "type": "string",
+          "title": "扩展属性:none=无,add_rules_only=只添加为路由,add_menu_only=只添加为菜单"
+        },
+        "remark": {
+          "type": "string",
+          "title": "备注"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SysPermissionInfo"
+          },
+          "title": "子集"
+        }
+      },
+      "title": "功能权限-信息"
+    },
+    "v1SysPermissionListResp": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SysPermissionInfo"
+          },
+          "title": "列表"
+        }
+      },
+      "title": "功能权限-列表-响应"
+    },
+    "v1SysPermissionStatusReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        }
+      },
+      "title": "功能权限-修改权限状态-请求",
+      "required": [
+        "id",
+        "status"
+      ]
+    },
+    "v1SysPermissionStatusResp": {
+      "type": "object",
+      "title": "功能权限-修改权限状态-响应"
+    },
+    "v1SysPermissionStoreReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        },
+        "pid": {
+          "type": "string",
+          "title": "上级菜单"
+        },
+        "type": {
+          "type": "string",
+          "title": "类型:menu_dir=菜单目录,menu=菜单项,button=页面按钮"
+        },
+        "title": {
+          "type": "string",
+          "title": "标题"
+        },
+        "name": {
+          "type": "string",
+          "title": "规则名称"
+        },
+        "path": {
+          "type": "string",
+          "title": "路由路径"
+        },
+        "icon": {
+          "type": "string",
+          "title": "图标"
+        },
+        "menuType": {
+          "type": "string",
+          "title": "菜单类型:tab=选项卡,link=链接,iframe=Iframe"
+        },
+        "url": {
+          "type": "string",
+          "title": "Url"
+        },
+        "component": {
+          "type": "string",
+          "title": "组件路径"
+        },
+        "extend": {
+          "type": "string",
+          "title": "扩展属性:none=无,add_rules_only=只添加为路由,add_menu_only=只添加为菜单"
+        },
+        "remark": {
+          "type": "string",
+          "title": "备注"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        }
+      },
+      "title": "功能权限-保存-请求",
+      "required": [
+        "id",
+        "pid",
+        "type",
+        "title",
+        "name",
+        "path"
+      ]
+    },
+    "v1SysPermissionStoreResp": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        }
+      },
+      "title": "功能权限-保存-响应"
+    }
+  }
+}

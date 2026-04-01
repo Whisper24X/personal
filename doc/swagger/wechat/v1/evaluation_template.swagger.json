@@ -1,0 +1,131 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "wechat/v1/evaluation_template.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "EvaluationTemplate"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/wechat/v1/evaluation_template/info": {
+      "get": {
+        "summary": "评价模版-查询评价模版详情",
+        "operationId": "EvaluationTemplate_GetEvaluationTemplateInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/wechatv1GetEvaluationTemplateInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "templateName",
+            "description": "模版名称",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "EvaluationTemplate"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "wechatv1EvaluationTemplateInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "templateName": {
+          "type": "string",
+          "title": "模版名称"
+        },
+        "evaluationObject": {
+          "type": "string",
+          "title": "评价对象"
+        },
+        "business": {
+          "type": "string",
+          "title": "所属业务"
+        },
+        "evaluationDimension": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "评价维度"
+        },
+        "evaluationLabel": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "评价标签"
+        },
+        "tips": {
+          "type": "string",
+          "title": "温馨提示"
+        }
+      },
+      "title": "评价模版信息"
+    },
+    "wechatv1GetEvaluationTemplateInfoReply": {
+      "type": "object",
+      "properties": {
+        "info": {
+          "$ref": "#/definitions/wechatv1EvaluationTemplateInfo"
+        }
+      },
+      "title": "响应-评价模版-单条数据查询"
+    }
+  }
+}

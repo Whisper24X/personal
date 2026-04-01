@@ -228,6 +228,7 @@ type PlatformGoodRepo interface {
 type ChannelRepo interface {
 	yanxue_repo.IChannelRepo
 	ChannelIdToName(ctx context.Context) (map[string]string, error)
+	ExistsByName(ctx context.Context, name string) (bool, error)
 }
 
 type SysDataLogRepo interface {
@@ -238,6 +239,7 @@ type DynamicFieldMappingRepo interface {
 	yanxue_repo.IDynamicFieldMappingRepo
 	DTOShadowDynamicFieldMapping(dynamicFieldMapping *yanxue_model.DynamicFieldMapping) (*shadowV1.DynamicFieldMappingInfo, error)
 	QueryDynamicFieldMappingList(ctx context.Context, req *shadowV1.GetDynamicFieldMappingListReq) ([]*yanxue_model.DynamicFieldMapping, *condition.Reply, error)
+	CopyFromChannel(ctx context.Context, fromChannel, toChannel string) error
 }
 
 type UserCloneRepo interface {

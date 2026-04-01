@@ -24,6 +24,8 @@ const _ = grpc.SupportPackageIsVersion7
 type ChannelClient interface {
 	// 渠道-列表数据查询
 	GetChannelList(ctx context.Context, in *GetChannelListReq, opts ...grpc.CallOption) (*GetChannelListReply, error)
+	// 渠道-创建
+	CreateChannel(ctx context.Context, in *CreateChannelReq, opts ...grpc.CallOption) (*CreateChannelReply, error)
 }
 
 type channelClient struct {
@@ -43,12 +45,23 @@ func (c *channelClient) GetChannelList(ctx context.Context, in *GetChannelListRe
 	return out, nil
 }
 
+func (c *channelClient) CreateChannel(ctx context.Context, in *CreateChannelReq, opts ...grpc.CallOption) (*CreateChannelReply, error) {
+	out := new(CreateChannelReply)
+	err := c.cc.Invoke(ctx, "/shadow.v1.Channel/CreateChannel", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChannelServer is the server API for Channel service.
 // All implementations must embed UnimplementedChannelServer
 // for forward compatibility
 type ChannelServer interface {
 	// 渠道-列表数据查询
 	GetChannelList(context.Context, *GetChannelListReq) (*GetChannelListReply, error)
+	// 渠道-创建
+	CreateChannel(context.Context, *CreateChannelReq) (*CreateChannelReply, error)
 	mustEmbedUnimplementedChannelServer()
 }
 
@@ -58,6 +71,9 @@ type UnimplementedChannelServer struct {
 
 func (UnimplementedChannelServer) GetChannelList(context.Context, *GetChannelListReq) (*GetChannelListReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetChannelList not implemented")
+}
+func (UnimplementedChannelServer) CreateChannel(context.Context, *CreateChannelReq) (*CreateChannelReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateChannel not implemented")
 }
 func (UnimplementedChannelServer) mustEmbedUnimplementedChannelServer() {}
 
@@ -90,6 +106,24 @@ func _Channel_GetChannelList_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Channel_CreateChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateChannelReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChannelServer).CreateChannel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shadow.v1.Channel/CreateChannel",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChannelServer).CreateChannel(ctx, req.(*CreateChannelReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Channel_ServiceDesc is the grpc.ServiceDesc for Channel service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -100,6 +134,10 @@ var Channel_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetChannelList",
 			Handler:    _Channel_GetChannelList_Handler,
+		},
+		{
+			MethodName: "CreateChannel",
+			Handler:    _Channel_CreateChannel_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

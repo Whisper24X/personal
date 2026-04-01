@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"gitlab.yc345.tv/backend/orm-gen/v2/condition"
@@ -84,4 +85,38 @@ func (d *DynamicFieldMappingRepo) QueryDynamicFieldMappingList(ctx context.Conte
 		return list, reply, errorx.DataSQLErr.WithError(err).Err()
 	}
 	return list, reply, nil
+}
+
+// CopyFromChannel 将源渠道的 dynamic_field_mapping 配置复制到新渠道
+func (d *DynamicFieldMappingRepo) CopyFromChannel(ctx context.Context, fromChannel, toChannel string) error {
+	if fromChannel == "" || toChannel == "" {
+		return nil
+	}
+	param := &condition.Req{
+		Page:     1,
+		PageSize: 1000,
+		Query: []*condition.QueryParam{
+			{Field: "channel", Value: fromChannel, Exp: condition.EQ, Logic: condition.AND},
+		},
+	}
+	sourceList, _, err := d.FindMultiByCondition(ctx, param)
+	if err != nil {
+		return err
+	}
+	if len(sourceList) == 0 {
+		return nil
+	}
+	now := time.Now()
+	newList := make([]*yanxue_model.DynamicFieldMapping, 0, len(sourceList))
+	for _, src := range sourceList {
+		newItem := &yanxue_model.DynamicFieldMapping{
+			Data:        src.Data,
+			Channel:     toChannel,
+			MappingType: src.MappingType,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		newList = append(newList, newItem)
+	}
+	return d.CreateBatch(ctx, newList, 100)
 }

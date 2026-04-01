@@ -29,3 +29,8 @@ type ShadowV1ChannelService struct {
 func (s *ShadowV1ChannelService) GetChannelList(ctx context.Context, req *pb.GetChannelListReq) (*pb.GetChannelListReply, error) {
 	return s.shadowV1ChannelUseCase.GetChannelList(ctx, req)
 }
+
+// CreateChannel 渠道-创建
+func (s *ShadowV1ChannelService) CreateChannel(ctx context.Context, req *pb.CreateChannelReq) (*pb.CreateChannelReply, error) {
+	return s.shadowV1ChannelUseCase.CreateChannel(ctx, req)
+}

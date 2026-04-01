@@ -2,74 +2,45 @@ package biz
 
 import (
 	"context"
+	"sort"
 
-	"github.com/samber/lo"
 	"gitlab.yc345.tv/backend/orm-gen/v2/condition"
 	pb "gitlab.yc345.tv/backend/yanxue/api/shadow/v1"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/errorx"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/gorm/yanxue_model"
 	"gitlab.yc345.tv/backend/yanxue/internal/pkg/util/cryptutil"
-	"gitlab.yc345.tv/backend/yanxue/internal/pkg/util/jsonutil"
 )
 
-// GetOrderPriceMap 获取订单金额
-func (s *ShadowV1CourseAppointmentUseCase) GetOrderPriceMap(ctx context.Context, orderIdList []string) (map[string]int64, error) {
-	orderIdToPriceMap := make(map[string]int64)
-	// 分批请求
-	batchSize := 1000
-	batches := len(orderIdList) / batchSize
-	if len(orderIdList)%batchSize != 0 {
-		batches++ // 处理剩余不足1000的批次
+// GetReceiptAmountMap 获取实收金额映射：orderId -> receiptAmount（单位分）
+// 通过 orderId -> sub_order（ParentOrderID）关联，取最新一条子订单的 receiptAmount
+func (s *ShadowV1CourseAppointmentUseCase) GetReceiptAmountMap(ctx context.Context, orderIdList []string) (map[string]int64, error) {
+	orderIdToReceiptMap := make(map[string]int64)
+	if len(orderIdList) == 0 {
+		return orderIdToReceiptMap, nil
 	}
-	var orderList []*yanxue_model.Order
-	for i := 0; i < batches; i++ {
-		start := i * batchSize
-		end := start + batchSize
-		if end > len(orderIdList) {
-			end = len(orderIdList)
-		}
-		batchIDs := orderIdList[start:end]
-		list, err := s.orderRepo.FindMultiByIDS(ctx, batchIDs)
-		if err != nil {
-			return orderIdToPriceMap, errorx.DataSQLErr.WithError(err).Err()
-		}
-		orderList = append(orderList, list...)
-	}
-	orderIdToOrderPriceMap := make(map[string]float32)
-	var channelGoodIdList []string
-	for _, orderInfo := range orderList {
-		orderIdToOrderPriceMap[orderInfo.ID] = orderInfo.OrderPrice
-		channelGoodIdList = append(channelGoodIdList, orderInfo.ChannelGoodID)
-	}
-	uniqChannelGoodIdList := lo.Uniq(channelGoodIdList)
-	channelGoodList, err := s.goodRepo.FindMultiByChannelGoodIDS(ctx, uniqChannelGoodIdList)
+	subOrders, err := s.subOrderRepo.FindMultiCacheByParentOrderIDS(ctx, orderIdList)
 	if err != nil {
-		return orderIdToPriceMap, errorx.DataSQLErr.WithError(err).Err()
+		return orderIdToReceiptMap, errorx.DataSQLErr.WithError(err).Err()
 	}
-	channelGoodIdToUseTimeMap := make(map[string]int32)
-	for _, goodInfo := range channelGoodList {
-		content := &pb.GoodContent{}
-		err = jsonutil.Unmarshal(goodInfo.Content, content)
-		if err != nil {
-			return orderIdToPriceMap, errorx.DataFormattingError.WithError(err).Err()
+	// 按 ParentOrderID 分组，每组取最新一条（UpdatedAt 或 CreatedAt 最大）
+	orderIdToSubOrders := make(map[string][]*yanxue_model.SubOrder)
+	for _, sub := range subOrders {
+		if sub.ParentOrderID != "" {
+			orderIdToSubOrders[sub.ParentOrderID] = append(orderIdToSubOrders[sub.ParentOrderID], sub)
 		}
-		totalUseTime := int32(0)
-		for _, category := range content.GoodCategories {
-			totalUseTime += category.UseTimes
-		}
-		channelGoodIdToUseTimeMap[goodInfo.ChannelGoodID] = totalUseTime
 	}
-
-	for _, orderInfo := range orderList {
-		orderPrice := int32(orderInfo.OrderPrice*100 + 0.5) // 单位为分，四舍五入
-		totalUseTime := int32(1)
-		if channelGoodIdToUseTimeMap[orderInfo.ChannelGoodID] != 0 {
-			totalUseTime = channelGoodIdToUseTimeMap[orderInfo.ChannelGoodID]
+	for orderId, list := range orderIdToSubOrders {
+		if len(list) == 0 {
+			continue
 		}
-		cost := orderPrice / totalUseTime
-		orderIdToPriceMap[orderInfo.ID] = int64(cost)
+		// 按 UpdatedAt 降序，取最新一条
+		sort.Slice(list, func(i, j int) bool {
+			return list[i].UpdatedAt.After(list[j].UpdatedAt)
+		})
+		latest := list[0]
+		orderIdToReceiptMap[orderId] = int64(latest.ReceiptAmount)
 	}
-	return orderIdToPriceMap, nil
+	return orderIdToReceiptMap, nil
 }
 
 // GetCourseAppointmentList 课程-预约-列表数据查询
@@ -197,7 +168,7 @@ func (s *ShadowV1CourseAppointmentUseCase) GetCourseAppointmentList(ctx context.
 			orderIds = append(orderIds, courseStock.OrderID)
 		}
 
-		orderIdToPriceMap, err := s.GetOrderPriceMap(ctx, orderIds)
+		orderIdToReceiptMap, err := s.GetReceiptAmountMap(ctx, orderIds)
 		if err != nil {
 			return nil, err
 		}
@@ -241,7 +212,7 @@ func (s *ShadowV1CourseAppointmentUseCase) GetCourseAppointmentList(ctx context.
 			courseStockInfo.GoodName = goodMap[v.GoodID]
 			courseStockInfo.ChannelName = channelIdToName[orderIdToChannelId[v.OrderID]]
 			courseStockInfo.OrderNumber = orderIdToOrderNumber[v.OrderID]
-			courseStockInfo.OrderPrice = orderIdToPriceMap[v.OrderID]
+			courseStockInfo.ReceiptAmount = orderIdToReceiptMap[v.OrderID]
 			courseStockInfo.IsPushContractRequired = isPushContractRequiredMap[v.CourseID]
 			resp.List = append(resp.List, courseStockInfo)
 		}

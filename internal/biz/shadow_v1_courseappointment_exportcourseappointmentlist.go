@@ -116,7 +116,7 @@ func (s *ShadowV1CourseAppointmentUseCase) ExportCourseAppointmentList(ctx conte
 			"核销券码",
 			"用户备注",
 			"业务备注",
-			"商家实收",
+			"实收金额",
 			"创建时间",
 			"更新时间",
 			"最后编辑人",
@@ -149,7 +149,7 @@ func (s *ShadowV1CourseAppointmentUseCase) ExportCourseAppointmentList(ctx conte
 		if err != nil {
 			return nil, err
 		}
-		orderIdToPriceMap, err := s.GetOrderPriceMap(neverDoneCtx, orderIds)
+		orderIdToReceiptMap, err := s.GetReceiptAmountMap(neverDoneCtx, orderIds)
 		if err != nil {
 			return nil, err
 		}
@@ -161,9 +161,13 @@ func (s *ShadowV1CourseAppointmentUseCase) ExportCourseAppointmentList(ctx conte
 			courseStockInfo.UpdatedByName = adminMap[v.UpdatedBy]
 			courseStockInfo.CourseName = courseIdToName[v.CourseID]
 			courseStockInfo.GoodName = goodMap[v.GoodID]
-			// 商家实收：从分转换为元，保留两位小数
-			priceInYuan := float64(orderIdToPriceMap[v.OrderID]) / 100.0
-			price := fmt.Sprintf("%.2f", priceInYuan)
+			// 实收金额：从分转换为元，保留两位小数；无法关联子订单时显示 --
+			receiptAmount := orderIdToReceiptMap[v.OrderID]
+			price := "--"
+			if receiptAmount > 0 {
+				priceInYuan := float64(receiptAmount) / 100.0
+				price = fmt.Sprintf("%.2f", priceInYuan)
+			}
 			csvData = append(csvData, []string{
 				courseStockInfo.Id,
 				courseStockInfo.OrderId,

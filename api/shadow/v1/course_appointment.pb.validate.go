@@ -543,7 +543,7 @@ func (m *CourseAppointmentInfo) validate(all bool) error {
 
 	// no validation rules for BusinessRemark
 
-	// no validation rules for OrderPrice
+	// no validation rules for ReceiptAmount
 
 	// no validation rules for IsPushContractRequired
 
