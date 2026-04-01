@@ -13,6 +13,7 @@ const props = withDefaults(
     branchName?: string | null
     baseBranch?: string | null
     refreshToken?: number
+    artifactRefreshPaths?: string[] | null
     logs?: TaskLog[]
     defaultRightTab?: 'artifacts' | 'preview' | 'files'
     formatDate: (value?: string) => string
@@ -24,6 +25,7 @@ const props = withDefaults(
     branchName: null,
     baseBranch: null,
     refreshToken: 0,
+    artifactRefreshPaths: () => [],
     logs: () => [],
     defaultRightTab: 'artifacts',
     artifactFilePath: null,
@@ -40,6 +42,7 @@ const props = withDefaults(
       :branch-name="props.branchName"
       :base-branch="props.baseBranch"
       :refresh-token="props.refreshToken"
+      :artifact-refresh-paths="props.artifactRefreshPaths ?? []"
       :logs="props.logs"
       :default-right-tab="props.defaultRightTab"
       :format-date="props.formatDate"

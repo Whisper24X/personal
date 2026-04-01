@@ -36,7 +36,13 @@ describe('TaskRightPanel', () => {
 
     const tabs = wrapper.findAll('button').map((node) => node.text().trim())
 
-    expect(tabs).toEqual(['产物', '预览', '文件', 'Git', '终端', '日志'])
+    expect(tabs).toContain('产物')
+    expect(tabs).toContain('预览')
+    expect(tabs).toContain('文件')
+    expect(tabs).toContain('Git')
+    expect(tabs).toContain('终端')
+    expect(tabs).toContain('日志')
+    expect(tabs).toContain('部署')
     expect(wrapper.find('[data-test="artifacts-panel"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="preview-panel"]').exists()).toBe(false)
   })

@@ -7,9 +7,24 @@ import { Task } from '../../../../domain/task';
 import { TaskLog } from '../../../../domain/task-log';
 import { TaskRepository } from '../../task.repository';
 import { TaskLogRepository } from '../../task-log.repository';
+import {
+  SlowApiDiagnosticsSession,
+  createSlowApiDiagnostics,
+} from '../../../../../observability/slow-api-diagnostics';
+
+type CachedTaskLogsEntry = {
+  filePath: string;
+  size: number;
+  mtimeMs: number;
+  lineCount: number;
+  logs: TaskLog[];
+};
 
 @Injectable()
 export class TaskLogFileRepository implements TaskLogRepository {
+  private readonly maxTaskLogCacheEntries = 128;
+  private readonly taskLogCache = new Map<string, CachedTaskLogsEntry>();
+
   constructor(private readonly taskRepository: TaskRepository) {}
 
   async create(data: Omit<TaskLog, 'id' | 'createdAt'>): Promise<TaskLog> {
@@ -32,6 +47,7 @@ export class TaskLogFileRepository implements TaskLogRepository {
       `${JSON.stringify(this.serialize(log))}\n`,
       'utf-8',
     );
+    this.invalidateTaskLogCache(filePath);
 
     return log;
   }
@@ -47,39 +63,76 @@ export class TaskLogFileRepository implements TaskLogRepository {
     afterId?: string;
     limit?: number;
   }): Promise<TaskLog[]> {
-    const task = await this.taskRepository.findById(taskId);
-    if (!task) {
-      return [];
+    const diagnostics = createSlowApiDiagnostics('tasks.logs.repository', {
+      taskId,
+      since: since?.toISOString() ?? null,
+      afterId: afterId ?? null,
+      limit: limit ?? null,
+    });
+
+    try {
+      const task = await diagnostics.measure(
+        'findTask',
+        () => this.taskRepository.findById(taskId),
+        (result) => ({
+          taskFound: Boolean(result),
+        }),
+      );
+      if (!task) {
+        return [];
+      }
+
+      const logs = await this.readTaskLogs(task, diagnostics);
+      const sortedLogs = await diagnostics.measure(
+        'sort',
+        () =>
+          [...logs].sort((left, right) => {
+            const createdAtDiff =
+              left.createdAt.getTime() - right.createdAt.getTime();
+            if (createdAtDiff !== 0) {
+              return createdAtDiff;
+            }
+
+            return left.id.localeCompare(right.id);
+          }),
+        (result) => ({
+          totalLogCount: result.length,
+        }),
+      );
+
+      const filteredLogs = await diagnostics.measure(
+        'filter',
+        () =>
+          sortedLogs.filter((log) => {
+            if (since && afterId) {
+              return (
+                log.createdAt.getTime() > since.getTime() ||
+                (log.createdAt.getTime() === since.getTime() &&
+                  log.id.localeCompare(afterId) > 0)
+              );
+            }
+
+            if (since) {
+              return log.createdAt.getTime() > since.getTime();
+            }
+
+            return true;
+          }),
+        (result) => ({
+          filteredLogCount: result.length,
+        }),
+      );
+
+      return await diagnostics.measure(
+        'slice',
+        () => filteredLogs.slice(0, limit ?? 200),
+        (result) => ({
+          resultCount: result.length,
+        }),
+      );
+    } finally {
+      diagnostics.flush();
     }
-
-    const logs = await this.readTaskLogs(task);
-    const sortedLogs = [...logs].sort((left, right) => {
-      const createdAtDiff =
-        left.createdAt.getTime() - right.createdAt.getTime();
-      if (createdAtDiff !== 0) {
-        return createdAtDiff;
-      }
-
-      return left.id.localeCompare(right.id);
-    });
-
-    const filteredLogs = sortedLogs.filter((log) => {
-      if (since && afterId) {
-        return (
-          log.createdAt.getTime() > since.getTime() ||
-          (log.createdAt.getTime() === since.getTime() &&
-            log.id.localeCompare(afterId) > 0)
-        );
-      }
-
-      if (since) {
-        return log.createdAt.getTime() > since.getTime();
-      }
-
-      return true;
-    });
-
-    return filteredLogs.slice(0, limit ?? 200);
   }
 
   async deleteByTaskIdAndNodeIds({
@@ -122,6 +175,7 @@ export class TaskLogFileRepository implements TaskLogRepository {
       nextContent ? `${nextContent}\n` : '',
       'utf-8',
     );
+    this.invalidateTaskLogCache(filePath);
 
     return removedCount;
   }
@@ -147,25 +201,108 @@ export class TaskLogFileRepository implements TaskLogRepository {
     );
   }
 
-  private async readTaskLogs(task: Task): Promise<TaskLog[]> {
+  private async readTaskLogs(
+    task: Task,
+    diagnostics?: SlowApiDiagnosticsSession,
+  ): Promise<TaskLog[]> {
     const filePath = this.resolveTaskLogPath(task);
+    const stat = diagnostics
+      ? await diagnostics.measure(
+          'stat',
+          () => this.readTaskLogStat(filePath),
+          (result) => ({
+            fileBytes: result?.size ?? 0,
+          }),
+        )
+      : await this.readTaskLogStat(filePath);
 
-    try {
-      const content = await fs.readFile(filePath, 'utf-8');
-      return content
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
+    if (!stat) {
+      this.invalidateTaskLogCache(filePath);
+      diagnostics?.add({
+        cacheHit: false,
+        logLineCount: 0,
+        deserializedLogCount: 0,
+      });
+      return [];
+    }
+
+    const cachedEntry = this.taskLogCache.get(filePath);
+    if (
+      cachedEntry &&
+      cachedEntry.size === stat.size &&
+      cachedEntry.mtimeMs === stat.mtimeMs
+    ) {
+      this.touchTaskLogCache(filePath, cachedEntry);
+      diagnostics?.add({
+        cacheHit: true,
+        fileBytes: cachedEntry.size,
+        logLineCount: cachedEntry.lineCount,
+        deserializedLogCount: cachedEntry.logs.length,
+      });
+      return cachedEntry.logs;
+    }
+
+    const content = diagnostics
+      ? await diagnostics.measure(
+          'readFile',
+          () => this.readTaskLogFile(filePath),
+          (result) => ({
+            fileBytes: result ? Buffer.byteLength(result, 'utf-8') : 0,
+          }),
+        )
+      : await this.readTaskLogFile(filePath);
+
+    if (content === null) {
+      this.invalidateTaskLogCache(filePath);
+      diagnostics?.add({
+        cacheHit: false,
+        logLineCount: 0,
+        deserializedLogCount: 0,
+      });
+      return [];
+    }
+
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!diagnostics) {
+      const logs = lines
         .map((line) => this.deserialize(line))
         .filter((log): log is TaskLog => Boolean(log));
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') {
-        return [];
-      }
-
-      throw error;
+      this.setTaskLogCache({
+        filePath,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        lineCount: lines.length,
+        logs,
+      });
+      return logs;
     }
+
+    const logs = await diagnostics.measure(
+      'deserialize',
+      () =>
+        lines
+          .map((line) => this.deserialize(line))
+          .filter((log): log is TaskLog => Boolean(log)),
+      (result) => ({
+        logLineCount: lines.length,
+        deserializedLogCount: result.length,
+      }),
+    );
+    this.setTaskLogCache({
+      filePath,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      lineCount: lines.length,
+      logs,
+    });
+    diagnostics.add({
+      cacheHit: false,
+    });
+    return logs;
   }
 
   private serialize(log: TaskLog): Record<string, unknown> {
@@ -203,6 +340,58 @@ export class TaskLogFileRepository implements TaskLogRepository {
       };
     } catch {
       return null;
+    }
+  }
+
+  private async readTaskLogStat(filePath: string) {
+    try {
+      return await fs.stat(filePath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  private async readTaskLogFile(filePath: string): Promise<string | null> {
+    try {
+      return await fs.readFile(filePath, 'utf-8');
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  private invalidateTaskLogCache(filePath: string): void {
+    this.taskLogCache.delete(filePath);
+  }
+
+  private touchTaskLogCache(
+    filePath: string,
+    entry: CachedTaskLogsEntry,
+  ): void {
+    this.taskLogCache.delete(filePath);
+    this.taskLogCache.set(filePath, entry);
+  }
+
+  private setTaskLogCache(entry: CachedTaskLogsEntry): void {
+    this.taskLogCache.delete(entry.filePath);
+    this.taskLogCache.set(entry.filePath, entry);
+
+    while (this.taskLogCache.size > this.maxTaskLogCacheEntries) {
+      const oldestKey = this.taskLogCache.keys().next().value;
+      if (!oldestKey) {
+        break;
+      }
+
+      this.taskLogCache.delete(oldestKey);
     }
   }
 }

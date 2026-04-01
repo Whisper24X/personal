@@ -24,6 +24,7 @@ import { IPaginationOptions } from '../../utils/types/pagination-options';
 import { TaskAccessService } from './task-access.service';
 import { TaskOutputService } from './task-output.service';
 import { GoalsService } from '../../goals/goals.service';
+import { createSlowApiDiagnostics } from '../../observability/slow-api-diagnostics';
 
 @Injectable()
 export class TaskQueryService {
@@ -115,35 +116,133 @@ export class TaskQueryService {
     id: Task['id'],
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    const task = await this.taskAccessService.getTaskOrThrow(id, currentUser);
-    const nodes = await this.taskNodeRepository.findByTaskId(task.id);
-    const goalSummary = task.goalId
-      ? await this.goalsService.getGoalSummaryForTask(task.goalId, currentUser)
-      : null;
+    const diagnostics = createSlowApiDiagnostics('tasks.detail', {
+      taskId: id,
+      userId: currentUser.sub,
+    });
 
-    return {
-      task,
-      nodes,
-      goalSummary,
-    };
+    try {
+      const task = await diagnostics.measure(
+        'access',
+        () =>
+          this.taskAccessService.getTaskOrThrow(
+            id,
+            currentUser,
+            undefined,
+            diagnostics,
+          ),
+        (result) => ({
+          projectId: result.projectId,
+          goalId: result.goalId ?? null,
+          taskStatus: result.status,
+        }),
+      );
+      const nodes = await diagnostics.measure(
+        'findNodes',
+        () => this.taskNodeRepository.findByTaskId(task.id),
+        (result) => ({
+          nodeCount: result.length,
+        }),
+      );
+      const goalSummary = await diagnostics.measure(
+        'goalSummary',
+        () =>
+          task.goalId
+            ? this.goalsService.getGoalSummaryForTask(task.goalId, currentUser)
+            : null,
+        (result) => ({
+          hasGoalSummary: Boolean(result),
+        }),
+      );
+
+      return {
+        task,
+        nodes,
+        goalSummary,
+      };
+    } finally {
+      diagnostics.flush();
+    }
   }
 
   async listMessages(
     taskId: Task['id'],
     currentUser: JwtPayloadType,
   ): Promise<TaskMessageDto[]> {
-    const task = await this.taskAccessService.getTaskOrThrow(
+    const diagnostics = createSlowApiDiagnostics('tasks.messages', {
       taskId,
-      currentUser,
-    );
-    const nodes = await this.taskNodeRepository.findByTaskId(taskId);
-    const nodeMessages = await Promise.all(
-      nodes.map((node) =>
-        this.taskOutputService.readNodeOutputMessages(task, node),
-      ),
-    );
+      userId: currentUser.sub,
+    });
 
-    return nodeMessages.flat();
+    try {
+      const task = await diagnostics.measure(
+        'access',
+        () =>
+          this.taskAccessService.getTaskOrThrow(
+            taskId,
+            currentUser,
+            undefined,
+            diagnostics,
+          ),
+        (result) => ({
+          projectId: result.projectId,
+        }),
+      );
+      const nodes = await diagnostics.measure(
+        'findNodes',
+        () => this.taskNodeRepository.findByTaskId(taskId),
+        (result) => ({
+          nodeCount: result.length,
+        }),
+      );
+      const nodeMessages = await diagnostics.measure('readNodeOutputs', () =>
+        Promise.all(
+          nodes.map(async (node) => {
+            const result =
+              await this.taskOutputService.readNodeOutputMessagesWithMetrics(
+                task,
+                node,
+              );
+
+            return {
+              nodeId: node.id,
+              ...result,
+            };
+          }),
+        ),
+      );
+
+      diagnostics.add({
+        messageCount: nodeMessages.reduce(
+          (total, nodeResult) => total + nodeResult.metrics.messageCount,
+          0,
+        ),
+        slowestNodeReads: [...nodeMessages]
+          .sort((left, right) => right.metrics.totalMs - left.metrics.totalMs)
+          .slice(0, 3)
+          .map((nodeResult) => ({
+            nodeId: nodeResult.nodeId,
+            outputPath: nodeResult.metrics.outputPath,
+            fileBytes: nodeResult.metrics.fileBytes,
+            lineCount: nodeResult.metrics.lineCount,
+            recordCount: nodeResult.metrics.recordCount,
+            messageCount: nodeResult.metrics.messageCount,
+            totalMs: nodeResult.metrics.totalMs,
+            statMs: nodeResult.metrics.statMs,
+            cacheHit: nodeResult.metrics.cacheHit,
+            readFileMs: nodeResult.metrics.readFileMs,
+            splitLinesMs: nodeResult.metrics.splitLinesMs,
+            trimFilterMs: nodeResult.metrics.trimFilterMs,
+            parseMetadataMs: nodeResult.metrics.parseMetadataMs,
+            buildMessagesMs: nodeResult.metrics.buildMessagesMs,
+            error: nodeResult.metrics.error,
+          })),
+      });
+
+      return nodeMessages.flatMap((nodeResult) => nodeResult.messages);
+    } finally {
+      diagnostics.flush();
+    }
   }
 
   async listLogs(
@@ -151,14 +250,40 @@ export class TaskQueryService {
     query: FindTaskLogsDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskLog[]> {
-    await this.taskAccessService.getTaskOrThrow(taskId, currentUser);
-
-    return this.taskLogRepository.findByTaskIdSince({
+    const diagnostics = createSlowApiDiagnostics('tasks.logs', {
       taskId,
-      since: this.parseDate(query.since),
-      afterId: query.afterId,
-      limit: query.limit,
+      userId: currentUser.sub,
+      since: query.since ?? null,
+      afterId: query.afterId ?? null,
+      limit: query.limit ?? null,
     });
+
+    try {
+      await diagnostics.measure('access', () =>
+        this.taskAccessService.getTaskOrThrow(
+          taskId,
+          currentUser,
+          undefined,
+          diagnostics,
+        ),
+      );
+
+      return await diagnostics.measure(
+        'repository',
+        () =>
+          this.taskLogRepository.findByTaskIdSince({
+            taskId,
+            since: this.parseDate(query.since),
+            afterId: query.afterId,
+            limit: query.limit,
+          }),
+        (result) => ({
+          resultCount: result.length,
+        }),
+      );
+    } finally {
+      diagnostics.flush();
+    }
   }
 
   async listWorktreeFiles(

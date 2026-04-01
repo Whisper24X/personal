@@ -32,7 +32,9 @@ defineOptions({
 
 const route = useRoute()
 const hasButtonAccess = (buttonKey: keyof typeof BUTTON_ACCESS_CONFIG) => {
-  return hasSomeAccess(BUTTON_ACCESS_CONFIG[buttonKey].capabilities, (capability) => accessStore.hasCapability(capability))
+  return hasSomeAccess(BUTTON_ACCESS_CONFIG[buttonKey].capabilities, (capability) =>
+    accessStore.hasCapability(capability),
+  )
 }
 
 const router = useRouter()
@@ -52,6 +54,7 @@ const actionLoading = ref(false)
 const streamConnected = ref(false)
 const isRightPanelVisible = ref(resolveStoredRightPanelVisible())
 const rightPanelRefreshToken = ref(0)
+const rightPanelArtifactRefreshPaths = ref<string[] | null>([])
 /** 右栏「产物」面板：工作区文件预览路径 */
 const artifactFilePath = ref<string | null>(null)
 const artifactOpenNonce = ref(0)
@@ -89,6 +92,8 @@ let rightPanelWorkspaceRefreshDebounceTimer: ReturnType<typeof setTimeout> | nul
 let streamLogFlushTimer: ReturnType<typeof setTimeout> | null = null
 let detailRequestId = 0
 let pendingStreamLogs: TaskLog[] = []
+const pendingRightPanelArtifactRefreshPaths = new Set<string>()
+let pendingRightPanelArtifactRefreshUnknown = false
 
 const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
   'Node execution started',
@@ -217,9 +222,7 @@ const workflowNodeStatusSignature = computed(() => {
     return null
   }
 
-  return sortedNodes.value
-    .map((node) => `${node.id}:${node.nodeOrder}:${node.status}`)
-    .join('|')
+  return sortedNodes.value.map((node) => `${node.id}:${node.nodeOrder}:${node.status}`).join('|')
 })
 
 const currentReviewNode = computed(() => {
@@ -361,7 +364,7 @@ const executionMessages = computed(() => {
 
 const executionCliId = computed(() => {
   const selectedNode = selectedWorkflowNodeId.value
-    ? sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null
+    ? (sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null)
     : null
   return (
     selectedNode?.agentCliId ||
@@ -382,7 +385,9 @@ const contextSubtitle = computed(() => {
   }
   if (task.value.mode === 'workflow') {
     const n = sortedNodes.value.length
-    const cur = sortedNodes.value.find((node) => node.status === 'in_progress' || node.status === 'in_review')
+    const cur = sortedNodes.value.find(
+      (node) => node.status === 'in_progress' || node.status === 'in_review',
+    )
     const tail = cur?.name ? ` · 当前：${cur.name}` : ''
     return `共 ${n} 个节点${tail}`
   }
@@ -428,9 +433,15 @@ const resolveLogMessageContent = (log: TaskLog) => {
 
 const mapLogToMessage = (log: TaskLog): TaskMessage => {
   const payload = log.payload && typeof log.payload === 'object' ? log.payload : null
-  const payloadRole = payload && typeof payload.messageRole === 'string' ? payload.messageRole : null
+  const payloadRole =
+    payload && typeof payload.messageRole === 'string' ? payload.messageRole : null
 
-  if (payloadRole === 'user' || payloadRole === 'assistant' || payloadRole === 'system' || payloadRole === 'error') {
+  if (
+    payloadRole === 'user' ||
+    payloadRole === 'assistant' ||
+    payloadRole === 'system' ||
+    payloadRole === 'error'
+  ) {
     return {
       role: payloadRole,
       content: resolveLogMessageContent(log),
@@ -500,7 +511,7 @@ const applyTaskLog = (payload: TaskLog) => {
     scheduleRefreshMessages()
   }
   if (shouldRefreshRightPanelForNodeStatusLog(payload)) {
-    rightPanelRefreshToken.value += 1
+    bumpRightPanelRefresh([])
   }
   if (shouldRefreshTaskDetailForLog(payload)) {
     scheduleRefreshTaskDetail()
@@ -585,6 +596,17 @@ const clearRightPanelWorkspaceRefreshTimer = () => {
   rightPanelWorkspaceRefreshDebounceTimer = null
 }
 
+const resetPendingRightPanelArtifactRefresh = () => {
+  pendingRightPanelArtifactRefreshPaths.clear()
+  pendingRightPanelArtifactRefreshUnknown = false
+}
+
+const bumpRightPanelRefresh = (artifactRefreshPaths: string[] | null = []) => {
+  rightPanelArtifactRefreshPaths.value =
+    artifactRefreshPaths === null ? null : [...new Set(artifactRefreshPaths.filter(Boolean))]
+  rightPanelRefreshToken.value += 1
+}
+
 const clearPendingStreamLogs = () => {
   pendingStreamLogs = []
   clearStreamLogFlushTimer()
@@ -617,15 +639,29 @@ const scheduleRefreshTaskDetail = (delay = 300) => {
   }, delay)
 }
 
-const scheduleRightPanelWorkspaceRefresh = (delay = 250) => {
+const scheduleRightPanelWorkspaceRefresh = (artifactRefreshPaths: string[] | null, delay = 250) => {
   if (!taskId.value || !isRightPanelVisible.value) {
     return
+  }
+
+  if (artifactRefreshPaths === null) {
+    pendingRightPanelArtifactRefreshUnknown = true
+  } else {
+    for (const path of artifactRefreshPaths) {
+      if (path) {
+        pendingRightPanelArtifactRefreshPaths.add(path)
+      }
+    }
   }
 
   clearRightPanelWorkspaceRefreshTimer()
   rightPanelWorkspaceRefreshDebounceTimer = setTimeout(() => {
     rightPanelWorkspaceRefreshDebounceTimer = null
-    rightPanelRefreshToken.value += 1
+    const nextArtifactRefreshPaths = pendingRightPanelArtifactRefreshUnknown
+      ? null
+      : [...pendingRightPanelArtifactRefreshPaths]
+    resetPendingRightPanelArtifactRefresh()
+    bumpRightPanelRefresh(nextArtifactRefreshPaths)
   }, delay)
 }
 
@@ -633,6 +669,7 @@ const disconnectStream = () => {
   clearReconnectTimer()
   clearMessageRefreshTimer()
   clearRightPanelWorkspaceRefreshTimer()
+  resetPendingRightPanelArtifactRefresh()
   clearPendingStreamLogs()
   if (detailRefreshDebounceTimer) {
     clearTimeout(detailRefreshDebounceTimer)
@@ -682,44 +719,42 @@ const connectStream = async () => {
   try {
     streamConnected.value = true
 
-    await openSseStream(
-      `/tasks/${taskId.value}/stream`,
-      undefined,
-      {
-        signal: streamAbortController.signal,
-        onOpen: async () => {
-          await syncIncrementalLogs(currentTaskId, reconnectCursor)
-        },
-        onEvent: (event) => {
-          if (event.event === 'task-workspace-change') {
-            try {
-              const payload = JSON.parse(event.data) as TaskWorkspaceChange
-              if (payload.changes.length > 0 || payload.truncated) {
-                scheduleRightPanelWorkspaceRefresh()
-              }
-            } catch {
-              // ignore malformed task-workspace-change payload
-            }
-            return
-          }
-
-          if (event.event && event.event !== 'task-log') {
-            return
-          }
-
-          try {
-            const payload = JSON.parse(event.data) as TaskLog
-            queueTaskLog(payload)
-          } catch {
-            // ignore malformed task-log payload
-          }
-        },
-        onError: () => {
-          streamConnected.value = false
-          scheduleReconnect()
-        },
+    await openSseStream(`/tasks/${taskId.value}/stream`, undefined, {
+      signal: streamAbortController.signal,
+      onOpen: async () => {
+        await syncIncrementalLogs(currentTaskId, reconnectCursor)
       },
-    )
+      onEvent: (event) => {
+        if (event.event === 'task-workspace-change') {
+          try {
+            const payload = JSON.parse(event.data) as TaskWorkspaceChange
+            if (payload.changes.length > 0 || payload.truncated) {
+              scheduleRightPanelWorkspaceRefresh(
+                payload.truncated ? null : payload.changes.map((change) => change.path),
+              )
+            }
+          } catch {
+            // ignore malformed task-workspace-change payload
+          }
+          return
+        }
+
+        if (event.event && event.event !== 'task-log') {
+          return
+        }
+
+        try {
+          const payload = JSON.parse(event.data) as TaskLog
+          queueTaskLog(payload)
+        } catch {
+          // ignore malformed task-log payload
+        }
+      },
+      onError: () => {
+        streamConnected.value = false
+        scheduleReconnect()
+      },
+    })
 
     streamConnected.value = false
     scheduleReconnect()
@@ -742,9 +777,7 @@ const refreshMessages = async () => {
   try {
     messages.value = await tasksApi.messages(taskId.value)
   } catch {
-    messages.value = logs.value
-      .filter(isAgentOutputLog)
-      .map(mapLogToMessage)
+    messages.value = logs.value.filter(isAgentOutputLog).map(mapLogToMessage)
   }
 }
 
@@ -777,7 +810,7 @@ const syncIncrementalLogs = async (
 
 const refreshAccessContext = async (projectId: string) => {
   try {
-    await accessStore.loadContext((projectId ? { projectId } : {}))
+    await accessStore.loadContext(projectId ? { projectId } : {})
   } catch (error) {
     void error
     accessStore.clear()
@@ -790,6 +823,7 @@ const resetTaskState = () => {
   messages.value = []
   selectedWorkflowNodeId.value = null
   lastWorkflowAutoSyncSignature.value = null
+  rightPanelArtifactRefreshPaths.value = []
   clearPendingStreamLogs()
 }
 
@@ -867,7 +901,7 @@ const executeTask = async () => {
 
   try {
     detail.value = await tasksApi.execute(taskId.value)
-    rightPanelRefreshToken.value += 1
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '执行任务失败'))
   } finally {
@@ -889,7 +923,7 @@ const completeTask = async () => {
 
   try {
     detail.value = await tasksApi.complete(taskId.value)
-    rightPanelRefreshToken.value += 1
+    bumpRightPanelRefresh([])
     void refreshSidebarRecentTasks()
     message.success('任务已完成')
   } catch (error) {
@@ -925,7 +959,7 @@ const resetSelectedWorkflowNode = async () => {
     if (nextMessagesResult.status === 'fulfilled') {
       messages.value = nextMessagesResult.value
     }
-    rightPanelRefreshToken.value += 1
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '重置失败'))
   } finally {
@@ -944,7 +978,7 @@ const approveNode = async (node: TaskNode) => {
     detail.value = await tasksApi.approve(taskId.value, {
       nodeId: node.id,
     })
-    rightPanelRefreshToken.value += 1
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '审批节点失败'))
   } finally {
@@ -1022,7 +1056,7 @@ const handleReply = async (replyMessage: string) => {
       message: replyMessage,
     })
     await refreshMessages()
-    rightPanelRefreshToken.value += 1
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '提交回复失败'))
   } finally {
@@ -1040,7 +1074,7 @@ const interruptExecution = async () => {
   try {
     detail.value = await tasksApi.cancel(taskId.value)
     await refreshMessages()
-    rightPanelRefreshToken.value += 1
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '停止执行失败'))
   } finally {
@@ -1286,6 +1320,7 @@ function startDrag(e: MouseEvent) {
         :branch-name="task?.gitBranch || null"
         :base-branch="task?.gitBaseBranch || null"
         :refresh-token="rightPanelRefreshToken"
+        :artifact-refresh-paths="rightPanelArtifactRefreshPaths"
         :logs="logs"
         default-right-tab="artifacts"
         :format-date="formatDate"
@@ -1318,7 +1353,12 @@ function startDrag(e: MouseEvent) {
           xmlns="http://www.w3.org/2000/svg"
         >
           <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.15" />
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <path
+            d="M12 2a10 10 0 0 1 10 10"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
         </svg>
         <p class="text-sm font-medium text-muted-foreground">正在加载任务</p>
       </div>

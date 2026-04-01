@@ -21,6 +21,7 @@ import { TaskSchedulerService } from './application/task-scheduler.service';
 import { TaskStatusService } from './application/task-status.service';
 import { TaskOutputService } from './application/task-output.service';
 import { TaskNode } from './domain/task-node';
+import { SlowApiDiagnosticsSession } from '../observability/slow-api-diagnostics';
 
 @Injectable()
 export class TasksService implements OnModuleInit, OnModuleDestroy {
@@ -237,17 +238,25 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   async assertCanAccessTask(
     taskId: string,
     currentUser: JwtPayloadType,
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<Task> {
-    return this.taskAccessService.assertCanAccessTask(taskId, currentUser);
+    return this.taskAccessService.assertCanAccessTask(
+      taskId,
+      currentUser,
+      undefined,
+      diagnostics,
+    );
   }
 
   async assertCanAccessTaskProject(
     taskId: string,
     currentUser: JwtPayloadType,
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<{ task: Task; project: Project }> {
     return this.taskAccessService.assertCanAccessTaskProject(
       taskId,
       currentUser,
+      diagnostics,
     );
   }
 

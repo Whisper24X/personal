@@ -21,6 +21,8 @@ import type { BusinessLineCustomRole } from '../business-lines/domain/business-l
 import type { Project } from '../projects/domain/project';
 import type { ProjectMember } from '../projects/domain/project-member';
 import type { ProjectCustomRole } from '../projects/domain/project-custom-role';
+import { createSlowApiDiagnostics } from '../observability/slow-api-diagnostics';
+import { readMemberRoleCapabilities } from '../utils/member-role-capabilities';
 import {
   ALL_BUSINESS_LINE_CAPABILITIES,
   ALL_PROJECT_CAPABILITIES,
@@ -45,180 +47,287 @@ export class AccessService {
     currentUser: JwtPayloadType,
     query: GetCurrentAccessDto = {},
   ): Promise<CurrentAccessDto> {
-    const user = await this.usersService.findById(currentUser.sub);
-
-    if (!user) {
-      throw new UnauthorizedException('userNotFound');
-    }
-
-    const [businessLineMemberships, projectMemberships] = await Promise.all([
-      this.businessLineMemberRepository.findByUserId(currentUser.sub),
-      this.projectMemberRepository.findByUserId(currentUser.sub),
-    ]);
-
-    const [businessCapabilityMap, projectCapabilityMap] = await Promise.all([
-      this.buildBusinessLineCapabilityMap(businessLineMemberships),
-      this.buildProjectCapabilityMap(projectMemberships),
-    ]);
-
-    const businessMembershipByBusinessLineId = new Map(
-      businessLineMemberships.map((membership) => [
-        membership.businessLineId,
-        membership,
-      ]),
-    );
-    const projectMembershipByProjectId = new Map(
-      projectMemberships.map((membership) => [
-        membership.projectId,
-        membership,
-      ]),
-    );
-
-    let resolvedBusinessLineId = query.businessLineId;
-    const resolvedProjectId = query.projectId;
-    let businessRole: string | null = null;
-    let projectRole: string | null = null;
-
-    const capabilities = new Set<string>([BUSINESS_LINE_CREATE_CAPABILITY]);
-
-    let visibleBusinessLineIds = businessLineMemberships.map(
-      (membership) => membership.businessLineId,
-    );
-    let visibleProjectIds = await this.resolveVisibleProjectIds({
-      businessLineMemberships,
-      businessCapabilityMap,
-      projectMemberships,
-      currentBusinessLineId: resolvedBusinessLineId,
+    const diagnostics = createSlowApiDiagnostics('access.current', {
+      userId: currentUser.sub,
+      requestedBusinessLineId: query.businessLineId ?? null,
+      requestedProjectId: query.projectId ?? null,
     });
+    const isAdmin = this.isAdmin(currentUser);
 
-    if (resolvedProjectId) {
-      const project = await this.projectRepository.findById(resolvedProjectId);
-
-      if (!project) {
-        throw new NotFoundException('Project not found');
-      }
-
-      if (
-        resolvedBusinessLineId &&
-        resolvedBusinessLineId !== project.businessLineId
-      ) {
-        throw new BadRequestException(
-          'businessLineId does not match project business line',
-        );
-      }
-
-      resolvedBusinessLineId = project.businessLineId;
-
-      if (!this.isAdmin(currentUser)) {
-        const businessCapabilities =
-          businessCapabilityMap.get(project.businessLineId) ?? [];
-        const isVisibleByBusinessLine = businessCapabilities.includes(
-          'businessLine.project.list.all',
-        );
-        const isVisibleByProject = projectMembershipByProjectId.has(project.id);
-
-        if (!isVisibleByBusinessLine && !isVisibleByProject) {
-          throw new ForbiddenException('forbiddenProject');
-        }
-      }
-    }
-
-    if (resolvedBusinessLineId) {
-      const businessLine = await this.businessLineRepository.findById(
-        resolvedBusinessLineId,
+    try {
+      const user = await diagnostics.measure(
+        'user',
+        () => this.usersService.findById(currentUser.sub),
+        (result) => ({
+          userFound: Boolean(result),
+        }),
       );
 
-      if (!businessLine) {
-        throw new NotFoundException('Business line not found');
+      if (!user) {
+        throw new UnauthorizedException('userNotFound');
       }
 
-      if (this.isAdmin(currentUser)) {
-        businessRole = 'owner';
-      } else {
-        const membership = businessMembershipByBusinessLineId.get(
-          resolvedBusinessLineId,
+      const [businessLineMemberships, projectMemberships] =
+        await diagnostics.measure(
+          'memberships',
+          () =>
+            Promise.all([
+              this.businessLineMemberRepository.findByUserId(currentUser.sub),
+              this.projectMemberRepository.findByUserId(currentUser.sub),
+            ]),
+          ([businessMemberships, projectMembershipsResult]) => ({
+            businessMembershipCount: businessMemberships.length,
+            projectMembershipCount: projectMembershipsResult.length,
+          }),
         );
-        const currentRole = membership
-          ? await this.resolveBusinessLineCustomRole(membership.roleId)
-          : null;
-        businessRole = currentRole?.name ?? null;
 
-        if (!membership || !currentRole) {
-          throw new ForbiddenException('forbiddenBusinessLine');
+      const [businessCapabilityMap, projectCapabilityMap] =
+        await diagnostics.measure(
+          'capabilityMaps',
+          () =>
+            Promise.all([
+              this.buildBusinessLineCapabilityMap(businessLineMemberships),
+              this.buildProjectCapabilityMap(projectMemberships),
+            ]),
+          ([businessCapabilityMapResult, projectCapabilityMapResult]) => ({
+            businessCapabilityMapSize: businessCapabilityMapResult.size,
+            projectCapabilityMapSize: projectCapabilityMapResult.size,
+          }),
+        );
+
+      const businessMembershipByBusinessLineId = new Map(
+        businessLineMemberships.map((membership) => [
+          membership.businessLineId,
+          membership,
+        ]),
+      );
+      const projectMembershipByProjectId = new Map(
+        projectMemberships.map((membership) => [
+          membership.projectId,
+          membership,
+        ]),
+      );
+
+      let resolvedBusinessLineId = query.businessLineId;
+      const resolvedProjectId = query.projectId;
+      let businessRole: string | null = null;
+      let projectRole: string | null = null;
+
+      const capabilities = new Set<string>([BUSINESS_LINE_CREATE_CAPABILITY]);
+
+      let visibleBusinessLineIds = businessLineMemberships.map(
+        (membership) => membership.businessLineId,
+      );
+      let visibleProjectIds = await diagnostics.measure(
+        'visibleProjects',
+        () =>
+          this.resolveVisibleProjectIds({
+            businessLineMemberships,
+            businessCapabilityMap,
+            projectMemberships,
+            currentBusinessLineId: resolvedBusinessLineId,
+          }),
+        (result) => ({
+          visibleProjectCount: result.length,
+        }),
+      );
+
+      if (resolvedProjectId) {
+        const project = await diagnostics.measure(
+          'projectLookup',
+          () => this.projectRepository.findById(resolvedProjectId),
+          (result) => ({
+            projectFound: Boolean(result),
+          }),
+        );
+
+        if (!project) {
+          throw new NotFoundException('Project not found');
         }
 
-        for (const capability of businessCapabilityMap.get(
-          resolvedBusinessLineId,
-        ) ?? []) {
-          capabilities.add(capability);
+        if (
+          resolvedBusinessLineId &&
+          resolvedBusinessLineId !== project.businessLineId
+        ) {
+          throw new BadRequestException(
+            'businessLineId does not match project business line',
+          );
         }
-      }
 
-      visibleBusinessLineIds = this.mergeUniqueIds(visibleBusinessLineIds, [
-        businessLine.id,
-      ]);
-    }
+        resolvedBusinessLineId = project.businessLineId;
 
-    if (resolvedProjectId) {
-      if (this.isAdmin(currentUser)) {
-        projectRole = 'owner';
-      } else {
-        const membership = projectMembershipByProjectId.get(resolvedProjectId);
-        const currentRole = membership
-          ? await this.resolveProjectCustomRole(membership.roleId)
-          : null;
-        projectRole = currentRole?.name ?? null;
+        if (!isAdmin) {
+          const businessCapabilities =
+            businessCapabilityMap.get(project.businessLineId) ?? [];
+          const isVisibleByBusinessLine = businessCapabilities.includes(
+            'businessLine.project.list.all',
+          );
+          const isVisibleByProject = projectMembershipByProjectId.has(
+            project.id,
+          );
 
-        for (const capability of projectCapabilityMap.get(resolvedProjectId) ??
-          []) {
-          capabilities.add(capability);
+          if (!isVisibleByBusinessLine && !isVisibleByProject) {
+            throw new ForbiddenException('forbiddenProject');
+          }
         }
-      }
-
-      visibleProjectIds = this.mergeUniqueIds(visibleProjectIds, [
-        resolvedProjectId,
-      ]);
-    }
-
-    if (this.isAdmin(currentUser)) {
-      for (const capability of ALL_BUSINESS_LINE_CAPABILITIES) {
-        capabilities.add(capability);
-      }
-      for (const capability of ALL_PROJECT_CAPABILITIES) {
-        capabilities.add(capability);
       }
 
       if (resolvedBusinessLineId) {
-        const businessProjects =
-          await this.projectRepository.findByBusinessLineId(
+        const businessLine = await diagnostics.measure(
+          'businessLineLookup',
+          () => this.businessLineRepository.findById(resolvedBusinessLineId),
+          (result) => ({
+            businessLineFound: Boolean(result),
+          }),
+        );
+
+        if (!businessLine) {
+          throw new NotFoundException('Business line not found');
+        }
+
+        if (isAdmin) {
+          businessRole = 'owner';
+        } else {
+          const membership = businessMembershipByBusinessLineId.get(
             resolvedBusinessLineId,
           );
-        visibleProjectIds = this.mergeUniqueIds(
-          visibleProjectIds,
-          businessProjects.map((project) => project.id),
-        );
-      }
-    }
+          businessRole = membership
+            ? await diagnostics.measure(
+                'businessRole',
+                async () => {
+                  if (membership.customRoleName?.trim()) {
+                    return membership.customRoleName.trim();
+                  }
 
-    return {
-      user: {
-        id: user.id,
-        username: user.username,
-        nickname: user.nickname,
-        avatar: user.avatar,
-      },
-      currentContext: {
-        businessLineId: resolvedBusinessLineId,
-        projectId: resolvedProjectId,
+                  return (
+                    (
+                      await this.resolveBusinessLineCustomRole(
+                        membership.roleId,
+                      )
+                    )?.name ?? null
+                  );
+                },
+                (result) => ({
+                  businessRoleName: result ?? null,
+                }),
+              )
+            : null;
+
+          if (!membership || !businessRole) {
+            throw new ForbiddenException('forbiddenBusinessLine');
+          }
+
+          for (const capability of businessCapabilityMap.get(
+            resolvedBusinessLineId,
+          ) ?? []) {
+            capabilities.add(capability);
+          }
+        }
+
+        visibleBusinessLineIds = this.mergeUniqueIds(visibleBusinessLineIds, [
+          businessLine.id,
+        ]);
+      }
+
+      if (resolvedProjectId) {
+        if (isAdmin) {
+          projectRole = 'owner';
+        } else {
+          const membership =
+            projectMembershipByProjectId.get(resolvedProjectId);
+          projectRole = membership
+            ? await diagnostics.measure(
+                'projectRole',
+                async () => {
+                  if (membership.customRoleName?.trim()) {
+                    return membership.customRoleName.trim();
+                  }
+
+                  return (
+                    (await this.resolveProjectCustomRole(membership.roleId))
+                      ?.name ?? null
+                  );
+                },
+                (result) => ({
+                  projectRoleName: result ?? null,
+                }),
+              )
+            : null;
+
+          for (const capability of projectCapabilityMap.get(
+            resolvedProjectId,
+          ) ?? []) {
+            capabilities.add(capability);
+          }
+        }
+
+        visibleProjectIds = this.mergeUniqueIds(visibleProjectIds, [
+          resolvedProjectId,
+        ]);
+      }
+
+      if (isAdmin) {
+        for (const capability of ALL_BUSINESS_LINE_CAPABILITIES) {
+          capabilities.add(capability);
+        }
+        for (const capability of ALL_PROJECT_CAPABILITIES) {
+          capabilities.add(capability);
+        }
+
+        if (resolvedBusinessLineId) {
+          const businessProjects = await diagnostics.measure(
+            'adminBusinessProjects',
+            () =>
+              this.projectRepository.findByBusinessLineId(
+                resolvedBusinessLineId,
+              ),
+            (result) => ({
+              adminBusinessProjectCount: result.length,
+            }),
+          );
+          visibleProjectIds = this.mergeUniqueIds(
+            visibleProjectIds,
+            businessProjects.map((project) => project.id),
+          );
+        }
+      }
+
+      const response = {
+        user: {
+          id: user.id,
+          username: user.username,
+          nickname: user.nickname,
+          avatar: user.avatar,
+        },
+        currentContext: {
+          businessLineId: resolvedBusinessLineId,
+          projectId: resolvedProjectId,
+          businessRole,
+          projectRole,
+        },
+        capabilities: Array.from(capabilities).sort(),
+        visibility: {
+          visibleBusinessLineIds: visibleBusinessLineIds.sort(),
+          visibleProjectIds: visibleProjectIds.sort(),
+        },
+      };
+
+      diagnostics.add({
+        isAdmin,
+        resolvedBusinessLineId: resolvedBusinessLineId ?? null,
+        resolvedProjectId: resolvedProjectId ?? null,
         businessRole,
         projectRole,
-      },
-      capabilities: Array.from(capabilities).sort(),
-      visibility: {
-        visibleBusinessLineIds: visibleBusinessLineIds.sort(),
-        visibleProjectIds: visibleProjectIds.sort(),
-      },
-    };
+        capabilityCount: response.capabilities.length,
+        visibleBusinessLineCount:
+          response.visibility.visibleBusinessLineIds.length,
+        visibleProjectCount: response.visibility.visibleProjectIds.length,
+      });
+
+      return response;
+    } finally {
+      diagnostics.flush();
+    }
   }
 
   async assertBusinessLineCapability(
@@ -226,8 +335,15 @@ export class AccessService {
     businessLineId: string,
     capability: string,
   ): Promise<BusinessLine> {
-    const businessLine =
-      await this.businessLineRepository.findById(businessLineId);
+    const [businessLine, membership] = await Promise.all([
+      this.businessLineRepository.findById(businessLineId),
+      this.isAdmin(currentUser)
+        ? Promise.resolve<BusinessLineMember | null>(null)
+        : this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+            businessLineId,
+            currentUser.sub,
+          ),
+    ]);
 
     if (!businessLine) {
       throw new NotFoundException('Business line not found');
@@ -236,12 +352,6 @@ export class AccessService {
     if (this.isAdmin(currentUser)) {
       return businessLine;
     }
-
-    const membership =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        businessLineId,
-        currentUser.sub,
-      );
 
     if (!membership) {
       throw new ForbiddenException('forbiddenBusinessLine');
@@ -266,7 +376,15 @@ export class AccessService {
     projectId: string,
     capability: string,
   ): Promise<Project> {
-    const project = await this.projectRepository.findById(projectId);
+    const [project, membership] = await Promise.all([
+      this.projectRepository.findById(projectId),
+      this.isAdmin(currentUser)
+        ? Promise.resolve<ProjectMember | null>(null)
+        : this.projectMemberRepository.findByProjectIdAndUserId(
+            projectId,
+            currentUser.sub,
+          ),
+    ]);
 
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -275,12 +393,6 @@ export class AccessService {
     if (this.isAdmin(currentUser)) {
       return project;
     }
-
-    const membership =
-      await this.projectMemberRepository.findByProjectIdAndUserId(
-        projectId,
-        currentUser.sub,
-      );
 
     if (!membership) {
       throw new ForbiddenException(
@@ -291,10 +403,7 @@ export class AccessService {
     }
 
     const availableCapabilities =
-      await this.resolveProjectCapabilitiesForMembership(
-        membership,
-        project.businessLineId,
-      );
+      await this.resolveProjectCapabilitiesForMembership(membership);
 
     if (!availableCapabilities.includes(capability)) {
       throw new ForbiddenException(
@@ -364,35 +473,35 @@ export class AccessService {
       return true;
     }
 
-    const membership =
-      await this.projectMemberRepository.findByProjectIdAndUserId(
+    const [membership, project] = await Promise.all([
+      this.projectMemberRepository.findByProjectIdAndUserId(
         projectId,
         currentUser.sub,
-      );
+      ),
+      this.projectRepository.findById(projectId),
+    ]);
 
     if (!membership) {
       return false;
     }
 
-    const project = await this.projectRepository.findById(projectId);
     if (!project) {
       return false;
     }
 
     return (
-      await this.resolveProjectCapabilitiesForMembership(
-        membership,
-        project.businessLineId,
-      )
+      await this.resolveProjectCapabilitiesForMembership(membership)
     ).includes(capability);
   }
 
   async buildBusinessLineCapabilityMap(
     memberships: BusinessLineMember[],
   ): Promise<Map<string, string[]>> {
-    const customRoleMap = await this.loadBusinessLineCustomRoleMap(
-      memberships.map((membership) => membership.businessLineId),
-    );
+    const customRoleMap = this.membershipsNeedRoleLookup(memberships)
+      ? await this.loadBusinessLineCustomRoleMap(
+          memberships.map((membership) => membership.roleId),
+        )
+      : undefined;
 
     const entries = await Promise.all(
       memberships.map(async (membership) => {
@@ -412,17 +521,11 @@ export class AccessService {
   async buildProjectCapabilityMap(
     memberships: ProjectMember[],
   ): Promise<Map<string, string[]>> {
-    const projects = await this.projectRepository.findByIds(
-      Array.from(
-        new Set(memberships.map((membership) => membership.projectId)),
-      ),
-    );
-    const projectBusinessLineMap = new Map(
-      projects.map((project) => [project.id, project.businessLineId]),
-    );
-    const customRoleMap = await this.loadProjectCustomRoleMap(
-      Array.from(new Set(projects.map((project) => project.businessLineId))),
-    );
+    const customRoleMap = this.membershipsNeedRoleLookup(memberships)
+      ? await this.loadProjectCustomRoleMap(
+          memberships.map((membership) => membership.roleId),
+        )
+      : undefined;
 
     const entries = await Promise.all(
       memberships.map(async (membership) => {
@@ -430,7 +533,6 @@ export class AccessService {
           membership.projectId,
           await this.resolveProjectCapabilitiesForMembership(
             membership,
-            projectBusinessLineMap.get(membership.projectId),
             customRoleMap,
           ),
         ] as const;
@@ -448,6 +550,11 @@ export class AccessService {
       return [];
     }
 
+    const inlineCapabilities = this.resolveMembershipCapabilities(membership);
+    if (inlineCapabilities) {
+      return normalizeBusinessLineCapabilities(inlineCapabilities);
+    }
+
     const customRole = await this.resolveBusinessLineCustomRole(
       membership.roleId,
       customRoleMap,
@@ -462,11 +569,15 @@ export class AccessService {
 
   private async resolveProjectCapabilitiesForMembership(
     membership: ProjectMember | null,
-    businessLineId?: string,
     customRoleMap?: Map<string, ProjectCustomRole>,
   ): Promise<string[]> {
-    if (!membership || !businessLineId) {
+    if (!membership) {
       return [];
+    }
+
+    const inlineCapabilities = this.resolveMembershipCapabilities(membership);
+    if (inlineCapabilities) {
+      return normalizeProjectCapabilities(inlineCapabilities);
     }
 
     const customRole = await this.resolveProjectCustomRole(
@@ -504,41 +615,27 @@ export class AccessService {
   }
 
   private async loadBusinessLineCustomRoleMap(
-    businessLineIds: string[],
+    roleIds: string[],
   ): Promise<Map<string, BusinessLineCustomRole>> {
-    const ids = Array.from(new Set(businessLineIds.filter(Boolean)));
-    const roleMap = new Map<string, BusinessLineCustomRole>();
-
-    for (const businessLineId of ids) {
-      const roles =
-        await this.businessLineCustomRoleRepository.findAllByBusinessLineId(
-          businessLineId,
-        );
-      for (const role of roles) {
-        roleMap.set(role.id, role);
-      }
+    const ids = Array.from(new Set(roleIds.filter(Boolean)));
+    if (!ids.length) {
+      return new Map();
     }
 
-    return roleMap;
+    const roles = await this.businessLineCustomRoleRepository.findByIds(ids);
+    return new Map(roles.map((role) => [role.id, role] as const));
   }
 
   private async loadProjectCustomRoleMap(
-    businessLineIds: string[],
+    roleIds: string[],
   ): Promise<Map<string, ProjectCustomRole>> {
-    const ids = Array.from(new Set(businessLineIds.filter(Boolean)));
-    const roleMap = new Map<string, ProjectCustomRole>();
-
-    for (const businessLineId of ids) {
-      const roles =
-        await this.projectCustomRoleRepository.findAllByBusinessLineId(
-          businessLineId,
-        );
-      for (const role of roles) {
-        roleMap.set(role.id, role);
-      }
+    const ids = Array.from(new Set(roleIds.filter(Boolean)));
+    if (!ids.length) {
+      return new Map();
     }
 
-    return roleMap;
+    const roles = await this.projectCustomRoleRepository.findByIds(ids);
+    return new Map(roles.map((role) => [role.id, role] as const));
   }
 
   private isAdmin(currentUser: JwtPayloadType): boolean {
@@ -591,9 +688,13 @@ export class AccessService {
         currentBusinessLineId ? businessLineId === currentBusinessLineId : true,
       );
 
-    for (const businessLineId of listAllBusinessLineIds) {
-      const projects =
-        await this.projectRepository.findByBusinessLineId(businessLineId);
+    const visibleProjectsByBusinessLine = await Promise.all(
+      listAllBusinessLineIds.map((businessLineId) =>
+        this.projectRepository.findByBusinessLineId(businessLineId),
+      ),
+    );
+
+    for (const projects of visibleProjectsByBusinessLine) {
       for (const project of projects) {
         projectIds.add(project.id);
       }
@@ -614,5 +715,19 @@ export class AccessService {
 
   private mergeUniqueIds(currentIds: string[], nextIds: string[]): string[] {
     return Array.from(new Set([...currentIds, ...nextIds]));
+  }
+
+  private membershipsNeedRoleLookup(
+    memberships: Array<BusinessLineMember | ProjectMember>,
+  ): boolean {
+    return memberships.some((membership) => {
+      return !this.resolveMembershipCapabilities(membership);
+    });
+  }
+
+  private resolveMembershipCapabilities(
+    membership: BusinessLineMember | ProjectMember | null | undefined,
+  ): string[] | null {
+    return readMemberRoleCapabilities(membership);
   }
 }

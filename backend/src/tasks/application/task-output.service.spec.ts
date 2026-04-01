@@ -109,4 +109,65 @@ describe('TaskOutputService', () => {
       await rm(tempRootDir, { recursive: true, force: true });
     }
   });
+
+  it('should cache parsed node output messages until the output file changes', async () => {
+    const tempRootDir = await mkdtemp(
+      path.join(os.tmpdir(), 'ainative-task-output-cache-'),
+    );
+    process.env.AINATIVE_DATA_ROOT_DIR = tempRootDir;
+
+    try {
+      const service = new TaskOutputService();
+      const task = createTask();
+      const node = createNode();
+
+      await service.appendNodeOutputJsonlRecords({
+        task,
+        node,
+        records: [
+          {
+            type: 'assistant_message',
+            message: 'first',
+            created_at: '2026-03-19T10:02:00.000Z',
+          },
+        ],
+      });
+
+      const firstRead = await service.readNodeOutputMessagesWithMetrics(
+        task,
+        node,
+      );
+      const secondRead = await service.readNodeOutputMessagesWithMetrics(
+        task,
+        node,
+      );
+
+      expect(firstRead.messages).toHaveLength(1);
+      expect(firstRead.metrics.cacheHit).toBe(false);
+      expect(secondRead.messages).toHaveLength(1);
+      expect(secondRead.metrics.cacheHit).toBe(true);
+
+      await service.appendNodeOutputJsonlRecords({
+        task,
+        node,
+        records: [
+          {
+            type: 'assistant_message',
+            message: 'second',
+            created_at: '2026-03-19T10:03:00.000Z',
+          },
+        ],
+      });
+
+      const thirdRead = await service.readNodeOutputMessagesWithMetrics(
+        task,
+        node,
+      );
+
+      expect(thirdRead.metrics.cacheHit).toBe(false);
+      expect(thirdRead.messages).toHaveLength(2);
+    } finally {
+      await rm(tempRootDir, { recursive: true, force: true });
+    }
+  });
 });
