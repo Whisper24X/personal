@@ -24,11 +24,11 @@ export function queryCourseAppointmentList(
   try {
     // 使用新的API接口
     return http.post('/api/shadow/v1/course_appointment/list', params).then((res: any) => {
-      // 将订单金额从分转换为元（用于前端显示）
+      // 将实收金额从分转换为元（用于前端显示），无值/0 时展示 --
       if (res && res.list) {
         res.list = res.list.map((item: any) => ({
           ...item,
-          orderPrice: item.orderPrice ? centsToYuanNumber(item.orderPrice) : item.orderPrice,
+          receiptAmount: item.receiptAmount ? centsToYuanNumber(item.receiptAmount) : undefined,
         }))
       }
       return res as CourseAppointmentListResponse

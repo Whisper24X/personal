@@ -127,7 +127,7 @@ export interface CourseAppointmentItem {
   /** 合同状态 pending-未推送, pushed-已推送 */
   contractStatus?: string
   businessRemark?: string // 新增业务备注字段
-  orderPrice?: number // 商家实收字段，后端单位为分，前端转换为元显示
+  receiptAmount?: number // 实收金额字段，后端单位为分，前端转换为元显示
   /** 是否需要推送合同 */
   isPushContractRequired: boolean
 }
