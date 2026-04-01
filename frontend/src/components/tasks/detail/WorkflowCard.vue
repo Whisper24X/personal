@@ -85,7 +85,7 @@ defineExpose({
 </script>
 
 <template>
-  <section v-if="props.nodes.length > 0" class="border-border/50 bg-background/95 w-full rounded-xl border shadow-sm">
+  <section v-if="props.nodes.length > 0" class="border-border/50 bg-background/95 w-full rounded-none border shadow-sm">
     <div class="border-border/50 flex items-center justify-between gap-2 border-b px-3 py-2">
       <span class="text-muted-foreground text-xs font-semibold">工作流</span>
     </div>

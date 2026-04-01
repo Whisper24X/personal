@@ -58,7 +58,7 @@ const canShowMoreActions = computed(() => {
 
 <template>
   <section
-    class="border-border/50 bg-background/95 w-full shrink-0 rounded-xl border shadow-sm"
+    class="border-border/50 bg-background/95 w-full shrink-0 rounded-none border shadow-sm"
     aria-label="任务执行上下文"
   >
     <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">

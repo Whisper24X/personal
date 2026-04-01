@@ -1200,65 +1200,67 @@ function startDrag(e: MouseEvent) {
             <span class="text-muted-foreground">（{{ detail.goalSummary.status }}）</span>
           </div>
 
-          <WorkflowCard
-            v-if="showWorkflowCard"
-            ref="workflowCardRef"
-            :nodes="sortedNodes"
-            :selected-node-id="selectedWorkflowNodeId"
-            @select-node="handleSelectWorkflowNode"
-          />
+          <div class="flex min-h-0 w-full flex-1 flex-col">
+            <WorkflowCard
+              v-if="showWorkflowCard"
+              ref="workflowCardRef"
+              :nodes="sortedNodes"
+              :selected-node-id="selectedWorkflowNodeId"
+              @select-node="handleSelectWorkflowNode"
+            />
 
-          <ReviewCard
-            v-if="showReviewCard"
-            :node="currentReviewNode"
-            :status-label-map="nodeStatusLabelMap"
-            :can-manage-review="canManageReview"
-            @approve-node="approveNode"
-          />
+            <ReviewCard
+              v-if="showReviewCard"
+              :node="currentReviewNode"
+              :status-label-map="nodeStatusLabelMap"
+              :can-manage-review="canManageReview"
+              @approve-node="approveNode"
+            />
 
-          <TaskExecutionContextBar
-            v-if="task"
-            :mode="task.mode"
-            :status="task.status"
-            :status-label="taskStatusLabel"
-            :status-class="taskStatusClass"
-            :mode-label="taskModeLabel"
-            :subtitle="contextSubtitle"
-            :action-loading="actionLoading"
-            :can-execute="canExecute"
-            :can-complete-task="canCompleteTask"
-            :can-reset="canResetSelectedWorkflowNode"
-            :can-remove="canRemove"
-            :right-panel-visible="isRightPanelVisible"
-            @execute="executeTask"
-            @complete-task="completeTask"
-            @reset="resetSelectedWorkflowNode"
-            @refresh="loadInitialTaskData"
-            @remove="deleteOpen = true"
-            @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
-          />
+            <TaskExecutionContextBar
+              v-if="task"
+              :mode="task.mode"
+              :status="task.status"
+              :status-label="taskStatusLabel"
+              :status-class="taskStatusClass"
+              :mode-label="taskModeLabel"
+              :subtitle="contextSubtitle"
+              :action-loading="actionLoading"
+              :can-execute="canExecute"
+              :can-complete-task="canCompleteTask"
+              :can-reset="canResetSelectedWorkflowNode"
+              :can-remove="canRemove"
+              :right-panel-visible="isRightPanelVisible"
+              @execute="executeTask"
+              @complete-task="completeTask"
+              @reset="resetSelectedWorkflowNode"
+              @refresh="loadInitialTaskData"
+              @remove="deleteOpen = true"
+              @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
+            />
 
-          <ExecutionPanel
-            :title="executionPanelTitle"
-            :loading="pageLoading"
-            :agent-cli-id="executionCliId"
-            :task-status="task?.status || null"
-            :task-status-label="taskStatusLabel"
-            :task-status-class="taskStatusClass"
-            :stream-connected="streamConnected"
-            :messages="executionMessages"
-            :format-date="formatDate"
-          />
+            <ExecutionPanel
+              :title="executionPanelTitle"
+              :loading="pageLoading"
+              :agent-cli-id="executionCliId"
+              :task-status="task?.status || null"
+              :task-status-label="taskStatusLabel"
+              :task-status-class="taskStatusClass"
+              :stream-connected="streamConnected"
+              :messages="executionMessages"
+              :format-date="formatDate"
+            />
 
-          <ReplyCard
-            :disabled="replyDisabled"
-            :placeholder="replyPlaceholder"
-            :running="isCliRunning"
-            :action-loading="actionLoading"
-            :can-interrupt="canInterruptExecution"
-            @submit="handleReply"
-            @interrupt="interruptExecution"
-          />
+            <ReplyCard
+              :disabled="replyDisabled"
+              :placeholder="replyPlaceholder"
+              :running="isCliRunning"
+              :action-loading="actionLoading"
+              :can-interrupt="canInterruptExecution"
+              @submit="handleReply"
+              @interrupt="interruptExecution"
+            />
+          </div>
         </div>
       </div>
 
