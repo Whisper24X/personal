@@ -19,15 +19,18 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationChannelCreateChannel = "/shadow.v1.Channel/CreateChannel"
 const OperationChannelGetChannelList = "/shadow.v1.Channel/GetChannelList"
 
 type ChannelHTTPServer interface {
+	CreateChannel(context.Context, *CreateChannelReq) (*CreateChannelReply, error)
 	GetChannelList(context.Context, *GetChannelListReq) (*GetChannelListReply, error)
 }
 
 func RegisterChannelHTTPServer(s *http.Server, srv ChannelHTTPServer) {
 	r := s.Route("/")
 	r.POST("/yanxue/api/shadow/v1/channel/list", _Channel_GetChannelList0_HTTP_Handler(srv))
+	r.POST("/yanxue/api/shadow/v1/channel/create", _Channel_CreateChannel0_HTTP_Handler(srv))
 }
 
 func _Channel_GetChannelList0_HTTP_Handler(srv ChannelHTTPServer) func(ctx http.Context) error {
@@ -49,7 +52,27 @@ func _Channel_GetChannelList0_HTTP_Handler(srv ChannelHTTPServer) func(ctx http.
 	}
 }
 
+func _Channel_CreateChannel0_HTTP_Handler(srv ChannelHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CreateChannelReq
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationChannelCreateChannel)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CreateChannel(ctx, req.(*CreateChannelReq))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*CreateChannelReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type ChannelHTTPClient interface {
+	CreateChannel(ctx context.Context, req *CreateChannelReq, opts ...http.CallOption) (rsp *CreateChannelReply, err error)
 	GetChannelList(ctx context.Context, req *GetChannelListReq, opts ...http.CallOption) (rsp *GetChannelListReply, err error)
 }
 
@@ -59,6 +82,19 @@ type ChannelHTTPClientImpl struct {
 
 func NewChannelHTTPClient(client *http.Client) ChannelHTTPClient {
 	return &ChannelHTTPClientImpl{client}
+}
+
+func (c *ChannelHTTPClientImpl) CreateChannel(ctx context.Context, in *CreateChannelReq, opts ...http.CallOption) (*CreateChannelReply, error) {
+	var out CreateChannelReply
+	pattern := "/yanxue/api/shadow/v1/channel/create"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationChannelCreateChannel))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, err
 }
 
 func (c *ChannelHTTPClientImpl) GetChannelList(ctx context.Context, in *GetChannelListReq, opts ...http.CallOption) (*GetChannelListReply, error) {

@@ -42,3 +42,22 @@ func (c *ChannelRepo) ChannelIdToName(ctx context.Context) (map[string]string, e
 	}
 	return channelIdToName, nil
 }
+
+// ExistsByName 根据名称判断渠道是否存在
+func (c *ChannelRepo) ExistsByName(ctx context.Context, name string) (bool, error) {
+	if name == "" {
+		return false, nil
+	}
+	param := &condition.Req{
+		Query: []*condition.QueryParam{
+			{Field: "name", Value: name, Exp: condition.EQ, Logic: condition.AND},
+		},
+		Page:     1,
+		PageSize: 1,
+	}
+	list, _, err := c.FindMultiByCondition(ctx, param)
+	if err != nil {
+		return false, err
+	}
+	return len(list) > 0, nil
+}

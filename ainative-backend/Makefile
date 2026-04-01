@@ -1,10 +1,3 @@
-# SSH 配置（用于拉取私有仓库）
-# 使用项目内的 SSH key，或使用系统默认 SSH key（如果已配置）
-MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-export GIT_SSH_COMMAND := ssh -i $(MAKEFILE_DIR)/configs/ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no
-export GOPROXY=https://goproxy.cn,direct
-export GOPRIVATE=gitlab.yc345.tv/*
-
 GOPATH=$(shell go env GOPATH)
 VERSION=$(shell git describe --tags --always)
 APP_RELATIVE_PATH=$(shell a=`basename $$PWD` && cd .. && b=`basename $$PWD` && echo $$b/$$a)
@@ -23,36 +16,22 @@ YAPI_PROJECT_ID=xxx
 
 .PHONY: init
 # 初始化安装
-init: git-config
+init:
 	go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
 	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.13.0
-	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest # 与 kratos-demo 不同
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.27.2
 	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@a7bae93
 	go install gitlab.yc345.tv/backend/protoc-gen-go-errors@v0.0.4
 	go install github.com/envoyproxy/protoc-gen-validate@v0.9.0
-	go install github.com/google/wire/cmd/wire@v0.6.0 # 与 kratos-demo 不同
-	go install github.com/abice/go-enum@latest
+	go install github.com/google/wire/cmd/wire@v0.6.0
+	go install github.com/abice/go-enum@v0.9.1
 	go install golang.org/x/tools/cmd/goimports@v0.23.0
-
-.PHONY: git-config
-# 配置 Git 使用 SSH 访问私有仓库（如果未配置）+ 修复 SSH key 权限
-git-config:
-	@if [ -f configs/ssh/id_ed25519 ]; then \
-		chmod 600 configs/ssh/id_ed25519; \
-	fi
-	@if ! git config --global --get url."git@gitlab.yc345.tv:".insteadOf > /dev/null 2>&1; then \
-		echo "配置 Git 使用 SSH 访问 gitlab.yc345.tv..."; \
-		git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc345.tv/"; \
-		echo "✓ Git 配置完成"; \
-	else \
-		echo "✓ Git SSH 配置已存在"; \
-	fi
 
 .PHONY: mod
 # 下载依赖
-mod: git-config
+mod:
 	go mod tidy
 
 .PHONY: config
@@ -196,6 +175,11 @@ sqltopb:ycTurboKitCheck
 	@yc_turbo_kit sqltopb -p "$$POSITION.v1" -g "gitlab.yc345.tv/backend/ainative-backend/api/$$POSITION/v1;v1" -o "./api/$$POSITION/v1"
 %: # 防止位置参数被当作目标处理
 	@:
+
+.PHONY: redisclear
+# 清除Redis缓存
+redisclear:ycTurboKitCheck
+	@yc_turbo_kit redisclear
 
 .PHONY: errcode
 # 导出错误码

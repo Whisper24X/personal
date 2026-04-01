@@ -1,0 +1,371 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/user_operation_log.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "UserOperationLog"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/api/shadow/v1/user_operation_log/create": {
+      "post": {
+        "summary": "用户操作记录表-创建一条数据",
+        "operationId": "UserOperationLog_CreateUserOperationLog",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateUserOperationLogReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateUserOperationLogReq"
+            }
+          }
+        ],
+        "tags": [
+          "UserOperationLog"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/user_operation_log/delete": {
+      "post": {
+        "summary": "用户操作记录表-删除多条数据",
+        "operationId": "UserOperationLog_DeleteUserOperationLog",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeleteUserOperationLogReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1DeleteUserOperationLogReq"
+            }
+          }
+        ],
+        "tags": [
+          "UserOperationLog"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/user_operation_log/info": {
+      "get": {
+        "summary": "用户操作记录表-单条数据查询",
+        "operationId": "UserOperationLog_GetUserOperationLogInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetUserOperationLogInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "description": "主键ID（UUID自动生成）",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserOperationLog"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/user_operation_log/list": {
+      "post": {
+        "summary": "用户操作记录表-列表数据查询",
+        "operationId": "UserOperationLog_GetUserOperationLogList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetUserOperationLogListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetUserOperationLogListReq"
+            }
+          }
+        ],
+        "tags": [
+          "UserOperationLog"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/user_operation_log/update": {
+      "post": {
+        "summary": "用户操作记录表-更新一条数据",
+        "operationId": "UserOperationLog_UpdateUserOperationLog",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateUserOperationLogReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateUserOperationLogReq"
+            }
+          }
+        ],
+        "tags": [
+          "UserOperationLog"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1CreateUserOperationLogReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID（UUID自动生成）"
+        }
+      },
+      "title": "响应-用户操作记录表-创建一条数据"
+    },
+    "v1CreateUserOperationLogReq": {
+      "type": "object",
+      "properties": {
+        "operationType": {
+          "type": "string",
+          "title": "操作类型"
+        },
+        "operator": {
+          "type": "string",
+          "title": "操作人"
+        },
+        "oldData": {
+          "type": "string",
+          "title": "旧数据"
+        },
+        "newData": {
+          "type": "string",
+          "title": "新数据"
+        }
+      },
+      "title": "请求-用户操作记录表-创建一条数据"
+    },
+    "v1DeleteUserOperationLogReply": {
+      "type": "object",
+      "title": "响应-用户操作记录表-删除多条数据"
+    },
+    "v1DeleteUserOperationLogReq": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "主键ID（UUID自动生成）集合"
+        }
+      },
+      "title": "请求-用户操作记录表-删除多条数据"
+    },
+    "v1GetUserOperationLogInfoReply": {
+      "type": "object",
+      "properties": {
+        "info": {
+          "$ref": "#/definitions/v1UserOperationLogInfo"
+        }
+      },
+      "title": "响应-用户操作记录表-单条数据查询"
+    },
+    "v1GetUserOperationLogListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1UserOperationLogInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-用户操作记录表-列表数据查询"
+    },
+    "v1GetUserOperationLogListReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页数"
+        }
+      },
+      "title": "请求-用户操作记录表-列表数据查询"
+    },
+    "v1UpdateUserOperationLogReply": {
+      "type": "object",
+      "title": "响应-用户操作记录表-更新一条数据"
+    },
+    "v1UpdateUserOperationLogReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID（UUID自动生成）"
+        },
+        "operationType": {
+          "type": "string",
+          "title": "操作类型"
+        },
+        "operator": {
+          "type": "string",
+          "title": "操作人"
+        },
+        "oldData": {
+          "type": "string",
+          "title": "旧数据"
+        },
+        "newData": {
+          "type": "string",
+          "title": "新数据"
+        }
+      },
+      "title": "请求-用户操作记录表-更新一条数据"
+    },
+    "v1UserOperationLogInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID（UUID自动生成）"
+        },
+        "operationType": {
+          "type": "string",
+          "title": "操作类型"
+        },
+        "operator": {
+          "type": "string",
+          "title": "操作人"
+        },
+        "oldData": {
+          "type": "string",
+          "title": "旧数据"
+        },
+        "newData": {
+          "type": "string",
+          "title": "新数据"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "最后更新时间"
+        }
+      },
+      "title": "用户操作记录表信息"
+    }
+  }
+}

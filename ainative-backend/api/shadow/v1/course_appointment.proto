@@ -198,7 +198,7 @@ message CourseAppointmentInfo {
   string orderNumber = 24; // 订单编号
   string parentRemark = 25; // 家长备注
   string businessRemark = 26; // 业务备注
-  int64 orderPrice = 27; // 订单金额
+  int64 receiptAmount = 27; // 实收金额：单位分
   bool isPushContractRequired = 28; // 是否需要推送合同
 }
 
