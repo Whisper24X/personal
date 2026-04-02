@@ -60,6 +60,7 @@ import {
   normalizeProjectCapabilities,
 } from '../access/access.constants';
 import { SlowApiDiagnosticsSession } from '../observability/slow-api-diagnostics';
+import { resolveGitRemoteUrlWithHttpAuth } from '../git/git-remote-auth.util';
 
 export type EnsureProjectRepositoryOptions = {
   syncRemote?: boolean;
@@ -69,6 +70,7 @@ export type EnsureProjectRepositoryOptions = {
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private readonly defaultGitTimeoutMs = 60_000;
+  private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
   private readonly maxProjectDocFiles = 500;
   private readonly maxProjectDocDepth = 8;
   private readonly maxQueryContextChars = 24_000;
@@ -216,11 +218,12 @@ export class ProjectsService {
     );
 
     const gitUrl = inspectProjectRepositoryDto.gitUrl.trim();
+    const resolvedGitUrl = this.resolveGitRemoteUrl(gitUrl);
     const result = await this.runCommand('git', [
       'ls-remote',
       '--heads',
       '--refs',
-      gitUrl,
+      resolvedGitUrl,
     ]);
 
     if (!result.success) {
@@ -2295,11 +2298,12 @@ export class ProjectsService {
   }
 
   private async validateGitRepositoryAccessible(gitUrl: string): Promise<void> {
+    const resolvedGitUrl = this.resolveGitRemoteUrl(gitUrl);
     const result = await this.runCommand('git', [
       'ls-remote',
       '--heads',
       '--tags',
-      gitUrl,
+      resolvedGitUrl,
     ]);
 
     if (result.success) {
@@ -2320,6 +2324,7 @@ export class ProjectsService {
     const gitDirPath = path.join(repositoryRoot, '.git');
     const hasGit = await this.pathExists(gitDirPath);
     const shouldSyncRemote = options.syncRemote ?? true;
+    const resolvedGitUrl = this.resolveGitRemoteUrl(project.gitUrl);
 
     if (!hasGit) {
       try {
@@ -2338,7 +2343,7 @@ export class ProjectsService {
         'origin',
         '--branch',
         defaultBranch,
-        project.gitUrl,
+        resolvedGitUrl,
         repositoryRoot,
       ]);
 
@@ -2354,7 +2359,7 @@ export class ProjectsService {
         'remote',
         'set-url',
         'origin',
-        project.gitUrl,
+        resolvedGitUrl,
       ]);
 
       if (!setUrlResult.success) {
@@ -2752,6 +2757,16 @@ export class ProjectsService {
           stderr: stderr.trimEnd(),
         });
       });
+    });
+  }
+
+  private resolveGitRemoteUrl(gitUrl: string): string {
+    return resolveGitRemoteUrlWithHttpAuth(gitUrl, {
+      targetHost: this.gitlabHttpAuthHost,
+      username:
+        this.configService.get<string>('GITLAB_USERNAME', { infer: true }) ??
+        'oauth2',
+      token: this.configService.get<string>('GITLAB_TOKEN', { infer: true }),
     });
   }
 
