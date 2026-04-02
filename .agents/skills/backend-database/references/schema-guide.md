@@ -6,9 +6,9 @@
 
 ```sql
 id uuid DEFAULT gen_random_uuid() NOT NULL,
-created_at timestamp with time zone NOT NULL,
-updated_at timestamp with time zone NOT NULL,
-deleted_at timestamp with time zone
+"createdAt" timestamp with time zone NOT NULL,
+"updatedAt" timestamp with time zone NOT NULL,
+"deletedAt" timestamp with time zone
 ```
 
 ## 表名前缀
@@ -26,9 +26,10 @@ deleted_at timestamp with time zone
 
 ## 字段命名
 
-- 使用 `snake_case`
-- 外键：`{table}_id`
-- 时间字段：`_at` 后缀（如 `created_at`、`expired_at`）
+- 多词字段使用 `camelCase`，SQL 中需加双引号（如 `"sortOrder"`、`"imageUrl"`）
+- 单词字段直接小写即可（如 `id`、`name`、`status`、`remark`）
+- 外键：`"xxxId"` 格式（如 `"userId"`、`"roleId"`）
+- 时间字段：`xxxAt` 后缀（如 `"createdAt"`、`"expiredAt"`）
 - 状态字段：`status`，类型 `integer DEFAULT 1`，含义 `-1=禁用, 1=启用`
 
 ## 常用类型
@@ -60,20 +61,20 @@ CREATE TABLE public.{table} (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     -- 业务字段
     status integer DEFAULT 1 NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    deleted_at timestamp with time zone
+    "createdAt" timestamp with time zone NOT NULL,
+    "updatedAt" timestamp with time zone NOT NULL,
+    "deletedAt" timestamp with time zone
 );
 
 COMMENT ON TABLE public.{table} IS '表描述';
 COMMENT ON COLUMN public.{table}.id IS 'id';
 COMMENT ON COLUMN public.{table}.status IS '状态: -1=禁用, 1=启用';
-COMMENT ON COLUMN public.{table}.created_at IS '创建时间';
-COMMENT ON COLUMN public.{table}.updated_at IS '更新时间';
-COMMENT ON COLUMN public.{table}.deleted_at IS '删除时间';
+COMMENT ON COLUMN public.{table}."createdAt" IS '创建时间';
+COMMENT ON COLUMN public.{table}."updatedAt" IS '更新时间';
+COMMENT ON COLUMN public.{table}."deletedAt" IS '删除时间';
 
 ALTER TABLE ONLY public.{table} ADD CONSTRAINT {table}_pkey PRIMARY KEY (id);
-CREATE INDEX {table}_{column}_idx ON public.{table} USING btree ({column});
+CREATE INDEX {table}_{column}_idx ON public.{table} USING btree ("{column}");
 ```
 
 ## 敏感数据处理

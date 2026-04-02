@@ -80,7 +80,7 @@ Race conditions are subtle bugs that cause intermittent failures and security vu
 
 ### Database Concurrency
 
-- Missing optimistic locking (`version` column, `updated_at` checks)
+- Missing optimistic locking (`version` column, `updatedAt` checks)
 - Missing pessimistic locking (`SELECT FOR UPDATE`)
 - Read-modify-write without transaction isolation
 - Counter increments without atomic operations (`UPDATE SET count = count + 1`)

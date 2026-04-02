@@ -25,6 +25,8 @@ import (
 
 func (p *ShadowV1ProductUseCase) ProductList(ctx context.Context, req *pb.ProductListReq) (*pb.ProductListReply, error) {
     // 1. 构建查询条件
+    // ⚠️ Field 值必须与目标 model 实际定义一致，不可从其他文件的写法推断
+    // 查阅 internal/data/gorm/*_model/{table}.gen.go 确认实际值
     conditionReq := &condition.Req{
         Page:     req.Page,
         PageSize: req.PageSize,
