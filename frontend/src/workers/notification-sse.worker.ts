@@ -1,15 +1,33 @@
 const SSE_RECONNECT_DELAY_MS = 5_000
+const ERROR_DEDUP_WINDOW_MS = 60_000
 const NOTIFICATION_ICON = '/favicon.ico'
 
 let currentAbort: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let sseUrl = ''
 let authToken = ''
+const lastErrorAtByCode = new Map<string, number>()
 
 type SseParsed = {
   id?: string
   event?: string
   data: string
+}
+
+function reportNotificationError(code: string, message: string) {
+  const now = Date.now()
+  const lastErrorAt = lastErrorAtByCode.get(code)
+
+  if (lastErrorAt && now - lastErrorAt < ERROR_DEDUP_WINDOW_MS) {
+    return
+  }
+
+  lastErrorAtByCode.set(code, now)
+  self.postMessage({
+    type: 'notification_error',
+    code,
+    message,
+  })
 }
 
 function parseSseChunk(chunk: string): SseParsed | null {
@@ -34,11 +52,38 @@ function parseSseChunk(chunk: string): SseParsed | null {
 }
 
 function showNotification(title: string, body: string, taskId?: string | null) {
-  const notification = new Notification(title, {
-    body,
-    icon: NOTIFICATION_ICON,
-    tag: taskId ? `${taskId}-${Date.now()}` : undefined,
-  })
+  if (typeof Notification === 'undefined') {
+    reportNotificationError('unsupported', '当前浏览器不支持系统通知，无法展示任务提醒。')
+    return
+  }
+
+  if (Notification.permission !== 'granted') {
+    reportNotificationError(
+      Notification.permission === 'denied' ? 'permission_denied' : 'permission_default',
+      Notification.permission === 'denied'
+        ? '浏览器通知权限已被拒绝，请在“设置 > 通知”中手动开启。'
+        : '浏览器通知尚未授权，请在“设置 > 通知”中点击“检查授权”。',
+    )
+    return
+  }
+
+  let notification: Notification
+
+  try {
+    notification = new Notification(title, {
+      body,
+      icon: NOTIFICATION_ICON,
+      tag: taskId ? `${taskId}-${Date.now()}` : undefined,
+    })
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : '未知错误'
+
+    reportNotificationError('show_failed', `浏览器通知发送失败：${errorMessage}`)
+    return
+  }
 
   if (taskId) {
     notification.onclick = () => {

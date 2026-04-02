@@ -3,6 +3,7 @@ import type {
   CreateTaskPayload,
   CreateTaskTerminalSessionPayload,
   ReplyTaskPayload,
+  ResetNodePayload,
   RetryTaskPayload,
   Task,
   TaskDetail,
@@ -89,12 +90,20 @@ export const tasksApi = {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/retry`, payload)
   },
 
+  resetNode(taskId: string, payload: ResetNodePayload) {
+    return apiHttp.post<TaskDetail>(`/tasks/${taskId}/reset-node`, payload)
+  },
+
   cancel(taskId: string) {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/cancel`)
   },
 
   approve(taskId: string, payload: ApproveTaskPayload) {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/approve`, payload)
+  },
+
+  complete(taskId: string) {
+    return apiHttp.post<TaskDetail>(`/tasks/${taskId}/complete`)
   },
 
   cleanupWorktree(taskId: string) {

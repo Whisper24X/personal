@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TaskArtifactsPanel from '../TaskArtifactsPanel.vue'
 
 const { tasksApi } = vi.hoisted(() => ({
@@ -15,6 +15,10 @@ vi.mock('@/api/tasks', () => ({
 }))
 
 describe('TaskArtifactsPanel', () => {
+  const getContextSpy = vi
+    .spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue(null as never)
+
   beforeEach(() => {
     vi.clearAllMocks()
 
@@ -45,10 +49,15 @@ describe('TaskArtifactsPanel', () => {
     tasksApi.getGitArtifactRawUrl.mockReturnValue('/raw')
   })
 
+  afterEach(() => {
+    getContextSpy.mockClear()
+  })
+
   it('renders artifacts as a flat file list with file names only', async () => {
     const wrapper = mount(TaskArtifactsPanel, {
       props: {
         taskId: 'task-1',
+        artifactFilePath: 'docs/guide/index.md',
       },
       global: {
         stubs: {
@@ -87,5 +96,62 @@ describe('TaskArtifactsPanel', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="preview-type"]').text()).toBe('markdown')
+  })
+
+  it('does not reload preview when refresh does not touch the selected artifact', async () => {
+    const wrapper = mount(TaskArtifactsPanel, {
+      props: {
+        taskId: 'task-1',
+        artifactFilePath: 'docs/guide/index.md',
+      },
+      global: {
+        stubs: {
+          FilePreviewCard: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(tasksApi.gitArtifactPreview).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({
+      refreshToken: 1,
+      artifactRefreshPaths: ['src/pages/index.vue'],
+    })
+    await flushPromises()
+
+    expect(tasksApi.gitStatus).toHaveBeenCalledTimes(2)
+    expect(tasksApi.gitArtifactPreview).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads preview when the selected artifact path is part of the workspace changes', async () => {
+    const wrapper = mount(TaskArtifactsPanel, {
+      props: {
+        taskId: 'task-1',
+        artifactFilePath: 'docs/guide/index.md',
+      },
+      global: {
+        stubs: {
+          FilePreviewCard: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(tasksApi.gitArtifactPreview).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({
+      refreshToken: 1,
+      artifactRefreshPaths: ['docs/guide/index.md'],
+    })
+    await flushPromises()
+
+    expect(tasksApi.gitArtifactPreview).toHaveBeenCalledTimes(2)
   })
 })

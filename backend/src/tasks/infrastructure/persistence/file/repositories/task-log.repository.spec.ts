@@ -90,4 +90,80 @@ describe('TaskLogFileRepository', () => {
     expect(logs).toHaveLength(1);
     expect(logs[0].message).toBe('second');
   });
+
+  it('should delete logs for selected node ids only', async () => {
+    await repository.create({
+      taskId: 'task-1',
+      taskNodeId: 'node-1',
+      level: TaskLogLevel.info,
+      message: 'first-node',
+      payload: null,
+    });
+    await repository.create({
+      taskId: 'task-1',
+      taskNodeId: 'node-2',
+      level: TaskLogLevel.warn,
+      message: 'second-node',
+      payload: null,
+    });
+    await repository.create({
+      taskId: 'task-1',
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'task-log',
+      payload: null,
+    });
+
+    const removedCount = await repository.deleteByTaskIdAndNodeIds({
+      taskId: 'task-1',
+      nodeIds: ['node-2'],
+    });
+    const logs = await repository.findByTaskIdSince({
+      taskId: 'task-1',
+    });
+
+    expect(removedCount).toBe(1);
+    expect(logs.map((log) => log.message)).toEqual(['first-node', 'task-log']);
+  });
+
+  it('should reuse cached parsed logs until the log file changes', async () => {
+    await repository.create({
+      taskId: 'task-1',
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'first',
+      payload: null,
+    });
+
+    await repository.findByTaskIdSince({
+      taskId: 'task-1',
+    });
+
+    const readFileSpy = jest.spyOn(fs, 'readFile');
+
+    const cachedLogs = await repository.findByTaskIdSince({
+      taskId: 'task-1',
+    });
+
+    expect(cachedLogs.map((log) => log.message)).toEqual(['first']);
+    expect(readFileSpy).not.toHaveBeenCalled();
+
+    await repository.create({
+      taskId: 'task-1',
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'second',
+      payload: null,
+    });
+
+    const refreshedLogs = await repository.findByTaskIdSince({
+      taskId: 'task-1',
+    });
+
+    expect(refreshedLogs.map((log) => log.message)).toEqual([
+      'first',
+      'second',
+    ]);
+    expect(readFileSpy).toHaveBeenCalledTimes(1);
+  });
 });

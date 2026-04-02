@@ -120,15 +120,11 @@ RUN cd /tmp \
     && cd / && rm -rf /tmp/librdkafka-2.3.0
 
 # ============================================================
-# SSH + Git（用于拉取 gitlab.yc345.tv 私有依赖）
+# GitLab Token（用于拉取 gitlab.yc345.tv 私有依赖）
 # ============================================================
 
-COPY ssh/id_rsa /root/.ssh/id_rsa
-COPY ssh/known_hosts /root/.ssh/known_hosts
-RUN chmod 700 /root/.ssh \
-    && chmod 600 /root/.ssh/id_rsa \
-    && chmod 644 /root/.ssh/known_hosts \
-    && git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc345.tv/"
+ARG GITLAB_USERNAME
+ARG GITLAB_TOKEN
 
 # ============================================================
 # Go 工具链
@@ -142,7 +138,11 @@ RUN chmod 700 /root/.ssh \
 # goimports       — 代码格式化
 RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,target=/go/pkg/mod,sharing=locked \
-    go install github.com/air-verse/air@v1.61.7 \
+    if [ -z "$GITLAB_USERNAME" ]; then echo "GITLAB_USERNAME build arg is required" >&2; exit 1; fi \
+    && if [ -z "$GITLAB_TOKEN" ]; then echo "GITLAB_TOKEN build arg is required" >&2; exit 1; fi \
+    && export GIT_CONFIG_GLOBAL=/tmp/.gitconfig \
+    && git config --global url."https://${GITLAB_USERNAME}:${GITLAB_TOKEN}@gitlab.yc345.tv/".insteadOf "https://gitlab.yc345.tv/" \
+    && go install github.com/air-verse/air@v1.61.7 \
     && go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93 \
     && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 \
     && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0 \
@@ -155,7 +155,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     && go install golang.org/x/tools/cmd/goimports@v0.23.0 \
     && go install gitlab.yc345.tv/backend/protoc-gen-go-errors@v0.0.4 \
     && go install gitlab.yc345.tv/backend/yc_turbo_kit@latest \
-    && go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4
+    && go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4 \
+    && rm -f "$GIT_CONFIG_GLOBAL"
 
 # ============================================================
 # Node / pnpm（前端构建）
@@ -171,6 +172,9 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 RUN curl -fsSL https://opencode.ai/install | bash || true
 
 RUN curl -fsSL https://cursor.com/install | bash || true
+
+# OpenSpec
+RUN npm install -g @fission-ai/openspec@latest
 
 # Go 编译的 CLI（OpenCode、Codex）需要显式指定 CA 证书路径
 ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"

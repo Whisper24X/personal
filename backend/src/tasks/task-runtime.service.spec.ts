@@ -79,6 +79,8 @@ describe('TaskRuntimeService', () => {
   const service = new TaskRuntimeService();
   const createdDirectories: string[] = [];
   const originalGitRuntimeEnabled = process.env.AINATIVE_GIT_RUNTIME_ENABLED;
+  const originalGitlabUsername = process.env.GITLAB_USERNAME;
+  const originalGitlabToken = process.env.GITLAB_TOKEN;
 
   afterEach(async () => {
     jest.restoreAllMocks();
@@ -87,6 +89,18 @@ describe('TaskRuntimeService', () => {
       delete process.env.AINATIVE_GIT_RUNTIME_ENABLED;
     } else {
       process.env.AINATIVE_GIT_RUNTIME_ENABLED = originalGitRuntimeEnabled;
+    }
+
+    if (originalGitlabUsername === undefined) {
+      delete process.env.GITLAB_USERNAME;
+    } else {
+      process.env.GITLAB_USERNAME = originalGitlabUsername;
+    }
+
+    if (originalGitlabToken === undefined) {
+      delete process.env.GITLAB_TOKEN;
+    } else {
+      process.env.GITLAB_TOKEN = originalGitlabToken;
     }
 
     await Promise.all(
@@ -284,6 +298,36 @@ describe('TaskRuntimeService', () => {
       'feature/runtime-test',
       worktreePath,
       'origin/main',
+    ]);
+  });
+
+  it('should clone runtime repository via https token auth for gitlab ssh remote', async () => {
+    process.env.GITLAB_USERNAME = 'oauth2';
+    process.env.GITLAB_TOKEN = 'token-value';
+
+    const project = createProject({
+      gitUrl: 'git@gitlab.yc345.tv:frontend/yanxue-main.git',
+    });
+    const repositoryRoot = (service as any).resolveRepositoryRoot(project);
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockResolvedValue({
+        success: true,
+        stdout: '',
+        stderr: '',
+      });
+
+    jest.spyOn(service as any, 'pathExists').mockResolvedValue(false);
+
+    await (service as any).ensureProjectRepository(project);
+
+    expect(runCommandSpy).toHaveBeenNthCalledWith(1, 'git', [
+      'clone',
+      '--origin',
+      'origin',
+      '--no-checkout',
+      'https://oauth2:token-value@gitlab.yc345.tv/frontend/yanxue-main.git',
+      repositoryRoot,
     ]);
   });
 

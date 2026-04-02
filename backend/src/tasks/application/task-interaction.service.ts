@@ -1,9 +1,12 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { ApproveTaskDto } from '../dto/approve-task.dto';
@@ -12,6 +15,7 @@ import { RetryTaskDto } from '../dto/retry-task.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskMessageRole } from '../dto/task-message.dto';
+import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
@@ -29,6 +33,7 @@ import { TaskQueryService } from './task-query.service';
 import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.service';
 import { TaskSchedulerService } from './task-scheduler.service';
 import { TaskStatusService } from './task-status.service';
+import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 @Injectable()
@@ -47,6 +52,15 @@ export class TaskInteractionService {
     private readonly taskSchedulerService: TaskSchedulerService,
     private readonly taskGitService: TaskGitService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notificationsService: Pick<
+      NotificationsService,
+      'notifyTaskNodeStatusChanged'
+    > = {
+      notifyTaskNodeStatusChanged: () => Promise.resolve(null),
+    },
   ) {}
 
   async reply(
@@ -59,6 +73,10 @@ export class TaskInteractionService {
       currentUser,
       'project.task.read',
     );
+    if (task.status === TaskStatus.done) {
+      throw new ConflictException('Completed task cannot accept reply');
+    }
+
     const prepared = await this.taskRuntimeOrchestrator.prepareTaskRuntime(
       task,
       currentUser,
@@ -194,6 +212,16 @@ export class TaskInteractionService {
 
     if (runningNode) {
       throw new ConflictException('Task already has an in-progress node');
+    }
+
+    const inReviewNode =
+      await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+        taskId: task.id,
+        status: TaskStatus.inReview,
+      });
+
+    if (inReviewNode) {
+      throw new ConflictException('Task has in_review node and cannot execute');
     }
 
     const nextTodoNode =
@@ -406,6 +434,117 @@ export class TaskInteractionService {
     return this.taskQueryService.detailById(task.id, currentUser);
   }
 
+  async resetNode(
+    taskId: Task['id'],
+    nodeId: TaskNode['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    let task = await this.taskAccessService.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.read',
+    );
+    const prepared = await this.taskRuntimeOrchestrator.prepareTaskRuntime(
+      task,
+      currentUser,
+    );
+    task = prepared.task;
+    const project = prepared.project;
+
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
+    if (runningNode) {
+      throw new ConflictException('Task already has an in-progress node');
+    }
+
+    const targetNode = await this.taskNodeRepository.findById(nodeId);
+    if (!targetNode || targetNode.taskId !== task.id) {
+      throw new NotFoundException('Task node not found');
+    }
+
+    if (
+      targetNode.status !== TaskStatus.done &&
+      targetNode.status !== TaskStatus.inReview
+    ) {
+      throw new ConflictException('Only done or in_review node can be reset');
+    }
+
+    const resetToCommitSha = targetNode.beforeRunCommitSha?.trim();
+    if (!resetToCommitSha) {
+      throw new ConflictException(
+        'Task node cannot be reset because execution snapshot is unavailable',
+      );
+    }
+
+    const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+    const resetNodes = nodes.filter(
+      (node) => node.nodeOrder >= targetNode.nodeOrder,
+    );
+
+    await this.taskGitService.resetHardToCommitForTask(
+      task,
+      project,
+      resetToCommitSha,
+    );
+
+    await Promise.all(
+      resetNodes.map((node) =>
+        this.taskOutputService.removeNodeOutputFiles({
+          task,
+          node,
+        }),
+      ),
+    );
+    await this.taskLogService.deleteNodeLogs({
+      taskId: task.id,
+      nodeIds: resetNodes.map((node) => node.id),
+    });
+
+    await Promise.all(
+      resetNodes.map((node) => {
+        const loopConfig = this.taskConfigResolver.readNodeLoopConfig(
+          node.loopJson,
+        );
+
+        return this.taskNodeRepository.update(node.id, {
+          status: TaskStatus.todo,
+          startedAt: null,
+          finishedAt: null,
+          agentClioutput: null,
+          agentCliSessionId: null,
+          runtimeJson: null,
+          afterRunCommitSha: null,
+          loopJson: {
+            enabled: loopConfig.enabled,
+            loopCount: 0,
+            maxLoops: loopConfig.maxLoops,
+          },
+        });
+      }),
+    );
+
+    await this.taskLogService.appendLog({
+      taskId: task.id,
+      taskNodeId: null,
+      level: TaskLogLevel.warn,
+      message: 'Node reset completed',
+      payload: {
+        requestedBy: currentUser.sub,
+        requestedAt: new Date().toISOString(),
+        targetNodeId: targetNode.id,
+        targetNodeOrder: targetNode.nodeOrder,
+        resetToCommitSha,
+        clearedNodeIds: resetNodes.map((node) => node.id),
+        clearedNodeOrders: resetNodes.map((node) => node.nodeOrder),
+      },
+    });
+
+    await this.taskStatusService.recalculateTaskStatus(task.id);
+
+    return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
   async cancel(
     taskId: Task['id'],
     currentUser: JwtPayloadType,
@@ -424,23 +563,19 @@ export class TaskInteractionService {
       throw new ConflictException('Task has no in-progress node to cancel');
     }
 
+    const cancelledAt = new Date();
+    const agentClioutput =
+      runningNode.agentClioutput ??
+      this.taskOutputService.resolveNodeOutputPath(task, runningNode);
+
     await this.taskNodeRepository.update(runningNode.id, {
       status: TaskStatus.inReview,
-      finishedAt: new Date(),
-      agentClioutput: await this.taskOutputService.writeNodeOutputJsonl({
-        task,
-        node: runningNode,
-        output: {
-          summary: 'Execution cancelled by user',
-          finishedAt: new Date().toISOString(),
-          error: {
-            code: 'CANCELLED',
-            message: 'Execution cancelled by user',
-          },
-        },
-      }),
+      finishedAt: cancelledAt,
+      agentClioutput,
       runtimeJson: null,
     });
+
+    await this.notifyTaskNodeInReview(task, runningNode);
 
     await this.taskLogService.appendLog({
       taskId: task.id,
@@ -468,6 +603,9 @@ export class TaskInteractionService {
       currentUser,
       'project.task.read',
     );
+    const project = await this.taskAccessService.getProjectByIdOrThrow(
+      task.projectId,
+    );
 
     const targetNode = await this.taskNodeRepository.findById(
       approveTaskDto.nodeId,
@@ -483,7 +621,7 @@ export class TaskInteractionService {
 
     const commitMessage = buildApproveCommitMessage(targetNode);
 
-    await commitNodeWorkspaceIfChanged({
+    const autoCommitResult = await commitNodeWorkspaceIfChanged({
       taskId: task.id,
       node: targetNode,
       commitMessage,
@@ -500,11 +638,15 @@ export class TaskInteractionService {
         'Node approval skipped auto-commit; no workspace changes',
       failedLogMessage: 'Node approval auto-commit failed',
     });
+    const afterRunCommitSha =
+      autoCommitResult.commitSha ??
+      (await this.taskGitService.resolveHeadCommitShaForTask(task, project));
 
     await this.taskNodeRepository.update(targetNode.id, {
       status: TaskStatus.done,
       finishedAt: targetNode.finishedAt ?? new Date(),
       runtimeJson: null,
+      afterRunCommitSha,
     });
 
     await this.taskLogService.appendLog({
@@ -519,6 +661,54 @@ export class TaskInteractionService {
 
     await this.taskStatusService.recalculateTaskStatus(task.id);
     await this.taskSchedulerService.triggerDispatch();
+
+    return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
+  async complete(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    const task = await this.taskAccessService.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.read',
+    );
+
+    if (task.status !== TaskStatus.inReview) {
+      throw new ConflictException('Only in_review task can be completed');
+    }
+
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
+    if (runningNode) {
+      throw new ConflictException('Task already has an in-progress node');
+    }
+
+    const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+    const allNodesDone =
+      nodes.length > 0 &&
+      nodes.every((node) => node.status === TaskStatus.done);
+
+    if (!allNodesDone) {
+      throw new ConflictException(
+        'Only task with all nodes done can be completed',
+      );
+    }
+
+    await this.taskStatusService.setTaskStatus(task.id, TaskStatus.done);
+
+    await this.taskLogService.appendLog({
+      taskId: task.id,
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'Task marked as done manually',
+      payload: {
+        completedBy: currentUser.sub,
+        completedAt: new Date().toISOString(),
+      },
+    });
 
     return this.taskQueryService.detailById(task.id, currentUser);
   }
@@ -544,6 +734,9 @@ export class TaskInteractionService {
     await this.taskRepository.update(task.id, {
       ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
     });
+    if (cleanupResult.cleaned) {
+      this.taskWorkspaceContextCache.invalidateTask(task.id);
+    }
     await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
 
     await this.taskLogService.appendLog({
@@ -560,6 +753,25 @@ export class TaskInteractionService {
     });
 
     return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
+  private async notifyTaskNodeInReview(
+    task: Task,
+    node: Pick<TaskNode, 'id' | 'name' | 'nodeOrder'>,
+  ): Promise<void> {
+    if (!task.createdBy || task.mode !== TaskMode.workflow) {
+      return;
+    }
+
+    await this.notificationsService.notifyTaskNodeStatusChanged({
+      userId: task.createdBy,
+      taskId: task.id,
+      taskTitle: task.title,
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeOrder: node.nodeOrder,
+      status: TaskStatus.inReview,
+    });
   }
 
   private selectReplyFallbackNode(nodes: TaskNode[]): TaskNode | null {

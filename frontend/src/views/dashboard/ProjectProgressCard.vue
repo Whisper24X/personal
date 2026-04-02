@@ -56,7 +56,7 @@ const props = defineProps<{
           <span class="font-medium text-foreground">{{ props.doneCount }} 个</span>
         </div>
         <div class="flex justify-between text-xs text-muted-foreground">
-          <span>执行中</span>
+          <span>处理中</span>
           <span class="font-medium text-foreground">{{ props.runningCount }} 个</span>
         </div>
         <div class="flex justify-between text-xs text-muted-foreground">
@@ -64,7 +64,7 @@ const props = defineProps<{
           <span class="font-medium text-foreground">{{ props.todoCount }} 个</span>
         </div>
         <div class="flex justify-between text-xs text-muted-foreground">
-          <span>待处理</span>
+          <span>待完成</span>
           <span class="font-medium text-foreground">{{ props.reviewCount }} 个</span>
         </div>
       </div>

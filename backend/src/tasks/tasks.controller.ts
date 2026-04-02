@@ -42,6 +42,7 @@ import { infinityPagination } from '../utils/infinity-pagination';
 import { TaskDetailDto } from './dto/task-detail.dto';
 import { RetryTaskDto } from './dto/retry-task.dto';
 import { RepeatNodeDto } from './dto/repeat-node.dto';
+import { ResetNodeDto } from './dto/reset-node.dto';
 import { ApproveTaskDto } from './dto/approve-task.dto';
 import { TaskLog } from './domain/task-log';
 import { FindTaskLogsDto } from './dto/find-task-logs.dto';
@@ -253,6 +254,18 @@ export class TasksController {
     return this.tasksService.retry(id, retryTaskDto, request.user);
   }
 
+  @Post(':id/reset-node')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskDetailDto })
+  @HttpCode(HttpStatus.OK)
+  resetNode(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() resetNodeDto: ResetNodeDto,
+  ) {
+    return this.tasksService.resetNode(id, resetNodeDto.nodeId, request.user);
+  }
+
   @Post(':id/cancel')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskDetailDto })
@@ -271,6 +284,14 @@ export class TasksController {
     @Body() approveTaskDto: ApproveTaskDto,
   ) {
     return this.tasksService.approve(id, approveTaskDto, request.user);
+  }
+
+  @Post(':id/complete')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskDetailDto })
+  @HttpCode(HttpStatus.OK)
+  complete(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tasksService.complete(id, request.user);
   }
 
   @Post(':id/cleanup-worktree')

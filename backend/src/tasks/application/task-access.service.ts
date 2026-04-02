@@ -7,6 +7,7 @@ import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { ProjectsService } from '../../projects/projects.service';
 import { Project } from '../../projects/domain/project';
 import { ProjectRepository } from '../../projects/infrastructure/persistence/project.repository';
+import { SlowApiDiagnosticsSession } from '../../observability/slow-api-diagnostics';
 import { Task } from '../domain/task';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 
@@ -22,16 +23,27 @@ export class TaskAccessService {
     taskId: string,
     currentUser: JwtPayloadType,
     capability = 'project.task.read',
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<Task> {
-    return this.getTaskOrThrow(taskId, currentUser, capability);
+    return this.getTaskOrThrow(taskId, currentUser, capability, diagnostics);
   }
 
   async assertCanAccessTaskProject(
     taskId: string,
     currentUser: JwtPayloadType,
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<{ task: Task; project: Project }> {
-    const task = await this.getTaskOrThrow(taskId, currentUser);
-    const project = await this.getProjectByIdOrThrow(task.projectId);
+    const task = await this.getTaskByIdOrThrowWithDiagnostics(
+      taskId,
+      'project.task.read',
+      diagnostics,
+    );
+    const project = await this.assertTaskProjectCapability(
+      task,
+      currentUser,
+      'project.task.read',
+      diagnostics,
+    );
 
     return {
       task,
@@ -43,17 +55,18 @@ export class TaskAccessService {
     taskId: string,
     currentUser: JwtPayloadType,
     capability = 'project.task.read',
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<Task> {
-    const task = await this.taskRepository.findById(taskId);
-
-    if (!task) {
-      throw new NotFoundException('Task not found');
-    }
-
-    await this.projectsService.assertProjectCapability(
-      task.projectId,
+    const task = await this.getTaskByIdOrThrowWithDiagnostics(
+      taskId,
+      capability,
+      diagnostics,
+    );
+    await this.assertTaskProjectCapability(
+      task,
       currentUser,
       capability,
+      diagnostics,
     );
 
     return task;
@@ -87,5 +100,63 @@ export class TaskAccessService {
 
   isAdmin(currentUser: JwtPayloadType): boolean {
     return currentUser.roles?.includes('admin') ?? false;
+  }
+
+  private async getTaskByIdOrThrowWithDiagnostics(
+    taskId: string,
+    capability: string,
+    diagnostics?: SlowApiDiagnosticsSession,
+  ): Promise<Task> {
+    const task = diagnostics
+      ? await diagnostics.measure(
+          'taskLookup',
+          () =>
+            this.taskRepository.findById(taskId, {
+              diagnostics,
+              metricPrefix: 'taskLookup',
+            }),
+          (result) => ({
+            taskFound: Boolean(result),
+            taskProjectId: result?.projectId ?? null,
+            accessCapability: capability,
+          }),
+        )
+      : await this.taskRepository.findById(taskId);
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+
+    return task;
+  }
+
+  private async assertTaskProjectCapability(
+    task: Task,
+    currentUser: JwtPayloadType,
+    capability: string,
+    diagnostics?: SlowApiDiagnosticsSession,
+  ): Promise<Project> {
+    if (diagnostics) {
+      return diagnostics.measure(
+        'projectCapability',
+        () =>
+          this.projectsService.assertProjectCapability(
+            task.projectId,
+            currentUser,
+            capability,
+            diagnostics,
+          ),
+        (result) => ({
+          projectId: result.id,
+          projectBusinessLineId: result.businessLineId,
+        }),
+      );
+    }
+
+    return this.projectsService.assertProjectCapability(
+      task.projectId,
+      currentUser,
+      capability,
+    );
   }
 }

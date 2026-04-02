@@ -16,6 +16,8 @@ const props = withDefaults(
   defineProps<{
     taskId: string
     refreshToken?: number
+    /** 本次右栏刷新对应的工作区变更路径；null 表示变更路径未知，需要保守重刷预览 */
+    artifactRefreshPaths?: string[] | null
     /** 从执行区文件芯片打开时传入，用于选中并预览 */
     artifactFilePath?: string | null
     /** 递增时应用 artifactFilePath */
@@ -23,6 +25,7 @@ const props = withDefaults(
   }>(),
   {
     refreshToken: 0,
+    artifactRefreshPaths: () => [],
     artifactFilePath: null,
     artifactOpenNonce: 0,
   },
@@ -41,9 +44,15 @@ const emptyPaths = new Set<string>()
 const ARTIFACT_PANEL_MIN_WIDTH = 160
 const ARTIFACT_PANEL_MAX_WIDTH = 280
 const ARTIFACT_PANEL_CHROME_WIDTH = 72
-const FILE_NAME_FONT = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+const FILE_NAME_FONT =
+  '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
 
 let measureCanvas: HTMLCanvasElement | null = null
+let previewRequestId = 0
+let inFlightPreviewRequest: {
+  path: string
+  promise: Promise<FileBrowserPreview>
+} | null = null
 
 const flatFiles = computed(() => {
   return [...files.value].sort((left, right) => {
@@ -117,25 +126,82 @@ const resolveFileName = (filePath: string) => {
   return segments[segments.length - 1] ?? filePath
 }
 
-const loadPreview = async (path: string) => {
-  previewLoading.value = true
-  previewErrorMessage.value = ''
+const fetchPreview = (path: string) => {
+  if (inFlightPreviewRequest?.path === path) {
+    return inFlightPreviewRequest.promise
+  }
 
-  try {
+  const promise = (async () => {
     const nextPreview = normalizePreviewType(await tasksApi.gitArtifactPreview(props.taskId, path))
     if (['pdf', 'video', 'audio'].includes(nextPreview.previewType) && !nextPreview.tooLarge) {
       nextPreview.dataUrl = tasksApi.getGitArtifactRawUrl(props.taskId, path)
     }
+    return nextPreview
+  })()
+
+  inFlightPreviewRequest = {
+    path,
+    promise,
+  }
+
+  void promise.finally(() => {
+    if (inFlightPreviewRequest?.promise === promise) {
+      inFlightPreviewRequest = null
+    }
+  })
+
+  return promise
+}
+
+const loadPreview = async (path: string) => {
+  const requestId = ++previewRequestId
+  previewLoading.value = true
+  previewErrorMessage.value = ''
+
+  try {
+    const nextPreview = await fetchPreview(path)
+    if (requestId !== previewRequestId) {
+      return
+    }
     preview.value = nextPreview
   } catch (error) {
+    if (requestId !== previewRequestId) {
+      return
+    }
     preview.value = null
     previewErrorMessage.value = toErrorMessage(error, '加载产物预览失败')
   } finally {
-    previewLoading.value = false
+    if (requestId === previewRequestId) {
+      previewLoading.value = false
+    }
   }
 }
 
-const performLoadFiles = async () => {
+const shouldReloadPreview = ({
+  previousSelectedPath,
+  nextSelectedPath,
+  refreshPaths,
+}: {
+  previousSelectedPath: string | null
+  nextSelectedPath: string
+  refreshPaths: string[] | null
+}) => {
+  if (nextSelectedPath !== previousSelectedPath) {
+    return true
+  }
+
+  if (!preview.value) {
+    return true
+  }
+
+  if (refreshPaths === null) {
+    return true
+  }
+
+  return refreshPaths.includes(nextSelectedPath)
+}
+
+const performLoadFiles = async (refreshPaths: string[] | null) => {
   loading.value = true
   errorMessage.value = ''
 
@@ -143,6 +209,7 @@ const performLoadFiles = async () => {
     const status = await tasksApi.gitStatus(props.taskId)
     const nextFiles = status.files ?? []
     files.value = nextFiles
+    const previousSelectedPath = selectedPath.value
 
     const preferred = props.artifactFilePath?.trim()
     const preferredInList = Boolean(preferred && nextFiles.some((f) => f.path === preferred))
@@ -161,7 +228,15 @@ const performLoadFiles = async () => {
     selectedPath.value = nextSelectedPath
 
     if (nextSelectedPath) {
-      await loadPreview(nextSelectedPath)
+      if (
+        shouldReloadPreview({
+          previousSelectedPath,
+          nextSelectedPath,
+          refreshPaths,
+        })
+      ) {
+        await loadPreview(nextSelectedPath)
+      }
     } else {
       preview.value = null
       previewErrorMessage.value = ''
@@ -187,7 +262,7 @@ const loadFiles = async () => {
   try {
     do {
       pendingRefresh.value = false
-      await performLoadFiles()
+      await performLoadFiles(props.artifactRefreshPaths)
     } while (pendingRefresh.value)
   } finally {
     refreshInFlight.value = false

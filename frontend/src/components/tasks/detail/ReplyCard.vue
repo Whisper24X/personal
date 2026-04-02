@@ -109,7 +109,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 </script>
 
 <template>
-  <section class="border-border/50 bg-background shrink-0 rounded-xl border shadow-sm">
+  <section class="border-border/50 bg-background shrink-0 rounded-none border shadow-sm">
     <div
       class="border-border/60 flex items-stretch gap-2 border-t-0 px-3 py-2.5 transition-colors"
       :class="isFocused ? 'ring-2 ring-primary/10 ring-offset-0 ring-offset-background' : ''"

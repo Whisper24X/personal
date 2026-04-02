@@ -127,6 +127,9 @@ const createService = () => {
   const goalRepository = {
     shouldBlockTaskDeletionForPlan: jest.fn().mockResolvedValue(false),
   };
+  const taskWorkspaceContextCache = {
+    invalidateTask: jest.fn(),
+  };
 
   const service = new TaskCommandService(
     taskRepository as never,
@@ -142,6 +145,7 @@ const createService = () => {
     taskTitleSuggestionService as never,
     taskWorkspaceWatchService as never,
     goalRepository as never,
+    taskWorkspaceContextCache as never,
   );
 
   return {
@@ -155,10 +159,16 @@ const createService = () => {
     projectsService,
     taskRuntimeOrchestrator,
     goalRepository,
+    taskWorkspaceContextCache,
   };
 };
 
 describe('TaskCommandService.create', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
   it('should persist title from createTaskDto when prompt is longer (goal plan materialize)', async () => {
     const {
       service,
@@ -232,12 +242,169 @@ describe('TaskCommandService.create', () => {
       }),
     );
   });
+
+  it('should generate short default branch and worktree names', async () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 2, 31, 11, 52, 20, 454));
+
+    const {
+      service,
+      taskRepository,
+      projectsService,
+      taskConfigResolver,
+      taskRuntimeOrchestrator,
+    } = createService();
+    const project = createProject();
+    const currentUser = createCurrentUser();
+
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+
+    taskConfigResolver.mergeTaskConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.toObjectRecord.mockImplementation((value) =>
+      value && typeof value === 'object' ? (value as object) : {},
+    );
+    taskConfigResolver.readTaskWorkflowTemplateId.mockReturnValue(null);
+    taskConfigResolver.readNodeExecutionConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.resolveRequiredNodeExecutionConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.buildTaskNodeInput.mockReturnValue({});
+    taskConfigResolver.resolveNodeLoopJson.mockReturnValue(null);
+    taskConfigResolver.normalizeOptionalString.mockImplementation((value) =>
+      typeof value === 'string' ? value.trim() || null : null,
+    );
+    taskConfigResolver.normalizeGitBranch.mockImplementation((value) =>
+      typeof value === 'string' ? value.trim() || null : null,
+    );
+
+    taskRepository.findByGitWorktree.mockResolvedValue(null);
+    const createdTask = createTask({
+      id: 'new-task',
+      gitBranch: 'feature/260331-1152-abcd',
+      gitWorktree: 'wk-260331-1152-abcd',
+    });
+    taskRepository.create.mockResolvedValue(createdTask);
+    taskRuntimeOrchestrator.initializeTaskRuntime.mockResolvedValue({
+      task: createdTask,
+    });
+
+    await service.create(
+      {
+        projectId: project.id,
+        mode: TaskMode.conversation,
+        title: '任务标题',
+        prompt: 'task prompt',
+        gitBaseBranch: 'main',
+        configJson: {
+          agentCliId: 'cli-1',
+          agentCliConfigId: 'cfg-1',
+        },
+      } as never,
+      currentUser as never,
+    );
+
+    const createdPayload = taskRepository.create.mock.calls[0]?.[0];
+
+    expect(createdPayload).toEqual(
+      expect.objectContaining({
+        gitBranch: expect.stringMatching(/^feature\/260331-1152-[a-z0-9]{4}$/),
+        gitWorktree: expect.stringMatching(/^wk-260331-1152-[a-z0-9]{4}$/),
+      }),
+    );
+    expect(createdPayload?.gitWorktree).toBe(
+      `wk-${String(createdPayload?.gitBranch).slice('feature/'.length)}`,
+    );
+  });
+
+  it('should reuse legacy branch ids when deriving default worktree names', async () => {
+    const {
+      service,
+      taskRepository,
+      projectsService,
+      taskConfigResolver,
+      taskRuntimeOrchestrator,
+    } = createService();
+    const project = createProject();
+    const currentUser = createCurrentUser();
+
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+
+    taskConfigResolver.mergeTaskConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.toObjectRecord.mockImplementation((value) =>
+      value && typeof value === 'object' ? (value as object) : {},
+    );
+    taskConfigResolver.readTaskWorkflowTemplateId.mockReturnValue(null);
+    taskConfigResolver.readNodeExecutionConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.resolveRequiredNodeExecutionConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.buildTaskNodeInput.mockReturnValue({});
+    taskConfigResolver.resolveNodeLoopJson.mockReturnValue(null);
+    taskConfigResolver.normalizeOptionalString.mockImplementation((value) =>
+      typeof value === 'string' ? value.trim() || null : null,
+    );
+    taskConfigResolver.normalizeGitBranch.mockImplementation((value) =>
+      typeof value === 'string' ? value.trim() || null : null,
+    );
+
+    taskRepository.findByGitWorktree.mockResolvedValue(null);
+    const createdTask = createTask({
+      id: 'new-task',
+      gitBranch: 'feature/20260331-1152204546458',
+      gitWorktree: 'wk-20260331-1152204546458',
+    });
+    taskRepository.create.mockResolvedValue(createdTask);
+    taskRuntimeOrchestrator.initializeTaskRuntime.mockResolvedValue({
+      task: createdTask,
+    });
+
+    await service.create(
+      {
+        projectId: project.id,
+        mode: TaskMode.conversation,
+        title: '任务标题',
+        prompt: 'task prompt',
+        gitBranch: 'feature/20260331-1152204546458',
+        gitBaseBranch: 'main',
+        configJson: {
+          agentCliId: 'cli-1',
+          agentCliConfigId: 'cfg-1',
+        },
+      } as never,
+      currentUser as never,
+    );
+
+    expect(taskRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gitBranch: 'feature/20260331-1152204546458',
+        gitWorktree: 'wk-20260331-1152204546458',
+      }),
+    );
+  });
 });
 
 describe('TaskCommandService.remove', () => {
   it('should clean up task runtime before soft deleting the task', async () => {
-    const { service, taskRepository, taskRuntimeService, taskAccessService } =
-      createService();
+    const {
+      service,
+      taskRepository,
+      taskRuntimeService,
+      taskAccessService,
+      taskWorkspaceContextCache,
+    } = createService();
     const task = createTask();
     const project = createProject();
     const currentUser = createCurrentUser();
@@ -257,6 +424,9 @@ describe('TaskCommandService.remove', () => {
       project,
     );
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(taskWorkspaceContextCache.invalidateTask).toHaveBeenCalledWith(
+      task.id,
+    );
     expect(taskRuntimeService.cleanupTaskDataDir).toHaveBeenCalledWith(
       task,
       project,
@@ -354,8 +524,13 @@ describe('TaskCommandService.remove', () => {
   });
 
   it('should delete tasks without a stored worktree identifier', async () => {
-    const { service, taskRepository, taskRuntimeService, taskAccessService } =
-      createService();
+    const {
+      service,
+      taskRepository,
+      taskRuntimeService,
+      taskAccessService,
+      taskWorkspaceContextCache,
+    } = createService();
     const task = createTask({ gitWorktree: null });
     const project = createProject();
     const currentUser = createCurrentUser();
@@ -367,6 +542,9 @@ describe('TaskCommandService.remove', () => {
 
     expect(taskRuntimeService.cleanupRuntime).not.toHaveBeenCalled();
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(taskWorkspaceContextCache.invalidateTask).toHaveBeenCalledWith(
+      task.id,
+    );
     expect(taskRuntimeService.cleanupTaskDataDir).toHaveBeenCalledWith(
       task,
       project,

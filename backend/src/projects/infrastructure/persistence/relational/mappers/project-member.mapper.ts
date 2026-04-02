@@ -1,4 +1,5 @@
 import { ProjectMember } from '../../../../domain/project-member';
+import { defineMemberRoleCapabilities } from '../../../../../utils/member-role-capabilities';
 import { ProjectMemberEntity } from '../entities/project-member.entity';
 
 export class ProjectMemberMapper {
@@ -8,8 +9,10 @@ export class ProjectMemberMapper {
     domainEntity.projectId = raw.projectId;
     domainEntity.userId = raw.userId;
     domainEntity.roleId = raw.roleId;
+    domainEntity.customRoleName = raw.roleRef?.name ?? null;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
+    defineMemberRoleCapabilities(domainEntity, raw.roleRef?.capabilities);
     return domainEntity;
   }
 

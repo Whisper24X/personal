@@ -158,86 +158,109 @@ export class NotificationsService {
     taskTitle?: string;
     status: string;
   }): Promise<NotificationEvent | null> {
-    if (status !== 'done' && status !== 'in_review') {
+    if (status !== 'in_review') {
       return null;
     }
-
-    const setting = await this.getMySetting(userId);
 
     const displayName = taskTitle || taskId;
-
-    const title =
-      status === 'done'
-        ? '任务执行完成'
-        : status === 'in_review'
-          ? '任务需要处理'
-          : '任务状态更新';
-
-    const content =
-      status === 'done'
-        ? `任务「${displayName}」已执行完成。`
-        : status === 'in_review'
-          ? `任务「${displayName}」进入待处理状态，请审批或重试。`
-          : `任务「${displayName}」状态更新为 ${status}。`;
-    const eventType = `task.${status}`;
-    const occurredAt = new Date().toISOString();
-
-    if (setting.webhookEnabled && setting.webhookUrl?.trim()) {
-      void this.sendWebhookNotification({
-        userId,
-        taskId,
-        eventType,
-        status,
-        title,
-        content,
-        occurredAt,
-        webhookUrl: setting.webhookUrl.trim(),
-        webhookSecret: setting.webhookSecret?.trim() || null,
-      });
-    }
-
-    if (!setting.browserEnabled) {
-      return null;
-    }
-
-    const createdEvent = await this.notificationEventRepository.create({
+    return this.publishNotification({
       userId,
       taskId,
-      eventType,
-      title,
-      content,
+      eventType: `task.${status}`,
+      status,
+      statusLabel: '待完成',
+      title: '任务待完成',
+      content: `任务「${displayName}」已进入待完成状态，请确认后完成任务。`,
       payload: {
         status,
       },
+      webhookPayload: {
+        status,
+      },
+      dedupeKey: `${userId}:${taskId}:task.${status}`,
     });
+  }
 
-    this.notificationEventsEmitter.emit(userId, createdEvent);
+  async notifyTaskNodeStatusChanged({
+    userId,
+    taskId,
+    taskTitle,
+    nodeId,
+    nodeName,
+    nodeOrder,
+    status,
+  }: {
+    userId: string;
+    taskId: string;
+    taskTitle?: string;
+    nodeId: string;
+    nodeName?: string | null;
+    nodeOrder?: number | null;
+    status: string;
+  }): Promise<NotificationEvent | null> {
+    if (status !== 'in_review') {
+      return null;
+    }
 
-    return createdEvent;
+    const displayTaskName = taskTitle || taskId;
+    const normalizedNodeName = nodeName?.trim() || null;
+    const nodeLabel = normalizedNodeName
+      ? `节点「${normalizedNodeName}」`
+      : typeof nodeOrder === 'number'
+        ? `节点 #${nodeOrder}`
+        : `节点 ${nodeId}`;
+
+    return this.publishNotification({
+      userId,
+      taskId,
+      eventType: `task_node.${status}`,
+      status,
+      statusLabel: '待审核',
+      title: '任务节点待审核',
+      content: `任务「${displayTaskName}」的${nodeLabel}已进入待审核状态，请确认后继续。`,
+      payload: {
+        status,
+        nodeId,
+        nodeName: normalizedNodeName,
+        nodeOrder: nodeOrder ?? null,
+      },
+      webhookPayload: {
+        status,
+        nodeId,
+        nodeName: normalizedNodeName,
+        nodeOrder: nodeOrder ?? null,
+      },
+      dedupeKey: `${userId}:${taskId}:${nodeId}:task_node.${status}`,
+    });
   }
 
   private async sendWebhookNotification({
+    dedupeKey,
     userId,
     taskId,
     eventType,
     status,
+    statusLabel,
     title,
     content,
     occurredAt,
     webhookUrl,
     webhookSecret,
+    payload,
   }: {
+    dedupeKey: string;
     userId: string;
     taskId: string;
     eventType: string;
     status: string;
+    statusLabel: string;
     title: string;
     content: string;
     occurredAt: string;
     webhookUrl: string;
     webhookSecret: string | null;
+    payload: Record<string, unknown>;
   }): Promise<void> {
-    const dedupeKey = `${userId}:${taskId}:${eventType}`;
     const now = Date.now();
 
     this.pruneWebhookDedupCache(now);
@@ -248,17 +271,26 @@ export class NotificationsService {
 
     this.webhookInFlight.add(dedupeKey);
 
-    const payload = this.isFeishuUrl(webhookUrl)
+    const webhookPayload = this.isFeishuUrl(webhookUrl)
       ? this.buildFeishuPayload({
           title,
           content,
           taskId,
           eventType,
-          status,
+          statusLabel,
           occurredAt,
           webhookSecret,
         })
-      : { eventType, taskId, status, title, content, occurredAt, userId };
+      : {
+          eventType,
+          taskId,
+          status,
+          title,
+          content,
+          occurredAt,
+          userId,
+          ...payload,
+        };
 
     try {
       let lastError: unknown = null;
@@ -269,7 +301,10 @@ export class NotificationsService {
         attempt += 1
       ) {
         try {
-          const response = await this.sendWebhookRequest(webhookUrl, payload);
+          const response = await this.sendWebhookRequest(
+            webhookUrl,
+            webhookPayload,
+          );
           if (!response.ok) {
             throw new Error(`Webhook responded with status ${response.status}`);
           }
@@ -354,7 +389,7 @@ export class NotificationsService {
     content,
     taskId,
     eventType,
-    status,
+    statusLabel,
     occurredAt,
     webhookSecret,
   }: {
@@ -362,7 +397,7 @@ export class NotificationsService {
     content: string;
     taskId: string;
     eventType: string;
-    status: string;
+    statusLabel: string;
     occurredAt: string;
     webhookSecret: string | null;
   }): Record<string, unknown> {
@@ -372,9 +407,6 @@ export class NotificationsService {
     const taskUrl = frontendDomain
       ? `${frontendDomain}/task-detail/${taskId}`
       : null;
-
-    const statusLabel =
-      status === 'done' ? '已完成' : status === 'in_review' ? '待处理' : status;
 
     const lines: Record<string, unknown>[][] = [
       [{ tag: 'text', text: content }],
@@ -421,6 +453,67 @@ export class NotificationsService {
     }
 
     return payload;
+  }
+
+  private async publishNotification({
+    userId,
+    taskId,
+    eventType,
+    status,
+    statusLabel,
+    title,
+    content,
+    payload,
+    webhookPayload,
+    dedupeKey,
+  }: {
+    userId: string;
+    taskId: string;
+    eventType: string;
+    status: string;
+    statusLabel: string;
+    title: string;
+    content: string;
+    payload: Record<string, unknown>;
+    webhookPayload: Record<string, unknown>;
+    dedupeKey: string;
+  }): Promise<NotificationEvent | null> {
+    const setting = await this.getMySetting(userId);
+    const occurredAt = new Date().toISOString();
+
+    if (setting.webhookEnabled && setting.webhookUrl?.trim()) {
+      void this.sendWebhookNotification({
+        dedupeKey,
+        userId,
+        taskId,
+        eventType,
+        status,
+        statusLabel,
+        title,
+        content,
+        occurredAt,
+        webhookUrl: setting.webhookUrl.trim(),
+        webhookSecret: setting.webhookSecret?.trim() || null,
+        payload: webhookPayload,
+      });
+    }
+
+    if (!setting.browserEnabled) {
+      return null;
+    }
+
+    const createdEvent = await this.notificationEventRepository.create({
+      userId,
+      taskId,
+      eventType,
+      title,
+      content,
+      payload,
+    });
+
+    this.notificationEventsEmitter.emit(userId, createdEvent);
+
+    return createdEvent;
   }
 
   private signFeishu(secret: string, timestamp: string): string {

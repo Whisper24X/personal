@@ -15,16 +15,16 @@ const props = defineProps<{
   subtitle: string
   actionLoading: boolean
   canExecute: boolean
-  canReExecute: boolean
-  canAbortWorkflow: boolean
+  canCompleteTask: boolean
+  canReset: boolean
   canRemove?: boolean
   rightPanelVisible?: boolean
 }>()
 
 const emit = defineEmits<{
   execute: []
-  reExecute: []
-  abortWorkflow: []
+  completeTask: []
+  reset: []
   refresh: []
   remove: []
   toggleRightPanel: []
@@ -48,17 +48,17 @@ onBeforeUnmount(() => {
 })
 
 const showPrimaryActions = computed(() => {
-  return (
-    props.canExecute ||
-    props.canReExecute ||
-    (props.mode === 'workflow' && props.canAbortWorkflow)
-  )
+  return props.canExecute || props.canCompleteTask
+})
+
+const canShowMoreActions = computed(() => {
+  return props.canReset || Boolean(props.canRemove)
 })
 </script>
 
 <template>
   <section
-    class="border-border/50 bg-background/95 w-full shrink-0 rounded-xl border shadow-sm"
+    class="border-border/50 bg-background/95 w-full shrink-0 rounded-none border shadow-sm"
     aria-label="任务执行上下文"
   >
     <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
@@ -76,33 +76,23 @@ const showPrimaryActions = computed(() => {
 
       <div class="flex shrink-0 flex-wrap items-center gap-2">
         <button
-          v-if="props.mode === 'workflow' && props.canAbortWorkflow"
-          class="inline-flex h-8 items-center rounded-md border border-amber-500/40 bg-amber-500/10 px-3 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40 dark:text-amber-200"
-          :disabled="props.actionLoading"
-          type="button"
-          @click="emit('abortWorkflow')"
-        >
-          中止工作流
-        </button>
-        <button
           v-if="props.canExecute"
           class="inline-flex h-8 items-center rounded-md bg-primary px-3 text-[11px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="props.actionLoading"
           type="button"
           @click="emit('execute')"
         >
-          执行
+          开始
         </button>
         <button
-          v-if="props.canReExecute"
-          class="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-[11px] font-semibold text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+          v-if="props.canCompleteTask"
+          class="inline-flex h-8 items-center rounded-md bg-emerald-600 px-3 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="props.actionLoading"
           type="button"
-          @click="emit('reExecute')"
+          @click="emit('completeTask')"
         >
-          重新执行
+          完成
         </button>
-
         <span
           v-if="showPrimaryActions"
           class="bg-border/70 mx-0.5 hidden h-5 w-px shrink-0 self-center sm:block"
@@ -145,7 +135,7 @@ const showPrimaryActions = computed(() => {
             />
           </svg>
         </button>
-        <div ref="moreMenuRef" class="relative">
+        <div v-if="canShowMoreActions" ref="moreMenuRef" class="relative">
           <button
             class="flex size-8 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             type="button"
@@ -169,6 +159,25 @@ const showPrimaryActions = computed(() => {
               class="border-border bg-background absolute right-0 top-full z-30 mt-1 min-w-[120px] rounded-lg border py-1 shadow-lg"
             >
               <button
+                v-if="props.canReset"
+                class="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                :disabled="props.actionLoading"
+                type="button"
+                @click="
+                  moreMenuOpen = false;
+                  emit('reset');
+                "
+              >
+                <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fill-rule="evenodd"
+                    d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.364.363a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.112-.231Zm-1.624-8.3a.75.75 0 0 0-1.112-.231A5.5 5.5 0 0 0 3.576 5.36l.312.311H1.455a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V2.787a.75.75 0 0 0-1.5 0v2.033l-.364-.363A7 7 0 0 1 15.688 7.595a.75.75 0 0 0-2-4.471Z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                重置
+              </button>
+              <button
                 v-if="props.canRemove"
                 class="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 :disabled="props.actionLoading"
@@ -185,7 +194,7 @@ const showPrimaryActions = computed(() => {
                     clip-rule="evenodd"
                   />
                 </svg>
-                删除任务
+                删除
               </button>
             </div>
           </Transition>

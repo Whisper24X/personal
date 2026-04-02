@@ -9,11 +9,47 @@ import { TaskMessageDto, TaskMessageRole } from '../dto/task-message.dto';
 import { AgentCliAdapterRegistry } from '../agent-cli/agent-cli-adapter.registry';
 import { AgentCliAdapterId } from '../agent-cli/agent-cli-adapter.interface';
 
+export type ReadNodeOutputMessagesMetrics = {
+  outputPath: string | null;
+  fileBytes: number;
+  lineCount: number;
+  recordCount: number;
+  messageCount: number;
+  statMs: number;
+  cacheHit: boolean;
+  readFileMs: number;
+  splitLinesMs: number;
+  trimFilterMs: number;
+  parseMetadataMs: number;
+  buildMessagesMs: number;
+  totalMs: number;
+  error?: string;
+};
+
+export type ReadNodeOutputMessagesResult = {
+  messages: TaskMessageDto[];
+  metrics: ReadNodeOutputMessagesMetrics;
+};
+
+type CachedNodeOutputMessagesEntry = {
+  outputPath: string;
+  size: number;
+  mtimeMs: number;
+  lineCount: number;
+  recordCount: number;
+  messages: TaskMessageDto[];
+};
+
 @Injectable()
 export class TaskOutputService {
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
   );
+  private readonly maxNodeOutputMessageCacheEntries = 256;
+  private readonly nodeOutputMessageCache = new Map<
+    string,
+    CachedNodeOutputMessagesEntry
+  >();
 
   constructor(
     private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
@@ -35,6 +71,7 @@ export class TaskOutputService {
       recursive: true,
     });
     await fs.writeFile(outputPath, serializedOutput, 'utf-8');
+    this.invalidateNodeOutputMessageCache(outputPath);
 
     return outputPath;
   }
@@ -52,6 +89,7 @@ export class TaskOutputService {
       recursive: true,
     });
     await fs.writeFile(outputPath, '', 'utf-8');
+    this.invalidateNodeOutputMessageCache(outputPath);
   }
 
   async appendNodeOutputJsonlLines({
@@ -76,6 +114,7 @@ export class TaskOutputService {
       recursive: true,
     });
     await fs.appendFile(outputPath, `${normalizedLines.join('\n')}\n`, 'utf-8');
+    this.invalidateNodeOutputMessageCache(outputPath);
 
     return normalizedLines.length;
   }
@@ -102,6 +141,23 @@ export class TaskOutputService {
       node,
       lines,
     });
+  }
+
+  async removeNodeOutputFiles({
+    task,
+    node,
+  }: {
+    task: Task;
+    node: TaskNode;
+  }): Promise<void> {
+    const outputPath = this.resolveNodeOutputPath(task, node);
+    const outputDir = path.dirname(outputPath);
+
+    await fs.rm(outputDir, {
+      recursive: true,
+      force: true,
+    });
+    this.invalidateNodeOutputMessageCache(outputPath);
   }
 
   serializeNodeOutputJsonl(output: Record<string, unknown>): string {
@@ -168,18 +224,83 @@ export class TaskOutputService {
     task: Task,
     node: TaskNode,
   ): Promise<TaskMessageDto[]> {
+    const result = await this.readNodeOutputMessagesWithMetrics(task, node);
+    return result.messages;
+  }
+
+  async readNodeOutputMessagesWithMetrics(
+    task: Task,
+    node: TaskNode,
+  ): Promise<ReadNodeOutputMessagesResult> {
+    const totalStartedAt = process.hrtime.bigint();
     const outputPath = this.resolveReadableNodeOutputPath(task, node);
 
     if (!outputPath) {
-      return [];
+      return {
+        messages: [],
+        metrics: {
+          outputPath: null,
+          fileBytes: 0,
+          lineCount: 0,
+          recordCount: 0,
+          messageCount: 0,
+          statMs: 0,
+          cacheHit: false,
+          readFileMs: 0,
+          splitLinesMs: 0,
+          trimFilterMs: 0,
+          parseMetadataMs: 0,
+          buildMessagesMs: 0,
+          totalMs: this.elapsedMs(totalStartedAt),
+          error: 'missing_output_path',
+        },
+      };
     }
 
     try {
+      const statStartedAt = process.hrtime.bigint();
+      const stat = await fs.stat(outputPath);
+      const statMs = this.elapsedMs(statStartedAt);
+      const cachedEntry = this.nodeOutputMessageCache.get(outputPath);
+
+      if (
+        cachedEntry &&
+        cachedEntry.size === stat.size &&
+        cachedEntry.mtimeMs === stat.mtimeMs
+      ) {
+        this.touchNodeOutputMessageCache(outputPath, cachedEntry);
+
+        return {
+          messages: cachedEntry.messages,
+          metrics: {
+            outputPath,
+            fileBytes: cachedEntry.size,
+            lineCount: cachedEntry.lineCount,
+            recordCount: cachedEntry.recordCount,
+            messageCount: cachedEntry.messages.length,
+            statMs,
+            cacheHit: true,
+            readFileMs: 0,
+            splitLinesMs: 0,
+            trimFilterMs: 0,
+            parseMetadataMs: 0,
+            buildMessagesMs: 0,
+            totalMs: this.elapsedMs(totalStartedAt),
+          },
+        };
+      }
+
+      const readFileStartedAt = process.hrtime.bigint();
       const content = await fs.readFile(outputPath, 'utf-8');
-      const records = content
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
+      const readFileMs = this.elapsedMs(readFileStartedAt);
+
+      const splitLinesStartedAt = process.hrtime.bigint();
+      const lines = content.split(/\r?\n/);
+      const splitLinesMs = this.elapsedMs(splitLinesStartedAt);
+
+      const trimFilterStartedAt = process.hrtime.bigint();
+      const records = lines.map((line) => line.trim()).filter(Boolean);
+      const trimFilterMs = this.elapsedMs(trimFilterStartedAt);
 
       const fallbackTimeMs = (
         node.startedAt ??
@@ -189,12 +310,19 @@ export class TaskOutputService {
         new Date()
       ).getTime();
 
-      return records.flatMap((line, index) => {
-        const metadata = this.resolveNodeOutputMessageMetadata(
+      const parseMetadataStartedAt = process.hrtime.bigint();
+      const parsedRecords = records.map((line, index) => ({
+        line,
+        index,
+        metadata: this.resolveNodeOutputMessageMetadata(
           line,
           this.resolveAdapterId(node),
-        );
+        ),
+      }));
+      const parseMetadataMs = this.elapsedMs(parseMetadataStartedAt);
 
+      const buildMessagesStartedAt = process.hrtime.bigint();
+      const messages = parsedRecords.flatMap(({ line, index, metadata }) => {
         if (!metadata) {
           return [];
         }
@@ -212,8 +340,54 @@ export class TaskOutputService {
           },
         ];
       });
-    } catch {
-      return [];
+      const buildMessagesMs = this.elapsedMs(buildMessagesStartedAt);
+      this.setNodeOutputMessageCache({
+        outputPath,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        lineCount: lines.length,
+        recordCount: records.length,
+        messages,
+      });
+
+      return {
+        messages,
+        metrics: {
+          outputPath,
+          fileBytes: stat.size,
+          lineCount: lines.length,
+          recordCount: records.length,
+          messageCount: messages.length,
+          statMs,
+          cacheHit: false,
+          readFileMs,
+          splitLinesMs,
+          trimFilterMs,
+          parseMetadataMs,
+          buildMessagesMs,
+          totalMs: this.elapsedMs(totalStartedAt),
+        },
+      };
+    } catch (error) {
+      return {
+        messages: [],
+        metrics: {
+          outputPath,
+          fileBytes: 0,
+          lineCount: 0,
+          recordCount: 0,
+          messageCount: 0,
+          statMs: 0,
+          cacheHit: false,
+          readFileMs: 0,
+          splitLinesMs: 0,
+          trimFilterMs: 0,
+          parseMetadataMs: 0,
+          buildMessagesMs: 0,
+          totalMs: this.elapsedMs(totalStartedAt),
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
     }
   }
 
@@ -275,6 +449,43 @@ export class TaskOutputService {
       this.normalizeOptionalString(node.agentClioutput) ??
       this.resolveNodeOutputPath(task, node)
     );
+  }
+
+  private elapsedMs(startedAt: bigint): number {
+    return (
+      Math.round(
+        (Number(process.hrtime.bigint() - startedAt) / 1_000_000) * 10,
+      ) / 10
+    );
+  }
+
+  private invalidateNodeOutputMessageCache(outputPath: string): void {
+    this.nodeOutputMessageCache.delete(outputPath);
+  }
+
+  private touchNodeOutputMessageCache(
+    outputPath: string,
+    entry: CachedNodeOutputMessagesEntry,
+  ): void {
+    this.nodeOutputMessageCache.delete(outputPath);
+    this.nodeOutputMessageCache.set(outputPath, entry);
+  }
+
+  private setNodeOutputMessageCache(
+    entry: CachedNodeOutputMessagesEntry,
+  ): void {
+    this.nodeOutputMessageCache.delete(entry.outputPath);
+    this.nodeOutputMessageCache.set(entry.outputPath, entry);
+
+    while (
+      this.nodeOutputMessageCache.size > this.maxNodeOutputMessageCacheEntries
+    ) {
+      const oldestKey = this.nodeOutputMessageCache.keys().next().value;
+      if (!oldestKey) {
+        break;
+      }
+      this.nodeOutputMessageCache.delete(oldestKey);
+    }
   }
 
   private resolveNodeOutputMessageMetadata(

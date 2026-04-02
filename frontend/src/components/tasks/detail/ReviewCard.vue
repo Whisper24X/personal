@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Task, TaskNode } from '@/types/api/tasks'
+import type { TaskNode } from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskDetailReviewCard',
@@ -7,22 +7,19 @@ defineOptions({
 
 const props = defineProps<{
   node: TaskNode | null
-  statusLabelMap: Record<Task['status'], string>
+  statusLabelMap: Record<TaskNode['status'], string>
   canManageReview: boolean
-  canRepeatReviewNode?: boolean
-  repeatNodeLoading?: boolean
 }>()
 
 const emit = defineEmits<{
   approveNode: [node: TaskNode]
-  repeatNode: [node: TaskNode]
 }>()
 </script>
 
 <template>
   <section
     v-if="props.node"
-    class="w-full rounded-xl border border-amber-500/30 bg-amber-50/30 shadow-sm"
+    class="w-full rounded-none border border-amber-500/30 bg-amber-50/30 shadow-sm"
   >
     <div class="flex items-center justify-between gap-3 px-4 py-3">
       <div class="min-w-0">
@@ -33,15 +30,6 @@ const emit = defineEmits<{
       </div>
 
       <div class="flex shrink-0 items-center gap-2">
-        <button
-          v-if="props.canRepeatReviewNode"
-          class="h-8 rounded-md border border-border/60 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
-          type="button"
-          :disabled="props.repeatNodeLoading"
-          @click="emit('repeatNode', props.node)"
-        >
-          重新执行
-        </button>
         <button
           v-if="props.canManageReview"
           class="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground"

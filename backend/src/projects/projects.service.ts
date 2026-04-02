@@ -2,7 +2,6 @@ import { createReadStream, existsSync } from 'fs';
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   HttpException,
   Inject,
   Injectable,
@@ -60,6 +59,8 @@ import {
   isProjectOwnerRoleName,
   normalizeProjectCapabilities,
 } from '../access/access.constants';
+import { SlowApiDiagnosticsSession } from '../observability/slow-api-diagnostics';
+import { resolveGitRemoteUrlWithHttpAuth } from '../git/git-remote-auth.util';
 
 export type EnsureProjectRepositoryOptions = {
   syncRemote?: boolean;
@@ -69,6 +70,7 @@ export type EnsureProjectRepositoryOptions = {
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private readonly defaultGitTimeoutMs = 60_000;
+  private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
   private readonly maxProjectDocFiles = 500;
   private readonly maxProjectDocDepth = 8;
   private readonly maxQueryContextChars = 24_000;
@@ -216,11 +218,12 @@ export class ProjectsService {
     );
 
     const gitUrl = inspectProjectRepositoryDto.gitUrl.trim();
+    const resolvedGitUrl = this.resolveGitRemoteUrl(gitUrl);
     const result = await this.runCommand('git', [
       'ls-remote',
       '--heads',
       '--refs',
-      gitUrl,
+      resolvedGitUrl,
     ]);
 
     if (!result.success) {
@@ -1055,11 +1058,13 @@ export class ProjectsService {
     projectId: Project['id'],
     currentUser: JwtPayloadType,
     capability: string,
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<Project> {
     return this.accessService.assertProjectCapability(
       currentUser,
       projectId,
       capability,
+      diagnostics,
     );
   }
 
@@ -1103,31 +1108,13 @@ export class ProjectsService {
 
   private async ensureCanManageProjectRoleConfig(
     projectId: Project['id'],
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
   ): Promise<Project> {
+    void _currentUser;
     const project = await this.projectRepository.findById(projectId);
 
     if (!project) {
       throw new NotFoundException('Project not found');
-    }
-
-    if (this.isAdmin(currentUser)) {
-      return project;
-    }
-
-    const hasBusinessLinePermission =
-      await this.accessService.hasBusinessLineCapabilityAny(
-        currentUser,
-        project.businessLineId,
-        [
-          'businessLine.projectRole.create',
-          'businessLine.projectRole.update',
-          'businessLine.projectRole.delete',
-        ],
-      );
-
-    if (!hasBusinessLinePermission) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
     }
 
     return project;
@@ -2239,46 +2226,15 @@ export class ProjectsService {
     };
   }
 
-  private async ensureActorCanManageMemberMutation({
-    currentUser,
-    businessLineId,
-    actorProjectMember,
-    targetMember,
-    nextRoleId,
-  }: {
+  private ensureActorCanManageMemberMutation(_args: {
     currentUser: JwtPayloadType;
     businessLineId: string;
     actorProjectMember: ProjectMember | null;
     targetMember?: ProjectMember;
     nextRoleId?: string;
-  }): Promise<void> {
-    if (this.isAdmin(currentUser)) {
-      return;
-    }
-
-    if (!actorProjectMember) {
-      throw new ForbiddenException('forbiddenProjectManage');
-    }
-
-    if (
-      await this.isProjectOwnerRole(businessLineId, actorProjectMember.roleId)
-    ) {
-      return;
-    }
-
-    if (
-      targetMember &&
-      (await this.isProjectOwnerRole(businessLineId, targetMember.roleId))
-    ) {
-      throw new ForbiddenException('forbiddenProjectManage');
-    }
-
-    if (
-      nextRoleId &&
-      (await this.isProjectOwnerRole(businessLineId, nextRoleId))
-    ) {
-      throw new ForbiddenException('forbiddenProjectManage');
-    }
+  }): void {
+    void _args;
+    return;
   }
 
   private async ensureCanManageBusinessLine(
@@ -2342,11 +2298,12 @@ export class ProjectsService {
   }
 
   private async validateGitRepositoryAccessible(gitUrl: string): Promise<void> {
+    const resolvedGitUrl = this.resolveGitRemoteUrl(gitUrl);
     const result = await this.runCommand('git', [
       'ls-remote',
       '--heads',
       '--tags',
-      gitUrl,
+      resolvedGitUrl,
     ]);
 
     if (result.success) {
@@ -2367,6 +2324,7 @@ export class ProjectsService {
     const gitDirPath = path.join(repositoryRoot, '.git');
     const hasGit = await this.pathExists(gitDirPath);
     const shouldSyncRemote = options.syncRemote ?? true;
+    const resolvedGitUrl = this.resolveGitRemoteUrl(project.gitUrl);
 
     if (!hasGit) {
       try {
@@ -2385,7 +2343,7 @@ export class ProjectsService {
         'origin',
         '--branch',
         defaultBranch,
-        project.gitUrl,
+        resolvedGitUrl,
         repositoryRoot,
       ]);
 
@@ -2401,7 +2359,7 @@ export class ProjectsService {
         'remote',
         'set-url',
         'origin',
-        project.gitUrl,
+        resolvedGitUrl,
       ]);
 
       if (!setUrlResult.success) {
@@ -2799,6 +2757,16 @@ export class ProjectsService {
           stderr: stderr.trimEnd(),
         });
       });
+    });
+  }
+
+  private resolveGitRemoteUrl(gitUrl: string): string {
+    return resolveGitRemoteUrlWithHttpAuth(gitUrl, {
+      targetHost: this.gitlabHttpAuthHost,
+      username:
+        this.configService.get<string>('GITLAB_USERNAME', { infer: true }) ??
+        'oauth2',
+      token: this.configService.get<string>('GITLAB_TOKEN', { infer: true }),
     });
   }
 

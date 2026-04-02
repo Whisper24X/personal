@@ -1,8 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { NullableType } from '../../../../../utils/types/nullable.type';
+import {
+  buildPoolSnapshotDetails,
+  RepositoryDiagnosticsOptions,
+  readTypeOrmPoolSnapshot,
+} from '../../../../../observability/repository-diagnostics';
 import { Task } from '../../../../domain/task';
 import { TaskStatus } from '../../../../dto/task-status.enum';
 import { TaskRepository } from '../../task.repository';
@@ -14,6 +19,8 @@ export class TaskRelationalRepository implements TaskRepository {
   constructor(
     @InjectRepository(TaskEntity)
     private readonly taskRepository: Repository<TaskEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(
@@ -31,15 +38,89 @@ export class TaskRelationalRepository implements TaskRepository {
     return TaskMapper.toDomain(entity);
   }
 
-  async findById(id: Task['id']): Promise<NullableType<Task>> {
-    const entity = await this.taskRepository.findOne({
-      where: {
-        id,
-        deletedAt: IsNull(),
-      },
-    });
+  async findById(
+    id: Task['id'],
+    options?: RepositoryDiagnosticsOptions,
+  ): Promise<NullableType<Task>> {
+    if (!options?.diagnostics) {
+      const entity = await this.taskRepository.findOne({
+        where: {
+          id,
+          deletedAt: IsNull(),
+        },
+      });
 
-    return entity ? TaskMapper.toDomain(entity) : null;
+      return entity ? TaskMapper.toDomain(entity) : null;
+    }
+
+    const metricPrefix = options.metricPrefix ?? 'taskLookup';
+    const diagnostics = options.diagnostics;
+    diagnostics.add(
+      buildPoolSnapshotDetails(
+        metricPrefix,
+        'BeforeAcquire',
+        readTypeOrmPoolSnapshot(this.dataSource),
+      ),
+    );
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    let connectionAcquired = false;
+
+    try {
+      await diagnostics.measure(
+        `${metricPrefix}AcquireConnection`,
+        async () => {
+          await queryRunner.connect();
+          connectionAcquired = true;
+        },
+        () =>
+          buildPoolSnapshotDetails(
+            metricPrefix,
+            'AfterAcquire',
+            readTypeOrmPoolSnapshot(this.dataSource),
+          ),
+      );
+
+      const entity = await diagnostics.measure(
+        `${metricPrefix}FindOne`,
+        () =>
+          queryRunner.manager.getRepository(TaskEntity).findOne({
+            where: {
+              id,
+              deletedAt: IsNull(),
+            },
+          }),
+        (result) => ({
+          [`${metricPrefix}EntityFound`]: Boolean(result),
+          ...buildPoolSnapshotDetails(
+            metricPrefix,
+            'AfterQuery',
+            readTypeOrmPoolSnapshot(this.dataSource),
+          ),
+        }),
+      );
+
+      if (!entity) {
+        return null;
+      }
+
+      return diagnostics.measure(`${metricPrefix}Map`, () =>
+        TaskMapper.toDomain(entity),
+      );
+    } finally {
+      if (connectionAcquired && !queryRunner.isReleased) {
+        await diagnostics.measure(
+          `${metricPrefix}ReleaseConnection`,
+          () => queryRunner.release(),
+          () =>
+            buildPoolSnapshotDetails(
+              metricPrefix,
+              'AfterRelease',
+              readTypeOrmPoolSnapshot(this.dataSource),
+            ),
+        );
+      }
+    }
   }
 
   async findByGoalId(goalId: string): Promise<Task[]> {
