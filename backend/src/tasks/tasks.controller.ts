@@ -717,7 +717,15 @@ export class TasksController {
         },
       );
 
+      const heartbeatInterval = setInterval(() => {
+        subscriber.next({
+          type: 'heartbeat',
+          data: '',
+        } as MessageEvent);
+      }, 30_000);
+
       return () => {
+        clearInterval(heartbeatInterval);
         unsubscribe();
         unsubscribeWorkspace();
       };

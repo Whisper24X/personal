@@ -176,7 +176,7 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = this.resolveBaseBranch(task, query.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(worktreePath, task, query.baseBranch);
     const [diffFilesResult, branchResult] = await Promise.all([
       this.runGitCommand(
         worktreePath,
@@ -231,7 +231,7 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = this.resolveBaseBranch(task, query.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(worktreePath, task, query.baseBranch);
     const args = this.withGitUtf8Paths([
       'diff',
       '--no-color',
@@ -586,7 +586,7 @@ export class TaskGitService {
       taskId,
       currentUser,
     );
-    const baseBranch = this.resolveBaseBranch(task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(worktreePath, task, payload.baseBranch);
 
     const result = await this.runGitCommand(worktreePath, [
       'merge',
@@ -619,7 +619,7 @@ export class TaskGitService {
       taskId,
       currentUser,
     );
-    const baseBranch = this.resolveBaseBranch(task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(worktreePath, task, payload.baseBranch);
 
     const result = await this.runGitCommand(worktreePath, [
       'rebase',
@@ -704,7 +704,7 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = this.resolveBaseBranch(task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(worktreePath, task, payload.baseBranch);
 
     const [remoteUrlResult, branchResult] = await Promise.all([
       this.runGitCommand(worktreePath, [
@@ -1335,12 +1335,27 @@ export class TaskGitService {
     return Array.from(new Set(normalizedFiles));
   }
 
-  private resolveBaseBranch(task: Task, requestedBaseBranch?: string): string {
+  private async resolveBaseBranch(
+    worktreePath: string,
+    task: Task,
+    requestedBaseBranch?: string,
+  ): Promise<string> {
     const baseBranch =
-      requestedBaseBranch?.trim() || task.gitBaseBranch?.trim();
+      requestedBaseBranch?.trim() || task.gitBaseBranch?.trim() || 'main';
 
-    if (!baseBranch) {
-      return 'main';
+    if (baseBranch.startsWith('origin/')) {
+      return baseBranch;
+    }
+
+    const remoteRef = `origin/${baseBranch}`;
+    const remoteResult = await this.runGitCommand(worktreePath, [
+      'rev-parse',
+      '--verify',
+      remoteRef,
+    ]);
+
+    if (remoteResult.success) {
+      return remoteRef;
     }
 
     return baseBranch;
