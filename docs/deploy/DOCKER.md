@@ -79,3 +79,9 @@ pnpm run docker:clean
 - `backend/ssh/id_rsa` 是否存在
 - `backend/ssh/known_hosts` 是否存在
 - 构建机是否具备访问私有依赖仓库的权限
+
+如果是在 Windows 上构建，还需要额外检查：
+
+- `backend/ssh/id_rsa` 是否被 Git 或编辑器转换成了 `CRLF` 换行
+- `backend/ssh/id_rsa` 是否是 OpenSSH 私钥，而不是 PuTTY 的 `.ppk` 格式
+- 可以先执行 `ssh-keygen -lf backend/ssh/id_rsa` 验证私钥是否能被本机 OpenSSH 正常识别
