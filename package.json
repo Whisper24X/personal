@@ -22,6 +22,13 @@
     "docker:logs": "docker compose logs -f",
     "docker:restart": "docker compose restart",
     "docker:clean": "docker compose down -v",
+    "docker:up:windows": "docker compose -f docker-compose.windows.yml up -d",
+    "docker:up:build:windows": "docker compose -f docker-compose.windows.yml up -d --build",
+    "docker:build:windows": "docker compose -f docker-compose.windows.yml build",
+    "docker:down:windows": "docker compose -f docker-compose.windows.yml down",
+    "docker:logs:windows": "docker compose -f docker-compose.windows.yml logs -f",
+    "docker:restart:windows": "docker compose -f docker-compose.windows.yml restart",
+    "docker:clean:windows": "docker compose -f docker-compose.windows.yml down -v",
     "clean": "rm -rf frontend/node_modules frontend/dist backend/node_modules backend/dist"
   },
   "devDependencies": {

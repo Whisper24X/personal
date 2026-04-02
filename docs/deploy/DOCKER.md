@@ -9,7 +9,9 @@
 
 ## 2. 构建并启动
 
-项目统一使用 [docker-compose.yml](./docker-compose.yml) 进行本地构建和运行。
+Linux / macOS 默认使用 [docker-compose.yml](../../docker-compose.yml)。
+
+Windows PowerShell 使用 [docker-compose.windows.yml](../../docker-compose.windows.yml)。
 
 ```bash
 NODE_ENV=development pnpm run docker:up:build
@@ -45,6 +47,20 @@ NODE_ENV=development pnpm run docker:build
 NODE_ENV=test pnpm run docker:build
 ```
 
+Windows PowerShell:
+
+```powershell
+$env:NODE_ENV = "development"
+pnpm run docker:up:build:windows
+```
+
+如果只想预先构建镜像：
+
+```powershell
+$env:NODE_ENV = "development"
+pnpm run docker:build:windows
+```
+
 ## 3. 常用运行命令
 
 ```bash
@@ -52,6 +68,15 @@ pnpm run docker:down
 pnpm run docker:logs
 pnpm run docker:restart
 pnpm run docker:clean
+```
+
+Windows PowerShell:
+
+```powershell
+pnpm run docker:down:windows
+pnpm run docker:logs:windows
+pnpm run docker:restart:windows
+pnpm run docker:clean:windows
 ```
 
 说明：
@@ -90,12 +115,18 @@ Windows PowerShell:
 $env:GITLAB_USERNAME = "oauth2"
 $env:GITLAB_TOKEN = "your_gitlab_token"
 $env:NODE_ENV = "development"
-pnpm run docker:up:build
+pnpm run docker:up:build:windows
 ```
 
-## 5. 常见问题
+## 5. Windows 说明
 
-### 5.1 后端镜像构建失败
+- `docker-compose.windows.yml` 仅面向 Docker Desktop 的 Linux containers 模式。
+- 该文件将 `AINATIVE_DATA_ROOT_DIR` 固定为容器内路径 `/usr/src/tmp`，避免 PowerShell 下 `${PWD}` 展开后的 Windows 盘符路径触发 `too many colons`。
+- 如果后端后续需要把容器内工作目录再次透传给宿主机 Docker 做 bind mount，Windows 原生路径语义仍可能与 Linux 版不一致；这种场景优先使用 WSL2 运行 Compose。
+
+## 6. 常见问题
+
+### 6.1 后端镜像构建失败
 
 优先检查：
 
