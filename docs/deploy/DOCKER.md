@@ -12,14 +12,14 @@
 项目统一使用 [docker-compose.yml](./docker-compose.yml) 进行本地构建和运行。
 
 ```bash
-NODE_ENV=development pnpm run docker
+NODE_ENV=development pnpm run docker:up:build
 ```
 
 必须显式设置 `NODE_ENV`。Compose 会加载 `backend/.env.${NODE_ENV}`，并把同一个 `NODE_ENV` 传给后端容器；如果没有这个环境变量，`docker compose` 会直接报错。
 
 ```bash
-NODE_ENV=production pnpm run docker
-NODE_ENV=local pnpm run docker
+NODE_ENV=production pnpm run docker:up:build
+NODE_ENV=local pnpm run docker:up:build
 ```
 
 该命令会执行：
@@ -63,12 +63,35 @@ pnpm run docker:clean
 
 ## 4. 后端镜像构建注意事项
 
-后端镜像构建依赖以下文件：
+后端镜像构建需要通过 GitLab HTTPS token 拉取私有 Go 依赖。
 
-- `backend/ssh/id_rsa`
-- `backend/ssh/known_hosts`
+构建前请先在当前 shell 中设置以下环境变量：
 
-如果缺少这些文件，后端镜像构建会直接失败。
+- `GITLAB_USERNAME`
+- `GITLAB_TOKEN`
+
+推荐约定：
+
+- 使用 Personal Access Token 时，`GITLAB_USERNAME=oauth2`
+- 使用 Deploy Token 时，`GITLAB_USERNAME` 使用 GitLab 提供的 deploy token 用户名
+- `GITLAB_TOKEN` 至少需要具备私有依赖仓库的读取权限，通常为 `read_repository`
+
+Linux / macOS:
+
+```bash
+export GITLAB_USERNAME=oauth2
+export GITLAB_TOKEN=your_gitlab_token
+NODE_ENV=development pnpm run docker:up:build
+```
+
+Windows PowerShell:
+
+```powershell
+$env:GITLAB_USERNAME = "oauth2"
+$env:GITLAB_TOKEN = "your_gitlab_token"
+$env:NODE_ENV = "development"
+pnpm run docker:up:build
+```
 
 ## 5. 常见问题
 
@@ -76,12 +99,8 @@ pnpm run docker:clean
 
 优先检查：
 
-- `backend/ssh/id_rsa` 是否存在
-- `backend/ssh/known_hosts` 是否存在
-- 构建机是否具备访问私有依赖仓库的权限
-
-如果是在 Windows 上构建，还需要额外检查：
-
-- `backend/ssh/id_rsa` 是否被 Git 或编辑器转换成了 `CRLF` 换行
-- `backend/ssh/id_rsa` 是否是 OpenSSH 私钥，而不是 PuTTY 的 `.ppk` 格式
-- 可以先执行 `ssh-keygen -lf backend/ssh/id_rsa` 验证私钥是否能被本机 OpenSSH 正常识别
+- 当前 shell 是否已设置 `GITLAB_USERNAME` 和 `GITLAB_TOKEN`
+- Personal Access Token 是否配合 `GITLAB_USERNAME=oauth2`
+- Deploy Token 是否使用了 GitLab 提供的专用用户名
+- Token 是否具备私有依赖仓库的读取权限
+- 构建机是否具备访问 `gitlab.yc345.tv` 的网络权限

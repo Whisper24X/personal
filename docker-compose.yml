@@ -51,6 +51,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        GITLAB_USERNAME: oauth2
+        GITLAB_TOKEN: 7euWM1mwZw2C3P6FQ_l9Z286MQp1OjlnCA.01.0y1txlsoy
     container_name: ainative-backend
     restart: unless-stopped
     env_file:
