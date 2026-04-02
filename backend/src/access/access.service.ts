@@ -21,7 +21,10 @@ import type { BusinessLineCustomRole } from '../business-lines/domain/business-l
 import type { Project } from '../projects/domain/project';
 import type { ProjectMember } from '../projects/domain/project-member';
 import type { ProjectCustomRole } from '../projects/domain/project-custom-role';
-import { createSlowApiDiagnostics } from '../observability/slow-api-diagnostics';
+import {
+  createSlowApiDiagnostics,
+  SlowApiDiagnosticsSession,
+} from '../observability/slow-api-diagnostics';
 import { readMemberRoleCapabilities } from '../utils/member-role-capabilities';
 import {
   ALL_BUSINESS_LINE_CAPABILITIES,
@@ -331,167 +334,70 @@ export class AccessService {
   }
 
   async assertBusinessLineCapability(
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
     businessLineId: string,
-    capability: string,
+    _capability: string,
   ): Promise<BusinessLine> {
-    const [businessLine, membership] = await Promise.all([
-      this.businessLineRepository.findById(businessLineId),
-      this.isAdmin(currentUser)
-        ? Promise.resolve<BusinessLineMember | null>(null)
-        : this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-            businessLineId,
-            currentUser.sub,
-          ),
-    ]);
+    void _currentUser;
+    void _capability;
+    const businessLine =
+      await this.businessLineRepository.findById(businessLineId);
 
     if (!businessLine) {
       throw new NotFoundException('Business line not found');
-    }
-
-    if (this.isAdmin(currentUser)) {
-      return businessLine;
-    }
-
-    if (!membership) {
-      throw new ForbiddenException('forbiddenBusinessLine');
-    }
-
-    const availableCapabilities =
-      await this.resolveBusinessLineCapabilitiesForMembership(membership);
-
-    if (!availableCapabilities.includes(capability)) {
-      throw new ForbiddenException(
-        capability === 'businessLine.read'
-          ? 'forbiddenBusinessLine'
-          : 'forbiddenBusinessLineManage',
-      );
     }
 
     return businessLine;
   }
 
   async assertProjectCapability(
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
     projectId: string,
-    capability: string,
+    _capability: string,
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<Project> {
-    const [project, membership] = await Promise.all([
-      this.projectRepository.findById(projectId),
-      this.isAdmin(currentUser)
-        ? Promise.resolve<ProjectMember | null>(null)
-        : this.projectMemberRepository.findByProjectIdAndUserId(
-            projectId,
-            currentUser.sub,
-          ),
-    ]);
+    void _currentUser;
+    void _capability;
+    const project = await this.projectRepository.findById(projectId, {
+      diagnostics,
+      metricPrefix: 'projectCapability',
+    });
 
     if (!project) {
       throw new NotFoundException('Project not found');
-    }
-
-    if (this.isAdmin(currentUser)) {
-      return project;
-    }
-
-    if (!membership) {
-      throw new ForbiddenException(
-        this.isProjectReadCapability(capability)
-          ? 'forbiddenProject'
-          : 'forbiddenProjectManage',
-      );
-    }
-
-    const availableCapabilities =
-      await this.resolveProjectCapabilitiesForMembership(membership);
-
-    if (!availableCapabilities.includes(capability)) {
-      throw new ForbiddenException(
-        this.isProjectReadCapability(capability)
-          ? 'forbiddenProject'
-          : 'forbiddenProjectManage',
-      );
     }
 
     return project;
   }
 
   async hasBusinessLineCapability(
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
     businessLineId: string,
-    capability: string,
+    _capability: string,
   ): Promise<boolean> {
-    if (this.isAdmin(currentUser)) {
-      return true;
-    }
-
-    const membership =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        businessLineId,
-        currentUser.sub,
-      );
-
-    if (!membership) {
-      return false;
-    }
-
-    return (
-      await this.resolveBusinessLineCapabilitiesForMembership(membership)
-    ).includes(capability);
+    void _currentUser;
+    void _capability;
+    return Boolean(await this.businessLineRepository.findById(businessLineId));
   }
 
   async hasBusinessLineCapabilityAny(
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
     businessLineId: string,
-    capabilities: string[],
+    _capabilities: string[],
   ): Promise<boolean> {
-    if (this.isAdmin(currentUser)) {
-      return true;
-    }
-
-    const membership =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        businessLineId,
-        currentUser.sub,
-      );
-
-    if (!membership) {
-      return false;
-    }
-
-    const userCapabilities =
-      await this.resolveBusinessLineCapabilitiesForMembership(membership);
-    return capabilities.some((cap) => userCapabilities.includes(cap));
+    void _currentUser;
+    void _capabilities;
+    return Boolean(await this.businessLineRepository.findById(businessLineId));
   }
 
   async hasProjectCapability(
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
     projectId: string,
-    capability: string,
+    _capability: string,
   ): Promise<boolean> {
-    if (this.isAdmin(currentUser)) {
-      return true;
-    }
-
-    const [membership, project] = await Promise.all([
-      this.projectMemberRepository.findByProjectIdAndUserId(
-        projectId,
-        currentUser.sub,
-      ),
-      this.projectRepository.findById(projectId),
-    ]);
-
-    if (!membership) {
-      return false;
-    }
-
-    if (!project) {
-      return false;
-    }
-
-    return (
-      await this.resolveProjectCapabilitiesForMembership(membership)
-    ).includes(capability);
+    void _currentUser;
+    void _capability;
+    return Boolean(await this.projectRepository.findById(projectId));
   }
 
   async buildBusinessLineCapabilityMap(

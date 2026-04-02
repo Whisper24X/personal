@@ -16,23 +16,27 @@ import {
   TaskWorkspaceTreeDto,
   TaskWorkspaceTreeQueryDto,
 } from './dto/task-workspace.dto';
-import { Task } from './domain/task';
 import { TaskRuntimeService } from './task-runtime.service';
 import { TasksService } from './tasks.service';
 import {
   SlowApiDiagnosticsSession,
   createSlowApiDiagnostics,
 } from '../observability/slow-api-diagnostics';
+import { TaskWorkspaceContextCacheService } from './application/task-workspace-context-cache.service';
+import type { ResolvedWorkspaceContext } from './application/task-workspace-context-cache.service';
 
 @Injectable()
 export class TaskWorkspaceService {
   private readonly maxFileReadBytes = 1024 * 1024;
   private readonly maxTextPreviewBytes = 256 * 1024;
   private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
+  private readonly workspaceContextCacheTtlMs = 15_000;
+  private readonly maxWorkspaceContextCacheEntries = 256;
 
   constructor(
     private readonly tasksService: TasksService,
     private readonly taskRuntimeService: TaskRuntimeService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
   ) {}
 
   async getWorkspaceTree(
@@ -64,28 +68,20 @@ export class TaskWorkspaceService {
         }),
       );
 
-      const stat = await diagnostics.measure(
-        'stat',
-        () => fs.stat(resolved.targetPath).catch(() => null),
-        (result) => ({
-          pathExists: Boolean(result),
-          isDirectory: result?.isDirectory() ?? false,
-        }),
-      );
-      if (!stat) {
-        throw new NotFoundException('Workspace path not found');
-      }
-      if (!stat.isDirectory()) {
-        throw new BadRequestException('Workspace path must be a directory');
-      }
-
       const dirEntries = await diagnostics.measure(
         'readdir',
-        () =>
-          fs.readdir(resolved.targetPath, {
-            withFileTypes: true,
-          }),
+        async () => {
+          try {
+            return await fs.readdir(resolved.targetPath, {
+              withFileTypes: true,
+            });
+          } catch (error) {
+            this.rethrowWorkspaceTreeReadError(error);
+          }
+        },
         (result) => ({
+          pathExists: true,
+          isDirectory: true,
           entryCount: result.length,
         }),
       );
@@ -328,7 +324,53 @@ export class TaskWorkspaceService {
     taskId: string,
     currentUser: JwtPayloadType,
     diagnostics?: SlowApiDiagnosticsSession,
-  ): Promise<{ task: Task; workspaceRoot: string }> {
+  ): Promise<ResolvedWorkspaceContext> {
+    const now = Date.now();
+    const cachedEntry = this.taskWorkspaceContextCache.get(
+      taskId,
+      currentUser.sub,
+      now,
+    );
+
+    if (cachedEntry) {
+      diagnostics?.add({ workspaceContextCacheHit: true });
+      return cachedEntry.promise;
+    }
+
+    this.taskWorkspaceContextCache.delete(taskId, currentUser.sub);
+    diagnostics?.add({ workspaceContextCacheHit: false });
+    this.taskWorkspaceContextCache.pruneExpired(
+      now,
+      this.maxWorkspaceContextCacheEntries,
+    );
+
+    const promise = this.loadWorkspaceContext(taskId, currentUser, diagnostics);
+    this.taskWorkspaceContextCache.begin(taskId, currentUser.sub, promise);
+
+    try {
+      const context = await promise;
+      this.taskWorkspaceContextCache.finalize(
+        taskId,
+        currentUser.sub,
+        promise,
+        Date.now() + this.workspaceContextCacheTtlMs,
+      );
+      return context;
+    } catch (error) {
+      this.taskWorkspaceContextCache.delete(taskId, currentUser.sub, promise);
+      throw error;
+    }
+  }
+
+  invalidateWorkspaceContext(taskId: string): void {
+    this.taskWorkspaceContextCache.invalidateTask(taskId);
+  }
+
+  private async loadWorkspaceContext(
+    taskId: string,
+    currentUser: JwtPayloadType,
+    diagnostics?: SlowApiDiagnosticsSession,
+  ): Promise<ResolvedWorkspaceContext> {
     const { task, project } = diagnostics
       ? await diagnostics.measure(
           'access',
@@ -385,10 +427,15 @@ export class TaskWorkspaceService {
     relativePath?: string;
   }): Promise<{ targetPath: string; cwd: string }> {
     const normalizedRelativePath = this.normalizeRelativePath(relativePath);
-    const rawTargetPath =
-      normalizedRelativePath === '.'
-        ? workspaceRoot
-        : path.resolve(workspaceRoot, normalizedRelativePath);
+
+    if (normalizedRelativePath === '.') {
+      return {
+        targetPath: workspaceRoot,
+        cwd: '.',
+      };
+    }
+
+    const rawTargetPath = path.resolve(workspaceRoot, normalizedRelativePath);
 
     const targetPath = await fs.realpath(rawTargetPath).catch(() => {
       throw new NotFoundException('Workspace path does not exist');
@@ -400,6 +447,20 @@ export class TaskWorkspaceService {
       targetPath,
       cwd: this.toRelativePath(workspaceRoot, targetPath),
     };
+  }
+
+  private rethrowWorkspaceTreeReadError(error: unknown): never {
+    const errorCode = (error as NodeJS.ErrnoException | undefined)?.code;
+
+    if (errorCode === 'ENOENT') {
+      throw new NotFoundException('Workspace path not found');
+    }
+
+    if (errorCode === 'ENOTDIR') {
+      throw new BadRequestException('Workspace path must be a directory');
+    }
+
+    throw error;
   }
 
   private normalizeRelativePath(value?: string): string {

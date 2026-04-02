@@ -110,7 +110,11 @@ export class TaskAccessService {
     const task = diagnostics
       ? await diagnostics.measure(
           'taskLookup',
-          () => this.taskRepository.findById(taskId),
+          () =>
+            this.taskRepository.findById(taskId, {
+              diagnostics,
+              metricPrefix: 'taskLookup',
+            }),
           (result) => ({
             taskFound: Boolean(result),
             taskProjectId: result?.projectId ?? null,
@@ -140,6 +144,7 @@ export class TaskAccessService {
             task.projectId,
             currentUser,
             capability,
+            diagnostics,
           ),
         (result) => ({
           projectId: result.id,

@@ -1,8 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { Brackets, DataSource, In, IsNull, Repository } from 'typeorm';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { NullableType } from '../../../../../utils/types/nullable.type';
+import {
+  buildPoolSnapshotDetails,
+  RepositoryDiagnosticsOptions,
+  readTypeOrmPoolSnapshot,
+} from '../../../../../observability/repository-diagnostics';
 import { Project } from '../../../../domain/project';
 import { ProjectRepository } from '../../project.repository';
 import { ProjectEntity } from '../entities/project.entity';
@@ -13,6 +18,8 @@ export class ProjectRelationalRepository implements ProjectRepository {
   constructor(
     @InjectRepository(ProjectEntity)
     private readonly projectRepository: Repository<ProjectEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(
@@ -30,15 +37,89 @@ export class ProjectRelationalRepository implements ProjectRepository {
     return ProjectMapper.toDomain(entity);
   }
 
-  async findById(id: Project['id']): Promise<NullableType<Project>> {
-    const entity = await this.projectRepository.findOne({
-      where: {
-        id,
-        deletedAt: IsNull(),
-      },
-    });
+  async findById(
+    id: Project['id'],
+    options?: RepositoryDiagnosticsOptions,
+  ): Promise<NullableType<Project>> {
+    if (!options?.diagnostics) {
+      const entity = await this.projectRepository.findOne({
+        where: {
+          id,
+          deletedAt: IsNull(),
+        },
+      });
 
-    return entity ? ProjectMapper.toDomain(entity) : null;
+      return entity ? ProjectMapper.toDomain(entity) : null;
+    }
+
+    const metricPrefix = options.metricPrefix ?? 'projectLookup';
+    const diagnostics = options.diagnostics;
+    diagnostics.add(
+      buildPoolSnapshotDetails(
+        metricPrefix,
+        'BeforeAcquire',
+        readTypeOrmPoolSnapshot(this.dataSource),
+      ),
+    );
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    let connectionAcquired = false;
+
+    try {
+      await diagnostics.measure(
+        `${metricPrefix}AcquireConnection`,
+        async () => {
+          await queryRunner.connect();
+          connectionAcquired = true;
+        },
+        () =>
+          buildPoolSnapshotDetails(
+            metricPrefix,
+            'AfterAcquire',
+            readTypeOrmPoolSnapshot(this.dataSource),
+          ),
+      );
+
+      const entity = await diagnostics.measure(
+        `${metricPrefix}FindOne`,
+        () =>
+          queryRunner.manager.getRepository(ProjectEntity).findOne({
+            where: {
+              id,
+              deletedAt: IsNull(),
+            },
+          }),
+        (result) => ({
+          [`${metricPrefix}EntityFound`]: Boolean(result),
+          ...buildPoolSnapshotDetails(
+            metricPrefix,
+            'AfterQuery',
+            readTypeOrmPoolSnapshot(this.dataSource),
+          ),
+        }),
+      );
+
+      if (!entity) {
+        return null;
+      }
+
+      return diagnostics.measure(`${metricPrefix}Map`, () =>
+        ProjectMapper.toDomain(entity),
+      );
+    } finally {
+      if (connectionAcquired && !queryRunner.isReleased) {
+        await diagnostics.measure(
+          `${metricPrefix}ReleaseConnection`,
+          () => queryRunner.release(),
+          () =>
+            buildPoolSnapshotDetails(
+              metricPrefix,
+              'AfterRelease',
+              readTypeOrmPoolSnapshot(this.dataSource),
+            ),
+        );
+      }
+    }
   }
 
   async findByIds(ids: Project['id'][]): Promise<Project[]> {

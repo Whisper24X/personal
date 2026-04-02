@@ -30,6 +30,7 @@ import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.serv
 import { TaskQueryService } from './task-query.service';
 import { TaskAccessService } from './task-access.service';
 import { TaskTitleSuggestionService } from './task-title-suggestion.service';
+import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
@@ -51,6 +52,7 @@ export class TaskCommandService {
     private readonly taskAccessService: TaskAccessService,
     private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
   ) {}
 
   async create(
@@ -364,6 +366,7 @@ export class TaskCommandService {
     const effectiveTask = updatedTask ?? task;
 
     if (updatePayload.gitWorktree !== undefined) {
+      this.taskWorkspaceContextCache.invalidateTask(task.id);
       await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
     }
 
@@ -475,6 +478,7 @@ export class TaskCommandService {
     );
 
     await this.taskRepository.remove(task.id);
+    this.taskWorkspaceContextCache.invalidateTask(task.id);
 
     if (task.projectId) {
       const project = await this.taskAccessService

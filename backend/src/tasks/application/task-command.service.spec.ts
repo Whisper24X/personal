@@ -124,6 +124,9 @@ const createService = () => {
   const taskWorkspaceWatchService = {
     syncTaskWatch: jest.fn().mockResolvedValue(undefined),
   };
+  const taskWorkspaceContextCache = {
+    invalidateTask: jest.fn(),
+  };
 
   const service = new TaskCommandService(
     taskRepository as never,
@@ -138,6 +141,7 @@ const createService = () => {
     taskAccessService as never,
     taskTitleSuggestionService as never,
     taskWorkspaceWatchService as never,
+    taskWorkspaceContextCache as never,
   );
 
   return {
@@ -150,6 +154,7 @@ const createService = () => {
     taskConfigResolver,
     projectsService,
     taskRuntimeOrchestrator,
+    taskWorkspaceContextCache,
   };
 };
 
@@ -388,8 +393,13 @@ describe('TaskCommandService.create', () => {
 
 describe('TaskCommandService.remove', () => {
   it('should clean up task runtime before soft deleting the task', async () => {
-    const { service, taskRepository, taskRuntimeService, taskAccessService } =
-      createService();
+    const {
+      service,
+      taskRepository,
+      taskRuntimeService,
+      taskAccessService,
+      taskWorkspaceContextCache,
+    } = createService();
     const task = createTask();
     const project = createProject();
     const currentUser = createCurrentUser();
@@ -409,6 +419,9 @@ describe('TaskCommandService.remove', () => {
       project,
     );
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(taskWorkspaceContextCache.invalidateTask).toHaveBeenCalledWith(
+      task.id,
+    );
     expect(taskRuntimeService.cleanupTaskDataDir).toHaveBeenCalledWith(
       task,
       project,
@@ -486,8 +499,13 @@ describe('TaskCommandService.remove', () => {
   });
 
   it('should delete tasks without a stored worktree identifier', async () => {
-    const { service, taskRepository, taskRuntimeService, taskAccessService } =
-      createService();
+    const {
+      service,
+      taskRepository,
+      taskRuntimeService,
+      taskAccessService,
+      taskWorkspaceContextCache,
+    } = createService();
     const task = createTask({ gitWorktree: null });
     const project = createProject();
     const currentUser = createCurrentUser();
@@ -499,6 +517,9 @@ describe('TaskCommandService.remove', () => {
 
     expect(taskRuntimeService.cleanupRuntime).not.toHaveBeenCalled();
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(taskWorkspaceContextCache.invalidateTask).toHaveBeenCalledWith(
+      task.id,
+    );
     expect(taskRuntimeService.cleanupTaskDataDir).toHaveBeenCalledWith(
       task,
       project,

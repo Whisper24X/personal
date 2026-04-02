@@ -131,6 +131,9 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
   const taskWorkspaceWatchService = {
     syncTaskWatch: jest.fn().mockResolvedValue(undefined),
   };
+  const taskWorkspaceContextCache = {
+    invalidateTask: jest.fn(),
+  };
   const notificationsService = {
     notifyTaskNodeStatusChanged: jest.fn().mockResolvedValue(undefined),
   };
@@ -149,6 +152,7 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
     taskSchedulerService as never,
     taskGitService as never,
     taskWorkspaceWatchService as never,
+    taskWorkspaceContextCache as never,
     notificationsService as never,
   );
 
@@ -157,6 +161,7 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
     task,
     taskRepository,
     taskNodeRepository,
+    taskRuntimeService,
     taskAccessService,
     taskRuntimeOrchestrator,
     taskConfigResolver,
@@ -167,11 +172,47 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
     taskSchedulerService,
     taskGitService,
     taskWorkspaceWatchService,
+    taskWorkspaceContextCache,
     notificationsService,
   };
 };
 
 describe('TaskInteractionService', () => {
+  it('should invalidate cached workspace context after successful cleanup', async () => {
+    const {
+      service,
+      taskAccessService,
+      taskRuntimeService,
+      taskRepository,
+      taskWorkspaceContextCache,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const project = {
+      id: 'project-1',
+      businessLineId: 'business-line-1',
+      name: 'Project',
+      description: null,
+      gitUrl: 'https://example.com/repo.git',
+      defaultBranch: 'main',
+      configJson: null,
+      createdAt: new Date('2026-03-19T10:00:00.000Z'),
+      updatedAt: new Date('2026-03-19T10:00:00.000Z'),
+      deletedAt: null,
+    };
+
+    taskAccessService.getProjectByIdOrThrow.mockResolvedValue(project);
+    taskRuntimeService.cleanupRuntime.mockResolvedValue({ cleaned: true });
+
+    await service.cleanupWorktree('task-1', currentUser as never);
+
+    expect(taskRepository.update).toHaveBeenCalledWith('task-1', {
+      gitWorktree: null,
+    });
+    expect(taskWorkspaceContextCache.invalidateTask).toHaveBeenCalledWith(
+      'task-1',
+    );
+  });
+
   it('should reuse the most recent done node with a cli session when replying', async () => {
     const {
       service,

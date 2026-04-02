@@ -68,6 +68,28 @@ describe('AccessService', () => {
     expect(projectCustomRoleRepository.findById).not.toHaveBeenCalled();
   });
 
+  it('should allow project capability checks when the project exists without membership', async () => {
+    projectRepository.findById.mockResolvedValue({
+      id: 'project-1',
+      businessLineId: 'business-line-1',
+    });
+    projectMemberRepository.findByProjectIdAndUserId.mockResolvedValue(null);
+
+    await expect(
+      service.assertProjectCapability(
+        {
+          sub: 'user-2',
+          roles: [],
+        } as never,
+        'project-1',
+        'project.task.read',
+      ),
+    ).resolves.toEqual({
+      id: 'project-1',
+      businessLineId: 'business-line-1',
+    });
+  });
+
   it('should build project capability maps without loading role records when memberships already contain capabilities', async () => {
     const membership = {
       projectId: 'project-1',

@@ -1,5 +1,6 @@
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
+import { RepositoryDiagnosticsOptions } from '../../../observability/repository-diagnostics';
 import { Project } from '../../domain/project';
 
 export abstract class ProjectRepository {
@@ -7,7 +8,10 @@ export abstract class ProjectRepository {
     data: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
   ): Promise<Project>;
 
-  abstract findById(id: Project['id']): Promise<NullableType<Project>>;
+  abstract findById(
+    id: Project['id'],
+    options?: RepositoryDiagnosticsOptions,
+  ): Promise<NullableType<Project>>;
 
   abstract findByIds(ids: Project['id'][]): Promise<Project[]>;
 

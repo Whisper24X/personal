@@ -33,6 +33,7 @@ import { TaskQueryService } from './task-query.service';
 import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.service';
 import { TaskSchedulerService } from './task-scheduler.service';
 import { TaskStatusService } from './task-status.service';
+import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 @Injectable()
@@ -51,6 +52,7 @@ export class TaskInteractionService {
     private readonly taskSchedulerService: TaskSchedulerService,
     private readonly taskGitService: TaskGitService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
     @Optional()
     @Inject(NotificationsService)
     private readonly notificationsService: Pick<
@@ -732,6 +734,9 @@ export class TaskInteractionService {
     await this.taskRepository.update(task.id, {
       ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
     });
+    if (cleanupResult.cleaned) {
+      this.taskWorkspaceContextCache.invalidateTask(task.id);
+    }
     await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
 
     await this.taskLogService.appendLog({

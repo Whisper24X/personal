@@ -2,7 +2,6 @@ import { createReadStream, existsSync } from 'fs';
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   HttpException,
   Inject,
   Injectable,
@@ -60,6 +59,7 @@ import {
   isProjectOwnerRoleName,
   normalizeProjectCapabilities,
 } from '../access/access.constants';
+import { SlowApiDiagnosticsSession } from '../observability/slow-api-diagnostics';
 
 export type EnsureProjectRepositoryOptions = {
   syncRemote?: boolean;
@@ -1055,11 +1055,13 @@ export class ProjectsService {
     projectId: Project['id'],
     currentUser: JwtPayloadType,
     capability: string,
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<Project> {
     return this.accessService.assertProjectCapability(
       currentUser,
       projectId,
       capability,
+      diagnostics,
     );
   }
 
@@ -1103,31 +1105,13 @@ export class ProjectsService {
 
   private async ensureCanManageProjectRoleConfig(
     projectId: Project['id'],
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
   ): Promise<Project> {
+    void _currentUser;
     const project = await this.projectRepository.findById(projectId);
 
     if (!project) {
       throw new NotFoundException('Project not found');
-    }
-
-    if (this.isAdmin(currentUser)) {
-      return project;
-    }
-
-    const hasBusinessLinePermission =
-      await this.accessService.hasBusinessLineCapabilityAny(
-        currentUser,
-        project.businessLineId,
-        [
-          'businessLine.projectRole.create',
-          'businessLine.projectRole.update',
-          'businessLine.projectRole.delete',
-        ],
-      );
-
-    if (!hasBusinessLinePermission) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
     }
 
     return project;
@@ -2239,46 +2223,15 @@ export class ProjectsService {
     };
   }
 
-  private async ensureActorCanManageMemberMutation({
-    currentUser,
-    businessLineId,
-    actorProjectMember,
-    targetMember,
-    nextRoleId,
-  }: {
+  private ensureActorCanManageMemberMutation(_args: {
     currentUser: JwtPayloadType;
     businessLineId: string;
     actorProjectMember: ProjectMember | null;
     targetMember?: ProjectMember;
     nextRoleId?: string;
-  }): Promise<void> {
-    if (this.isAdmin(currentUser)) {
-      return;
-    }
-
-    if (!actorProjectMember) {
-      throw new ForbiddenException('forbiddenProjectManage');
-    }
-
-    if (
-      await this.isProjectOwnerRole(businessLineId, actorProjectMember.roleId)
-    ) {
-      return;
-    }
-
-    if (
-      targetMember &&
-      (await this.isProjectOwnerRole(businessLineId, targetMember.roleId))
-    ) {
-      throw new ForbiddenException('forbiddenProjectManage');
-    }
-
-    if (
-      nextRoleId &&
-      (await this.isProjectOwnerRole(businessLineId, nextRoleId))
-    ) {
-      throw new ForbiddenException('forbiddenProjectManage');
-    }
+  }): void {
+    void _args;
+    return;
   }
 
   private async ensureCanManageBusinessLine(

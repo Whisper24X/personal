@@ -22,6 +22,7 @@ import { TaskLogService } from './task-log.service';
 import { TaskNodeExecutionService } from './task-node-execution.service';
 import { TaskOutputService } from './task-output.service';
 import { TaskStatusService } from './task-status.service';
+import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 @Injectable()
@@ -70,6 +71,7 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly taskStatusService: TaskStatusService,
     private readonly taskConfigResolver: TaskConfigResolverService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
     private readonly configService: ConfigService = new ConfigService(),
     @Optional()
     @Inject(NotificationsService)
@@ -335,6 +337,9 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
         await this.taskRepository.update(task.id, {
           ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
         });
+        if (cleanupResult.cleaned) {
+          this.taskWorkspaceContextCache.invalidateTask(task.id);
+        }
         await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
 
         await this.taskLogService.appendLog({
