@@ -65,6 +65,16 @@ const actionAriaLabel = computed(() => {
   return canSubmit.value ? '发送回复' : '请输入回复后发送'
 })
 
+const actionButtonClass = computed(() => {
+  if (props.running) {
+    if (props.canInterrupt) {
+      return 'border border-primary/40 bg-primary/15 text-primary hover:bg-primary/25'
+    }
+    return 'border border-transparent bg-muted text-muted-foreground'
+  }
+  return 'border border-transparent bg-primary text-primary-foreground hover:opacity-90'
+})
+
 const handleSubmit = () => {
   const message = inputValue.value.trim()
   if (!message || props.disabled) {
@@ -121,8 +131,8 @@ const handleKeydown = (event: KeyboardEvent) => {
         />
       </div>
       <button
-        class="inline-flex w-11 shrink-0 self-stretch items-center justify-center rounded-md text-primary-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        :class="props.running ? 'bg-amber-500 hover:bg-amber-500/90' : 'bg-primary'"
+        class="inline-flex w-11 shrink-0 self-stretch items-center justify-center rounded-md transition-all disabled:cursor-not-allowed disabled:opacity-40"
+        :class="actionButtonClass"
         :aria-label="actionAriaLabel"
         :disabled="!canTriggerAction"
         type="button"

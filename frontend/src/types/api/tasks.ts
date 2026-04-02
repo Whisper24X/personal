@@ -99,6 +99,8 @@ export type TaskDetail = {
   task: Task
   nodes: TaskNode[]
   goalSummary?: TaskGoalSummary | null
+  /** 为 true 时不应展示删除（仍有后置计划子任务依赖本任务且尚未物化） */
+  planDeletionBlocked?: boolean
 }
 
 export type TaskLogLevel = 'info' | 'warn' | 'error' | 'debug'

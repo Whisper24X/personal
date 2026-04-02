@@ -82,9 +82,13 @@ export function useGoalDetailData() {
     if (!d) {
       return ''
     }
-    return flattenGoalPlanSubTasks(d)
+    const subPart = flattenGoalPlanSubTasks(d)
       .map((s) => `${s.id}:${s.status}`)
       .join('|')
+    const groupPart = (d.planItems ?? [])
+      .map((g) => `${g.id}:${(g.dependsOnItemIds ?? []).join(',')}`)
+      .join(';')
+    return `${subPart}__${groupPart}`
   })
 
   const planDepsHasCycle = computed(() => {
@@ -93,12 +97,19 @@ export function useGoalDetailData() {
       return false
     }
     const subs = flattenGoalPlanSubTasks(d)
-    return planItemsDependencyHasCycle(
+    const groupCycle = planItemsDependencyHasCycle(
+      (d.planItems ?? []).map((g) => ({
+        id: g.id,
+        dependsOnItemIds: g.dependsOnItemIds ?? [],
+      })),
+    )
+    const subCycle = planItemsDependencyHasCycle(
       subs.map((s) => ({
         id: s.id,
         dependsOnItemIds: s.dependsOnSubTaskIds ?? [],
       })),
     )
+    return groupCycle || subCycle
   })
 
   const goalHasPrd = computed(() => Boolean(detail.value?.goal.prdDocPath?.trim()))
@@ -119,10 +130,15 @@ export function useGoalDetailData() {
     if (!d) {
       return 0
     }
-    return flattenGoalPlanSubTasks(d).reduce(
+    const subCount = flattenGoalPlanSubTasks(d).reduce(
       (sum, s) => sum + (s.dependsOnSubTaskIds?.length ?? 0),
       0,
     )
+    const groupCount = (d.planItems ?? []).reduce(
+      (sum, g) => sum + (g.dependsOnItemIds?.length ?? 0),
+      0,
+    )
+    return subCount + groupCount
   })
 
   const loadWorkflowTemplatesForProject = async (projectId: string) => {

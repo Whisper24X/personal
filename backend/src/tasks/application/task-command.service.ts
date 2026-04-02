@@ -33,6 +33,7 @@ import { TaskTitleSuggestionService } from './task-title-suggestion.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
+import { GoalRepository } from '../../goals/infrastructure/persistence/goal.repository';
 
 @Injectable()
 export class TaskCommandService {
@@ -51,6 +52,7 @@ export class TaskCommandService {
     private readonly taskAccessService: TaskAccessService,
     private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly goalRepository: GoalRepository,
   ) {}
 
   async create(
@@ -430,6 +432,18 @@ export class TaskCommandService {
       currentUser,
       'project.task.read',
     );
+
+    if (
+      await this.goalRepository.shouldBlockTaskDeletionForPlan(
+        task.id,
+        task.status,
+      )
+    ) {
+      throw new BadRequestException(
+        '该任务与需求任务计划关联：若有后置子任务尚未物化，或本任务为无后置依赖项且尚未完成，删除会导致计划数据不一致或影响其他功能组。请先完成相关子任务创建或待本任务完成后再删除。',
+      );
+    }
+
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
       task.id,
     );

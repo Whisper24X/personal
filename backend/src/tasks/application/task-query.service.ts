@@ -24,6 +24,7 @@ import { IPaginationOptions } from '../../utils/types/pagination-options';
 import { TaskAccessService } from './task-access.service';
 import { TaskOutputService } from './task-output.service';
 import { GoalsService } from '../../goals/goals.service';
+import { GoalRepository } from '../../goals/infrastructure/persistence/goal.repository';
 
 @Injectable()
 export class TaskQueryService {
@@ -38,6 +39,7 @@ export class TaskQueryService {
     private readonly taskOutputService: TaskOutputService,
     @Inject(forwardRef(() => GoalsService))
     private readonly goalsService: GoalsService,
+    private readonly goalRepository: GoalRepository,
   ) {}
 
   async findAllWithPagination({
@@ -121,10 +123,17 @@ export class TaskQueryService {
       ? await this.goalsService.getGoalSummaryForTask(task.goalId, currentUser)
       : null;
 
+    const planDeletionBlocked =
+      await this.goalRepository.shouldBlockTaskDeletionForPlan(
+        task.id,
+        task.status,
+      );
+
     return {
       task,
       nodes,
       goalSummary,
+      planDeletionBlocked,
     };
   }
 

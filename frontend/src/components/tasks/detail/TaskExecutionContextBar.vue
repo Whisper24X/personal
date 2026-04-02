@@ -145,7 +145,7 @@ const showPrimaryActions = computed(() => {
             />
           </svg>
         </button>
-        <div v-if="props.canRemove" ref="moreMenuRef" class="relative">
+        <div ref="moreMenuRef" class="relative">
           <button
             class="flex size-8 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             type="button"
@@ -169,6 +169,7 @@ const showPrimaryActions = computed(() => {
               class="border-border bg-background absolute right-0 top-full z-30 mt-1 min-w-[120px] rounded-lg border py-1 shadow-lg"
             >
               <button
+                v-if="props.canRemove"
                 class="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 :disabled="props.actionLoading"
                 type="button"

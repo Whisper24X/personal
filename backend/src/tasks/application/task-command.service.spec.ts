@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskMode } from '../dto/task-mode.enum';
@@ -124,6 +124,9 @@ const createService = () => {
   const taskWorkspaceWatchService = {
     syncTaskWatch: jest.fn().mockResolvedValue(undefined),
   };
+  const goalRepository = {
+    shouldBlockTaskDeletionForPlan: jest.fn().mockResolvedValue(false),
+  };
 
   const service = new TaskCommandService(
     taskRepository as never,
@@ -138,6 +141,7 @@ const createService = () => {
     taskAccessService as never,
     taskTitleSuggestionService as never,
     taskWorkspaceWatchService as never,
+    goalRepository as never,
   );
 
   return {
@@ -150,6 +154,7 @@ const createService = () => {
     taskConfigResolver,
     projectsService,
     taskRuntimeOrchestrator,
+    goalRepository,
   };
 };
 
@@ -325,6 +330,26 @@ describe('TaskCommandService.remove', () => {
 
     expect(taskRuntimeService.cleanupRuntime).not.toHaveBeenCalled();
     expect(taskLogService.appendLog).not.toHaveBeenCalled();
+    expect(taskRepository.remove).not.toHaveBeenCalled();
+  });
+
+  it('should block deletion when linked to goal plan sub-task', async () => {
+    const { service, taskRepository, taskAccessService, goalRepository } =
+      createService();
+    const task = createTask({ status: TaskStatus.todo });
+    const currentUser = createCurrentUser();
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(task);
+    goalRepository.shouldBlockTaskDeletionForPlan.mockResolvedValue(true);
+
+    await expect(service.remove(task.id, currentUser as never)).rejects.toThrow(
+      BadRequestException,
+    );
+
+    expect(goalRepository.shouldBlockTaskDeletionForPlan).toHaveBeenCalledWith(
+      task.id,
+      task.status,
+    );
     expect(taskRepository.remove).not.toHaveBeenCalled();
   });
 

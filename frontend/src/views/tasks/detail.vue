@@ -228,7 +228,13 @@ const canExecute = computed(() => {
 })
 
 const canRemove = computed(() => {
-  return hasButtonAccess('deleteTask')
+  if (!hasButtonAccess('deleteTask') || !task.value) {
+    return false
+  }
+  if (detail.value?.planDeletionBlocked) {
+    return false
+  }
+  return true
 })
 
 const canManageReview = computed(() => {
