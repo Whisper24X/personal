@@ -76,7 +76,7 @@ flowchart TD
 - 任务清单只包含**开发实现任务**（数据库设计、后端实现、前端实现等）
 - ❌ 不要生成「测试与验证」章节
 - ❌ 不要生成「文档与部署」章节
-- 必须参考 docs/dev-spec/ 和模板代码（ainative-app/、ainative-backend/、ainative-shadow/）
+- 必须参考 docs/dev-spec/ 和模板代码（ainative-app/、ainative-mobile/、ainative-backend/、ainative-shadow/）
 
 **菜单注入任务**（当 Design 第 4.5 章存在时）：
 
@@ -140,13 +140,14 @@ flowchart TD
 
 ## Step 4: 生成 Lint 约束任务
 
-**目标**：根据 tasks.md 中任务涉及的端（ainative-app / ainative-shadow / ainative-backend），在任务清单末尾追加对应的 lint 约束任务。**核心原则：如果没有修改该端代码，则不生成该端的 lint 任务。** lint 任务不填故事点。
+**目标**：根据 tasks.md 中任务涉及的端（ainative-app / ainative-mobile / ainative-shadow / ainative-backend），在任务清单末尾追加对应的 lint 约束任务。**核心原则：如果没有修改该端代码，则不生成该端的 lint 任务。** lint 任务不填故事点。
 
 **执行流程**：
 
 1. **读取**：`openspec/changes/{变更名称}/tasks.md`、`.claude/skills/project-manager/references/lint-task-rules.md`
 2. **分析任务涉及的端**：扫描 tasks.md，**仅当任务涉及修改该端可被 lint 检查的代码时**才判定涉及：
    - **ainative-app**：新增/修改 .vue、.ts、.js 等
+   - **ainative-mobile**：新增/修改移动端 .tsx、.ts、.js 等
    - **ainative-shadow**：新增/修改路由、视图、组件等
    - **ainative-backend**：新增/修改 Go 代码；**仅 init.sql 或纯 SQL 不生成 backend lint**
 3. **追加 Lint 任务**：
@@ -158,6 +159,7 @@ flowchart TD
 **Lint 命令**：
 
 - ainative-app：`cd ainative-app && pnpm lint`
+- ainative-mobile：`cd ainative-mobile && pnpm lint`
 - ainative-shadow：`cd ainative-shadow && pnpm lint`
 - ainative-backend：`cd ainative-backend && make lint`
 
