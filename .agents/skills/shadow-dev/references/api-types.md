@@ -265,24 +265,31 @@ interface Bad {
 
 ### 字段映射
 
-如果后端字段与前端不一致，在 API 调用层转换：
+本项目后端 API 已返回 camelCase 字段，前端类型可直接复用，无需额外映射：
 
 ```typescript
-// 后端返回 snake_case
-interface BackendUser {
-  user_name: string;
-  created_at: string;
-}
-
-// 前端使用 camelCase
 interface UserInfo {
   userName: string;
   createdAt: string;
 }
 
-// 在 API 层转换
 export async function fetchUser(id: string): Promise<UserInfo> {
-  const data = await request.get<BackendUser>({ url: `/user/${id}` });
+  const data = await request.get<UserInfo>({ url: `/user/${id}` });
+  return data;
+}
+```
+
+仅在对接**第三方旧接口**返回 snake_case 时，才需要在 API 调用层做转换：
+
+```typescript
+// 第三方旧接口返回 snake_case（非本项目后端）
+interface ThirdPartyUser {
+  user_name: string;
+  created_at: string;
+}
+
+export async function fetchThirdPartyUser(id: string): Promise<UserInfo> {
+  const data = await request.get<ThirdPartyUser>({ url: `/third-party/user/${id}` });
   return {
     userName: data.user_name,
     createdAt: data.created_at,

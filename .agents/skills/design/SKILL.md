@@ -62,7 +62,7 @@ flowchart TD
 3. **技术选型总览** - 前后端技术栈（必须与开发规范一致）
 4. **前端技术方案设计** - 架构模式、目录结构、文件清单
 5. **后端技术方案设计** - Kratos 架构、目录结构、文件清单、API 设计
-6. **数据模型设计** - ER 图、数据表设计
+6. **数据模型设计** - ER 图、数据表设计（列名必须 camelCase，见下方约束）
 7. **安全性设计** - 认证授权、数据安全、接口安全
 8. **部署与 DevOps** - 环境划分、CI/CD、监控告警
 
@@ -88,6 +88,7 @@ flowchart TD
 - **前端**：文件清单、目录结构、路由配置、Pinia store、API 调用（遵循 [shadow-frontend-conventions.md](references/shadow-frontend-conventions.md)：pages 目录、service 与页面同级、API 路径 `/api/shadow/v1/...` 不带 yanxue）
 - **后端**：Protobuf 接口定义、Service/Biz/Data 层文件清单、数据模型、核心业务流程
 - **数据模型**：Mermaid ER 图、表设计（表名/字段/类型/约束/索引）、菜单权限表（如涉及）
+  - **列名强制 camelCase**：多词字段必须使用 camelCase（如 `imageUrl`、`linkUrl`、`sortOrder`），SQL 中加双引号；单词字段小写（如 `id`、`name`、`status`）。表名保持 snake_case 不变。参考 `docs/dev-spec/ainative-backend/references/database.md` 字段命名规范。
 
 ## 技术栈速查
 
@@ -116,6 +117,7 @@ flowchart TD
 - ✅ 文件清单完整
 - ✅ API 设计明确路径、参数、响应格式
 - ✅ 数据模型包含 ER 图和表结构
+- ✅ 数据表字段名使用 camelCase（如 imageUrl、sortOrder），禁止 snake_case 列名（如 image_url、sort_order）
 - ✅ ainative-shadow 存在且第 4 章有 router 新增或修改时，必须包含 4.5 路由与菜单配置及数据库注入任务
 - ❌ 禁止模板外章节、规范外技术栈、占位符、技术细节缺失
 
@@ -143,6 +145,7 @@ flowchart TD
 4. ❌ 使用 `docs/dev-spec/` 外的技术栈
 5. ❌ 在文件清单中出现 `src/views/`、`src/api/{模块}.ts`
 6. ❌ 输出占位符或技术细节缺失
+7. ❌ 数据表字段名使用 snake_case（如 `image_url`、`sort_order`、`created_at`）。所有多词列名必须使用 camelCase 并在 SQL 中加双引号（如 `"imageUrl"`、`"sortOrder"`、`"createdAt"`）。ER 图、表设计、索引、WHERE 条件中的列名引用均须一致。
 
 ## 附加资源
 

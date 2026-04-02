@@ -39,9 +39,9 @@ grep 'CREATE TABLE' ainative-backend/doc/sql/init.sql
 
 基于需求设计表，**必须遵守以下规则**：
 
-1. 每张表必须包含 `id`、`created_at`、`updated_at`、`deleted_at` 四个基础字段
+1. 每张表必须包含 `id`、`"createdAt"`、`"updatedAt"`、`"deletedAt"` 四个基础字段
 2. 表名使用正确的模块前缀（`sys_`、`user_`、`ai_`、`mall_` 等）
-3. 字段使用 `snake_case` 命名
+3. 多词字段使用 `camelCase` 命名，SQL 中需加双引号（如 `"sortOrder"`）；单词字段直接小写（如 `name`、`status`）
 4. 每个字段和表都需要 `COMMENT`
 
 完整的字段类型、索引命名、SQL 模板见 [references/schema-guide.md](references/schema-guide.md)。

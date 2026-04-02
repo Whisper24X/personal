@@ -199,6 +199,8 @@ Server → Service → Biz → Data → Database/Cache
 
 ### 6.1 ER 图
 
+**列名规则**：多词字段必须使用 camelCase（如 `imageUrl`、`sortOrder`），SQL 中加双引号；单词字段小写（如 `id`、`name`、`status`）。**禁止 snake_case 列名**（如 ~~image_url~~、~~sort_order~~、~~created_at~~）。表名保持 snake_case。
+
 ```mermaid
 erDiagram
     USER ||--o{ ORDER : places
@@ -206,13 +208,15 @@ erDiagram
         bigint id PK
         varchar username
         varchar password
-        timestamp created_at
+        timestamp createdAt
     }
     ORDER {
         bigint id PK
-        bigint user_id FK
+        bigint userId FK
+        varchar imageUrl
+        int sortOrder
         decimal amount
-        timestamp created_at
+        timestamp createdAt
     }
 ```
 
@@ -225,14 +229,16 @@ erDiagram
 - 使用 snake_case
 - 按模块添加前缀（如 `sys_`、`biz_`）
 
-#### 字段规范
+#### 字段规范（列名 camelCase，SQL 中加双引号）
 
-| 字段       | 类型        | 说明     | 索引  |
-| ---------- | ----------- | -------- | ----- |
-| id         | BIGSERIAL   | 主键     | PK    |
-| created_at | TIMESTAMPTZ | 创建时间 | INDEX |
-| updated_at | TIMESTAMPTZ | 更新时间 | -     |
-| deleted_at | TIMESTAMPTZ | 软删除   | INDEX |
+| 字段        | 类型        | 说明     | 索引  |
+| ----------- | ----------- | -------- | ----- |
+| id          | BIGSERIAL   | 主键     | PK    |
+| "imageUrl"  | VARCHAR     | 图片地址 | -     |
+| "sortOrder" | INTEGER     | 排序值   | INDEX |
+| "createdAt" | TIMESTAMPTZ | 创建时间 | INDEX |
+| "updatedAt" | TIMESTAMPTZ | 更新时间 | -     |
+| "deletedAt" | TIMESTAMPTZ | 软删除   | INDEX |
 
 ---
 
