@@ -7,6 +7,7 @@ import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskLogService } from './task-log.service';
+import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 type TaskRuntimeSnapshot = {
@@ -23,6 +24,7 @@ export class TaskRuntimeOrchestratorService {
     private readonly taskRuntimeService: TaskRuntimeService,
     private readonly taskLogService: TaskLogService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
   ) {}
 
   async prepareTaskRuntime(
@@ -68,6 +70,10 @@ export class TaskRuntimeOrchestratorService {
           gitWorktree: runtime.gitWorktree,
         })) ?? task)
       : task;
+
+    if (hasRuntimeChanged) {
+      this.taskWorkspaceContextCache.invalidateTask(task.id);
+    }
 
     if (options?.forceLog || hasRuntimeChanged) {
       await this.taskLogService.appendLog({

@@ -1,3 +1,4 @@
+import { spawn } from 'child_process';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import chokidar, { FSWatcher } from 'chokidar';
@@ -50,6 +51,7 @@ const DEFAULT_IGNORED_WORKTREE_SEGMENTS = new Set<string>([
 @Injectable()
 export class TaskWorkspaceWatchService implements OnModuleDestroy {
   private readonly logger = new Logger(TaskWorkspaceWatchService.name);
+  private readonly gitCheckIgnoreTimeoutMs = 5_000;
   private readonly debounceMs = this.readPositiveNumberFromEnv(
     'AINATIVE_TASK_WORKSPACE_EVENT_DEBOUNCE_MS',
     800,
@@ -189,16 +191,19 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
 
     state.debounceTimer = setTimeout(() => {
       state.debounceTimer = null;
-      this.flushChanges(taskId, state);
+      void this.flushChanges(taskId, state);
     }, this.debounceMs);
   }
 
-  private flushChanges(taskId: string, state: TaskWatchState): void {
+  private async flushChanges(
+    taskId: string,
+    state: TaskWatchState,
+  ): Promise<void> {
     if (!state.pendingChanges.size && !state.truncated) {
       return;
     }
 
-    const changes: TaskWorkspaceChangeEntry[] = [
+    const pendingChanges: TaskWorkspaceChangeEntry[] = [
       ...state.pendingChanges.entries(),
     ].map(([relativePath, kind]) => ({
       path: relativePath,
@@ -208,6 +213,17 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
     state.pendingChanges.clear();
     const truncated = state.truncated;
     state.truncated = false;
+
+    const changes = await this.filterGitIgnoredChanges(
+      state.worktreePath,
+      pendingChanges,
+      taskId,
+    );
+
+    if (!changes.length && !truncated) {
+      return;
+    }
+
     state.eventSeq += 1;
 
     const event: TaskWorkspaceChangeEvent = {
@@ -229,6 +245,128 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
         );
       }
     }
+  }
+
+  private async filterGitIgnoredChanges(
+    worktreePath: string | null,
+    changes: TaskWorkspaceChangeEntry[],
+    taskId: string,
+  ): Promise<TaskWorkspaceChangeEntry[]> {
+    if (!worktreePath || changes.length === 0) {
+      return changes;
+    }
+
+    const result = await this.runGitCheckIgnore(
+      worktreePath,
+      changes.map((change) => change.path),
+    );
+
+    if (!result.success) {
+      this.logger.warn(
+        `workspace_check_ignore_failed taskId=${taskId} message=${
+          result.stderr ||
+          `git exited with code ${result.exitCode ?? 'unknown'}`
+        }`,
+      );
+      return changes;
+    }
+
+    if (result.ignoredPaths.length === 0) {
+      return changes;
+    }
+
+    const ignoredPaths = new Set(result.ignoredPaths);
+    return changes.filter((change) => !ignoredPaths.has(change.path));
+  }
+
+  private async runGitCheckIgnore(
+    cwd: string,
+    relativePaths: string[],
+  ): Promise<{
+    success: boolean;
+    ignoredPaths: string[];
+    stderr: string;
+    exitCode: number | null;
+  }> {
+    return new Promise((resolve) => {
+      const processRef = spawn(
+        'git',
+        ['-C', cwd, 'check-ignore', '--stdin', '-z'],
+        {
+          stdio: 'pipe',
+          env: process.env,
+        },
+      );
+
+      const stdoutChunks: Buffer[] = [];
+      let stderr = '';
+      let settled = false;
+
+      const finish = (result: {
+        success: boolean;
+        ignoredPaths: string[];
+        stderr: string;
+        exitCode: number | null;
+      }) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        resolve(result);
+      };
+
+      processRef.stdout?.on('data', (chunk) => {
+        stdoutChunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf-8'),
+        );
+      });
+
+      processRef.stderr?.on('data', (chunk) => {
+        stderr += chunk.toString('utf-8');
+      });
+
+      processRef.stdin?.on('error', () => {
+        // Ignore broken pipes and rely on the close handler result.
+      });
+
+      const timeoutRef = setTimeout(() => {
+        processRef.kill('SIGTERM');
+      }, this.gitCheckIgnoreTimeoutMs);
+
+      processRef.on('error', (error) => {
+        clearTimeout(timeoutRef);
+        finish({
+          success: false,
+          ignoredPaths: [],
+          stderr: error.message,
+          exitCode: null,
+        });
+      });
+
+      processRef.on('close', (code) => {
+        clearTimeout(timeoutRef);
+
+        const success = code === 0 || code === 1;
+        const ignoredPaths = success
+          ? Buffer.concat(stdoutChunks)
+              .toString('utf-8')
+              .split('\0')
+              .filter(Boolean)
+          : [];
+
+        finish({
+          success,
+          ignoredPaths,
+          stderr: stderr.trimEnd(),
+          exitCode: code,
+        });
+      });
+
+      processRef.stdin?.end(
+        Buffer.from(`${relativePaths.join('\0')}\0`, 'utf-8'),
+      );
+    });
   }
 
   private unsubscribe(taskId: string, listener: TaskWorkspaceListener): void {

@@ -71,21 +71,20 @@ import {
 const PRD_MAX_ATTEMPTS = 3;
 const PLAN_MAX_ATTEMPTS = 3;
 
-/** 需求分支：feature/goal-<YYYYMMDD>-<HHMMSS + 毫秒(3) + 随机 4 位> */
+/** 需求分支：feature/goal-<YYMMDD>-<HHMM>-<base36 随机 4 位> */
 function buildGoalGitBranchName(): string {
   const now = new Date();
-  const y = now.getFullYear().toString();
+  const y = now.getFullYear().toString().slice(-2);
   const mo = `${now.getMonth() + 1}`.padStart(2, '0');
   const d = `${now.getDate()}`.padStart(2, '0');
   const datePrefix = `${y}${mo}${d}`;
   const hh = `${now.getHours()}`.padStart(2, '0');
   const mm = `${now.getMinutes()}`.padStart(2, '0');
-  const ss = `${now.getSeconds()}`.padStart(2, '0');
-  const timePart = `${hh}${mm}${ss}`;
-  const ms = `${now.getMilliseconds()}`.padStart(3, '0');
-  const salt = randomInt(0, 10_000).toString().padStart(4, '0');
-  const secondSegment = `${timePart}${ms}${salt}`;
-  return `feature/goal-${datePrefix}-${secondSegment}`.slice(0, 255);
+  const timePart = `${hh}${mm}`;
+  const suffix = randomInt(0, 36 ** 4)
+    .toString(36)
+    .padStart(4, '0');
+  return `feature/goal-${datePrefix}-${timePart}-${suffix}`.slice(0, 255);
 }
 
 /** 功能组分支：需求分支名 + `-g<顺序>`（顺序从 1 起），总长不超过 255。 */
@@ -681,6 +680,15 @@ export class GoalsService {
     const tasks = await this.taskRepository.findByGoalId(id);
     for (const task of tasks) {
       await this.tasksService.remove(task.id, currentUser);
+    }
+
+    const goalBranch = goal.gitBranch?.trim();
+    if (goalBranch) {
+      await this.gitService.deleteLocalBranch(
+        goal.projectId,
+        goalBranch,
+        currentUser,
+      );
     }
 
     await this.projectsService.removeGoalDocsSubtree(

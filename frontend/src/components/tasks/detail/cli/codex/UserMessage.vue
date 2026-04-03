@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { NormalizedEntry } from '../types'
-import { formatTime } from '../utils'
 
 defineOptions({ name: 'CliCodexUserMessage' })
 
@@ -17,11 +16,6 @@ defineProps<{
       <p class="whitespace-pre-wrap break-words text-sm leading-6">
         {{ entry.content }}
       </p>
-      <div class="mt-1.5 text-right">
-        <span class="text-[10px] text-primary-foreground/70">
-          {{ formatTime(entry.timestamp) }}
-        </span>
-      </div>
     </div>
   </div>
 </template>

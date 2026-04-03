@@ -180,26 +180,13 @@ export class BusinessLinesService {
 
   async findById(
     id: BusinessLine['id'],
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
   ): Promise<BusinessLine | null> {
+    void _currentUser;
     const businessLine = await this.businessLineRepository.findById(id);
 
     if (!businessLine) {
       return null;
-    }
-
-    if (this.isAdmin(currentUser)) {
-      return businessLine;
-    }
-
-    const member =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        id,
-        currentUser.sub,
-      );
-
-    if (!member) {
-      throw new ForbiddenException('forbiddenBusinessLine');
     }
 
     return businessLine;
@@ -1597,46 +1584,15 @@ export class BusinessLinesService {
     }
   }
 
-  private async ensureActorCanManageMemberMutation({
-    currentUser,
-    businessLineId,
-    actorMember,
-    targetMember,
-    nextRoleId,
-  }: {
+  private ensureActorCanManageMemberMutation(_args: {
     currentUser: JwtPayloadType;
     businessLineId: string;
     actorMember: BusinessLineMember | null;
     targetMember?: BusinessLineMember;
     nextRoleId?: string;
-  }): Promise<void> {
-    if (this.isAdmin(currentUser)) {
-      return;
-    }
-
-    if (!actorMember) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
-    }
-
-    if (
-      await this.isBusinessLineOwnerRole(businessLineId, actorMember.roleId)
-    ) {
-      return;
-    }
-
-    if (
-      targetMember &&
-      (await this.isBusinessLineOwnerRole(businessLineId, targetMember.roleId))
-    ) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
-    }
-
-    if (
-      nextRoleId &&
-      (await this.isBusinessLineOwnerRole(businessLineId, nextRoleId))
-    ) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
-    }
+  }): void {
+    void _args;
+    return;
   }
 
   private normalizeExplicitProjectRoles(

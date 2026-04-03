@@ -32,9 +32,11 @@ import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.serv
 import { TaskQueryService } from './task-query.service';
 import { TaskAccessService } from './task-access.service';
 import { TaskTitleSuggestionService } from './task-title-suggestion.service';
+import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
+import { GoalRepository } from '../../goals/infrastructure/persistence/goal.repository';
 
 @Injectable()
 export class TaskCommandService {
@@ -55,6 +57,8 @@ export class TaskCommandService {
     private readonly containerOrchestration: ContainerOrchestrationService,
     private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly goalRepository: GoalRepository,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
   ) {}
 
   async create(
@@ -368,6 +372,7 @@ export class TaskCommandService {
     const effectiveTask = updatedTask ?? task;
 
     if (updatePayload.gitWorktree !== undefined) {
+      this.taskWorkspaceContextCache.invalidateTask(task.id);
       await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
     }
 
@@ -434,6 +439,18 @@ export class TaskCommandService {
       currentUser,
       'project.task.read',
     );
+
+    if (
+      await this.goalRepository.shouldBlockTaskDeletionForPlan(
+        task.id,
+        task.status,
+      )
+    ) {
+      throw new BadRequestException(
+        '该任务与需求任务计划关联：若有后置子任务尚未物化，或本任务为无后置依赖项且尚未完成，删除会导致计划数据不一致或影响其他功能组。请先完成相关子任务创建或待本任务完成后再删除。',
+      );
+    }
+
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
       task.id,
     );
@@ -538,6 +555,7 @@ export class TaskCommandService {
     );
 
     await this.taskRepository.remove(task.id);
+    this.taskWorkspaceContextCache.invalidateTask(task.id);
 
     if (task.projectId) {
       const project = await this.taskAccessService
@@ -591,27 +609,27 @@ export class TaskCommandService {
   private buildTaskNameId(): string {
     const now = new Date();
     const datePrefix = this.formatTaskNameDate(now);
-    const timePart = this.formatTaskNameTime(now);
-    const ms = `${now.getMilliseconds()}`.padStart(3, '0');
-    const salt = randomInt(0, 10_000).toString().padStart(4, '0');
+    const timePart = this.formatTaskNameMinute(now);
+    const salt = randomInt(0, 36 ** 4)
+      .toString(36)
+      .padStart(4, '0');
 
-    return `${datePrefix}-${timePart}${ms}${salt}`;
+    return `${datePrefix}-${timePart}-${salt}`;
   }
 
   private formatTaskNameDate(date: Date): string {
-    const year = date.getFullYear().toString();
+    const year = date.getFullYear().toString().slice(-2);
     const month = `${date.getMonth() + 1}`.padStart(2, '0');
     const day = `${date.getDate()}`.padStart(2, '0');
 
     return `${year}${month}${day}`;
   }
 
-  private formatTaskNameTime(date: Date): string {
+  private formatTaskNameMinute(date: Date): string {
     const hours = `${date.getHours()}`.padStart(2, '0');
     const minutes = `${date.getMinutes()}`.padStart(2, '0');
-    const seconds = `${date.getSeconds()}`.padStart(2, '0');
 
-    return `${hours}${minutes}${seconds}`;
+    return `${hours}${minutes}`;
   }
 
   private buildDefaultGitBranch(taskNameId: string): string {
@@ -623,14 +641,19 @@ export class TaskCommandService {
   }
 
   private extractTaskNameIdFromGitBranch(gitBranch: string): string | null {
-    const match = /^feature\/(\d{8}-\d+)$/.exec(gitBranch.trim());
+    const match =
+      /^feature\/((?:\d{6}-\d{4}-[a-z0-9]{4})|(?:\d{8}-\d{6,}))$/i.exec(
+        gitBranch.trim(),
+      );
 
     return match?.[1] ?? null;
   }
 
   private extractTaskNameIdFromGitWorktree(gitWorktree: string): string | null {
     const worktreeName = path.basename(gitWorktree.trim());
-    const match = /^wk-(\d{8}-\d+)$/.exec(worktreeName);
+    const match = /^wk-((?:\d{6}-\d{4}-[a-z0-9]{4})|(?:\d{8}-\d{6,}))$/i.exec(
+      worktreeName,
+    );
 
     return match?.[1] ?? null;
   }

@@ -2,6 +2,7 @@ import { registerAs } from '@nestjs/config';
 import { AppConfig } from './app-config.type';
 import validateConfig from '.././utils/validate-config';
 import {
+  IsBooleanString,
   IsEnum,
   IsInt,
   IsOptional,
@@ -49,6 +50,10 @@ class EnvironmentVariablesValidator {
   @IsOptional()
   APP_HEADER_LANGUAGE: string;
 
+  @IsBooleanString()
+  @IsOptional()
+  HTTP_ACCESS_LOGGING_ENABLED?: string;
+
   @IsOptional()
   AINATIVE_GOALS_ENABLED?: string;
 }
@@ -70,6 +75,9 @@ export default registerAs<AppConfig>('app', () => {
     apiPrefix: process.env.API_PREFIX || 'api',
     fallbackLanguage: process.env.APP_FALLBACK_LANGUAGE || 'en',
     headerLanguage: process.env.APP_HEADER_LANGUAGE || 'x-custom-lang',
+    httpAccessLoggingEnabled:
+      process.env.HTTP_ACCESS_LOGGING_ENABLED === '1' ||
+      process.env.HTTP_ACCESS_LOGGING_ENABLED === 'true',
     goalsEnabled:
       process.env.AINATIVE_GOALS_ENABLED === undefined ||
       process.env.AINATIVE_GOALS_ENABLED === '1' ||

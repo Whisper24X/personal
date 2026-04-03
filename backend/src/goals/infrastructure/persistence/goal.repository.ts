@@ -6,6 +6,7 @@ import { GoalPlanSubTask } from '../../domain/goal-plan-sub-task';
 import { GoalSourceDoc } from '../../domain/goal-source-doc';
 import { TaskDependencyEdge } from '../../domain/task-dependency-edge';
 import { GoalStatus } from '../../dto/goal-status.enum';
+import { TaskStatus } from '../../../tasks/dto/task-status.enum';
 
 export abstract class GoalRepository {
   abstract create(
@@ -100,4 +101,14 @@ export abstract class GoalRepository {
     taskId: string,
     isDone: boolean,
   ): Promise<void>;
+
+  /**
+   * 删除 Task 前：若仍有「直接依赖本计划子任务、且尚未物化 Task」的后置子任务，则应阻止删除；
+   * 若后置功能组（dependsOnItemIds）依赖本组：Task 未完成时任未物化子任务均拦截；Task 已完成时仅拦截已确认(approved)且仍未物化的后置项；
+   * 若无上述子任务级/功能组级后置依赖（叶子），则须关联 Task 已完成后再删。
+   */
+  abstract shouldBlockTaskDeletionForPlan(
+    taskId: string,
+    taskStatus: TaskStatus,
+  ): Promise<boolean>;
 }

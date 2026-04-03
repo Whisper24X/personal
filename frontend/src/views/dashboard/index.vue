@@ -41,8 +41,8 @@ const taskStatusCounts = ref<TaskStatusCounts | null>(null)
 
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
-  in_progress: '执行中',
-  in_review: '待处理',
+  in_progress: '处理中',
+  in_review: '待完成',
   done: '已完成',
 }
 
@@ -77,11 +77,11 @@ const projectQuery = computed(() => ({
 const hasProjectId = computed(() => Boolean(activeProjectId.value))
 const totalTaskCount = computed(() => taskStatusCounts.value?.total ?? 0)
 const todoTaskCount = computed(() => taskStatusCounts.value?.todo ?? 0)
-const runningTaskCount = computed(() => taskStatusCounts.value?.in_progress ?? 0)
-const reviewTaskCount = computed(() => taskStatusCounts.value?.in_review ?? 0)
+const processingTaskCount = computed(() => taskStatusCounts.value?.in_progress ?? 0)
+const pendingCompletionTaskCount = computed(() => taskStatusCounts.value?.in_review ?? 0)
 const doneTaskCount = computed(() => taskStatusCounts.value?.done ?? 0)
 
-const pendingCount = computed(() => todoTaskCount.value + reviewTaskCount.value)
+const unfinishedTaskCount = computed(() => totalTaskCount.value - doneTaskCount.value)
 
 const completionRateValue = computed(() => {
   if (totalTaskCount.value === 0) {
@@ -193,9 +193,9 @@ const statCards = computed<StatCardItem[]>(() => {
       barClass: 'bg-primary',
     },
     {
-      label: '执行中',
-      value: runningTaskCount.value,
-      barPct: statBarPct(runningTaskCount.value),
+      label: '处理中',
+      value: processingTaskCount.value,
+      barPct: statBarPct(processingTaskCount.value),
       barClass: 'bg-sky-500',
     },
     {
@@ -211,9 +211,9 @@ const statCards = computed<StatCardItem[]>(() => {
       barClass: 'bg-slate-400 dark:bg-slate-500',
     },
     {
-      label: '待处理',
-      value: reviewTaskCount.value,
-      barPct: statBarPct(reviewTaskCount.value),
+      label: '待完成',
+      value: pendingCompletionTaskCount.value,
+      barPct: statBarPct(pendingCompletionTaskCount.value),
       barClass: 'bg-amber-500',
     },
   ]
@@ -329,8 +329,8 @@ watch(
                 <p class="text-sm leading-relaxed text-muted-foreground">
                   <span class="font-semibold text-primary">{{ project.name }}</span>
                   项目有
-                  <span class="font-bold text-primary">{{ pendingCount }}</span>
-                  个任务等待处理，累计已完成
+                  <span class="font-bold text-primary">{{ unfinishedTaskCount }}</span>
+                  个未完成任务，累计已完成
                   <span class="font-bold text-emerald-600 dark:text-emerald-400">{{ doneTaskCount }}</span>
                   个任务
                 </p>
@@ -401,9 +401,9 @@ watch(
                     col.key === 'todo'
                       ? todoTaskCount
                       : col.key === 'in_progress'
-                        ? runningTaskCount
+                        ? processingTaskCount
                         : col.key === 'in_review'
-                          ? reviewTaskCount
+                          ? pendingCompletionTaskCount
                           : doneTaskCount
                   }}
                 </span>
@@ -448,9 +448,9 @@ watch(
             :ring-circumference="RING_C"
             :ring-dash-offset="ringDashOffset"
             :done-count="doneTaskCount"
-            :running-count="runningTaskCount"
+            :running-count="processingTaskCount"
             :todo-count="todoTaskCount"
-            :review-count="reviewTaskCount"
+            :review-count="pendingCompletionTaskCount"
           />
 
           <Card>

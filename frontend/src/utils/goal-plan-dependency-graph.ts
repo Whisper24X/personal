@@ -176,7 +176,8 @@ export function buildPlanDependencyMermaidFromSubTasks(
 }
 
 /**
- * 按功能组（subgraph + 虚线框）绘制子任务依赖图；跨组依赖仍用箭头连接。
+ * 按功能组（subgraph + 虚线框）绘制子任务依赖图。
+ * 子任务间边来自 dependsOnSubTaskIds；功能组级依赖（dependsOnItemIds）以虚线箭头「功能组依赖」连接前组末子任务→后组首子任务（与子任务边去重）。
  */
 export function buildPlanDependencyMermaidFromPlanItems(
   planItems: GoalPlanItem[],
@@ -215,12 +216,42 @@ export function buildPlanDependencyMermaidFromPlanItems(
     lines.push(`  end`)
   }
 
+  const edgeKey = (from: string, to: string) => `${from}->${to}`
+  const seenEdges = new Set<string>()
+
   for (const s of allSubtasks) {
     for (const pred of s.dependsOnSubTaskIds ?? []) {
       if (!idSet.has(pred)) {
         continue
       }
+      const k = edgeKey(pred, s.id)
+      seenEdges.add(k)
       lines.push(`  ${planItemNodeId(pred)} --> ${planItemNodeId(s.id)}`)
+    }
+  }
+
+  const groupIdSet = new Set(sorted.map((g) => g.id))
+  for (const h of sorted) {
+    for (const predGId of h.dependsOnItemIds ?? []) {
+      if (!groupIdSet.has(predGId) || predGId === h.id) {
+        continue
+      }
+      const predGroup = sorted.find((g) => g.id === predGId)
+      const predSubs = predGroup?.subTasks ?? []
+      const hSubs = h.subTasks ?? []
+      if (predSubs.length === 0 || hSubs.length === 0) {
+        continue
+      }
+      const fromId = predSubs[predSubs.length - 1]!.id
+      const toId = hSubs[0]!.id
+      const k = edgeKey(fromId, toId)
+      if (seenEdges.has(k)) {
+        continue
+      }
+      seenEdges.add(k)
+      lines.push(
+        `  ${planItemNodeId(fromId)} -.->|功能组依赖| ${planItemNodeId(toId)}`,
+      )
     }
   }
 

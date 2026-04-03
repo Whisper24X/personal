@@ -19,6 +19,7 @@ import { GoalSourceDocEntity } from '../entities/goal-source-doc.entity';
 import { TaskDependencyEntity } from '../entities/task-dependency.entity';
 import { TaskDependencyRelation } from '../../../../dto/task-dependency-relation.enum';
 import { TaskEntity } from '../../../../../tasks/infrastructure/persistence/relational/entities/task.entity';
+import { TaskStatus } from '../../../../../tasks/dto/task-status.enum';
 
 @Injectable()
 export class GoalRelationalRepository extends GoalRepository {
@@ -457,6 +458,74 @@ export class GoalRelationalRepository extends GoalRepository {
 
   async removeTaskDependency(id: string): Promise<void> {
     await this.depRepo.delete({ id });
+  }
+
+  async shouldBlockTaskDeletionForPlan(
+    taskId: string,
+    taskStatus: TaskStatus,
+  ): Promise<boolean> {
+    const rows = await this.planSubTaskRepo.find({ where: { taskId } });
+    if (rows.length === 0) {
+      return false;
+    }
+    const st = rows[0];
+    const planItem = await this.planItemRepo.findOne({
+      where: { id: st.goalPlanItemId },
+    });
+    if (!planItem) {
+      return true;
+    }
+    const items = await this.listPlanItemsWithSubTasks(planItem.goalId);
+    const flat = items.flatMap((it) => it.subTasks ?? []);
+    const parentGroupId = st.goalPlanItemId;
+    let hasNonCancelledDependent = false;
+    for (const d of flat) {
+      const deps = d.dependsOnSubTaskIds ?? [];
+      const dependsOnSt = deps.includes(st.id);
+      if (!dependsOnSt) {
+        continue;
+      }
+      const cancelled = d.status === GoalPlanItemStatus.cancelled;
+      const hasTaskId = Boolean(d.taskId?.trim());
+      if (cancelled) {
+        continue;
+      }
+      hasNonCancelledDependent = true;
+      if (!hasTaskId) {
+        return true;
+      }
+    }
+    // 功能组 dependsOnItemIds：未完成 Task 时，任后置组未物化子任务均拦截。
+    // 已完成时：若当前计划子任务为「叶子」（无直接非取消的子任务依赖），后置组仍有任未物化即拦截；
+    // 若非叶子，仅拦截「已确认待物化」，避免草稿占位长期卡死非叶子节点。
+    for (const item of items) {
+      if (item.id === parentGroupId) {
+        continue;
+      }
+      const groupDeps = item.dependsOnItemIds ?? [];
+      if (!groupDeps.includes(parentGroupId)) {
+        continue;
+      }
+      for (const h of item.subTasks ?? []) {
+        if (h.status === GoalPlanItemStatus.cancelled) {
+          continue;
+        }
+        if (!h.taskId?.trim()) {
+          if (
+            taskStatus === TaskStatus.done &&
+            hasNonCancelledDependent &&
+            h.status !== GoalPlanItemStatus.approved
+          ) {
+            continue;
+          }
+          return true;
+        }
+      }
+    }
+    if (!hasNonCancelledDependent && taskStatus !== TaskStatus.done) {
+      return true;
+    }
+    return false;
   }
 
   async syncPlanSubTaskStatusByLinkedTaskId(

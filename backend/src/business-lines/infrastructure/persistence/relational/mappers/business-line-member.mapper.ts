@@ -1,4 +1,5 @@
 import { BusinessLineMember } from '../../../../domain/business-line-member';
+import { defineMemberRoleCapabilities } from '../../../../../utils/member-role-capabilities';
 import { BusinessLineMemberEntity } from '../entities/business-line-member.entity';
 
 export class BusinessLineMemberMapper {
@@ -8,8 +9,10 @@ export class BusinessLineMemberMapper {
     domainEntity.businessLineId = raw.businessLineId;
     domainEntity.userId = raw.userId;
     domainEntity.roleId = raw.roleId;
+    domainEntity.customRoleName = raw.roleRef?.name ?? null;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
+    defineMemberRoleCapabilities(domainEntity, raw.roleRef?.capabilities);
     return domainEntity;
   }
 

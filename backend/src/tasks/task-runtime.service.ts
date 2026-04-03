@@ -6,6 +6,7 @@ import path from 'path';
 import { Project } from '../projects/domain/project';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
+import { resolveGitRemoteUrlWithHttpAuth } from '../git/git-remote-auth.util';
 
 type EnsureTaskRuntimeResult = {
   gitBranch: string;
@@ -29,6 +30,7 @@ type GitDiffArtifact = {
 export class TaskRuntimeService {
   private readonly configService = new ConfigService();
   private readonly defaultGitTimeoutMs = 60_000;
+  private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
   private readonly maxDiffLength = 120_000;
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
@@ -573,6 +575,7 @@ export class TaskRuntimeService {
     const repositoryRoot = this.resolveRepositoryRoot(project);
     const gitDirPath = path.join(repositoryRoot, '.git');
     const hasGit = await this.pathExists(gitDirPath);
+    const resolvedGitUrl = this.resolveGitRemoteUrl(project.gitUrl);
 
     if (!hasGit) {
       await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
@@ -582,7 +585,7 @@ export class TaskRuntimeService {
         '--origin',
         'origin',
         '--no-checkout',
-        project.gitUrl,
+        resolvedGitUrl,
         repositoryRoot,
       ]);
 
@@ -598,7 +601,7 @@ export class TaskRuntimeService {
         'remote',
         'set-url',
         'origin',
-        project.gitUrl,
+        resolvedGitUrl,
       ]);
     }
 
@@ -781,6 +784,16 @@ export class TaskRuntimeService {
           stderr: stderr.trimEnd(),
         });
       });
+    });
+  }
+
+  private resolveGitRemoteUrl(gitUrl: string): string {
+    return resolveGitRemoteUrlWithHttpAuth(gitUrl, {
+      targetHost: this.gitlabHttpAuthHost,
+      username:
+        this.configService.get<string>('GITLAB_USERNAME', { infer: true }) ??
+        'oauth2',
+      token: this.configService.get<string>('GITLAB_TOKEN', { infer: true }),
     });
   }
 

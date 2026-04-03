@@ -6,13 +6,13 @@ import {
 } from '@nestjs/common';
 import { GoalsService } from '../../goals/goals.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
-import { TaskConfigResolverService } from './task-config-resolver.service';
 import { TaskLogService } from './task-log.service';
 import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
@@ -24,7 +24,6 @@ export class TaskStatusService {
     private readonly taskNodeRepository: TaskNodeRepository,
     private readonly notificationsService: NotificationsService,
     private readonly taskLogService: TaskLogService,
-    private readonly taskConfigResolver: TaskConfigResolverService,
     private readonly containerExecutionConfig: ContainerExecutionConfigService,
     private readonly containerOrchestration: ContainerOrchestrationService,
     @Inject(forwardRef(() => GoalsService))
@@ -32,80 +31,83 @@ export class TaskStatusService {
   ) {}
 
   async recalculateTaskStatus(taskId: string): Promise<void> {
-    const nodes = await this.taskNodeRepository.findByTaskId(taskId);
-    const status = this.calculateTaskStatus(nodes);
     const currentTask = await this.taskRepository.findById(taskId);
 
     if (!currentTask) {
       throw new NotFoundException('Task not found');
     }
 
-    const previousStatus = currentTask.status;
+    const nodes = await this.taskNodeRepository.findByTaskId(taskId);
+    const status = this.calculateTaskStatus(nodes, currentTask.status);
 
-    await this.taskRepository.update(taskId, {
-      status,
-      finishedAt: status === TaskStatus.done ? new Date() : null,
-    });
-
-    await this.goalsService.syncPlanSubTaskStatusFromLinkedTask(taskId, status);
-
-    if (previousStatus !== status) {
-      await this.applySandboxLifecycle(
-        currentTask.id,
-        currentTask.gitWorktree,
-        status,
-      );
-
-      if (currentTask.createdBy && currentTask.mode === TaskMode.workflow) {
-        await this.notificationsService.notifyTaskStatusChanged({
-          userId: currentTask.createdBy,
-          taskId,
-          taskTitle: currentTask.title,
-          status,
-        });
-      }
-    }
+    await this.persistTaskStatus(currentTask, status);
   }
 
-  calculateTaskStatus(nodes: TaskNode[]): TaskStatus {
+  async setTaskStatus(taskId: string, status: TaskStatus): Promise<void> {
+    const currentTask = await this.taskRepository.findById(taskId);
+
+    if (!currentTask) {
+      throw new NotFoundException('Task not found');
+    }
+
+    await this.persistTaskStatus(currentTask, status);
+  }
+
+  calculateTaskStatus(
+    nodes: TaskNode[],
+    currentStatus: TaskStatus = TaskStatus.todo,
+  ): TaskStatus {
     if (!nodes.length) {
       return TaskStatus.todo;
     }
 
-    if (nodes.some((node) => node.status === TaskStatus.inProgress)) {
-      return TaskStatus.inProgress;
-    }
-
-    if (nodes.some((node) => node.status === TaskStatus.inReview)) {
-      return TaskStatus.inReview;
-    }
-
-    const hasTodo = nodes.some((node) => node.status === TaskStatus.todo);
-    const hasDone = nodes.some((node) => node.status === TaskStatus.done);
-    const hasQueuedLoop = nodes.some((node) => {
-      const loopJson = this.taskConfigResolver.readNodeLoopConfig(
-        node.loopJson,
-      );
-      return (
-        node.status === TaskStatus.todo &&
-        loopJson.loopCount > 0 &&
-        loopJson.loopCount < loopJson.maxLoops
-      );
-    });
-
-    if (hasQueuedLoop || (hasTodo && hasDone)) {
-      return TaskStatus.inProgress;
-    }
-
     if (nodes.every((node) => node.status === TaskStatus.done)) {
-      return TaskStatus.done;
+      return currentStatus === TaskStatus.done
+        ? TaskStatus.done
+        : TaskStatus.inReview;
     }
 
     if (nodes.every((node) => node.status === TaskStatus.todo)) {
-      return TaskStatus.todo;
+      return currentStatus === TaskStatus.todo
+        ? TaskStatus.todo
+        : TaskStatus.inProgress;
     }
 
-    return TaskStatus.todo;
+    return TaskStatus.inProgress;
+  }
+
+  private async persistTaskStatus(
+    task: Task,
+    status: TaskStatus,
+  ): Promise<void> {
+    const previousStatus = task.status;
+
+    await this.taskRepository.update(task.id, {
+      status,
+      finishedAt: status === TaskStatus.done ? new Date() : null,
+    });
+
+    await this.goalsService.syncPlanSubTaskStatusFromLinkedTask(
+      task.id,
+      status,
+    );
+
+    if (previousStatus !== status) {
+      await this.applySandboxLifecycle(task.id, task.gitWorktree, status);
+
+      if (
+        status === TaskStatus.inReview &&
+        task.createdBy &&
+        task.mode === TaskMode.workflow
+      ) {
+        await this.notificationsService.notifyTaskStatusChanged({
+          userId: task.createdBy,
+          taskId: task.id,
+          taskTitle: task.title,
+          status,
+        });
+      }
+    }
   }
 
   private async applySandboxLifecycle(
@@ -131,7 +133,7 @@ export class TaskStatusService {
         taskId,
         taskNodeId: null,
         level: TaskLogLevel.warn,
-        message: 'Task kept sandbox for troubleshooting',
+        message: 'Task kept worktree while pending review',
         payload: {
           gitWorktree,
         },

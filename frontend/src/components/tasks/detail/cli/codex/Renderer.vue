@@ -14,7 +14,7 @@ import { mergeAssistantTurns } from '../mergeAssistantTurns'
 import type { CodexMessageGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { asRecord, assistantTurnTimeLabel, getString, tryParseJson } from '../utils'
+import { asRecord, getString, tryParseJson } from '../utils'
 
 defineOptions({ name: 'CliCodexRenderer' })
 
@@ -109,7 +109,6 @@ function codexTurnFinished(items: CodexMessageGroup[]): boolean {
 
       <AssistantMessageShell
         v-else-if="turn.kind === 'assistant'"
-        :time-label="assistantTurnTimeLabel(turn.items)"
         :wrap-body="false"
       >
         <div class="space-y-3">

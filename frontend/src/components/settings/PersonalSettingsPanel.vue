@@ -80,7 +80,6 @@ const webhookSaving = ref(false)
 const profileModalOpen = ref(false)
 const passwordModalOpen = ref(false)
 const webhookModalOpen = ref(false)
-const browserModalOpen = ref(false)
 const logoutConfirmOpen = ref(false)
 const browserPermission = ref<BrowserPermissionState>('default')
 const browserPermissionSaving = ref(false)
@@ -93,7 +92,6 @@ const webhookFieldError = ref('')
 const profileFirstFieldRef = ref<HTMLInputElement | null>(null)
 const passwordFirstFieldRef = ref<HTMLInputElement | null>(null)
 const webhookFirstFieldRef = ref<HTMLInputElement | null>(null)
-const browserFirstFieldRef = ref<HTMLButtonElement | null>(null)
 const logoutConfirmButtonRef = ref<HTMLButtonElement | null>(null)
 
 const settingForm = reactive({
@@ -185,6 +183,46 @@ const browserPermissionLabel = computed(() => {
   return '未设置'
 })
 
+const browserPermissionBadgeClass = computed(() => {
+  if (browserPermission.value === 'granted') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  }
+
+  if (browserPermission.value === 'denied') {
+    return 'border-rose-200 bg-rose-50 text-rose-700'
+  }
+
+  if (browserPermission.value === 'unsupported') {
+    return 'border-slate-200 bg-slate-100 text-slate-600'
+  }
+
+  return 'border-amber-200 bg-amber-50 text-amber-700'
+})
+
+const browserNotificationHint = computed(() => {
+  if (browserPermission.value === 'unsupported') {
+    return '当前浏览器不支持系统通知，无法弹出任务提醒。'
+  }
+
+  if (browserPermission.value === 'denied') {
+    return '浏览器权限已被拒绝，即使开关已打开，也不会弹出系统通知。'
+  }
+
+  if (settingForm.browserEnabled && browserPermission.value === 'granted') {
+    return '浏览器通知已开启且当前浏览器已授权，任务进入待完成或已完成时应能收到提醒。'
+  }
+
+  if (settingForm.browserEnabled) {
+    return '服务端通知开关已打开，但当前浏览器尚未授权，因此不会弹出系统通知。'
+  }
+
+  if (browserPermission.value === 'granted') {
+    return '当前浏览器已授权，但服务端通知开关尚未开启。'
+  }
+
+  return '浏览器通知尚未授权，开启时会先尝试请求浏览器权限。'
+})
+
 watch(
   () => props.externalTab,
   (externalTab) => {
@@ -193,12 +231,15 @@ watch(
   { immediate: true },
 )
 
-watch(activePanel, () => {
+watch(activePanel, (panel) => {
   closeProfileModal()
   closePasswordModal()
   closeWebhookModal()
-  closeBrowserModal()
   closeLogoutConfirm()
+
+  if (panel === 'notifications') {
+    browserPermission.value = detectBrowserPermission()
+  }
 })
 
 watch(profileModalOpen, async (open) => {
@@ -226,15 +267,6 @@ watch(webhookModalOpen, async (open) => {
 
   await nextTick()
   webhookFirstFieldRef.value?.focus()
-})
-
-watch(browserModalOpen, async (open) => {
-  if (!open) {
-    return
-  }
-
-  await nextTick()
-  browserFirstFieldRef.value?.focus()
 })
 
 watch(logoutConfirmOpen, async (open) => {
@@ -288,6 +320,12 @@ const detectBrowserPermission = (): BrowserPermissionState => {
   }
 
   return Notification.permission
+}
+
+const refreshBrowserPermission = (): BrowserPermissionState => {
+  const permission = detectBrowserPermission()
+  browserPermission.value = permission
+  return permission
 }
 
 const isValidUrl = (url: string) => {
@@ -366,10 +404,6 @@ const openWebhookModal = () => {
 const closeWebhookModal = () => {
   webhookModalOpen.value = false
   clearWebhookErrors()
-}
-
-const closeBrowserModal = () => {
-  browserModalOpen.value = false
 }
 
 const openLogoutConfirm = () => {
@@ -536,6 +570,15 @@ const persistNotificationSetting = async (options?: {
 
 const toggleBrowserNotification = async () => {
   const previousValue = !settingForm.browserEnabled
+
+  if (settingForm.browserEnabled) {
+    const canEnable = await ensureBrowserNotificationPermission()
+    if (!canEnable) {
+      settingForm.browserEnabled = previousValue
+      return
+    }
+  }
+
   const isSaved = await persistNotificationSetting({
     skipWebhookValidation: true,
     successMessage: '浏览器通知已更新',
@@ -599,9 +642,15 @@ const saveWebhookSetting = async () => {
   }
 }
 
-const requestBrowserNotificationPermission = async () => {
-  if (browserPermission.value === 'unsupported' || typeof window === 'undefined' || !('Notification' in window)) {
-    return
+const requestBrowserNotificationPermission = async (options?: {
+  silent?: boolean
+}) => {
+  if (refreshBrowserPermission() === 'unsupported' || typeof window === 'undefined' || !('Notification' in window)) {
+    if (!options?.silent) {
+      message.error('当前浏览器不支持系统通知')
+    }
+
+    return 'unsupported' as const
   }
 
   browserPermissionSaving.value = true
@@ -609,8 +658,119 @@ const requestBrowserNotificationPermission = async () => {
   try {
     const permission = await Notification.requestPermission()
     browserPermission.value = permission
+
+    if (!options?.silent) {
+      if (permission === 'granted') {
+        message.success('浏览器通知已授权')
+      } else if (permission === 'denied') {
+        message.warning('浏览器通知权限已被拒绝，请在浏览器站点设置中手动开启。')
+      } else {
+        message.info('浏览器通知仍未授权')
+      }
+    }
+
+    return permission
+  } catch (error) {
+    const fallbackMessage =
+      error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : '请求浏览器通知权限失败'
+
+    if (!options?.silent) {
+      message.error(fallbackMessage)
+    }
+
+    return refreshBrowserPermission()
   } finally {
     browserPermissionSaving.value = false
+  }
+}
+
+const handleBrowserPermissionCheck = async () => {
+  const currentPermission = refreshBrowserPermission()
+
+  if (currentPermission === 'granted') {
+    message.success('浏览器通知已授权')
+    return
+  }
+
+  if (currentPermission === 'unsupported') {
+    message.error('当前浏览器不支持系统通知')
+    return
+  }
+
+  if (currentPermission === 'denied') {
+    message.warning('浏览器通知权限已被拒绝，请在浏览器站点设置中手动开启。')
+    return
+  }
+
+  await requestBrowserNotificationPermission()
+}
+
+const ensureBrowserNotificationPermission = async () => {
+  const currentPermission = refreshBrowserPermission()
+
+  if (currentPermission === 'granted') {
+    return true
+  }
+
+  if (currentPermission === 'unsupported') {
+    message.error('当前浏览器不支持系统通知')
+    return false
+  }
+
+  if (currentPermission === 'denied') {
+    message.warning('浏览器通知权限已被拒绝，请在浏览器站点设置中手动开启。')
+    return false
+  }
+
+  const nextPermission = await requestBrowserNotificationPermission({
+    silent: true,
+  })
+
+  if (nextPermission === 'granted') {
+    message.success('浏览器通知已授权')
+    return true
+  }
+
+  if (nextPermission === 'unsupported') {
+    message.error('当前浏览器不支持系统通知')
+  } else if (nextPermission === 'denied') {
+    message.warning('浏览器通知权限已被拒绝，请在浏览器站点设置中手动开启。')
+  } else {
+    message.info('浏览器通知尚未授权，暂时无法开启该渠道。')
+  }
+
+  return false
+}
+
+const sendTestBrowserNotification = async () => {
+  const canNotify = await ensureBrowserNotificationPermission()
+
+  if (!canNotify || typeof window === 'undefined' || !('Notification' in window)) {
+    return
+  }
+
+  try {
+    const notification = new Notification('AINative 测试通知', {
+      body: '如果你看到了这条消息，说明当前浏览器通知链路已就绪。',
+      icon: '/favicon.ico',
+      tag: `ainative-notification-test-${Date.now()}`,
+    })
+
+    notification.onclick = () => {
+      window.focus()
+      notification.close()
+    }
+
+    message.success('测试通知已发送，请检查浏览器或系统通知中心。')
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : '浏览器通知发送失败'
+
+    message.error(errorMessage)
   }
 }
 
@@ -809,19 +969,19 @@ onMounted(() => {
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-sm font-semibold">浏览器通知</p>
-                <p class="mt-1 text-xs text-muted-foreground">在浏览器中接收系统提醒，可在弹窗内检查授权状态。</p>
+                <p class="mt-1 text-xs text-muted-foreground">在浏览器中接收系统提醒，可直接检查当前授权状态。</p>
               </div>
 
               <div class="flex items-center">
                 <label
                   class="inline-flex items-center"
-                  :class="notificationSaving ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'"
+                  :class="notificationSaving || browserPermissionSaving ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'"
                 >
                   <input
                     v-model="settingForm.browserEnabled"
                     aria-label="切换浏览器通知"
                     class="peer sr-only"
-                    :disabled="notificationSaving"
+                    :disabled="notificationSaving || browserPermissionSaving"
                     type="checkbox"
                     @change="toggleBrowserNotification"
                   />
@@ -831,6 +991,34 @@ onMounted(() => {
                 </label>
               </div>
             </div>
+
+            <div class="mt-4 flex flex-wrap items-center gap-2">
+              <span
+                class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                :class="browserPermissionBadgeClass"
+              >
+                当前授权：{{ browserPermissionLabel }}
+              </span>
+              <button
+                class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition hover:shadow-sm"
+                type="button"
+                @click="handleBrowserPermissionCheck"
+              >
+                检查授权
+              </button>
+              <button
+                class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="browserPermissionSaving"
+                type="button"
+                @click="sendTestBrowserNotification"
+              >
+                发送测试通知
+              </button>
+            </div>
+
+            <p class="mt-3 text-xs text-muted-foreground">
+              {{ browserNotificationHint }}
+            </p>
           </article>
 
           <article class="rounded-xl border border-border bg-card/40 p-4">
@@ -1080,63 +1268,6 @@ onMounted(() => {
             @click="confirmLogout"
           >
             {{ logoutSubmitting ? '退出中...' : '确认退出' }}
-          </button>
-        </div>
-      </section>
-    </div>
-  </Teleport>
-
-  <Teleport to="body">
-    <div
-      v-if="browserModalOpen"
-      class="fixed inset-0 z-[95] flex items-center justify-center p-4"
-      @keydown.esc.prevent.stop="closeBrowserModal"
-    >
-      <button class="absolute inset-0 bg-black/45" type="button" @click="closeBrowserModal" />
-      <section
-        aria-modal="true"
-        class="relative z-10 w-[min(480px,96vw)] max-h-[85vh] overflow-hidden rounded-2xl border border-border bg-background p-5 shadow-2xl"
-        role="dialog"
-      >
-        <div class="flex items-center justify-between">
-          <h3 class="text-base font-semibold">浏览器通知设置</h3>
-          <button
-            aria-label="关闭浏览器通知设置弹窗"
-            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
-            type="button"
-            @click="closeBrowserModal"
-          >
-            ×
-          </button>
-        </div>
-
-        <div class="mt-4 space-y-3">
-          <div class="rounded-lg border border-border bg-card/40 p-3">
-            <p class="text-sm font-medium">当前权限状态</p>
-            <p class="mt-1 text-xs text-muted-foreground">{{ browserPermissionLabel }}</p>
-          </div>
-
-          <p class="text-xs text-muted-foreground">
-            {{ browserPermission === 'denied' ? '你已拒绝通知权限，请在浏览器站点设置中手动开启。' : '点击下方按钮可重新请求浏览器通知权限。' }}
-          </p>
-        </div>
-
-        <div class="mt-4 flex justify-end gap-2 border-t border-border pt-3">
-          <button
-            class="h-9 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-            @click="closeBrowserModal"
-          >
-            关闭
-          </button>
-          <button
-            ref="browserFirstFieldRef"
-            class="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="browserPermissionSaving || browserPermission === 'unsupported'"
-            type="button"
-            @click="requestBrowserNotificationPermission"
-          >
-            {{ browserPermissionSaving ? '请求中...' : '请求权限' }}
           </button>
         </div>
       </section>

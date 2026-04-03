@@ -79,6 +79,8 @@ export type TaskNode = {
     heartbeatAt?: string | null
     [key: string]: unknown
   } | null
+  beforeRunCommitSha?: string | null
+  afterRunCommitSha?: string | null
   status: TaskStatus
 }
 
@@ -99,6 +101,8 @@ export type TaskDetail = {
   task: Task
   nodes: TaskNode[]
   goalSummary?: TaskGoalSummary | null
+  /** 为 true 时不应展示删除（仍有后置计划子任务依赖本任务且尚未物化） */
+  planDeletionBlocked?: boolean
 }
 
 export type TaskLogLevel = 'info' | 'warn' | 'error' | 'debug'
@@ -256,6 +260,10 @@ export type ReplyTaskPayload = {
 
 export type RetryTaskPayload = {
   nodeId?: string
+}
+
+export type ResetNodePayload = {
+  nodeId: string
 }
 
 export type ApproveTaskPayload = {

@@ -1,8 +1,16 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { Project } from '../../projects/domain/project';
 import { ProjectRepository } from '../../projects/infrastructure/persistence/project.repository';
+import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
@@ -17,6 +25,7 @@ import { TaskStatusService } from './task-status.service';
 import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
+import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 @Injectable()
@@ -68,7 +77,16 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
     private readonly containerOrchestration: ContainerOrchestrationService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
     private readonly configService: ConfigService = new ConfigService(),
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notificationsService: Pick<
+      NotificationsService,
+      'notifyTaskNodeStatusChanged'
+    > = {
+      notifyTaskNodeStatusChanged: () => Promise.resolve(null),
+    },
   ) {}
 
   onModuleInit(): void {
@@ -275,11 +293,12 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
             this.taskConfigResolver.readNodeLeaseUntil(latestNode);
           const workerId =
             this.taskConfigResolver.readRuntimeWorkerId(latestNode);
+          const task = await this.taskAccessService.getTaskByIdOrThrow(
+            latestNode.taskId,
+          );
           const agentClioutput =
             await this.taskOutputService.writeNodeOutputJsonl({
-              task: await this.taskAccessService.getTaskByIdOrThrow(
-                latestNode.taskId,
-              ),
+              task,
               node: latestNode,
               output: {
                 summary: 'Node lease expired; worker heartbeat lost',
@@ -297,6 +316,18 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
             agentClioutput,
             runtimeJson: null,
           });
+
+          if (task.createdBy && task.mode === TaskMode.workflow) {
+            await this.notificationsService.notifyTaskNodeStatusChanged({
+              userId: task.createdBy,
+              taskId: task.id,
+              taskTitle: task.title,
+              nodeId: latestNode.id,
+              nodeName: latestNode.name,
+              nodeOrder: latestNode.nodeOrder,
+              status: TaskStatus.inReview,
+            });
+          }
 
           await this.taskLogService.appendLog({
             taskId: latestNode.taskId,
@@ -354,6 +385,9 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
         await this.taskRepository.update(task.id, {
           ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
         });
+        if (cleanupResult.cleaned) {
+          this.taskWorkspaceContextCache.invalidateTask(task.id);
+        }
         await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
 
         await this.taskLogService.appendLog({

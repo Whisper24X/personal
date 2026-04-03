@@ -13,7 +13,7 @@ import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
 import { openSseStream } from '@/api/http'
 import { tasksApi } from '@/api/tasks'
 import type {
-  RetryTaskPayload,
+  ResetNodePayload,
   Task,
   TaskDetail,
   TaskLog,
@@ -32,7 +32,9 @@ defineOptions({
 
 const route = useRoute()
 const hasButtonAccess = (buttonKey: keyof typeof BUTTON_ACCESS_CONFIG) => {
-  return hasSomeAccess(BUTTON_ACCESS_CONFIG[buttonKey].capabilities, (capability) => accessStore.hasCapability(capability))
+  return hasSomeAccess(BUTTON_ACCESS_CONFIG[buttonKey].capabilities, (capability) =>
+    accessStore.hasCapability(capability),
+  )
 }
 
 const router = useRouter()
@@ -52,6 +54,7 @@ const actionLoading = ref(false)
 const streamConnected = ref(false)
 const isRightPanelVisible = ref(resolveStoredRightPanelVisible())
 const rightPanelRefreshToken = ref(0)
+const rightPanelArtifactRefreshPaths = ref<string[] | null>([])
 /** 右栏「产物」面板：工作区文件预览路径 */
 const artifactFilePath = ref<string | null>(null)
 const artifactOpenNonce = ref(0)
@@ -87,8 +90,13 @@ let sidebarRecentTasksDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let rightPanelWorkspaceRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let streamLogFlushTimer: ReturnType<typeof setTimeout> | null = null
+let heartbeatCheckTimer: ReturnType<typeof setInterval> | null = null
+let lastSseEventTime = 0
+const SSE_HEARTBEAT_TIMEOUT_MS = 90_000
 let detailRequestId = 0
 let pendingStreamLogs: TaskLog[] = []
+const pendingRightPanelArtifactRefreshPaths = new Set<string>()
+let pendingRightPanelArtifactRefreshUnknown = false
 
 const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
   'Node execution started',
@@ -109,6 +117,13 @@ const NODE_STATUS_CHANGE_LOG_MESSAGES = [
 ] as const
 
 const statusLabelMap: Record<Task['status'], string> = {
+  todo: '待执行',
+  in_progress: '处理中',
+  in_review: '待完成',
+  done: '已完成',
+}
+
+const nodeStatusLabelMap: Record<TaskNode['status'], string> = {
   todo: '待执行',
   in_progress: '执行中',
   in_review: '待处理',
@@ -210,13 +225,44 @@ const workflowNodeStatusSignature = computed(() => {
     return null
   }
 
-  return sortedNodes.value
-    .map((node) => `${node.id}:${node.nodeOrder}:${node.status}`)
-    .join('|')
+  return sortedNodes.value.map((node) => `${node.id}:${node.nodeOrder}:${node.status}`).join('|')
 })
 
 const currentReviewNode = computed(() => {
   return sortedNodes.value.find((node) => node.status === 'in_review') ?? null
+})
+
+const showReviewCard = computed(() => {
+  return task.value?.mode === 'workflow' && currentReviewNode.value !== null
+})
+
+const hasRunningNode = computed(() => {
+  if (sortedNodes.value.some((node) => node.status === 'in_progress')) {
+    return true
+  }
+
+  // Legacy conversation responses in tests may omit nodes; fall back to task status there.
+  return (
+    task.value?.mode === 'conversation' &&
+    sortedNodes.value.length === 0 &&
+    task.value.status === 'in_progress'
+  )
+})
+
+const hasTodoNode = computed(() => {
+  if (sortedNodes.value.some((node) => node.status === 'todo')) {
+    return true
+  }
+
+  return (
+    task.value?.mode === 'conversation' &&
+    sortedNodes.value.length === 0 &&
+    task.value.status === 'todo'
+  )
+})
+
+const hasInReviewNode = computed(() => {
+  return sortedNodes.value.some((node) => node.status === 'in_review')
 })
 
 const canExecute = computed(() => {
@@ -224,11 +270,25 @@ const canExecute = computed(() => {
     return false
   }
 
-  return task.value.status === 'todo'
+  if (task.value.status === 'done' || hasRunningNode.value || hasInReviewNode.value) {
+    return false
+  }
+
+  return hasTodoNode.value
+})
+
+const areAllNodesDone = computed(() => {
+  return sortedNodes.value.length > 0 && sortedNodes.value.every((node) => node.status === 'done')
 })
 
 const canRemove = computed(() => {
-  return hasButtonAccess('deleteTask')
+  if (!hasButtonAccess('deleteTask') || !task.value) {
+    return false
+  }
+  if (detail.value?.planDeletionBlocked) {
+    return false
+  }
+  return true
 })
 
 const canManageReview = computed(() => {
@@ -236,52 +296,63 @@ const canManageReview = computed(() => {
 })
 
 const isCliRunning = computed(() => {
-  return task.value?.status === 'in_progress'
+  return hasRunningNode.value
 })
 
 const canInterruptExecution = computed(() => {
   return isCliRunning.value && hasButtonAccess('cancelTask')
 })
 
-const canAbortWorkflow = computed(() => {
-  return task.value?.mode === 'workflow' && canInterruptExecution.value
+const canCompleteTask = computed(() => {
+  if (!task.value || !hasButtonAccess('executeTask') || actionLoading.value || isCliRunning.value) {
+    return false
+  }
+
+  return task.value.status === 'in_review' && areAllNodesDone.value
 })
 
-const canReExecute = computed(() => {
-  if (!task.value || !hasButtonAccess('executeTask') || actionLoading.value) {
-    return false
+const selectedWorkflowNode = computed(() => {
+  if (!selectedWorkflowNodeId.value) {
+    return null
   }
-  if (task.value.status === 'in_progress' || task.value.status === 'todo') {
-    return false
-  }
-  if (task.value.mode === 'conversation') {
-    return task.value.status === 'in_review' || task.value.status === 'done'
-  }
-  return task.value.status === 'in_review'
+
+  return sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null
 })
 
-/** ReviewCard 已展示「重新执行」时，不在下方上下文条重复展示 */
-const canReExecuteInContextBar = computed(() => {
-  if (!canReExecute.value) {
-    return false
-  }
+const canResetSelectedWorkflowNode = computed(() => {
+  const currentTask = task.value
+
   if (
-    task.value?.mode === 'workflow' &&
-    currentReviewNode.value &&
-    canManageReview.value &&
-    !isCliRunning.value
+    !currentTask ||
+    currentTask.mode !== 'workflow' ||
+    currentTask.status === 'done' ||
+    !hasButtonAccess('executeTask') ||
+    actionLoading.value ||
+    isCliRunning.value
   ) {
     return false
   }
-  return true
+
+  if (!selectedWorkflowNode.value) {
+    return false
+  }
+
+  return (
+    selectedWorkflowNode.value.status === 'in_review' ||
+    selectedWorkflowNode.value.status === 'done'
+  )
 })
 
 const replyDisabled = computed(() => {
-  return !task.value || actionLoading.value || isCliRunning.value
+  return !task.value || actionLoading.value || isCliRunning.value || task.value.status === 'done'
 })
 
 const replyPlaceholder = computed(() => {
-  if (task.value?.status === 'in_progress') {
+  if (task.value?.status === 'done') {
+    return '任务已完成，无法继续回复...'
+  }
+
+  if (isCliRunning.value) {
     return '任务执行中，暂不可回复...'
   }
 
@@ -302,7 +373,7 @@ const executionMessages = computed(() => {
 
 const executionCliId = computed(() => {
   const selectedNode = selectedWorkflowNodeId.value
-    ? sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null
+    ? (sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null)
     : null
   return (
     selectedNode?.agentCliId ||
@@ -323,7 +394,9 @@ const contextSubtitle = computed(() => {
   }
   if (task.value.mode === 'workflow') {
     const n = sortedNodes.value.length
-    const cur = sortedNodes.value.find((node) => node.status === 'in_progress' || node.status === 'in_review')
+    const cur = sortedNodes.value.find(
+      (node) => node.status === 'in_progress' || node.status === 'in_review',
+    )
     const tail = cur?.name ? ` · 当前：${cur.name}` : ''
     return `共 ${n} 个节点${tail}`
   }
@@ -369,9 +442,15 @@ const resolveLogMessageContent = (log: TaskLog) => {
 
 const mapLogToMessage = (log: TaskLog): TaskMessage => {
   const payload = log.payload && typeof log.payload === 'object' ? log.payload : null
-  const payloadRole = payload && typeof payload.messageRole === 'string' ? payload.messageRole : null
+  const payloadRole =
+    payload && typeof payload.messageRole === 'string' ? payload.messageRole : null
 
-  if (payloadRole === 'user' || payloadRole === 'assistant' || payloadRole === 'system' || payloadRole === 'error') {
+  if (
+    payloadRole === 'user' ||
+    payloadRole === 'assistant' ||
+    payloadRole === 'system' ||
+    payloadRole === 'error'
+  ) {
     return {
       role: payloadRole,
       content: resolveLogMessageContent(log),
@@ -441,7 +520,7 @@ const applyTaskLog = (payload: TaskLog) => {
     scheduleRefreshMessages()
   }
   if (shouldRefreshRightPanelForNodeStatusLog(payload)) {
-    rightPanelRefreshToken.value += 1
+    bumpRightPanelRefresh([])
   }
   if (shouldRefreshTaskDetailForLog(payload)) {
     scheduleRefreshTaskDetail()
@@ -526,6 +605,17 @@ const clearRightPanelWorkspaceRefreshTimer = () => {
   rightPanelWorkspaceRefreshDebounceTimer = null
 }
 
+const resetPendingRightPanelArtifactRefresh = () => {
+  pendingRightPanelArtifactRefreshPaths.clear()
+  pendingRightPanelArtifactRefreshUnknown = false
+}
+
+const bumpRightPanelRefresh = (artifactRefreshPaths: string[] | null = []) => {
+  rightPanelArtifactRefreshPaths.value =
+    artifactRefreshPaths === null ? null : [...new Set(artifactRefreshPaths.filter(Boolean))]
+  rightPanelRefreshToken.value += 1
+}
+
 const clearPendingStreamLogs = () => {
   pendingStreamLogs = []
   clearStreamLogFlushTimer()
@@ -558,22 +648,56 @@ const scheduleRefreshTaskDetail = (delay = 300) => {
   }, delay)
 }
 
-const scheduleRightPanelWorkspaceRefresh = (delay = 250) => {
+const scheduleRightPanelWorkspaceRefresh = (artifactRefreshPaths: string[] | null, delay = 250) => {
   if (!taskId.value || !isRightPanelVisible.value) {
     return
+  }
+
+  if (artifactRefreshPaths === null) {
+    pendingRightPanelArtifactRefreshUnknown = true
+  } else {
+    for (const path of artifactRefreshPaths) {
+      if (path) {
+        pendingRightPanelArtifactRefreshPaths.add(path)
+      }
+    }
   }
 
   clearRightPanelWorkspaceRefreshTimer()
   rightPanelWorkspaceRefreshDebounceTimer = setTimeout(() => {
     rightPanelWorkspaceRefreshDebounceTimer = null
-    rightPanelRefreshToken.value += 1
+    const nextArtifactRefreshPaths = pendingRightPanelArtifactRefreshUnknown
+      ? null
+      : [...pendingRightPanelArtifactRefreshPaths]
+    resetPendingRightPanelArtifactRefresh()
+    bumpRightPanelRefresh(nextArtifactRefreshPaths)
   }, delay)
 }
 
+const stopHeartbeatCheck = () => {
+  if (heartbeatCheckTimer) {
+    clearInterval(heartbeatCheckTimer)
+    heartbeatCheckTimer = null
+  }
+}
+
+const startHeartbeatCheck = () => {
+  stopHeartbeatCheck()
+  heartbeatCheckTimer = setInterval(() => {
+    if (lastSseEventTime > 0 && Date.now() - lastSseEventTime > SSE_HEARTBEAT_TIMEOUT_MS) {
+      stopHeartbeatCheck()
+      disconnectStream()
+      scheduleReconnect()
+    }
+  }, 10_000)
+}
+
 const disconnectStream = () => {
+  stopHeartbeatCheck()
   clearReconnectTimer()
   clearMessageRefreshTimer()
   clearRightPanelWorkspaceRefreshTimer()
+  resetPendingRightPanelArtifactRefresh()
   clearPendingStreamLogs()
   if (detailRefreshDebounceTimer) {
     clearTimeout(detailRefreshDebounceTimer)
@@ -622,45 +746,51 @@ const connectStream = async () => {
 
   try {
     streamConnected.value = true
+    lastSseEventTime = Date.now()
+    startHeartbeatCheck()
 
-    await openSseStream(
-      `/tasks/${taskId.value}/stream`,
-      undefined,
-      {
-        signal: streamAbortController.signal,
-        onOpen: async () => {
-          await syncIncrementalLogs(currentTaskId, reconnectCursor)
-        },
-        onEvent: (event) => {
-          if (event.event === 'task-workspace-change') {
-            try {
-              const payload = JSON.parse(event.data) as TaskWorkspaceChange
-              if (payload.changes.length > 0 || payload.truncated) {
-                scheduleRightPanelWorkspaceRefresh()
-              }
-            } catch {
-              // ignore malformed task-workspace-change payload
-            }
-            return
-          }
-
-          if (event.event && event.event !== 'task-log') {
-            return
-          }
-
-          try {
-            const payload = JSON.parse(event.data) as TaskLog
-            queueTaskLog(payload)
-          } catch {
-            // ignore malformed task-log payload
-          }
-        },
-        onError: () => {
-          streamConnected.value = false
-          scheduleReconnect()
-        },
+    await openSseStream(`/tasks/${taskId.value}/stream`, undefined, {
+      signal: streamAbortController.signal,
+      onOpen: async () => {
+        await syncIncrementalLogs(currentTaskId, reconnectCursor)
       },
-    )
+      onEvent: (event) => {
+        lastSseEventTime = Date.now()
+
+        if (event.event === 'heartbeat') {
+          return
+        }
+
+        if (event.event === 'task-workspace-change') {
+          try {
+            const payload = JSON.parse(event.data) as TaskWorkspaceChange
+            if (payload.changes.length > 0 || payload.truncated) {
+              scheduleRightPanelWorkspaceRefresh(
+                payload.truncated ? null : payload.changes.map((change) => change.path),
+              )
+            }
+          } catch {
+            // ignore malformed task-workspace-change payload
+          }
+          return
+        }
+
+        if (event.event && event.event !== 'task-log') {
+          return
+        }
+
+        try {
+          const payload = JSON.parse(event.data) as TaskLog
+          queueTaskLog(payload)
+        } catch {
+          // ignore malformed task-log payload
+        }
+      },
+      onError: () => {
+        streamConnected.value = false
+        scheduleReconnect()
+      },
+    })
 
     streamConnected.value = false
     scheduleReconnect()
@@ -683,9 +813,7 @@ const refreshMessages = async () => {
   try {
     messages.value = await tasksApi.messages(taskId.value)
   } catch {
-    messages.value = logs.value
-      .filter(isAgentOutputLog)
-      .map(mapLogToMessage)
+    messages.value = logs.value.filter(isAgentOutputLog).map(mapLogToMessage)
   }
 }
 
@@ -718,7 +846,7 @@ const syncIncrementalLogs = async (
 
 const refreshAccessContext = async (projectId: string) => {
   try {
-    await accessStore.loadContext((projectId ? { projectId } : {}))
+    await accessStore.loadContext(projectId ? { projectId } : {})
   } catch (error) {
     void error
     accessStore.clear()
@@ -731,6 +859,7 @@ const resetTaskState = () => {
   messages.value = []
   selectedWorkflowNodeId.value = null
   lastWorkflowAutoSyncSignature.value = null
+  rightPanelArtifactRefreshPaths.value = []
   clearPendingStreamLogs()
 }
 
@@ -808,8 +937,7 @@ const executeTask = async () => {
 
   try {
     detail.value = await tasksApi.execute(taskId.value)
-    rightPanelRefreshToken.value += 1
-    message.success('任务已开始执行')
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '执行任务失败'))
   } finally {
@@ -817,45 +945,59 @@ const executeTask = async () => {
   }
 }
 
-const reExecuteTask = async () => {
-  if (!taskId.value || !canReExecute.value) {
+const completeTask = async () => {
+  if (!taskId.value || !canCompleteTask.value) {
+    return
+  }
+
+  if (!areAllNodesDone.value) {
+    message.warning('请先完成所有节点后再完成任务')
     return
   }
 
   actionLoading.value = true
 
   try {
-    const payload: RetryTaskPayload = {}
-    if (task.value?.mode === 'workflow' && currentReviewNode.value?.id) {
-      payload.nodeId = currentReviewNode.value.id
-    }
-    detail.value = await tasksApi.retry(taskId.value, payload)
-    rightPanelRefreshToken.value += 1
-    message.success('任务已重新执行')
+    detail.value = await tasksApi.complete(taskId.value)
+    bumpRightPanelRefresh([])
+    void refreshSidebarRecentTasks()
+    message.success('任务已完成')
   } catch (error) {
-    message.error(toErrorMessage(error, '重新执行失败'))
+    message.error(toErrorMessage(error, '完成任务失败'))
   } finally {
     actionLoading.value = false
   }
 }
 
-const repeatNode = async (nodeId: string) => {
-  const allowed =
-    taskId.value &&
-    hasButtonAccess('executeTask') &&
-    currentReviewNode.value?.id === nodeId
-  if (!allowed) {
+const resetSelectedWorkflowNode = async () => {
+  const targetNodeId = selectedWorkflowNode.value?.id ?? null
+
+  if (!taskId.value || !canResetSelectedWorkflowNode.value || !targetNodeId) {
     return
   }
 
   actionLoading.value = true
 
   try {
-    detail.value = await tasksApi.repeatNode(taskId.value, nodeId)
-    rightPanelRefreshToken.value += 1
-    message.success('节点已加入重跑')
+    clearPendingStreamLogs()
+
+    const payload: ResetNodePayload = {
+      nodeId: targetNodeId,
+    }
+    detail.value = await tasksApi.resetNode(taskId.value, payload)
+    const [nextLogsResult, nextMessagesResult] = await Promise.allSettled([
+      tasksApi.logs(taskId.value, { limit: 300 }),
+      tasksApi.messages(taskId.value),
+    ])
+    if (nextLogsResult.status === 'fulfilled') {
+      logs.value = nextLogsResult.value
+    }
+    if (nextMessagesResult.status === 'fulfilled') {
+      messages.value = nextMessagesResult.value
+    }
+    bumpRightPanelRefresh([])
   } catch (error) {
-    message.error(toErrorMessage(error, '重跑节点失败'))
+    message.error(toErrorMessage(error, '重置失败'))
   } finally {
     actionLoading.value = false
   }
@@ -872,8 +1014,7 @@ const approveNode = async (node: TaskNode) => {
     detail.value = await tasksApi.approve(taskId.value, {
       nodeId: node.id,
     })
-    rightPanelRefreshToken.value += 1
-    message.success('节点审批已通过')
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '审批节点失败'))
   } finally {
@@ -951,8 +1092,7 @@ const handleReply = async (replyMessage: string) => {
       message: replyMessage,
     })
     await refreshMessages()
-    rightPanelRefreshToken.value += 1
-    message.success('回复已提交')
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '提交回复失败'))
   } finally {
@@ -970,8 +1110,7 @@ const interruptExecution = async () => {
   try {
     detail.value = await tasksApi.cancel(taskId.value)
     await refreshMessages()
-    rightPanelRefreshToken.value += 1
-    message.success('任务已停止执行')
+    bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '停止执行失败'))
   } finally {
@@ -1106,14 +1245,7 @@ function startDrag(e: MouseEvent) {
 <template>
   <div class="fade-up flex h-full min-h-0 w-full">
     <section
-      v-if="pageLoading"
-      class="panel-card flex h-full w-full items-center justify-center p-6 text-sm text-muted-foreground"
-    >
-      加载中...
-    </section>
-
-    <section
-      v-else
+      v-if="!pageLoading"
       ref="containerRef"
       class="flex h-full w-full min-w-0 overflow-hidden"
     >
@@ -1142,76 +1274,80 @@ function startDrag(e: MouseEvent) {
             <span class="text-muted-foreground">（{{ detail.goalSummary.status }}）</span>
           </div>
 
-          <WorkflowCard
-            v-if="showWorkflowCard"
-            ref="workflowCardRef"
-            :nodes="sortedNodes"
-            :selected-node-id="selectedWorkflowNodeId"
-            @select-node="handleSelectWorkflowNode"
-          />
+          <div class="flex min-h-0 w-full flex-1 flex-col">
+            <WorkflowCard
+              v-if="showWorkflowCard"
+              ref="workflowCardRef"
+              :nodes="sortedNodes"
+              :selected-node-id="selectedWorkflowNodeId"
+              @select-node="handleSelectWorkflowNode"
+            />
 
-          <ReviewCard
-            :node="currentReviewNode"
-            :status-label-map="statusLabelMap"
-            :can-manage-review="canManageReview"
-            :can-repeat-review-node="canManageReview && !isCliRunning"
-            :repeat-node-loading="actionLoading"
-            @approve-node="approveNode"
-            @repeat-node="(node) => repeatNode(node.id)"
-          />
+            <ReviewCard
+              v-if="showReviewCard"
+              :node="currentReviewNode"
+              :status-label-map="nodeStatusLabelMap"
+              :can-manage-review="canManageReview"
+              @approve-node="approveNode"
+            />
 
-          <TaskExecutionContextBar
-            v-if="task"
-            :mode="task.mode"
-            :status="task.status"
-            :status-label="taskStatusLabel"
-            :status-class="taskStatusClass"
-            :mode-label="taskModeLabel"
-            :subtitle="contextSubtitle"
-            :action-loading="actionLoading"
-            :can-execute="canExecute"
-            :can-re-execute="canReExecuteInContextBar"
-            :can-abort-workflow="canAbortWorkflow"
-            :can-remove="canRemove"
-            :right-panel-visible="isRightPanelVisible"
-            @execute="executeTask"
-            @re-execute="reExecuteTask"
-            @abort-workflow="interruptExecution"
-            @refresh="loadInitialTaskData"
-            @remove="deleteOpen = true"
-            @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
-          />
+            <TaskExecutionContextBar
+              v-if="task"
+              :mode="task.mode"
+              :status="task.status"
+              :status-label="taskStatusLabel"
+              :status-class="taskStatusClass"
+              :mode-label="taskModeLabel"
+              :subtitle="contextSubtitle"
+              :action-loading="actionLoading"
+              :can-execute="canExecute"
+              :can-complete-task="canCompleteTask"
+              :can-reset="canResetSelectedWorkflowNode"
+              :can-remove="canRemove"
+              :right-panel-visible="isRightPanelVisible"
+              @execute="executeTask"
+              @complete-task="completeTask"
+              @reset="resetSelectedWorkflowNode"
+              @refresh="loadInitialTaskData"
+              @remove="deleteOpen = true"
+              @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
+            />
 
-          <ExecutionPanel
-            :title="executionPanelTitle"
-            :loading="pageLoading"
-            :agent-cli-id="executionCliId"
-            :task-status="task?.status || null"
-            :task-status-label="taskStatusLabel"
-            :task-status-class="taskStatusClass"
-            :stream-connected="streamConnected"
-            :messages="executionMessages"
-            :format-date="formatDate"
-          />
+            <ExecutionPanel
+              :title="executionPanelTitle"
+              :loading="pageLoading"
+              :agent-cli-id="executionCliId"
+              :task-status="task?.status || null"
+              :task-status-label="taskStatusLabel"
+              :task-status-class="taskStatusClass"
+              :stream-connected="streamConnected"
+              :messages="executionMessages"
+              :format-date="formatDate"
+            />
 
-          <ReplyCard
-            :disabled="replyDisabled"
-            :placeholder="replyPlaceholder"
-            :running="isCliRunning"
-            :action-loading="actionLoading"
-            :can-interrupt="canInterruptExecution"
-            @submit="handleReply"
-            @interrupt="interruptExecution"
-          />
+            <ReplyCard
+              :disabled="replyDisabled"
+              :placeholder="replyPlaceholder"
+              :running="isCliRunning"
+              :action-loading="actionLoading"
+              :can-interrupt="canInterruptExecution"
+              @submit="handleReply"
+              @interrupt="interruptExecution"
+            />
+          </div>
         </div>
       </div>
 
       <div
         v-if="isRightPanelVisible"
-        class="bg-border/50 h-full w-1.5 min-w-1.5 shrink-0 cursor-col-resize transition-colors hover:bg-primary/50"
-        :class="{ 'bg-primary/50': isDragging }"
+        class="group relative h-full w-1.5 min-w-1.5 shrink-0 cursor-col-resize"
         @mousedown.prevent="startDrag"
-      />
+      >
+        <div
+          class="bg-border/50 pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors group-hover:bg-primary/50"
+          :class="{ 'bg-primary/50': isDragging }"
+        />
+      </div>
 
       <RightPanelSection
         v-if="isRightPanelVisible"
@@ -1220,6 +1356,7 @@ function startDrag(e: MouseEvent) {
         :branch-name="task?.gitBranch || null"
         :base-branch="task?.gitBaseBranch || null"
         :refresh-token="rightPanelRefreshToken"
+        :artifact-refresh-paths="rightPanelArtifactRefreshPaths"
         :logs="logs"
         default-right-tab="artifacts"
         :format-date="formatDate"
@@ -1237,5 +1374,30 @@ function startDrag(e: MouseEvent) {
       @save="saveEdit"
       @remove="removeTask"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="pageLoading"
+        class="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-7 bg-black/5 backdrop-blur-md transition-opacity duration-300"
+        role="status"
+        aria-live="polite"
+      >
+        <svg
+          class="size-9 animate-spin text-muted-foreground/50"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.15" />
+          <path
+            d="M12 2a10 10 0 0 1 10 10"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
+        <p class="text-sm font-medium text-muted-foreground">正在加载任务</p>
+      </div>
+    </Teleport>
   </div>
 </template>

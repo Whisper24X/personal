@@ -77,8 +77,8 @@ export function useSidebarRecentTasks(selectedProjectId: () => string) {
 export function taskStatusLabel(status: Task['status']): string {
   const map: Record<Task['status'], string> = {
     todo: '待执行',
-    in_progress: '执行中',
-    in_review: '待处理',
+    in_progress: '处理中',
+    in_review: '待完成',
     done: '已完成',
   }
   return map[status] ?? status

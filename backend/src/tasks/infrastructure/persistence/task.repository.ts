@@ -1,5 +1,6 @@
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
+import { RepositoryDiagnosticsOptions } from '../../../observability/repository-diagnostics';
 import { Task } from '../../domain/task';
 import { TaskStatus } from '../../dto/task-status.enum';
 
@@ -8,7 +9,10 @@ export abstract class TaskRepository {
     data: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
   ): Promise<Task>;
 
-  abstract findById(id: Task['id']): Promise<NullableType<Task>>;
+  abstract findById(
+    id: Task['id'],
+    options?: RepositoryDiagnosticsOptions,
+  ): Promise<NullableType<Task>>;
 
   abstract findByGoalId(goalId: string): Promise<Task[]>;
 

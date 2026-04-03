@@ -20,6 +20,7 @@ const props = withDefaults(
     branchName?: string | null
     baseBranch?: string | null
     refreshToken?: number
+    artifactRefreshPaths?: string[] | null
     logs?: TaskLog[]
     defaultRightTab?: 'artifacts' | 'preview' | 'files'
     formatDate: (value?: string) => string
@@ -33,6 +34,7 @@ const props = withDefaults(
     branchName: null,
     baseBranch: null,
     refreshToken: 0,
+    artifactRefreshPaths: () => [],
     logs: () => [],
     defaultRightTab: 'artifacts',
     artifactFilePath: null,
@@ -40,7 +42,9 @@ const props = withDefaults(
   },
 )
 
-const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal' | 'logs' | 'deploy'>('artifact')
+const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal' | 'logs' | 'deploy'>(
+  'artifact',
+)
 
 watch(
   () => props.artifactOpenNonce,
@@ -118,7 +122,11 @@ watch(
         </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
-          :class="activeTab === 'logs' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          :class="
+            activeTab === 'logs'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-muted-foreground hover:text-foreground'
+          "
           type="button"
           @click="activeTab = 'logs'"
         >
@@ -126,7 +134,11 @@ watch(
         </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
-          :class="activeTab === 'deploy' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          :class="
+            activeTab === 'deploy'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-muted-foreground hover:text-foreground'
+          "
           type="button"
           @click="activeTab = 'deploy'"
         >
@@ -140,6 +152,7 @@ watch(
         v-if="activeTab === 'artifact'"
         :task-id="props.taskId"
         :refresh-token="props.refreshToken"
+        :artifact-refresh-paths="props.artifactRefreshPaths ?? []"
         :artifact-file-path="props.artifactFilePath ?? null"
         :artifact-open-nonce="props.artifactOpenNonce ?? 0"
       />

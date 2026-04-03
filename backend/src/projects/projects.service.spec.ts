@@ -1,9 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
+import path from 'path';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { Project } from './domain/project';
 import { ProjectsService } from './projects.service';
 
-process.env.AINATIVE_DATA_ROOT_DIR = '/tmp/ainative-data-root';
+process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
 
 const createCurrentUser = () => ({
   sub: 'user-1',
@@ -133,6 +134,23 @@ const createProjectsService = () => {
 };
 
 describe('ProjectsService', () => {
+  const originalGitlabUsername = process.env.GITLAB_USERNAME;
+  const originalGitlabToken = process.env.GITLAB_TOKEN;
+
+  afterEach(() => {
+    if (originalGitlabUsername === undefined) {
+      delete process.env.GITLAB_USERNAME;
+    } else {
+      process.env.GITLAB_USERNAME = originalGitlabUsername;
+    }
+
+    if (originalGitlabToken === undefined) {
+      delete process.env.GITLAB_TOKEN;
+    } else {
+      process.env.GITLAB_TOKEN = originalGitlabToken;
+    }
+  });
+
   it('should validate git url and create project with owner member', async () => {
     const {
       service,
@@ -319,6 +337,41 @@ describe('ProjectsService', () => {
     ]);
   });
 
+  it('should clone gitlab ssh repository via https token auth when configured', async () => {
+    process.env.GITLAB_USERNAME = 'oauth2';
+    process.env.GITLAB_TOKEN = 'token-value';
+
+    const { service } = createProjectsService();
+    const serviceAny = service as any;
+    const project = {
+      ...createProject(),
+      gitUrl: 'git@gitlab.yc345.tv:frontend/ainative.git',
+      defaultBranch: 'develop',
+    };
+    const repositoryRoot = serviceAny.resolveRepositoryRoot(project);
+    const runCommandSpy = jest
+      .spyOn(serviceAny, 'runCommand')
+      .mockResolvedValue({
+        success: true,
+        stdout: '',
+        stderr: '',
+      });
+
+    jest.spyOn(serviceAny, 'pathExists').mockResolvedValue(false);
+
+    await serviceAny.ensureProjectRepository(project);
+
+    expect(runCommandSpy).toHaveBeenNthCalledWith(1, 'git', [
+      'clone',
+      '--origin',
+      'origin',
+      '--branch',
+      'develop',
+      'https://oauth2:token-value@gitlab.yc345.tv/frontend/ainative.git',
+      repositoryRoot,
+    ]);
+  });
+
   it('should inspect repository and prioritize master as recommended default branch', async () => {
     const { service, businessLineRepository } = createProjectsService();
     const serviceAny = service as any;
@@ -351,6 +404,42 @@ describe('ProjectsService', () => {
       branches: ['master', 'main', 'feature-x'],
       recommendedDefaultBranch: 'master',
     });
+  });
+
+  it('should inspect gitlab ssh repository via https token auth when configured', async () => {
+    process.env.GITLAB_USERNAME = 'oauth2';
+    process.env.GITLAB_TOKEN = 'token-value';
+
+    const { service, businessLineRepository } = createProjectsService();
+    const serviceAny = service as any;
+    const currentUser = createCurrentUser();
+
+    businessLineRepository.findById.mockResolvedValue({
+      id: 'business-line-1',
+      name: 'BL',
+    });
+    const runCommandSpy = jest
+      .spyOn(serviceAny, 'runCommand')
+      .mockResolvedValue({
+        success: true,
+        stdout: 'aaaaaaaa refs/heads/main',
+        stderr: '',
+      });
+
+    await service.inspectRepository(
+      {
+        businessLineId: 'business-line-1',
+        gitUrl: 'git@gitlab.yc345.tv:frontend/ainative-workspace.git',
+      },
+      currentUser,
+    );
+
+    expect(runCommandSpy).toHaveBeenCalledWith('git', [
+      'ls-remote',
+      '--heads',
+      '--refs',
+      'https://oauth2:token-value@gitlab.yc345.tv/frontend/ainative-workspace.git',
+    ]);
   });
 
   it('should return bad request when repository inspect command fails', async () => {

@@ -19,10 +19,7 @@ import { ProjectsService } from '../projects/projects.service';
 import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
 import { BusinessLineMemberRepository } from '../business-lines/infrastructure/persistence/business-line-member.repository';
 import { BusinessLineCustomRoleRepository } from '../business-lines/infrastructure/persistence/business-line-custom-role.repository';
-import {
-  canManageBusinessLineWorkflowByCapabilities,
-  canReadWorkflowByCapabilities,
-} from '../access/access.constants';
+import { canReadWorkflowByCapabilities } from '../access/access.constants';
 
 @Injectable()
 export class WorkflowTemplatesService {
@@ -418,35 +415,10 @@ export class WorkflowTemplatesService {
 
   private async ensureCanManageBusinessLineTemplates(
     businessLineId: string,
-    currentUser: JwtPayloadType,
+    _currentUser: JwtPayloadType,
   ): Promise<void> {
+    void _currentUser;
     await this.ensureBusinessLineExists(businessLineId);
-
-    if (this.isAdmin(currentUser)) {
-      return;
-    }
-
-    const member =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        businessLineId,
-        currentUser.sub,
-      );
-
-    if (!member) {
-      throw new ForbiddenException('forbiddenBusinessLine');
-    }
-
-    const role = await this.businessLineCustomRoleRepository.findById(
-      member.roleId,
-    );
-
-    if (
-      !role ||
-      role.businessLineId !== businessLineId ||
-      !canManageBusinessLineWorkflowByCapabilities(role.capabilities)
-    ) {
-      throw new ForbiddenException('forbiddenWorkflowTemplateManage');
-    }
   }
 
   private async ensureCanReadBusinessLineWorkflow(
@@ -487,7 +459,7 @@ export class WorkflowTemplatesService {
     currentUser: JwtPayloadType,
   ): Promise<void> {
     if (template.scope === WorkflowTemplateScope.global) {
-      throw new ForbiddenException('forbiddenWorkflowTemplate');
+      return;
     }
 
     if (template.scope === WorkflowTemplateScope.businessLine) {
@@ -497,10 +469,7 @@ export class WorkflowTemplatesService {
         );
       }
 
-      await this.ensureCanReadBusinessLineWorkflow(
-        template.businessLineId,
-        currentUser,
-      );
+      await this.ensureBusinessLineExists(template.businessLineId);
       return;
     }
 
@@ -520,7 +489,7 @@ export class WorkflowTemplatesService {
     currentUser: JwtPayloadType,
   ): Promise<void> {
     if (template.scope === WorkflowTemplateScope.global) {
-      throw new ForbiddenException('forbiddenWorkflowTemplateManage');
+      return;
     }
 
     if (template.scope === WorkflowTemplateScope.businessLine) {

@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { spawn } from 'child_process';
 import { GitBranchActionResultDto } from './dto/git-branch-action-result.dto';
 import { GitBranchesDto } from './dto/git-branches.dto';
@@ -175,6 +179,81 @@ export class GitService {
           success: true,
           branch: normalizedName,
         };
+      },
+    );
+  }
+
+  /**
+   * Deletes a local branch under the project repository lock.
+   * No-op if the branch does not exist locally, or if the name is a protected branch (main/master/etc.).
+   * If the branch is checked out, switches to the project default branch first.
+   */
+  async deleteLocalBranch(
+    projectId: string,
+    branchName: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    const normalizedName = this.normalizeAndAssertBranchName(
+      branchName,
+      '分支名',
+    );
+    if (this.isProtectedBranchName(normalizedName)) {
+      return;
+    }
+
+    return this.projectsService.runWithProjectRepositoryLock(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+      async ({ project, repositoryRoot }) => {
+        const defaultBranch =
+          project.defaultBranch?.trim() || this.fallbackDefaultBranch;
+
+        const snapshot = await this.readBranchSnapshot(
+          repositoryRoot,
+          defaultBranch,
+        );
+
+        if (!snapshot.localBranches.includes(normalizedName)) {
+          return;
+        }
+
+        if (snapshot.currentBranch === normalizedName) {
+          if (!snapshot.localBranches.includes(defaultBranch)) {
+            throw new ConflictException(
+              `无法在删除分支前切换到默认分支 ${defaultBranch}（本地不存在该分支）`,
+            );
+          }
+
+          const switchResult = await this.runCommand([
+            '-C',
+            repositoryRoot,
+            'switch',
+            defaultBranch,
+          ]);
+
+          if (!switchResult.success) {
+            throw new ConflictException(
+              `删除需求分支失败：无法切换到默认分支 ${defaultBranch}（${
+                switchResult.stderr || switchResult.stdout || 'unknown'
+              }）`,
+            );
+          }
+        }
+
+        const deleteResult = await this.runCommand([
+          '-C',
+          repositoryRoot,
+          'branch',
+          '-D',
+          normalizedName,
+        ]);
+
+        if (!deleteResult.success) {
+          throw new ConflictException(
+            this.formatGitFailure('删除本地分支失败', deleteResult),
+          );
+        }
       },
     );
   }
@@ -614,6 +693,13 @@ export class GitService {
     }
 
     return 3;
+  }
+
+  /** Aligns with TaskRuntimeService protected branch rules for branch -D. */
+  private isProtectedBranchName(branchName: string): boolean {
+    const protectedNames = ['main', 'master', 'develop', 'dev', 'release'];
+    const lower = branchName.toLowerCase();
+    return protectedNames.includes(lower) || lower.startsWith('release/');
   }
 
   private normalizeAndAssertBranchName(value: string, label: string): string {

@@ -20,6 +20,8 @@ export class TaskNodeMapper {
     domainEntity.configJson = raw.configJson as TaskNodeConfig | null;
     domainEntity.loopJson = raw.loopJson as TaskLoopConfig | null;
     domainEntity.runtimeJson = raw.runtimeJson;
+    domainEntity.beforeRunCommitSha = raw.beforeRunCommitSha;
+    domainEntity.afterRunCommitSha = raw.afterRunCommitSha;
     domainEntity.status = raw.status;
     domainEntity.startedAt = raw.startedAt;
     domainEntity.finishedAt = raw.finishedAt;
@@ -48,6 +50,10 @@ export class TaskNodeMapper {
     persistenceEntity.configJson = domainEntity.configJson ?? null;
     persistenceEntity.loopJson = domainEntity.loopJson ?? null;
     persistenceEntity.runtimeJson = domainEntity.runtimeJson ?? null;
+    persistenceEntity.beforeRunCommitSha =
+      domainEntity.beforeRunCommitSha ?? null;
+    persistenceEntity.afterRunCommitSha =
+      domainEntity.afterRunCommitSha ?? null;
     persistenceEntity.status = domainEntity.status;
     persistenceEntity.startedAt = domainEntity.startedAt ?? null;
     persistenceEntity.finishedAt = domainEntity.finishedAt ?? null;

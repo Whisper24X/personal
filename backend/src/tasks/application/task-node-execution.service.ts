@@ -6,11 +6,13 @@ import {
 } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { AgentCliAdapterRegistry } from '../agent-cli/agent-cli-adapter.registry';
 import { AgentRunnerService } from '../agent-runner.service';
+import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
@@ -51,15 +53,24 @@ export class TaskNodeExecutionService {
     @Inject(TaskGitService)
     private readonly taskGitService: Pick<
       TaskGitService,
-      'commitIfChangedForTask'
+      'commitIfChangedForTask' | 'resolveHeadCommitShaForTask'
     > = {
       commitIfChangedForTask: () =>
         Promise.resolve({
           committed: false,
           skippedReason: 'no_changes',
         }),
+      resolveHeadCommitShaForTask: () => Promise.resolve(null),
     },
     private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
+    @Optional()
+    @Inject(NotificationsService)
+    private readonly notificationsService: Pick<
+      NotificationsService,
+      'notifyTaskNodeStatusChanged'
+    > = {
+      notifyTaskNodeStatusChanged: () => Promise.resolve(null),
+    },
   ) {}
 
   async runNode({
@@ -111,6 +122,15 @@ export class TaskNodeExecutionService {
         runtimeTask,
         runtime,
       );
+      const beforeRunCommitSha = await this.resolveHeadCommitShaForTask(
+        executionTask,
+        project,
+      );
+
+      await this.taskNodeRepository.update(nodeId, {
+        beforeRunCommitSha,
+        afterRunCommitSha: null,
+      });
 
       await this.taskLogService.appendLog({
         taskId,
@@ -170,6 +190,10 @@ export class TaskNodeExecutionService {
         executionTask ?? (await this.taskRepository.findById(taskId));
 
       if (latestNode && outputTask) {
+        const afterRunCommitSha = await this.resolveHeadCommitShaForTask(
+          outputTask,
+          project,
+        );
         const agentClioutput =
           await this.taskOutputService.writeNodeOutputJsonl({
             task: outputTask,
@@ -185,9 +209,11 @@ export class TaskNodeExecutionService {
           });
 
         await this.finalizeNodeAsFailure({
+          task: outputTask,
           nodeId,
           agentClioutput,
           agentCliSessionId: latestNode.agentCliSessionId ?? null,
+          afterRunCommitSha,
         });
       }
 
@@ -461,12 +487,18 @@ export class TaskNodeExecutionService {
               },
             },
           });
+    const afterRunCommitSha = await this.resolveHeadCommitShaForTask(
+      task,
+      project,
+    );
 
     await this.finalizeNodeAsFailure({
+      task,
       nodeId,
       agentClioutput,
       agentCliSessionId: executionResult.sessionId ?? null,
       clearAgentCliSessionId: executionResult.clearPreviousSessionId === true,
+      afterRunCommitSha,
     });
 
     await this.taskLogService.appendLog({
@@ -760,9 +792,13 @@ export class TaskNodeExecutionService {
       : pendingApproval
         ? TaskStatus.inReview
         : TaskStatus.done;
+    let afterRunCommitSha = await this.resolveHeadCommitShaForTask(
+      task,
+      project,
+    );
 
     if (!queuedNextLoop && !pendingApproval) {
-      await commitNodeWorkspaceIfChanged({
+      const autoCommitResult = await commitNodeWorkspaceIfChanged({
         taskId,
         node,
         commitMessage: buildCompleteCommitMessage(node),
@@ -774,6 +810,7 @@ export class TaskNodeExecutionService {
           'Node completion skipped auto-commit; no workspace changes',
         failedLogMessage: 'Node completion auto-commit failed',
       });
+      afterRunCommitSha = autoCommitResult.commitSha ?? afterRunCommitSha;
     }
 
     await this.taskNodeRepository.update(node.id, {
@@ -786,7 +823,12 @@ export class TaskNodeExecutionService {
         ? (agentCliSessionId ?? null)
         : (agentCliSessionId ?? node.agentCliSessionId ?? null),
       runtimeJson: null,
+      afterRunCommitSha,
     });
+
+    if (status === TaskStatus.inReview) {
+      await this.notifyTaskNodeInReview(task, node);
+    }
 
     return {
       status,
@@ -960,15 +1002,19 @@ export class TaskNodeExecutionService {
   }
 
   private async finalizeNodeAsFailure({
+    task,
     nodeId,
     agentClioutput,
     agentCliSessionId,
     clearAgentCliSessionId,
+    afterRunCommitSha,
   }: {
+    task: Task;
     nodeId: string;
     agentClioutput: string;
     agentCliSessionId?: string | null;
     clearAgentCliSessionId?: boolean;
+    afterRunCommitSha?: string | null;
   }): Promise<void> {
     const latestNode = await this.taskNodeRepository.findById(nodeId);
 
@@ -984,6 +1030,41 @@ export class TaskNodeExecutionService {
         ? (agentCliSessionId ?? null)
         : (agentCliSessionId ?? latestNode.agentCliSessionId ?? null),
       runtimeJson: null,
+      afterRunCommitSha:
+        afterRunCommitSha ?? latestNode.afterRunCommitSha ?? null,
+    });
+
+    await this.notifyTaskNodeInReview(task, latestNode);
+  }
+
+  private async resolveHeadCommitShaForTask(
+    task: Task,
+    project: Project,
+  ): Promise<string | null> {
+    return (
+      (await this.taskGitService.resolveHeadCommitShaForTask?.(
+        task,
+        project,
+      )) ?? null
+    );
+  }
+
+  private async notifyTaskNodeInReview(
+    task: Task,
+    node: Pick<TaskNode, 'id' | 'name' | 'nodeOrder'>,
+  ): Promise<void> {
+    if (!task.createdBy || task.mode !== TaskMode.workflow) {
+      return;
+    }
+
+    await this.notificationsService.notifyTaskNodeStatusChanged({
+      userId: task.createdBy,
+      taskId: task.id,
+      taskTitle: task.title,
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeOrder: node.nodeOrder,
+      status: TaskStatus.inReview,
     });
   }
 

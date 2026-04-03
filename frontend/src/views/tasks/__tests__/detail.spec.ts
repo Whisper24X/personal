@@ -18,7 +18,9 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     cancel: vi.fn(),
     cleanupWorktree: vi.fn(),
     retry: vi.fn(),
+    resetNode: vi.fn(),
     approve: vi.fn(),
+    complete: vi.fn(),
   },
   authApi: {
     access: vi.fn(),
@@ -220,6 +222,56 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('节点待审批')
 
     vi.useRealTimers()
+  })
+
+  it('hides review card for conversation tasks even when task is in review', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'conversation',
+        title: 'Conversation task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:01.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'conversation-node',
+          status: 'in_review',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('节点待审批')
+    expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).exists()).toBe(false)
   })
 
   it('refreshes the right panel when SSE reports a node status change', async () => {
@@ -490,7 +542,7 @@ describe('TaskDetailView toasts', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('执行中')
+    expect(wrapper.text()).toContain('处理中')
 
     vi.useRealTimers()
   })
@@ -517,7 +569,7 @@ describe('TaskDetailView toasts', () => {
 
     const executeButton = wrapper
       .findAll('button')
-      .find((button) => button.text().trim() === '执行')
+      .find((button) => button.text().trim() === '开始')
 
     expect(executeButton).toBeDefined()
     await executeButton!.trigger('click')
@@ -567,13 +619,15 @@ describe('TaskDetailView toasts', () => {
 
     const executeButton = wrapper
       .findAll('button')
-      .find((button) => button.text().trim() === '执行')
+      .find((button) => button.text().trim() === '开始')
 
     expect(executeButton).toBeDefined()
     await executeButton!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.findAll('button').some((button) => button.text().trim() === '执行')).toBe(false)
+    const messageStore = useMessageStore()
+    expect(messageStore.items).toHaveLength(0)
+    expect(wrapper.findAll('button').some((button) => button.text().trim() === '开始')).toBe(false)
   })
 
   it('does not render execute button after task has already been executed', async () => {
@@ -612,7 +666,186 @@ describe('TaskDetailView toasts', () => {
 
     await flushPromises()
 
-    expect(wrapper.findAll('button').some((button) => button.text().trim() === '执行')).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text().trim() === '开始')).toBe(false)
+  })
+
+  it('renders execute button when task is in progress but still has runnable todo nodes', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        status: 'in_progress',
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Completed node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          name: 'Todo node',
+          status: 'todo',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findAll('button').some((button) => button.text().trim() === '开始')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text().trim() === '完成')).toBe(false)
+  })
+
+  it('hides complete button when reviewed task still has unfinished nodes', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'conversation',
+        title: 'Demo task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Conversation node',
+          status: 'in_review',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findAll('button').some((button) => button.text().trim() === '完成')).toBe(false)
+    expect(tasksApi.complete).not.toHaveBeenCalled()
+  })
+
+  it('completes a reviewed task via complete API', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const reviewDetail: TaskDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'conversation',
+        title: 'Demo task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Conversation node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(reviewDetail)
+    tasksApi.complete.mockResolvedValueOnce({
+      ...reviewDetail,
+      task: {
+        ...reviewDetail.task,
+        status: 'done',
+        updatedAt: '2026-02-27T10:00:01.000Z',
+      },
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const completeButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '完成')
+
+    expect(completeButton).toBeTruthy()
+    await completeButton?.trigger('click')
+    await flushPromises()
+
+    expect(tasksApi.complete).toHaveBeenCalledWith('task-1')
+    expect(wrapper.text()).toContain('已完成')
+    expect(wrapper.findAll('button').some((button) => button.text().trim() === '完成')).toBe(false)
   })
 
   it('renders agent cli chunk text from SSE payload', async () => {
@@ -724,6 +957,46 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).not.toContain('停止执行')
   })
 
+  it('disables reply box after task is completed', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'conversation',
+        title: 'Demo task',
+        status: 'done',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('textarea').attributes('placeholder')).toBe('任务已完成，无法继续回复...')
+    expect(wrapper.find('textarea').attributes('disabled')).toBeDefined()
+  })
+
   it('switches reply action to interrupt while cli is running', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -783,6 +1056,8 @@ describe('TaskDetailView toasts', () => {
     await interruptButton.trigger('click')
     await flushPromises()
 
+    const messageStore = useMessageStore()
+    expect(messageStore.items).toHaveLength(0)
     expect(tasksApi.cancel).toHaveBeenCalledWith('task-1')
     expect(wrapper.find('button[aria-label="请输入回复后发送"]').exists()).toBe(true)
   })
@@ -810,7 +1085,7 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).toContain('待执行')
     expect(wrapper.text()).toContain('对话')
     expect(wrapper.text()).toMatch(/Codex/)
-    expect(wrapper.text()).toContain('执行')
+    expect(wrapper.text()).toContain('开始')
     expect(wrapper.text()).not.toContain('分支')
     expect(wrapper.text()).not.toContain('项目 project-1')
     expect(wrapper.text()).not.toContain('CLI 工具')
@@ -1076,7 +1351,7 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).toContain('Codex')
   })
 
-  it('shows only one 重新执行 button when workflow node is pending approval', async () => {
+  it('shows 重置 only in the more actions menu when workflow node is pending approval', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -1122,10 +1397,163 @@ describe('TaskDetailView toasts', () => {
 
     await flushPromises()
 
-    const reExecButtons = wrapper
+    const resetButtons = wrapper
       .findAll('button')
-      .filter((button) => button.text().trim() === '重新执行')
-    expect(reExecButtons.length).toBe(1)
+      .filter((button) => button.text().trim() === '重置')
+    expect(resetButtons.length).toBe(0)
+    expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).text()).not.toContain('重置')
+    const executionContextBar = wrapper.findComponent({ name: 'TaskExecutionContextBar' })
+    expect(executionContextBar.text()).not.toContain('重置')
+    await executionContextBar.get('button[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+    expect(
+      executionContextBar
+        .findAll('button')
+        .map((button) => button.text().trim())
+        .filter((text) => text === '重置' || text === '删除'),
+    ).toEqual(['重置', '删除'])
+    expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('已选中节点')
+  })
+
+  it('hides 重置 in the more actions menu after task is completed', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        status: 'done',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Completed node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const executionContextBar = wrapper.findComponent({ name: 'TaskExecutionContextBar' })
+    expect(executionContextBar.text()).not.toContain('重置')
+    await executionContextBar.get('button[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+    expect(
+      executionContextBar
+        .findAll('button')
+        .map((button) => button.text().trim())
+        .filter((text) => text === '重置' || text === '删除'),
+    ).toEqual(['删除'])
+  })
+
+  it('resets the selected workflow node via reset-node API', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const detailResponse: TaskDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'First node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          name: 'Second node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-2',
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(detailResponse)
+    tasksApi.resetNode.mockResolvedValueOnce(detailResponse)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const secondNodeButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Second node'))
+    expect(secondNodeButton).toBeTruthy()
+    await secondNodeButton?.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('button[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+
+    const resetButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '重置')
+    expect(resetButton).toBeTruthy()
+    await resetButton?.trigger('click')
+    await flushPromises()
+
+    const messageStore = useMessageStore()
+    expect(messageStore.items).toHaveLength(0)
+    expect(tasksApi.resetNode).toHaveBeenCalledWith('task-1', {
+      nodeId: 'node-2',
+    })
   })
 
   it('retries workflow tasks without a stale selected node id when no review node is present in detail', async () => {
@@ -1274,6 +1702,8 @@ describe('TaskDetailView toasts', () => {
     })
     await flushPromises()
 
+    const messageStore = useMessageStore()
+    expect(messageStore.items).toHaveLength(0)
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
     expect(secondNodeButton?.classes()).toContain('ring-2')
   })

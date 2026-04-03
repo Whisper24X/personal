@@ -80,6 +80,22 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   @Column({ type: 'jsonb', nullable: true, comment: '节点运行时临时状态JSON' })
   runtimeJson?: Record<string, unknown> | null;
 
+  @Column({
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+    comment: '节点执行前记录的 Git HEAD commit SHA',
+  })
+  beforeRunCommitSha?: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+    comment: '节点执行结束后记录的 Git HEAD commit SHA',
+  })
+  afterRunCommitSha?: string | null;
+
   @Index('IDX_task_nodes_status')
   @Column({
     type: 'enum',

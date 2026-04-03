@@ -30,6 +30,10 @@ import {
 } from './dto/task-workspace.dto';
 import { TaskRuntimeService } from './task-runtime.service';
 import { buildPullRequestUrl } from '../git/pull-request-url.util';
+import {
+  SlowApiDiagnosticsSession,
+  createSlowApiDiagnostics,
+} from '../observability/slow-api-diagnostics';
 
 type GitExecutionResult = {
   success: boolean;
@@ -72,36 +76,64 @@ export class TaskGitService {
     taskId: string,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitStatusDto> {
-    const { task, worktreePath } = await this.resolveTaskGitContext(
+    const diagnostics = createSlowApiDiagnostics('tasks.git.status', {
       taskId,
-      currentUser,
-    );
+      userId: currentUser.sub,
+    });
 
-    const [statusResult, branchResult] = await Promise.all([
-      this.runGitCommand(
-        worktreePath,
-        this.withGitUtf8Paths([
-          'status',
-          '--porcelain',
-          '--untracked-files=all',
-        ]),
-      ),
-      this.runGitCommand(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']),
-    ]);
+    try {
+      const { task, worktreePath } = await this.resolveTaskGitContext(
+        taskId,
+        currentUser,
+        diagnostics,
+      );
 
-    if (!statusResult.success) {
-      throw this.toGitException('Failed to read git status', statusResult);
+      const [statusResult, branchResult] = await Promise.all([
+        this.measureGitCommand(diagnostics, 'gitStatus', () =>
+          this.runGitCommand(
+            worktreePath,
+            this.withGitUtf8Paths([
+              'status',
+              '--porcelain',
+              '--untracked-files=all',
+            ]),
+          ),
+        ),
+        this.measureGitCommand(diagnostics, 'gitBranch', () =>
+          this.runGitCommand(worktreePath, [
+            'rev-parse',
+            '--abbrev-ref',
+            'HEAD',
+          ]),
+        ),
+      ]);
+
+      if (!statusResult.success) {
+        throw this.toGitException('Failed to read git status', statusResult);
+      }
+
+      if (!branchResult.success) {
+        throw this.toGitException(
+          'Failed to read current branch',
+          branchResult,
+        );
+      }
+
+      const files = this.parseChangedFiles(statusResult.stdout);
+      diagnostics.add({
+        baseBranch: task.gitBaseBranch ?? null,
+        branchName: this.normalizeBranchName(branchResult.stdout),
+        changedFileCount: files.length,
+      });
+
+      return {
+        branchName: this.normalizeBranchName(branchResult.stdout),
+        baseBranch: task.gitBaseBranch ?? null,
+        files,
+      };
+    } finally {
+      diagnostics.flush();
     }
-
-    if (!branchResult.success) {
-      throw this.toGitException('Failed to read current branch', branchResult);
-    }
-
-    return {
-      branchName: this.normalizeBranchName(branchResult.stdout),
-      baseBranch: task.gitBaseBranch ?? null,
-      files: this.parseChangedFiles(statusResult.stdout),
-    };
   }
 
   async getDiff(
@@ -144,7 +176,11 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = this.resolveBaseBranch(task, query.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      query.baseBranch,
+    );
     const [diffFilesResult, branchResult] = await Promise.all([
       this.runGitCommand(
         worktreePath,
@@ -199,7 +235,11 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = this.resolveBaseBranch(task, query.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      query.baseBranch,
+    );
     const args = this.withGitUtf8Paths([
       'diff',
       '--no-color',
@@ -475,6 +515,76 @@ export class TaskGitService {
     return this.commitIfChangedInWorktree(worktreePath, message);
   }
 
+  async resolveHeadCommitShaForTask(
+    task: Task,
+    project: Project,
+  ): Promise<string | null> {
+    try {
+      const worktreePath = await this.resolveTaskGitWorktreePath(task, project);
+      const result = await this.runGitCommand(worktreePath, [
+        'rev-parse',
+        'HEAD',
+      ]);
+
+      if (!result.success) {
+        return null;
+      }
+
+      const sha = result.stdout.trim();
+      return sha || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async resetHardToCommitForTask(
+    task: Task,
+    project: Project,
+    commitSha: string,
+  ): Promise<void> {
+    const worktreePath = await this.resolveTaskGitWorktreePath(task, project);
+    const normalizedCommitSha = commitSha.trim();
+
+    if (!normalizedCommitSha) {
+      throw new BadRequestException('Commit SHA cannot be empty');
+    }
+
+    const verifyResult = await this.runGitCommand(worktreePath, [
+      'rev-parse',
+      '--verify',
+      normalizedCommitSha,
+    ]);
+    if (!verifyResult.success) {
+      throw this.toGitException(
+        'Failed to verify reset target commit',
+        verifyResult,
+      );
+    }
+
+    const resetResult = await this.runGitCommand(worktreePath, [
+      'reset',
+      '--hard',
+      normalizedCommitSha,
+    ]);
+    if (!resetResult.success) {
+      throw this.toGitException(
+        'Failed to reset worktree to target commit',
+        resetResult,
+      );
+    }
+
+    const cleanResult = await this.runGitCommand(worktreePath, [
+      'clean',
+      '-fd',
+    ]);
+    if (!cleanResult.success) {
+      throw this.toGitException(
+        'Failed to clean worktree after reset',
+        cleanResult,
+      );
+    }
+  }
+
   async merge(
     taskId: string,
     payload: TaskGitBranchDiffQueryDto,
@@ -484,7 +594,11 @@ export class TaskGitService {
       taskId,
       currentUser,
     );
-    const baseBranch = this.resolveBaseBranch(task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      payload.baseBranch,
+    );
 
     const result = await this.runGitCommand(worktreePath, [
       'merge',
@@ -517,7 +631,11 @@ export class TaskGitService {
       taskId,
       currentUser,
     );
-    const baseBranch = this.resolveBaseBranch(task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      payload.baseBranch,
+    );
 
     const result = await this.runGitCommand(worktreePath, [
       'rebase',
@@ -602,7 +720,11 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = this.resolveBaseBranch(task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      payload.baseBranch,
+    );
 
     const [remoteUrlResult, branchResult] = await Promise.all([
       this.runGitCommand(worktreePath, [
@@ -636,22 +758,42 @@ export class TaskGitService {
   private async resolveTaskGitContext(
     taskId: string,
     currentUser: JwtPayloadType,
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<{ task: Task; worktreePath: string }> {
-    const { task, project } =
-      await this.taskAccessService.assertCanAccessTaskProject(
-        taskId,
-        currentUser,
-      );
+    const { task, project } = diagnostics
+      ? await diagnostics.measure(
+          'access',
+          () =>
+            this.taskAccessService.assertCanAccessTaskProject(
+              taskId,
+              currentUser,
+              diagnostics,
+            ),
+          (result) => ({
+            projectId: result.project.id,
+            gitWorktree: result.task.gitWorktree ?? null,
+          }),
+        )
+      : await this.taskAccessService.assertCanAccessTaskProject(
+          taskId,
+          currentUser,
+          diagnostics,
+        );
 
     return {
       task,
-      worktreePath: await this.resolveTaskGitWorktreePath(task, project),
+      worktreePath: await this.resolveTaskGitWorktreePath(
+        task,
+        project,
+        diagnostics,
+      ),
     };
   }
 
   private async resolveTaskGitWorktreePath(
     task: Task,
     project: Project,
+    diagnostics?: SlowApiDiagnosticsSession,
   ): Promise<string> {
     if (!task.gitWorktree?.trim()) {
       throw new ConflictException('Task workspace is not initialized');
@@ -662,20 +804,60 @@ export class TaskGitService {
       project,
     );
 
-    const worktreePath = await fs.realpath(runtimeWorktreePath).catch(() => {
-      throw new NotFoundException('Task workspace does not exist');
-    });
+    const worktreePath = diagnostics
+      ? await diagnostics.measure(
+          'realpath',
+          () =>
+            fs.realpath(runtimeWorktreePath).catch(() => {
+              throw new NotFoundException('Task workspace does not exist');
+            }),
+          (result) => ({
+            worktreePath: result,
+          }),
+        )
+      : await fs.realpath(runtimeWorktreePath).catch(() => {
+          throw new NotFoundException('Task workspace does not exist');
+        });
 
-    const hasGitDir = await fs
-      .stat(path.join(worktreePath, '.git'))
-      .then(() => true)
-      .catch(() => false);
+    const hasGitDir = diagnostics
+      ? await diagnostics.measure(
+          'gitDirStat',
+          () =>
+            fs
+              .stat(path.join(worktreePath, '.git'))
+              .then(() => true)
+              .catch(() => false),
+          (result) => ({
+            hasGitDir: result,
+          }),
+        )
+      : await fs
+          .stat(path.join(worktreePath, '.git'))
+          .then(() => true)
+          .catch(() => false);
 
     if (!hasGitDir) {
       throw new BadRequestException('Task workspace is not a git repository');
     }
 
     return worktreePath;
+  }
+
+  private async measureGitCommand<T>(
+    diagnostics: SlowApiDiagnosticsSession,
+    name: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = process.hrtime.bigint();
+
+    try {
+      return await work();
+    } finally {
+      diagnostics.record(
+        name,
+        Number(process.hrtime.bigint() - startedAt) / 1_000_000,
+      );
+    }
   }
 
   private async commitInTaskWorktree(
@@ -1173,12 +1355,27 @@ export class TaskGitService {
     return Array.from(new Set(normalizedFiles));
   }
 
-  private resolveBaseBranch(task: Task, requestedBaseBranch?: string): string {
+  private async resolveBaseBranch(
+    worktreePath: string,
+    task: Task,
+    requestedBaseBranch?: string,
+  ): Promise<string> {
     const baseBranch =
-      requestedBaseBranch?.trim() || task.gitBaseBranch?.trim();
+      requestedBaseBranch?.trim() || task.gitBaseBranch?.trim() || 'main';
 
-    if (!baseBranch) {
-      return 'main';
+    if (baseBranch.startsWith('origin/')) {
+      return baseBranch;
+    }
+
+    const remoteRef = `origin/${baseBranch}`;
+    const remoteResult = await this.runGitCommand(worktreePath, [
+      'rev-parse',
+      '--verify',
+      remoteRef,
+    ]);
+
+    if (remoteResult.success) {
+      return remoteRef;
     }
 
     return baseBranch;
