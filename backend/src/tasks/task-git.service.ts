@@ -176,7 +176,11 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = await this.resolveBaseBranch(worktreePath, task, query.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      query.baseBranch,
+    );
     const [diffFilesResult, branchResult] = await Promise.all([
       this.runGitCommand(
         worktreePath,
@@ -231,7 +235,11 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = await this.resolveBaseBranch(worktreePath, task, query.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      query.baseBranch,
+    );
     const args = this.withGitUtf8Paths([
       'diff',
       '--no-color',
@@ -586,7 +594,11 @@ export class TaskGitService {
       taskId,
       currentUser,
     );
-    const baseBranch = await this.resolveBaseBranch(worktreePath, task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      payload.baseBranch,
+    );
 
     const result = await this.runGitCommand(worktreePath, [
       'merge',
@@ -619,7 +631,11 @@ export class TaskGitService {
       taskId,
       currentUser,
     );
-    const baseBranch = await this.resolveBaseBranch(worktreePath, task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      payload.baseBranch,
+    );
 
     const result = await this.runGitCommand(worktreePath, [
       'rebase',
@@ -704,7 +720,11 @@ export class TaskGitService {
       currentUser,
     );
 
-    const baseBranch = await this.resolveBaseBranch(worktreePath, task, payload.baseBranch);
+    const baseBranch = await this.resolveBaseBranch(
+      worktreePath,
+      task,
+      payload.baseBranch,
+    );
 
     const [remoteUrlResult, branchResult] = await Promise.all([
       this.runGitCommand(worktreePath, [
