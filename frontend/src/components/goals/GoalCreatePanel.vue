@@ -21,6 +21,7 @@ import {
 import type { GoalSourceDocType } from '@/types/api/goals'
 import { fetchAllPages } from '@/utils/pagination'
 import { buildBranchOptions } from '@/utils/git-branch-options'
+import { randomUuid } from '@/utils/random-uuid'
 
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 
@@ -406,7 +407,7 @@ const submit = async () => {
       if (!file) {
         continue
       }
-      const relativePath = `${goalInputDirRelativePath(goal.id)}/${crypto.randomUUID()}-${sanitizeGoalInputBasename(file.name)}`
+      const relativePath = `${goalInputDirRelativePath(goal.id)}/${randomUuid()}-${sanitizeGoalInputBasename(file.name)}`
       try {
         await createOrUpdateProjectDoc(projectIdForSubmit, relativePath, file)
         await goalsApi.addSourceDoc(goal.id, {
