@@ -23,4 +23,8 @@ export class TaskDetailDto {
 
   @ApiPropertyOptional({ type: TaskGoalSummaryDto, nullable: true })
   goalSummary?: TaskGoalSummaryDto | null;
+
+  /** 为 true 时不应展示删除（仍有后置计划子任务依赖本任务且尚未物化） */
+  @ApiPropertyOptional()
+  planDeletionBlocked?: boolean;
 }

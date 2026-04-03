@@ -110,7 +110,7 @@ export type GoalDetail = {
   progress: GoalProgress
 }
 
-/** 用于依赖图：子任务列表，边为 dependsOnSubTaskIds */
+/** 用于依赖图等：扁平子任务列表；图中另含功能组 dependsOnItemIds 边，见 goal-plan-dependency-graph */
 export function flattenGoalPlanSubTasks(detail: GoalDetail): GoalPlanSubTask[] {
   const out: GoalPlanSubTask[] = []
   for (const g of detail.planItems) {
