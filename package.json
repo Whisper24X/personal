@@ -21,6 +21,8 @@
     "docker:up": "docker compose up -d",
     "docker:up:build": "docker compose up -d --build",
     "docker:build": "docker compose build",
+    "docker:build:runner": "node ./scripts/build-runner-image.mjs",
+    "docker:build:runner:windows": "node ./scripts/build-runner-image.mjs",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "docker:restart": "docker compose restart",

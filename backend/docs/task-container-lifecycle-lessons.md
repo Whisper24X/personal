@@ -49,7 +49,7 @@
 | `AINATIVE_TASK_EXECUTION_MODE` | `docker`：Agent 走隔离容器；`host` 或未设置：在 Nest 进程所在环境直接 `spawn`。 |
 | `AINATIVE_DOCKER_STRICT_EXECUTION` | 在 `docker` 模式下为 `true`/`1` 时，**不允许**在无法使用 runner 时静默回到宿主执行；缺少运行中容器时会直接失败。 |
 | `AINATIVE_TASK_ISOLATION_SCOPE` | `task`（默认）或 `workflow_run`，见上一节。 |
-| `AINATIVE_RUNNER_IMAGE` | Runner 镜像名，默认 `ainative/runner:latest`，由仓库根目录用 `backend/runner/Dockerfile.runner` 构建。 |
+| `AINATIVE_RUNNER_IMAGE` | Runner 镜像名，默认 `ainative/runner:latest`，由仓库根目录用 `runner/Dockerfile.runner` 构建。 |
 | `AINATIVE_RUNNER_WORKSPACE` | 容器内工作区挂载点，默认 `/workspace`，须与 `docker run -v` 一致。 |
 | `AINATIVE_TASK_SANDBOX_PROFILE` | `runner-only`（默认）、`preview-web`、`full-dev-sandbox`，见下一节。 |
 | `AINATIVE_RUNNER_START_TIMEOUT_MS` | 等待容器就绪的最长时间；轻量画像与带 entrypoint 的画像默认值不同（见 `ContainerExecutionConfigService`）。 |
@@ -70,7 +70,7 @@
 
 **2. `preview-web` / `full-dev-sandbox`**
 
-- 不使用单纯 `sleep infinity` 占位，而走镜像 **entrypoint**（如 `backend/runner/entrypoint.sh`）：拉起 **supervisord、nginx**，并按 worktree 布局生成或选用 nginx/supervisord 配置（单仓 `backend`+`frontend` 与旧式 `ainative-backend` 等布局分支处理）。
+- 不使用单纯 `sleep infinity` 占位，而走镜像 **entrypoint**（如 `runner/entrypoint.sh`）：拉起 **supervisord、nginx**，并按 worktree 布局生成或选用 nginx/supervisord 配置（单仓 `backend`+`frontend` 与旧式 `ainative-backend` 等布局分支处理）。
 - **`ensure` 成功**以就绪 URL 返回成功为准（默认 `127.0.0.1:8080/health`）。
 - 可为 **`backend/node_modules`、`frontend/node_modules`、`logs`** 增加**匿名卷**，避免在容器里 `npm ci` 写回宿主 worktree。
 - **`full-dev-sandbox`** 通常施加更严的内存、pids 等 cgroup 类限制（由 `ContainerExecutionConfigService` 定义）。
@@ -129,6 +129,6 @@
 - 任务终态清理容器：**`backend/src/tasks/application/task-status.service.ts`**
 - 节点执行不在收尾拆容器：**`backend/src/tasks/application/task-node-execution.service.ts`**
 - 槽位表迁移：**`backend/src/database/migrations/`** 下创建 `project_execution_slots` 的迁移
-- Runner 镜像构建时会在临时 build context 下生成 **`backend/runner/Dockerfile.runner`** 与 **`backend/runner/sandbox.*.conf`**；仓库内需要长期保留的静态 runner 资产是 **`backend/runner/entrypoint.sh`**（以及可选的 **`backend/runner/ssh/*`**）。
+- Runner 镜像相关静态资产位于仓库根目录 **`runner/`**，其中当前长期保留的是 **`runner/Dockerfile.runner`**、**`runner/entrypoint.sh`** 与 **`runner/render-runner-config.mjs`**。
 
 以上即当前「任务隔离容器」方案的完整轮廓：轻量默认可 exec、可选全沙箱画像、宿主控制面 + 容器执行面、槽位与心跳、以及 **仅在 `done` 时回收** 的生命周期。

@@ -51,9 +51,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      args:
-        GITLAB_USERNAME: oauth2
-        GITLAB_TOKEN: 7euWM1mwZw2C3P6FQ_l9Z286MQp1OjlnCA.01.0y1txlsoy
     container_name: ainative-backend
     restart: unless-stopped
     env_file:
@@ -61,8 +58,8 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:?NODE_ENV is required}
       AINATIVE_DATA_ROOT_DIR: /usr/src/tmp
-      GITLAB_USERNAME: oauth2
-      GITLAB_TOKEN: 7euWM1mwZw2C3P6FQ_l9Z286MQp1OjlnCA.01.0y1txlsoy
+      GITLAB_USERNAME: ${GITLAB_USERNAME:-oauth2}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
     volumes:
       - type: bind
         source: /var/run/docker.sock

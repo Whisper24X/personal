@@ -4,8 +4,6 @@
 
 - [Unit Tests](#unit-tests)
 - [E2E Tests](#e2e-tests)
-- [Tests in Docker](#tests-in-docker)
-  - [For relational database](#for-relational-database)
 
 ## Unit Tests
 
@@ -18,16 +16,6 @@ npm run test
 ```bash
 npm run test:e2e
 ```
-
-## Tests in Docker
-
-### For relational database
-
-```bash
-npm run test:e2e:relational:docker
-```
-
----
 
 Previous: [Serialization](serialization.md)
 

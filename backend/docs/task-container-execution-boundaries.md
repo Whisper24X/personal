@@ -28,7 +28,7 @@ Use this when you **start the API/Worker on the host** (e.g. `pnpm run start:dev
 
 1. Keep **`AINATIVE_TASK_EXECUTION_MODE=docker`**. Do **not** set `host` if you want isolation.
 2. Install and run **Docker Desktop** (or equivalent) so the host user can run `docker` and the daemon is reachable.
-3. Ensure the **runner image** exists locally: `docker pull <AINATIVE_RUNNER_IMAGE>` (default `ainative/runner:latest`), or build it from the repo root with `docker build -f backend/runner/Dockerfile.runner -t ainative/runner:latest .`.
+3. Ensure the **runner image** exists locally: `docker pull <AINATIVE_RUNNER_IMAGE>` (default `ainative/runner:latest`), or build it from the repo root with `pnpm run docker:build:runner` after setting real `GITLAB_USERNAME` / `GITLAB_TOKEN` values in the shell or repo root `/.env`.
 4. **`AINATIVE_DATA_ROOT_DIR`** worktrees must live on the **host filesystem** paths that Docker can bind-mount (`docker run -v hostWorktree:...`). Relative dirs resolve from the Nest process cwd.
 5. Optional: **`AINATIVE_DOCKER_STRICT_EXECUTION=false`** during local Bring-up if you need temporary host fallback when the daemon is down.
 

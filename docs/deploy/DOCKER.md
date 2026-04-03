@@ -17,7 +17,7 @@ Windows PowerShell 使用 [docker-compose.windows.yml](../../docker-compose.wind
 NODE_ENV=development pnpm run docker:up:build
 ```
 
-必须显式设置 `NODE_ENV`。Compose 会加载 `backend/.env.${NODE_ENV}`，并将该文件中的变量注入后端容器；如果没有这个环境变量，`docker compose` 会直接报错。
+`NODE_ENV` 可以通过当前 shell 提供，也可以放到仓库根目录 `/.env`。Compose 会加载 `backend/.env.${NODE_ENV}`，并将该文件中的变量注入后端容器；如果没有这个环境变量，`docker compose` 会直接报错。
 
 后端容器默认以 `backend/.env.${NODE_ENV}` 作为配置来源，不再由 compose 覆盖 `NODE_ENV`、`DATABASE_*` 等同名变量。请确保选中的 env 文件本身就是一份可直接运行的完整配置，并且其中的地址对容器可达：
 
@@ -99,11 +99,24 @@ pnpm run docker:clean:windows
 - `docker:restart`：重启容器
 - `docker:clean`：停止容器并删除卷
 
-## 4. 后端镜像构建注意事项
+## 4. GitLab Token 使用说明
 
-后端镜像构建需要通过 GitLab HTTPS token 拉取私有 Go 依赖。
+后端镜像本身已经不再依赖 `GITLAB_USERNAME` / `GITLAB_TOKEN` 才能完成构建。它们现在主要用于两类场景：
 
-构建前请先在当前 shell 中设置以下环境变量：
+- 构建 `ainative/runner:latest`
+- backend 运行时需要把 GitLab SSH remote 转成带 HTTP token 的私有仓库访问地址
+
+推荐把下面这些变量放到仓库根目录 `/.env`，这样 `docker compose` 和 `pnpm run docker:build:runner` 都能直接复用：
+
+```dotenv
+NODE_ENV=development
+GITLAB_USERNAME=oauth2
+GITLAB_TOKEN=your_gitlab_token
+```
+
+如果你不构建 runner，也不需要 backend 访问私有 GitLab HTTP 仓库，可以不设置 `GITLAB_TOKEN`。
+
+也可以不写文件，继续只在当前 shell 中设置以下环境变量：
 
 - `GITLAB_USERNAME`
 - `GITLAB_TOKEN`
@@ -119,7 +132,7 @@ Linux / macOS:
 ```bash
 export GITLAB_USERNAME=oauth2
 export GITLAB_TOKEN=your_gitlab_token
-NODE_ENV=development pnpm run docker:up:build
+NODE_ENV=development pnpm run docker:build:runner
 ```
 
 Windows PowerShell:
@@ -127,24 +140,57 @@ Windows PowerShell:
 ```powershell
 $env:GITLAB_USERNAME = "oauth2"
 $env:GITLAB_TOKEN = "your_gitlab_token"
-$env:NODE_ENV = "development"
-pnpm run docker:up:build:windows
+pnpm run docker:build:runner:windows
 ```
 
-## 5. Windows 说明
+## 5. Runner 镜像构建
+
+`docker compose` 默认不会帮你构建 `ainative/runner:latest`。这个镜像会在 backend 或本地 CLI 需要拉起任务容器时单独使用，所以需要预先构建一次。
+
+Linux / macOS:
+
+```bash
+# 如果仓库根目录已经有 .env，可直接执行
+pnpm run docker:build:runner
+```
+
+Windows PowerShell:
+
+```powershell
+pnpm run docker:build:runner:windows
+```
+
+默认镜像名是 `ainative/runner:latest`。如果构建成功，`ainative runner up` 和后端的 Docker 任务执行模式都会直接复用这张镜像。若 `/.env` 里 `GITLAB_TOKEN` 为空，runner 构建会直接报缺失，避免拿模板值去尝试拉私有依赖。
+
+## 6. Windows 说明
 
 - `docker-compose.windows.yml` 仅面向 Docker Desktop 的 Linux containers 模式。
 - 该文件将 `AINATIVE_DATA_ROOT_DIR` 固定为容器内路径 `/usr/src/tmp`，避免 PowerShell 下 `${PWD}` 展开后的 Windows 盘符路径触发 `too many colons`。
 - 如果后端后续需要把容器内工作目录再次透传给宿主机 Docker 做 bind mount，Windows 原生路径语义仍可能与 Linux 版不一致；这种场景优先使用 WSL2 运行 Compose。
 
-## 6. 常见问题
+## 7. 常见问题
 
-### 6.1 后端镜像构建失败
+### 7.1 Runner 镜像构建失败
 
 优先检查：
 
 - 当前 shell 是否已设置 `GITLAB_USERNAME` 和 `GITLAB_TOKEN`
+- 仓库根目录 `/.env` 是否存在，且包含真实的 `GITLAB_USERNAME` / `GITLAB_TOKEN`
 - Personal Access Token 是否配合 `GITLAB_USERNAME=oauth2`
 - Deploy Token 是否使用了 GitLab 提供的专用用户名
 - Token 是否具备私有依赖仓库的读取权限
 - 构建机是否具备访问 `gitlab.yc345.tv` 的网络权限
+
+### 7.2 Runner 镜像不存在
+
+如果后端或 CLI 提示找不到 `ainative/runner:latest`，先在仓库根目录执行：
+
+```bash
+pnpm run docker:build:runner
+```
+
+Windows 使用：
+
+```powershell
+pnpm run docker:build:runner:windows
+```
