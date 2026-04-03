@@ -90,6 +90,9 @@ let sidebarRecentTasksDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let rightPanelWorkspaceRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let streamLogFlushTimer: ReturnType<typeof setTimeout> | null = null
+let heartbeatCheckTimer: ReturnType<typeof setInterval> | null = null
+let lastSseEventTime = 0
+const SSE_HEARTBEAT_TIMEOUT_MS = 90_000
 let detailRequestId = 0
 let pendingStreamLogs: TaskLog[] = []
 const pendingRightPanelArtifactRefreshPaths = new Set<string>()
@@ -671,7 +674,26 @@ const scheduleRightPanelWorkspaceRefresh = (artifactRefreshPaths: string[] | nul
   }, delay)
 }
 
+const stopHeartbeatCheck = () => {
+  if (heartbeatCheckTimer) {
+    clearInterval(heartbeatCheckTimer)
+    heartbeatCheckTimer = null
+  }
+}
+
+const startHeartbeatCheck = () => {
+  stopHeartbeatCheck()
+  heartbeatCheckTimer = setInterval(() => {
+    if (lastSseEventTime > 0 && Date.now() - lastSseEventTime > SSE_HEARTBEAT_TIMEOUT_MS) {
+      stopHeartbeatCheck()
+      disconnectStream()
+      scheduleReconnect()
+    }
+  }, 10_000)
+}
+
 const disconnectStream = () => {
+  stopHeartbeatCheck()
   clearReconnectTimer()
   clearMessageRefreshTimer()
   clearRightPanelWorkspaceRefreshTimer()
@@ -724,6 +746,8 @@ const connectStream = async () => {
 
   try {
     streamConnected.value = true
+    lastSseEventTime = Date.now()
+    startHeartbeatCheck()
 
     await openSseStream(`/tasks/${taskId.value}/stream`, undefined, {
       signal: streamAbortController.signal,
@@ -731,6 +755,12 @@ const connectStream = async () => {
         await syncIncrementalLogs(currentTaskId, reconnectCursor)
       },
       onEvent: (event) => {
+        lastSseEventTime = Date.now()
+
+        if (event.event === 'heartbeat') {
+          return
+        }
+
         if (event.event === 'task-workspace-change') {
           try {
             const payload = JSON.parse(event.data) as TaskWorkspaceChange
