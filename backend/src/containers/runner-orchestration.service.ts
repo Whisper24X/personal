@@ -60,6 +60,7 @@ export class RunnerOrchestrationService {
     if (!orchestration) {
       return null;
     }
+    const runnerPlatform = this.containerConfig.getRunnerPlatform(project);
 
     const runtimeSharedVolumes = this.mergeSharedVolumes(
       this.buildDefaultSharedVolumes(
@@ -77,6 +78,7 @@ export class RunnerOrchestrationService {
         defaultBranch: project.defaultBranch,
       },
       runtime: {
+        ...(runnerPlatform ? { platform: runnerPlatform } : {}),
         networkMode: this.containerConfig.getRunnerNetworkMode(project),
         hostIp: this.containerConfig.getRunnerExposeHostIp(project),
         hostPort: this.containerConfig.getRunnerExposeContainerPort(project),

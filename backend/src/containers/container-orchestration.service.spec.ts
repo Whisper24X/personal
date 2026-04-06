@@ -150,6 +150,7 @@ describe('ContainerOrchestrationService', () => {
       isStrictMode: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
       getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue('linux/amd64'),
       getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
       shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
       getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
@@ -159,6 +160,9 @@ describe('ContainerOrchestrationService', () => {
       getRunnerAnonymousVolumeMounts: jest
         .fn()
         .mockReturnValue(['/workspace/backend/node_modules']),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({
+        GITLAB_TOKEN: 'token-value',
+      }),
       getRunnerEnv: jest.fn().mockReturnValue({ PORT: '4173' }),
       resourceLimitsForProfile: jest
         .fn()
@@ -200,6 +204,7 @@ describe('ContainerOrchestrationService', () => {
         defaultBranch: 'main',
       },
       runtime: {
+        platform: 'linux/amd64',
         networkMode: 'bridge',
         hostIp: '192.168.50.8',
         hostPort: 4173,
@@ -282,12 +287,14 @@ describe('ContainerOrchestrationService', () => {
         containerName: 'ainative-task-task-1',
         image: 'ainative/runner:project-1',
         env: {
+          GITLAB_TOKEN: 'token-value',
           PORT: '4173',
           AINATIVE_RUNNER_LISTEN_PORT: '4173',
           AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
         },
         resourceLimits: { memoryMb: 3072, pidsLimit: 300 },
         networkMode: 'bridge',
+        platform: 'linux/amd64',
         startTimeoutMs: 90000,
         anonymousVolumeMounts: [
           '/workspace/logs',
@@ -320,12 +327,104 @@ describe('ContainerOrchestrationService', () => {
     expect(runnerOrchestration.buildProjectRunnerConfigFile).toHaveBeenCalled();
   });
 
+  it('should replace a running container when the desired platform changes', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue('linux/amd64'),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue({
+        id: 'container-old',
+        status: 'running',
+        running: true,
+        image: 'ainative/runner:fresh',
+        platform: 'linux/arm64/v8',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 4173,
+          },
+        ],
+      }),
+      remove: jest.fn().mockResolvedValue(undefined),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-new',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 4173,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
+    };
+    const slotRepository = {
+      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
+      updateContainerId: jest.fn().mockResolvedValue(undefined),
+      renewSlot: jest.fn().mockResolvedValue(undefined),
+      releaseSlot: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    const result = await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress) as never,
+      project: createProject() as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(result).toEqual({ containerId: 'container-new' });
+    expect(isolatedRunner.remove).toHaveBeenCalledWith('ainative-task-task-1');
+    expect(isolatedRunner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        image: 'ainative/runner:fresh',
+        platform: 'linux/amd64',
+      }),
+    );
+  });
+
   it('should replace a running host-network container and persist derived preview metadata', async () => {
     const config = {
       isDockerMode: jest.fn().mockReturnValue(true),
       isStrictMode: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
       getSandboxProfile: jest.fn().mockReturnValue('default'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
       getRunnerNetworkMode: jest.fn().mockReturnValue('host'),
       shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
       getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
@@ -333,6 +432,7 @@ describe('ContainerOrchestrationService', () => {
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
@@ -407,6 +507,7 @@ describe('ContainerOrchestrationService', () => {
       isStrictMode: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
       getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
       getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
       shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
       getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
@@ -414,6 +515,7 @@ describe('ContainerOrchestrationService', () => {
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
@@ -487,6 +589,7 @@ describe('ContainerOrchestrationService', () => {
       isStrictMode: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
       getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
       getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
       shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
       getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
@@ -494,6 +597,7 @@ describe('ContainerOrchestrationService', () => {
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
@@ -570,6 +674,7 @@ describe('ContainerOrchestrationService', () => {
       isStrictMode: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
       getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
       getRunnerNetworkMode: jest.fn().mockReturnValue('host'),
       shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
       getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
@@ -577,6 +682,7 @@ describe('ContainerOrchestrationService', () => {
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
@@ -654,6 +760,7 @@ describe('ContainerOrchestrationService', () => {
       isStrictMode: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
       getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
       getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
       shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
       getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
@@ -661,6 +768,7 @@ describe('ContainerOrchestrationService', () => {
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),

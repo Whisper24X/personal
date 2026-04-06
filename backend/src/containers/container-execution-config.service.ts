@@ -7,8 +7,10 @@ import { RunnerNetworkMode } from './runner-orchestration.types';
 export type { RunnerNetworkMode } from './runner-orchestration.types';
 
 export type SandboxProfile = 'runner-only' | 'preview-web';
+export type RunnerPlatform = string;
 export type ProjectContainerRuntimeConfig = {
   sandboxProfile?: SandboxProfile;
+  platform?: string;
   networkMode?: RunnerNetworkMode;
   exposeLocal?: boolean;
   exposeHostIp?: string;
@@ -67,6 +69,19 @@ export class ContainerExecutionConfigService {
           infer: true,
         })
         ?.trim() || '/workspace'
+    );
+  }
+
+  getRunnerPlatform(project?: Project | null): string | null {
+    const projectConfig = this.readProjectContainerRuntimeConfig(project);
+    if (projectConfig?.platform) {
+      return projectConfig.platform;
+    }
+
+    return this.resolveRunnerPlatform(
+      this.configService.get<string>('AINATIVE_RUNNER_PLATFORM', {
+        infer: true,
+      }),
     );
   }
 
@@ -245,6 +260,25 @@ export class ContainerExecutionConfigService {
     return this.readProjectContainerRuntimeConfig(project)?.env ?? {};
   }
 
+  getRunnerBootstrapEnv(): Record<string, string> {
+    const env: Record<string, string> = {};
+    const gitlabUsername = this.configService
+      .get<string>('GITLAB_USERNAME', { infer: true })
+      ?.trim();
+    const gitlabToken = this.configService
+      .get<string>('GITLAB_TOKEN', { infer: true })
+      ?.trim();
+
+    if (gitlabUsername) {
+      env.GITLAB_USERNAME = gitlabUsername;
+    }
+    if (gitlabToken) {
+      env.GITLAB_TOKEN = gitlabToken;
+    }
+
+    return env;
+  }
+
   private sanitizeContainerName(name: string): string {
     return name.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 120);
   }
@@ -280,6 +314,7 @@ export class ContainerExecutionConfigService {
     }
 
     const sandboxProfile = this.resolveSandboxProfile(rawConfig.sandboxProfile);
+    const platform = this.resolveRunnerPlatform(rawConfig.platform);
     const networkMode = this.resolveRunnerNetworkMode(rawConfig.networkMode);
     const exposeLocal =
       typeof rawConfig.exposeLocal === 'boolean'
@@ -304,6 +339,7 @@ export class ContainerExecutionConfigService {
 
     return {
       ...(sandboxProfile ? { sandboxProfile } : {}),
+      ...(platform ? { platform } : {}),
       ...(networkMode ? { networkMode } : {}),
       ...(exposeLocal !== undefined ? { exposeLocal } : {}),
       ...(exposeHostIp ? { exposeHostIp } : {}),
@@ -350,6 +386,24 @@ export class ContainerExecutionConfigService {
       return value;
     }
     return null;
+  }
+
+  private resolveRunnerPlatform(value: unknown): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (
+      !normalized ||
+      !/^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_.-]*(?:\/[a-z0-9][a-z0-9_.-]*)?$/.test(
+        normalized,
+      )
+    ) {
+      return null;
+    }
+
+    return normalized;
   }
 
   private resolveRunnerNetworkMode(value: unknown): RunnerNetworkMode | null {

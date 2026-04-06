@@ -162,6 +162,8 @@ watch(
         :task-id="props.taskId"
         :project-id="props.projectId"
         :refresh-token="props.refreshToken"
+        :logs="props.logs"
+        :format-date="props.formatDate"
       />
 
       <TaskFilesPanel

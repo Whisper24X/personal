@@ -83,9 +83,17 @@ if (missingKeys.length > 0) {
 
 const imageName =
   mergedEnv.AINATIVE_RUNNER_IMAGE?.trim() || 'ainative/runner:latest';
+const buildPlatform =
+  mergedEnv.AINATIVE_RUNNER_BUILD_PLATFORM?.trim() ||
+  mergedEnv.AINATIVE_RUNNER_PLATFORM?.trim() ||
+  'linux/amd64';
 const extraArgs = process.argv.slice(2);
 const dockerArgs = [
+  'buildx',
   'build',
+  '--load',
+  '--platform',
+  buildPlatform,
   ...extraArgs,
   '--build-arg',
   `GITLAB_USERNAME=${mergedEnv.GITLAB_USERNAME}`,

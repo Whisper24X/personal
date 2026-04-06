@@ -60,6 +60,7 @@ export type ProjectRunnerConfigFile = {
     defaultBranch: string;
   };
   runtime: {
+    platform?: string;
     networkMode: RunnerNetworkMode;
     hostIp: string;
     hostPort: number;

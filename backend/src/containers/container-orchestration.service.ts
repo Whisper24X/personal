@@ -71,6 +71,7 @@ export class ContainerOrchestrationService
     const containerName = this.config.resolveContainerName(task);
     const runtimeExposure = this.resolveRuntimeExposure(project);
     const sandboxProfile = this.config.getSandboxProfile(project);
+    const runnerPlatform = this.config.getRunnerPlatform(project);
     const readinessProbeUrl = this.config.getRunnerReadinessProbeUrl(project);
     const startTimeoutMs = this.config.getRunnerStartTimeoutMs(project);
     const runnerImage =
@@ -84,6 +85,7 @@ export class ContainerOrchestrationService
         image: runnerImage,
         worktreePath,
         sandboxProfile,
+        platform: runnerPlatform,
         networkMode: this.config.getRunnerNetworkMode(project),
         runtimeExposure: runtimeExposure ?? null,
         existing: existing ?? null,
@@ -91,7 +93,10 @@ export class ContainerOrchestrationService
     );
 
     if (existing?.running) {
-      if (existing.image === runnerImage) {
+      if (
+        existing.image === runnerImage &&
+        this.platformMatches(runnerPlatform, existing.platform)
+      ) {
         const existingSlot = await this.slotRepository.findByProjectId(
           task.projectId,
         );
@@ -151,15 +156,30 @@ export class ContainerOrchestrationService
         return { containerId: existing.id };
       }
 
-      this.logger.warn(
-        `runner_container_image_mismatch ${JSON.stringify({
-          taskId: task.id,
-          projectId: task.projectId,
-          containerName,
-          currentImage: existing.image ?? null,
-          desiredImage: runnerImage,
-        })}`,
-      );
+      if (existing.image !== runnerImage) {
+        this.logger.warn(
+          `runner_container_image_mismatch ${JSON.stringify({
+            taskId: task.id,
+            projectId: task.projectId,
+            containerName,
+            currentImage: existing.image ?? null,
+            desiredImage: runnerImage,
+            currentPlatform: existing.platform ?? null,
+            desiredPlatform: runnerPlatform,
+          })}`,
+        );
+      } else {
+        this.logger.warn(
+          `runner_container_platform_mismatch ${JSON.stringify({
+            taskId: task.id,
+            projectId: task.projectId,
+            containerName,
+            image: runnerImage,
+            currentPlatform: existing.platform ?? null,
+            desiredPlatform: runnerPlatform,
+          })}`,
+        );
+      }
       await this.isolatedRunner.remove(containerName);
     }
 
@@ -233,6 +253,7 @@ export class ContainerOrchestrationService
           readinessProbeUrl,
           startTimeoutMs,
           errorMessage: message,
+          platform: runnerPlatform,
         })}`,
       );
       if (this.config.isStrictMode()) {
@@ -439,6 +460,7 @@ export class ContainerOrchestrationService
             params.project,
           ) ?? null;
         const containerEnv = {
+          ...this.config.getRunnerBootstrapEnv(),
           ...this.config.getRunnerEnv(params.project),
           AINATIVE_RUNNER_LISTEN_PORT: String(
             this.config.getRunnerExposeContainerPort(params.project),
@@ -472,6 +494,7 @@ export class ContainerOrchestrationService
             params.project,
           ),
           startTimeoutMs: this.config.getRunnerStartTimeoutMs(params.project),
+          platform: this.config.getRunnerPlatform(params.project),
           networkMode: this.config.getRunnerNetworkMode(params.project),
           publishedPorts,
         });
@@ -513,6 +536,23 @@ export class ContainerOrchestrationService
       advertisedHostIp: this.config.getRunnerExposeHostIp(project),
       containerPort: this.config.getRunnerExposeContainerPort(project),
     };
+  }
+
+  private platformMatches(
+    desiredPlatform: string | null,
+    actualPlatform: string | null,
+  ): boolean {
+    if (!desiredPlatform) {
+      return true;
+    }
+
+    const desired = desiredPlatform.trim().toLowerCase();
+    const actual = actualPlatform?.trim().toLowerCase() ?? '';
+    if (!actual) {
+      return false;
+    }
+
+    return actual === desired || actual.startsWith(`${desired}/`);
   }
 
   private buildAccessMetadata(params: {

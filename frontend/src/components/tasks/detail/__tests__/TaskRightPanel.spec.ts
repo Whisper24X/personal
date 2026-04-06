@@ -66,6 +66,8 @@ describe('TaskRightPanel', () => {
               taskId: { type: String, required: true },
               projectId: { type: String, default: '' },
               refreshToken: { type: Number, default: 0 },
+              logs: { type: Array, default: () => [] },
+              formatDate: { type: Function, required: true },
             },
             setup(props) {
               previewProps.push({ ...props })
@@ -87,6 +89,8 @@ describe('TaskRightPanel', () => {
       taskId: 'task-1',
       projectId: 'project-1',
       refreshToken: 3,
+      logs: [],
+      formatDate: expect.any(Function),
     })
   })
 })

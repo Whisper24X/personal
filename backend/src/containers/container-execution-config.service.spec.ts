@@ -70,6 +70,7 @@ describe('ContainerExecutionConfigService', () => {
   it('should respect sandbox overrides when provided', () => {
     const service = createService({
       AINATIVE_TASK_SANDBOX_PROFILE: 'preview-web',
+      AINATIVE_RUNNER_PLATFORM: 'linux/amd64',
       AINATIVE_RUNNER_START_TIMEOUT_MS: '45000',
       AINATIVE_RUNNER_READINESS_URL: 'http://127.0.0.1:18080/healthz',
       AINATIVE_RUNNER_NETWORK_MODE: 'bridge',
@@ -80,6 +81,7 @@ describe('ContainerExecutionConfigService', () => {
     });
 
     expect(service.getSandboxProfile()).toBe('preview-web');
+    expect(service.getRunnerPlatform()).toBe('linux/amd64');
     expect(service.getRunnerStartTimeoutMs()).toBe(45_000);
     expect(service.getRunnerNetworkMode()).toBe('bridge');
     expect(service.getRunnerExposeHostIp()).toBe('192.168.1.20');
@@ -93,9 +95,23 @@ describe('ContainerExecutionConfigService', () => {
     );
   });
 
+  it('should expose GitLab credentials only through bootstrap env', () => {
+    const service = createService({
+      GITLAB_USERNAME: 'oauth2',
+      GITLAB_TOKEN: 'token-value',
+    });
+
+    expect(service.getRunnerBootstrapEnv()).toEqual({
+      GITLAB_USERNAME: 'oauth2',
+      GITLAB_TOKEN: 'token-value',
+    });
+    expect(service.getRunnerEnv()).toEqual({});
+  });
+
   it('should prefer project container runtime overrides over global defaults', () => {
     const service = createService({
       AINATIVE_TASK_SANDBOX_PROFILE: 'runner-only',
+      AINATIVE_RUNNER_PLATFORM: 'linux/arm64',
       AINATIVE_RUNNER_NETWORK_MODE: 'host',
       AINATIVE_RUNNER_EXPOSE_LOCAL: 'true',
       AINATIVE_RUNNER_EXPOSE_HOST_IP: '127.0.0.1',
@@ -105,6 +121,7 @@ describe('ContainerExecutionConfigService', () => {
     const project = createProject({
       containerRuntime: {
         sandboxProfile: 'preview-web',
+        platform: 'linux/amd64',
         networkMode: 'bridge',
         exposeLocal: false,
         exposeHostIp: '192.168.50.8',
@@ -122,6 +139,8 @@ describe('ContainerExecutionConfigService', () => {
     });
 
     expect(service.getSandboxProfile(project as never)).toBe('preview-web');
+    expect(service.getRunnerPlatform()).toBe('linux/arm64');
+    expect(service.getRunnerPlatform(project as never)).toBe('linux/amd64');
     expect(service.usesSandboxEntrypoint(project as never)).toBe(true);
     expect(service.getRunnerNetworkMode(project as never)).toBe('bridge');
     expect(service.shouldExposeSandboxPort(project as never)).toBe(true);
@@ -138,5 +157,22 @@ describe('ContainerExecutionConfigService', () => {
       PORT: '4173',
       NODE_ENV: 'development',
     });
+  });
+
+  it('should ignore invalid runner platform values', () => {
+    const service = createService({
+      AINATIVE_RUNNER_PLATFORM: 'amd64',
+    });
+
+    expect(service.getRunnerPlatform()).toBeNull();
+    expect(
+      service.getRunnerPlatform(
+        createProject({
+          containerRuntime: {
+            platform: 'linux amd64',
+          },
+        }) as never,
+      ),
+    ).toBeNull();
   });
 });

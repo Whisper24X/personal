@@ -112,6 +112,8 @@ pnpm run docker:clean:windows
 NODE_ENV=development
 GITLAB_USERNAME=oauth2
 GITLAB_TOKEN=your_gitlab_token
+AINATIVE_RUNNER_PLATFORM=linux/amd64
+AINATIVE_RUNNER_BUILD_PLATFORM=linux/amd64
 ```
 
 如果你不构建 runner，也不需要 backend 访问私有 GitLab HTTP 仓库，可以不设置 `GITLAB_TOKEN`。
@@ -132,6 +134,8 @@ Linux / macOS:
 ```bash
 export GITLAB_USERNAME=oauth2
 export GITLAB_TOKEN=your_gitlab_token
+export AINATIVE_RUNNER_PLATFORM=linux/amd64
+export AINATIVE_RUNNER_BUILD_PLATFORM=linux/amd64
 NODE_ENV=development pnpm run docker:build:runner
 ```
 
@@ -147,6 +151,8 @@ pnpm run docker:build:runner:windows
 
 `docker compose` 默认不会帮你构建 `ainative/runner:latest`。这个镜像会在 backend 或本地 CLI 需要拉起任务容器时单独使用，所以需要预先构建一次。
 
+当前仓库的内置预览应用包含 Taro H5 开发链路；在 `linux/arm64` runner 中，`@tarojs/binding-linux-arm64-gnu` 缺失会导致 `ainative-app` 无法启动。因此 runner 镜像与运行平台默认都建议使用 `linux/amd64`。
+
 Linux / macOS:
 
 ```bash
@@ -161,6 +167,14 @@ pnpm run docker:build:runner:windows
 ```
 
 默认镜像名是 `ainative/runner:latest`。如果构建成功，`ainative runner up` 和后端的 Docker 任务执行模式都会直接复用这张镜像。若 `/.env` 里 `GITLAB_TOKEN` 为空，runner 构建会直接报缺失，避免拿模板值去尝试拉私有依赖。
+
+`pnpm run docker:build:runner` 现在会默认执行等价于：
+
+```bash
+docker buildx build --load --platform linux/amd64 -f runner/Dockerfile.runner -t ainative/runner:latest .
+```
+
+如果你确实要覆盖构建平台，可以设置 `AINATIVE_RUNNER_BUILD_PLATFORM`；runner 运行时平台则由 `AINATIVE_RUNNER_PLATFORM` 或项目级 `configJson.containerRuntime.platform` 决定。
 
 ## 6. Windows 说明
 

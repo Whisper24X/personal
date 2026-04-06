@@ -42,7 +42,7 @@ ENV TZ=Asia/Shanghai \
 RUN --mount=type=cache,id=runner-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=runner-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    bash curl git make cmake python3 \
+    bash curl git make cmake python3 pkg-config \
     openssh-client netcat-openbsd zip unzip \
     supervisor nginx \
     ca-certificates \

@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { spawn } from 'child_process';
-import { RunnerNetworkMode } from './container-execution-config.service';
+import {
+  RunnerNetworkMode,
+  RunnerPlatform,
+} from './container-execution-config.service';
 
 export type ContainerInspectResult = {
   id: string;
   status: string;
   running: boolean;
   image: string | null;
+  platform: string | null;
   publishedPorts: PublishedPortMapping[];
 };
 
@@ -33,6 +37,7 @@ export class IsolatedRunnerContainerService {
     anonymousVolumeMounts?: string[];
     readinessProbeUrl?: string | null;
     startTimeoutMs?: number;
+    platform?: RunnerPlatform | null;
     networkMode?: RunnerNetworkMode;
     publishedPorts?: PublishedPortMapping[];
   }): Promise<{ containerId: string; publishedPorts: PublishedPortMapping[] }> {
@@ -51,6 +56,7 @@ export class IsolatedRunnerContainerService {
         resourceLimits: params.resourceLimits ?? {},
         readinessProbeUrl: params.readinessProbeUrl ?? null,
         startTimeoutMs,
+        platform: params.platform ?? null,
         networkMode,
         publishedPorts,
       })}`,
@@ -60,6 +66,7 @@ export class IsolatedRunnerContainerService {
       '-d',
       '--name',
       params.containerName,
+      ...(params.platform ? ['--platform', params.platform] : []),
       '--network',
       networkMode,
       '-v',
@@ -164,6 +171,7 @@ export class IsolatedRunnerContainerService {
       ]);
       const parsed = JSON.parse(json) as {
         Id?: string;
+        Image?: string;
         State?: { Status?: string; Running?: boolean };
         Config?: { Image?: string };
         NetworkSettings?: {
@@ -176,6 +184,7 @@ export class IsolatedRunnerContainerService {
       const id = parsed.Id ?? '';
       const running = parsed.State?.Running === true;
       const status = parsed.State?.Status ?? 'unknown';
+      const imageId = parsed.Image?.trim() ?? '';
       if (!id) {
         return null;
       }
@@ -184,6 +193,7 @@ export class IsolatedRunnerContainerService {
         status,
         running,
         image: parsed.Config?.Image?.trim() || null,
+        platform: await this.resolveImagePlatform(imageId),
         publishedPorts: this.parsePublishedPorts(parsed.NetworkSettings?.Ports),
       };
     } catch {
@@ -312,6 +322,26 @@ export class IsolatedRunnerContainerService {
 
   private shellEscape(value: string): string {
     return `'${value.replace(/'/g, `'\\''`)}'`;
+  }
+
+  private async resolveImagePlatform(imageId: string): Promise<string | null> {
+    if (!imageId) {
+      return null;
+    }
+
+    try {
+      const out = await this.execDockerCapture([
+        'image',
+        'inspect',
+        imageId,
+        '--format',
+        '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}',
+      ]);
+      const platform = out.trim().toLowerCase();
+      return platform || null;
+    } catch {
+      return null;
+    }
   }
 
   private async execDocker(args: string[]): Promise<void> {
