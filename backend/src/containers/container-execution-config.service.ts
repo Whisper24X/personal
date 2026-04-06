@@ -183,6 +183,14 @@ export class ContainerExecutionConfigService {
     return this.detectHostLanIp() ?? '127.0.0.1';
   }
 
+  getPreviewBaseUrl(): string | null {
+    const configured = this.configService
+      .get<string>('AINATIVE_PREVIEW_BASE_URL', { infer: true })
+      ?.trim();
+
+    return configured || null;
+  }
+
   getRunnerExposeContainerPort(project?: Project | null): number {
     const projectConfig = this.readProjectContainerRuntimeConfig(project);
     if (projectConfig?.exposeContainerPort) {

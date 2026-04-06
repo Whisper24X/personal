@@ -87,12 +87,24 @@ const createProjectsService = () => {
     getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
     getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
     getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
+    getPreviewBaseUrl: jest.fn().mockReturnValue(null),
   };
   const isolatedRunner = {
     inspect: jest.fn().mockResolvedValue(null),
   };
   const configService = {
-    get: jest.fn().mockReturnValue('/tmp/ainative-data-root'),
+    get: jest.fn((key: string) => {
+      if (key === 'AINATIVE_DATA_ROOT_DIR') {
+        return '/tmp/ainative-data-root';
+      }
+      if (key === 'GITLAB_USERNAME') {
+        return process.env.GITLAB_USERNAME;
+      }
+      if (key === 'GITLAB_TOKEN') {
+        return process.env.GITLAB_TOKEN;
+      }
+      return undefined;
+    }),
   };
 
   const agentRunnerService = {
@@ -637,6 +649,38 @@ describe('ProjectsService', () => {
     });
   });
 
+  it('should publish runtime preview url using the configured preview base url', async () => {
+    const { service, accessService, slotRepository, containerConfig } =
+      createProjectsService();
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    accessService.assertProjectCapability.mockResolvedValue(project);
+    containerConfig.getPreviewBaseUrl = jest
+      .fn()
+      .mockReturnValue('https://preview.example.com/workspace/');
+    slotRepository.findByProjectId.mockResolvedValue({
+      projectId: project.id,
+      accessMetadata: {
+        hostIp: '127.0.0.1',
+        hostPort: 38123,
+        containerPort: 8080,
+        previewAddress: '127.0.0.1:38123',
+        baseUrl: 'http://127.0.0.1:38123',
+        networkMode: 'bridge',
+      },
+    });
+
+    const result = await service.findById(project.id, currentUser);
+
+    expect(result?.configJson).toMatchObject({
+      preview: {
+        url: 'https://preview.example.com:38123',
+        runtimeUrl: 'https://preview.example.com:38123',
+      },
+    });
+  });
+
   it('should recover runtime preview url from inspected container when slot metadata is missing', async () => {
     const {
       service,
@@ -690,6 +734,65 @@ describe('ProjectsService', () => {
       preview: {
         url: '192.168.1.9:38123',
         runtimeUrl: '192.168.1.9:38123',
+      },
+    });
+  });
+
+  it('should persist recovered runtime preview access using the configured preview base url', async () => {
+    const {
+      service,
+      accessService,
+      slotRepository,
+      isolatedRunner,
+      containerConfig,
+    } = createProjectsService();
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    accessService.assertProjectCapability.mockResolvedValue(project);
+    containerConfig.getPreviewBaseUrl = jest
+      .fn()
+      .mockReturnValue('https://preview.example.com/root/');
+    slotRepository.findByProjectId.mockResolvedValue({
+      projectId: project.id,
+      containerId: 'container-1',
+      accessMetadata: null,
+    });
+    isolatedRunner.inspect.mockResolvedValue({
+      id: 'container-1',
+      status: 'running',
+      running: true,
+      image: 'ainative/runner:fresh',
+      publishedPorts: [
+        {
+          hostIp: '0.0.0.0',
+          hostPort: 38123,
+          containerPort: 8080,
+        },
+      ],
+    });
+    containerConfig.getRunnerExposeHostIp.mockReturnValue('192.168.1.9');
+
+    const result = await service.findById(project.id, currentUser);
+
+    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
+      project.id,
+      {
+        containerId: 'container-1',
+        accessMetadata: {
+          hostIp: '192.168.1.9',
+          hostPort: 38123,
+          containerPort: 8080,
+          previewAddress: 'https://preview.example.com:38123',
+          baseUrl: 'https://preview.example.com:38123',
+          networkMode: 'bridge',
+        },
+      },
+    );
+    expect(result?.configJson).toMatchObject({
+      preview: {
+        url: 'https://preview.example.com:38123',
+        runtimeUrl: 'https://preview.example.com:38123',
       },
     });
   });

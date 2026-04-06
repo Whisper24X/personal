@@ -501,6 +501,91 @@ describe('ContainerOrchestrationService', () => {
     );
   });
 
+  it('should persist published preview metadata using the configured preview base url', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
+      getPreviewBaseUrl: jest
+        .fn()
+        .mockReturnValue('https://preview.example.com/root/'),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue(null),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-new',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 4173,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
+    };
+    const slotRepository = {
+      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
+      updateContainerId: jest.fn().mockResolvedValue(undefined),
+      renewSlot: jest.fn().mockResolvedValue(undefined),
+      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      findByProjectId: jest.fn().mockResolvedValue(null),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    const result = await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress) as never,
+      project: createProject() as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(result).toEqual({ containerId: 'container-new' });
+    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
+      'project-1',
+      {
+        containerId: 'container-new',
+        accessMetadata: {
+          hostIp: '192.168.50.8',
+          hostPort: 38080,
+          containerPort: 4173,
+          previewAddress: 'https://preview.example.com:38080',
+          baseUrl: 'https://preview.example.com:38080',
+          networkMode: 'bridge',
+        },
+      },
+    );
+  });
+
   it('should refresh slot runtime metadata when reusing a running container', async () => {
     const config = {
       isDockerMode: jest.fn().mockReturnValue(true),

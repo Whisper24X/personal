@@ -13,6 +13,7 @@ import { ContainerExecutionConfigService } from './container-execution-config.se
 import { IsolatedRunnerContainerService } from './isolated-runner-container.service';
 import { SlotAccessMetadata } from './domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
+import { buildPreviewUrl } from './preview-url';
 import { ProjectRunnerImageService } from './project-runner-image.service';
 import { RunnerOrchestrationService } from './runner-orchestration.service';
 
@@ -23,6 +24,9 @@ export class ContainerOrchestrationService
   private readonly logger = new Logger(ContainerOrchestrationService.name);
   private readonly slotHeartbeatTimers = new Map<string, NodeJS.Timeout>();
   private readonly maxPortAllocationAttempts = 8;
+  private previewBaseUrlMissingWarned = false;
+  private previewBaseUrlInvalidWarned = false;
+  private previewBaseUrlIgnoredPathWarned = false;
   private destroyed = false;
 
   constructor(
@@ -600,15 +604,65 @@ export class ContainerOrchestrationService
     const normalizedHostIp = hostIp.trim();
     const normalizedHostPort = Math.floor(hostPort);
     const normalizedContainerPort = Math.floor(containerPort);
+    const previewBaseUrl = this.config.getPreviewBaseUrl?.() ?? null;
+    const previewUrl = buildPreviewUrl({
+      previewBaseUrl,
+      hostIp: normalizedHostIp,
+      hostPort: normalizedHostPort,
+    });
+    if (!previewUrl) {
+      return null;
+    }
+
+    this.logPreviewUrlFallback(previewBaseUrl, previewUrl);
 
     return {
       hostIp: normalizedHostIp,
       hostPort: normalizedHostPort,
       containerPort: normalizedContainerPort,
-      previewAddress: `${normalizedHostIp}:${normalizedHostPort}`,
-      baseUrl: `http://${normalizedHostIp}:${normalizedHostPort}`,
+      previewAddress: previewUrl.previewAddress,
+      baseUrl: previewUrl.baseUrl,
       networkMode,
     };
+  }
+
+  private logPreviewUrlFallback(
+    previewBaseUrl: string | null,
+    previewUrl: ReturnType<typeof buildPreviewUrl>,
+  ): void {
+    if (!previewUrl) {
+      return;
+    }
+
+    if (previewUrl.ignoredPath && !this.previewBaseUrlIgnoredPathWarned) {
+      this.previewBaseUrlIgnoredPathWarned = true;
+      this.logger.warn(
+        `preview_base_url_path_ignored ${JSON.stringify({
+          previewBaseUrl,
+        })}`,
+      );
+    }
+
+    if (previewUrl.source !== 'host-ip') {
+      return;
+    }
+
+    if (previewBaseUrl?.trim()) {
+      if (!this.previewBaseUrlInvalidWarned) {
+        this.previewBaseUrlInvalidWarned = true;
+        this.logger.warn(
+          `preview_base_url_invalid ${JSON.stringify({
+            previewBaseUrl,
+          })}`,
+        );
+      }
+      return;
+    }
+
+    if (!this.previewBaseUrlMissingWarned) {
+      this.previewBaseUrlMissingWarned = true;
+      this.logger.warn('preview_base_url_missing using hostIp fallback');
+    }
   }
 
   private selectPublishedPort(

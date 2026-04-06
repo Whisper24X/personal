@@ -95,6 +95,16 @@ describe('ContainerExecutionConfigService', () => {
     );
   });
 
+  it('should read the global preview base url when configured', () => {
+    const service = createService({
+      AINATIVE_PREVIEW_BASE_URL: 'https://preview.example.com/root/',
+    });
+
+    expect(service.getPreviewBaseUrl()).toBe(
+      'https://preview.example.com/root/',
+    );
+  });
+
   it('should expose GitLab credentials only through bootstrap env', () => {
     const service = createService({
       GITLAB_USERNAME: 'oauth2',

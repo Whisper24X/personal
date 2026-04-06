@@ -54,6 +54,7 @@ import { ContainerExecutionConfigService } from '../containers/container-executi
 import { IsolatedRunnerContainerService } from '../containers/isolated-runner-container.service';
 import { SlotAccessMetadata } from '../containers/domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from '../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
+import { buildPreviewUrl } from '../containers/preview-url';
 import { RunnerOrchestrationService } from '../containers/runner-orchestration.service';
 import {
   ALL_PROJECT_CAPABILITIES,
@@ -85,6 +86,9 @@ export class ProjectsService {
     { tail: Promise<void>; pending: number }
   >();
   private readonly deployLocks = new Map<string, string>();
+  private previewBaseUrlMissingWarned = false;
+  private previewBaseUrlInvalidWarned = false;
+  private previewBaseUrlIgnoredPathWarned = false;
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
   );
@@ -2223,14 +2227,14 @@ export class ProjectsService {
 
     const slot = await this.slotRepository.findByProjectId(project.id);
     let access = slot?.accessMetadata ?? null;
-    let normalizedAddress = this.resolvePreviewAddress(access);
+    let normalizedAddress = this.resolvePreviewAddress(project, access);
 
     if (!normalizedAddress && slot?.containerId) {
       access = await this.recoverRuntimePreviewAccess(
         project,
         slot.containerId,
       );
-      normalizedAddress = this.resolvePreviewAddress(access);
+      normalizedAddress = this.resolvePreviewAddress(project, access);
     }
 
     if (!access || !normalizedAddress) {
@@ -2331,20 +2335,33 @@ export class ProjectsService {
 
     const normalizedHostIp = hostIp.trim();
     const normalizedHostPort = Math.floor(hostPort);
+    const previewBaseUrl = this.containerConfig.getPreviewBaseUrl?.() ?? null;
+    const previewUrl = buildPreviewUrl({
+      previewBaseUrl,
+      hostIp: normalizedHostIp,
+      hostPort: normalizedHostPort,
+    });
+    if (!previewUrl) {
+      return null;
+    }
+
+    this.logPreviewUrlFallback(previewBaseUrl, previewUrl);
 
     return {
       hostIp: normalizedHostIp,
       hostPort: normalizedHostPort,
       containerPort,
-      previewAddress: `${normalizedHostIp}:${normalizedHostPort}`,
-      baseUrl: `http://${normalizedHostIp}:${normalizedHostPort}`,
+      previewAddress: previewUrl.previewAddress,
+      baseUrl: previewUrl.baseUrl,
       networkMode,
     };
   }
 
   private resolvePreviewAddress(
+    project: Project,
     access?: {
       previewAddress?: string | null;
+      baseUrl?: string | null;
       hostIp?: string | null;
       hostPort?: number | null;
     } | null,
@@ -2352,23 +2369,66 @@ export class ProjectsService {
     if (!access) {
       return null;
     }
-    return typeof access.previewAddress === 'string' &&
+
+    const previewBaseUrl = this.containerConfig.getPreviewBaseUrl?.() ?? null;
+    const composedPreviewUrl = buildPreviewUrl({
+      previewBaseUrl,
+      hostIp: access.hostIp,
+      hostPort: access.hostPort,
+    });
+    if (composedPreviewUrl) {
+      this.logPreviewUrlFallback(previewBaseUrl, composedPreviewUrl);
+      return composedPreviewUrl.previewAddress;
+    }
+
+    if (
+      typeof access.previewAddress === 'string' &&
       access.previewAddress.trim()
-      ? access.previewAddress.trim()
-      : this.composePreviewAddress(access.hostIp, access.hostPort);
+    ) {
+      return access.previewAddress.trim();
+    }
+    return typeof access.baseUrl === 'string' && access.baseUrl.trim()
+      ? access.baseUrl.trim()
+      : null;
   }
 
-  private composePreviewAddress(
-    hostIp?: string | null,
-    hostPort?: number | null,
-  ): string | null {
-    if (!hostIp || !hostIp.trim()) {
-      return null;
+  private logPreviewUrlFallback(
+    previewBaseUrl: string | null,
+    previewUrl: ReturnType<typeof buildPreviewUrl>,
+  ): void {
+    if (!previewUrl) {
+      return;
     }
-    if (!hostPort || !Number.isFinite(hostPort) || hostPort <= 0) {
-      return null;
+
+    if (previewUrl.ignoredPath && !this.previewBaseUrlIgnoredPathWarned) {
+      this.previewBaseUrlIgnoredPathWarned = true;
+      this.logger.warn(
+        `preview_base_url_path_ignored ${JSON.stringify({
+          previewBaseUrl,
+        })}`,
+      );
     }
-    return `${hostIp.trim()}:${Math.floor(hostPort)}`;
+
+    if (previewUrl.source !== 'host-ip') {
+      return;
+    }
+
+    if (previewBaseUrl?.trim()) {
+      if (!this.previewBaseUrlInvalidWarned) {
+        this.previewBaseUrlInvalidWarned = true;
+        this.logger.warn(
+          `preview_base_url_invalid ${JSON.stringify({
+            previewBaseUrl,
+          })}`,
+        );
+      }
+      return;
+    }
+
+    if (!this.previewBaseUrlMissingWarned) {
+      this.previewBaseUrlMissingWarned = true;
+      this.logger.warn('preview_base_url_missing using hostIp fallback');
+    }
   }
 
   private async ensureCanManageProject(
