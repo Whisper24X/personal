@@ -23,6 +23,7 @@ const props = withDefaults(
     artifactRefreshPaths?: string[] | null
     logs?: TaskLog[]
     defaultRightTab?: 'artifacts' | 'preview' | 'files'
+    previewEnabled?: boolean
     formatDate: (value?: string) => string
     /** 产物面板当前展示的文件路径（工作区预览） */
     artifactFilePath?: string | null
@@ -37,6 +38,7 @@ const props = withDefaults(
     artifactRefreshPaths: () => [],
     logs: () => [],
     defaultRightTab: 'artifacts',
+    previewEnabled: false,
     artifactFilePath: null,
     artifactOpenNonce: 0,
   },
@@ -50,6 +52,15 @@ watch(
   () => props.artifactOpenNonce,
   (next, prev) => {
     if (next > 0 && next !== (prev ?? 0)) {
+      activeTab.value = 'artifact'
+    }
+  },
+)
+
+watch(
+  () => props.previewEnabled,
+  (enabled) => {
+    if (!enabled && activeTab.value === 'preview') {
       activeTab.value = 'artifact'
     }
   },
@@ -73,6 +84,7 @@ watch(
           产物
         </button>
         <button
+          v-if="props.previewEnabled"
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
           :class="
             activeTab === 'preview'
@@ -158,7 +170,7 @@ watch(
       />
 
       <TaskPreviewPanel
-        v-else-if="activeTab === 'preview'"
+        v-else-if="activeTab === 'preview' && props.previewEnabled"
         :task-id="props.taskId"
         :project-id="props.projectId"
         :refresh-token="props.refreshToken"

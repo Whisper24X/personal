@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import TaskDetailView from '@/views/tasks/detail.vue'
 import { useMessageStore } from '@/stores/modules/message'
 import { STORAGE_KEYS } from '@/types/common/storage'
-import type { TaskDetail } from '@/types/api/tasks'
+import type { TaskDetail, TaskEnvironment } from '@/types/api/tasks'
 
 const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
   tasksApi: {
@@ -13,7 +13,9 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     messages: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
+    environment: vi.fn(),
     execute: vi.fn(),
+    startEnvironment: vi.fn(),
     reply: vi.fn(),
     cancel: vi.fn(),
     cleanupWorktree: vi.fn(),
@@ -104,7 +106,35 @@ beforeEach(() => {
 
   tasksApi.logs.mockResolvedValue([])
   tasksApi.messages.mockResolvedValue([])
+  tasksApi.environment.mockResolvedValue({
+    status: 'ready',
+    stage: 'ready',
+    stageLabel: '执行环境就绪',
+    message: '执行环境已就绪',
+    updatedAt: '2026-02-27T10:00:00.000Z',
+    runtime: null,
+    steps: [
+      { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+      { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+      { key: 'container_starting', label: '启动执行容器', status: 'done' },
+      { key: 'ready', label: '执行环境就绪', status: 'done' },
+    ],
+  } satisfies TaskEnvironment)
   tasksApi.execute.mockRejectedValue(new Error('执行异常'))
+  tasksApi.startEnvironment.mockResolvedValue({
+    status: 'ready',
+    stage: 'ready',
+    stageLabel: '执行环境就绪',
+    message: '执行环境已就绪',
+    updatedAt: '2026-02-27T10:00:01.000Z',
+    runtime: null,
+    steps: [
+      { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+      { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+      { key: 'container_starting', label: '启动执行容器', status: 'done' },
+      { key: 'ready', label: '执行环境就绪', status: 'done' },
+    ],
+  } satisfies TaskEnvironment)
   authApi.access.mockResolvedValue({
     capabilities: ['project.task.read'],
     currentContext: {
@@ -120,6 +150,124 @@ beforeEach(() => {
 describe('TaskDetailView toasts', () => {
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('renders environment gate before task detail when environment is not ready', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'not_started',
+      stage: 'workspace_preparing',
+      stageLabel: '准备任务工作区',
+      message: '尚未启动执行环境',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'pending' },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
+        { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('启动环境')
+    expect(wrapper.text()).toContain('当前任务环境尚未启动')
+    expect(wrapper.findComponent({ name: 'TaskDetailExecutionPanel' }).exists()).toBe(false)
+  })
+
+  it('starts environment from gate and then renders task detail content', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment
+      .mockResolvedValueOnce({
+        status: 'not_started',
+        stage: 'workspace_preparing',
+        stageLabel: '准备任务工作区',
+        message: '尚未启动执行环境',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+        runtime: null,
+        steps: [
+          { key: 'workspace_preparing', label: '准备任务工作区', status: 'pending' },
+          { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
+          { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+          { key: 'ready', label: '执行环境就绪', status: 'pending' },
+        ],
+      } satisfies TaskEnvironment)
+      .mockResolvedValueOnce({
+        status: 'ready',
+        stage: 'ready',
+        stageLabel: '执行环境就绪',
+        message: '执行环境已就绪',
+        updatedAt: '2026-02-27T10:00:01.000Z',
+        runtime: null,
+        steps: [
+          { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+          { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+          { key: 'container_starting', label: '启动执行容器', status: 'done' },
+          { key: 'ready', label: '执行环境就绪', status: 'done' },
+        ],
+      } satisfies TaskEnvironment)
+      .mockResolvedValueOnce({
+        status: 'ready',
+        stage: 'ready',
+        stageLabel: '执行环境就绪',
+        message: '执行环境已就绪',
+        updatedAt: '2026-02-27T10:00:01.000Z',
+        runtime: null,
+        steps: [
+          { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+          { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+          { key: 'container_starting', label: '启动执行容器', status: 'done' },
+          { key: 'ready', label: '执行环境就绪', status: 'done' },
+        ],
+      } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    const startButton = wrapper
+      .findAll('button')
+      .find((node) => node.text().includes('启动环境'))
+    expect(startButton).toBeDefined()
+
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    expect(tasksApi.startEnvironment).toHaveBeenCalledWith('task-1')
+    expect(wrapper.findComponent({ name: 'TaskDetailExecutionPanel' }).exists()).toBe(true)
+  })
+
+  it('renders ready environment as a single badge without duplicate stage text', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    const executionContextBar = wrapper.findComponent({ name: 'TaskExecutionContextBar' })
+    expect(executionContextBar.text()).toContain('环境已就绪')
+    expect(executionContextBar.text()).not.toContain('环境 已就绪')
+    expect(executionContextBar.text()).not.toContain('执行环境就绪')
   })
 
   it('refreshes detail when SSE reports pending approval', async () => {

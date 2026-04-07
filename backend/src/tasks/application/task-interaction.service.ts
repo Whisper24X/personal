@@ -21,7 +21,6 @@ import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repo
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskGitService } from '../task-git.service';
 import { TaskRuntimeService } from '../task-runtime.service';
-import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { TaskAccessService } from './task-access.service';
 import {
   buildApproveCommitMessage,
@@ -31,6 +30,7 @@ import { TaskConfigResolverService } from './task-config-resolver.service';
 import { TaskLogService } from './task-log.service';
 import { TaskOutputService } from './task-output.service';
 import { TaskQueryService } from './task-query.service';
+import { TaskEnvironmentService } from './task-environment.service';
 import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.service';
 import { TaskSchedulerService } from './task-scheduler.service';
 import { TaskStatusService } from './task-status.service';
@@ -51,7 +51,7 @@ export class TaskInteractionService {
     private readonly taskStatusService: TaskStatusService,
     private readonly taskQueryService: TaskQueryService,
     private readonly taskSchedulerService: TaskSchedulerService,
-    private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
+    private readonly taskEnvironmentService: TaskEnvironmentService,
     private readonly taskGitService: TaskGitService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
     private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
@@ -197,16 +197,12 @@ export class TaskInteractionService {
     taskId: Task['id'],
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    let task = await this.taskAccessService.getTaskOrThrow(
+    const task = await this.taskAccessService.getTaskOrThrow(
       taskId,
       currentUser,
       'project.task.read',
     );
-    const prepared = await this.taskRuntimeOrchestrator.prepareTaskRuntime(
-      task,
-      currentUser,
-    );
-    task = prepared.task;
+    await this.taskEnvironmentService.assertEnvironmentReady(task);
 
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
       task.id,
@@ -215,8 +211,6 @@ export class TaskInteractionService {
     if (runningNode) {
       throw new ConflictException('Task already has an in-progress node');
     }
-
-    await this.ensureProjectExecutionIsIdle(task);
 
     const inReviewNode =
       await this.taskNodeRepository.findFirstByTaskIdAndStatus({
@@ -238,10 +232,10 @@ export class TaskInteractionService {
       throw new ConflictException('No runnable node in todo status');
     }
 
-    task = await this.markTaskStartedIfNeeded(task);
+    const startedTask = await this.markTaskStartedIfNeeded(task);
 
     await this.taskLogService.appendLog({
-      taskId: task.id,
+      taskId: startedTask.id,
       taskNodeId: null,
       level: TaskLogLevel.info,
       message: 'Task queued for execution',
@@ -252,30 +246,10 @@ export class TaskInteractionService {
       },
     });
 
-    await this.taskStatusService.recalculateTaskStatus(task.id);
+    await this.taskStatusService.recalculateTaskStatus(startedTask.id);
     await this.taskSchedulerService.triggerDispatch();
 
-    return this.taskQueryService.detailById(task.id, currentUser);
-  }
-
-  private async ensureProjectExecutionIsIdle(task: Task): Promise<void> {
-    const existingSlot =
-      await this.projectExecutionSlotRepository.findByProjectId(task.projectId);
-    if (existingSlot && existingSlot.taskId !== task.id) {
-      throw new ConflictException(
-        '当前项目有任务在执行，本次执行失败，需要等待正在执行的任务完成或者删除该任务再继续',
-      );
-    }
-
-    const projectHasRunningTask =
-      await this.taskRepository.hasRunningTaskInProject(task.projectId, {
-        excludeTaskId: task.id,
-      });
-    if (projectHasRunningTask) {
-      throw new ConflictException(
-        '当前项目有任务在执行，本次执行失败，需要等待正在执行的任务完成或者删除该任务再继续',
-      );
-    }
+    return this.taskQueryService.detailById(startedTask.id, currentUser);
   }
 
   /**

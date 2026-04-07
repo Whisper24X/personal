@@ -22,6 +22,8 @@ import { TaskStatusService } from './application/task-status.service';
 import { TaskOutputService } from './application/task-output.service';
 import { TaskNode } from './domain/task-node';
 import { SlowApiDiagnosticsSession } from '../observability/slow-api-diagnostics';
+import { TaskEnvironmentDto } from './dto/task-environment.dto';
+import { TaskEnvironmentService } from './application/task-environment.service';
 
 @Injectable()
 export class TasksService implements OnModuleInit, OnModuleDestroy {
@@ -33,6 +35,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     private readonly taskAccessService: TaskAccessService,
     private readonly taskStatusService: TaskStatusService,
     private readonly taskOutputService: TaskOutputService,
+    private readonly taskEnvironmentService: TaskEnvironmentService,
   ) {}
 
   onModuleInit(): void {
@@ -119,6 +122,20 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
     return this.taskInteractionService.execute(taskId, currentUser);
+  }
+
+  async environment(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskEnvironmentDto> {
+    return this.taskEnvironmentService.getEnvironment(taskId, currentUser);
+  }
+
+  async startEnvironment(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskEnvironmentDto> {
+    return this.taskEnvironmentService.startEnvironment(taskId, currentUser);
   }
 
   async repeat(

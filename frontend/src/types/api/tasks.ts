@@ -1,4 +1,19 @@
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done'
+export type TaskEnvironmentStatus =
+  | 'not_started'
+  | 'starting'
+  | 'ready'
+  | 'failed'
+  | 'stopping'
+  | 'stopped'
+export type TaskEnvironmentStage =
+  | 'workspace_preparing'
+  | 'slot_claiming'
+  | 'container_starting'
+  | 'ready'
+  | 'failed'
+  | 'stopped'
+export type TaskEnvironmentStepStatus = 'pending' | 'in_progress' | 'done' | 'error'
 
 /** GET /tasks/stats 项目任务按状态聚合 */
 export type TaskStatusCounts = {
@@ -103,6 +118,30 @@ export type TaskDetail = {
   goalSummary?: TaskGoalSummary | null
   /** 为 true 时不应展示删除（仍有后置计划子任务依赖本任务且尚未物化） */
   planDeletionBlocked?: boolean
+}
+
+export type TaskEnvironmentStep = {
+  key: string
+  label: string
+  status: TaskEnvironmentStepStatus
+  message?: string | null
+}
+
+export type TaskEnvironmentRuntime = {
+  gitWorktree?: string | null
+  containerId?: string | null
+  previewAddress?: string | null
+  baseUrl?: string | null
+}
+
+export type TaskEnvironment = {
+  status: TaskEnvironmentStatus
+  stage: TaskEnvironmentStage
+  stageLabel: string
+  message?: string | null
+  updatedAt: string
+  runtime?: TaskEnvironmentRuntime | null
+  steps: TaskEnvironmentStep[]
 }
 
 export type TaskLogLevel = 'info' | 'warn' | 'error' | 'debug'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { TaskMode, TaskStatus } from '@/types/api/tasks'
+import type { TaskEnvironmentStatus, TaskMode, TaskStatus } from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskExecutionContextBar',
@@ -13,7 +13,12 @@ const props = defineProps<{
   statusClass: string
   modeLabel: string
   subtitle: string
+  environmentStatus?: TaskEnvironmentStatus | null
+  environmentStatusLabel?: string
+  environmentStatusClass?: string
+  environmentStageLabel?: string
   actionLoading: boolean
+  canStartEnvironment?: boolean
   canExecute: boolean
   canCompleteTask: boolean
   canReset: boolean
@@ -23,6 +28,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   execute: []
+  startEnvironment: []
   completeTask: []
   reset: []
   refresh: []
@@ -48,11 +54,27 @@ onBeforeUnmount(() => {
 })
 
 const showPrimaryActions = computed(() => {
-  return props.canExecute || props.canCompleteTask
+  return Boolean(props.canStartEnvironment) || props.canExecute || props.canCompleteTask
 })
 
 const canShowMoreActions = computed(() => {
   return props.canReset || Boolean(props.canRemove)
+})
+
+const environmentBadgeLabel = computed(() => {
+  if (!props.environmentStatusLabel) {
+    return ''
+  }
+
+  if (props.environmentStatus === 'ready') {
+    return `环境${props.environmentStatusLabel}`
+  }
+
+  return `环境 ${props.environmentStatusLabel}`
+})
+
+const shouldShowEnvironmentStage = computed(() => {
+  return props.environmentStatus !== 'ready' && Boolean(props.environmentStageLabel)
 })
 </script>
 
@@ -72,9 +94,31 @@ const canShowMoreActions = computed(() => {
         <span class="text-muted-foreground truncate text-[11px] leading-snug">
           {{ props.modeLabel }} · {{ props.subtitle }}
         </span>
+        <span
+          v-if="environmentBadgeLabel"
+          class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+          :class="props.environmentStatusClass || 'bg-muted text-muted-foreground'"
+        >
+          {{ environmentBadgeLabel }}
+        </span>
+        <span
+          v-if="shouldShowEnvironmentStage"
+          class="text-muted-foreground truncate text-[11px] leading-snug"
+        >
+          {{ props.environmentStageLabel }}
+        </span>
       </div>
 
       <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <button
+          v-if="props.canStartEnvironment"
+          class="inline-flex h-8 items-center rounded-md border border-border/70 bg-background px-3 text-[11px] font-semibold text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="props.actionLoading"
+          type="button"
+          @click="emit('startEnvironment')"
+        >
+          启动环境
+        </button>
         <button
           v-if="props.canExecute"
           class="inline-flex h-8 items-center rounded-md bg-primary px-3 text-[11px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"

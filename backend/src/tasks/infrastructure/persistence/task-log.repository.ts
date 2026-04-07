@@ -15,6 +15,14 @@ export abstract class TaskLogRepository {
     limit?: number;
   }): Promise<TaskLog[]>;
 
+  abstract findLatestByTaskId({
+    taskId,
+    limit,
+  }: {
+    taskId: TaskLog['taskId'];
+    limit?: number;
+  }): Promise<TaskLog[]>;
+
   abstract deleteByTaskIdAndNodeIds({
     taskId,
     nodeIds,

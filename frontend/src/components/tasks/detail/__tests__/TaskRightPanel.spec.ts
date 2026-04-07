@@ -8,6 +8,7 @@ describe('TaskRightPanel', () => {
     const wrapper = mount(TaskRightPanel, {
       props: {
         taskId: 'task-1',
+        previewEnabled: true,
         formatDate: () => '',
       },
       global: {
@@ -54,6 +55,7 @@ describe('TaskRightPanel', () => {
       props: {
         taskId: 'task-1',
         projectId: 'project-1',
+        previewEnabled: true,
         refreshToken: 3,
         formatDate: () => '',
       },
@@ -92,5 +94,30 @@ describe('TaskRightPanel', () => {
       logs: [],
       formatDate: expect.any(Function),
     })
+  })
+
+  it('hides preview tab when runtime environment is not ready', () => {
+    const wrapper = mount(TaskRightPanel, {
+      props: {
+        taskId: 'task-1',
+        previewEnabled: false,
+        formatDate: () => '',
+      },
+      global: {
+        stubs: {
+          TaskArtifactsPanel: true,
+          TaskPreviewPanel: true,
+          TaskFilesPanel: true,
+          TaskGitPanel: true,
+          TaskTerminalPanel: true,
+          TaskLogsPanel: true,
+          TaskDeployPanel: true,
+        },
+      },
+    })
+
+    const tabs = wrapper.findAll('button').map((node) => node.text().trim())
+
+    expect(tabs).not.toContain('预览')
   })
 })

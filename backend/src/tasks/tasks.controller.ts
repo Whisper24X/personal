@@ -84,6 +84,7 @@ import {
 } from './dto/suggest-task-title.dto';
 import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
 import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
+import { TaskEnvironmentDto } from './dto/task-environment.dto';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -169,6 +170,22 @@ export class TasksController {
   @HttpCode(HttpStatus.OK)
   findById(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasksService.findById(id, request.user);
+  }
+
+  @Get(':id/environment')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskEnvironmentDto })
+  @HttpCode(HttpStatus.OK)
+  environment(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tasksService.environment(id, request.user);
+  }
+
+  @Post(':id/environment/start')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskEnvironmentDto })
+  @HttpCode(HttpStatus.OK)
+  startEnvironment(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tasksService.startEnvironment(id, request.user);
   }
 
   @Patch(':id')

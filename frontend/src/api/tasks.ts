@@ -7,6 +7,7 @@ import type {
   RetryTaskPayload,
   Task,
   TaskDetail,
+  TaskEnvironment,
   TaskStatusCounts,
   TaskGitActionResult,
   TaskGitBaseBranchPayload,
@@ -54,6 +55,10 @@ export const tasksApi = {
     return apiHttp.get<TaskDetail>(`/tasks/${taskId}/detail`)
   },
 
+  environment(taskId: string) {
+    return apiHttp.get<TaskEnvironment>(`/tasks/${taskId}/environment`)
+  },
+
   create(payload: CreateTaskPayload) {
     return apiHttp.post<Task>('/tasks', payload)
   },
@@ -72,6 +77,10 @@ export const tasksApi = {
 
   execute(taskId: string) {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/execute`)
+  },
+
+  startEnvironment(taskId: string) {
+    return apiHttp.post<TaskEnvironment>(`/tasks/${taskId}/environment/start`)
   },
 
   repeatNode(taskId: string, nodeId: string) {

@@ -135,6 +135,32 @@ export class TaskLogFileRepository implements TaskLogRepository {
     }
   }
 
+  async findLatestByTaskId({
+    taskId,
+    limit,
+  }: {
+    taskId: TaskLog['taskId'];
+    limit?: number;
+  }): Promise<TaskLog[]> {
+    const task = await this.taskRepository.findById(taskId);
+    if (!task) {
+      return [];
+    }
+
+    const logs = await this.readTaskLogs(task);
+    return [...logs]
+      .sort((left, right) => {
+        const createdAtDiff =
+          right.createdAt.getTime() - left.createdAt.getTime();
+        if (createdAtDiff !== 0) {
+          return createdAtDiff;
+        }
+
+        return right.id.localeCompare(left.id);
+      })
+      .slice(0, limit ?? 20);
+  }
+
   async deleteByTaskIdAndNodeIds({
     taskId,
     nodeIds,

@@ -8,6 +8,7 @@ import ReplyCard from '@/components/tasks/detail/ReplyCard.vue'
 import ReviewCard from '@/components/tasks/detail/ReviewCard.vue'
 import RightPanelSection from '@/components/tasks/detail/RightPanelSection.vue'
 import TaskDialogs, { type TaskEditFormValue } from '@/components/tasks/detail/TaskDialogs.vue'
+import TaskEnvironmentGate from '@/components/tasks/detail/TaskEnvironmentGate.vue'
 import TaskExecutionContextBar from '@/components/tasks/detail/TaskExecutionContextBar.vue'
 import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
 import { openSseStream } from '@/api/http'
@@ -16,6 +17,9 @@ import type {
   ResetNodePayload,
   Task,
   TaskDetail,
+  TaskEnvironment,
+  TaskEnvironmentStage,
+  TaskEnvironmentStatus,
   TaskLog,
   TaskMessage,
   TaskNode,
@@ -63,6 +67,7 @@ const isDragging = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 
 const detail = ref<TaskDetail | null>(null)
+const environment = ref<TaskEnvironment | null>(null)
 const logs = ref<TaskLog[]>([])
 const messages = ref<TaskMessage[]>([])
 const selectedWorkflowNodeId = ref<string | null>(null)
@@ -142,6 +147,24 @@ const statusClassMap: Record<Task['status'], string> = {
   done: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
 }
 
+const environmentStatusLabelMap: Record<TaskEnvironmentStatus, string> = {
+  not_started: '未启动',
+  starting: '启动中',
+  ready: '已就绪',
+  failed: '启动失败',
+  stopping: '释放中',
+  stopped: '已释放',
+}
+
+const environmentStatusClassMap: Record<TaskEnvironmentStatus, string> = {
+  not_started: 'bg-muted text-muted-foreground',
+  starting: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  ready: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  failed: 'bg-destructive/10 text-destructive',
+  stopping: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  stopped: 'bg-muted text-muted-foreground',
+}
+
 const cliLabelMap: Record<string, string> = {
   cursor: 'Cursor Agent',
   'cursor-agent': 'Cursor Agent',
@@ -156,6 +179,27 @@ const task = computed(() => detail.value?.task ?? null)
 const pageLoading = computed(() => loading.value && !detail.value)
 
 const taskConfig = computed(() => task.value?.configJson ?? null)
+const environmentStatus = computed(() => environment.value?.status ?? null)
+const isEnvironmentReady = computed(() => environmentStatus.value === 'ready')
+const environmentStatusLabel = computed(() => {
+  return environmentStatus.value ? environmentStatusLabelMap[environmentStatus.value] : ''
+})
+const environmentStatusClass = computed(() => {
+  return environmentStatus.value
+    ? environmentStatusClassMap[environmentStatus.value]
+    : 'bg-muted text-muted-foreground'
+})
+const shouldShowEnvironmentGate = computed(() => {
+  if (!task.value || !environment.value) {
+    return false
+  }
+
+  if (task.value.status === 'done') {
+    return false
+  }
+
+  return environment.value.status !== 'ready'
+})
 
 const sortedNodes = computed(() => {
   if (!detail.value) {
@@ -266,7 +310,7 @@ const hasInReviewNode = computed(() => {
 })
 
 const canExecute = computed(() => {
-  if (!task.value || !hasButtonAccess('executeTask')) {
+  if (!task.value || !hasButtonAccess('executeTask') || !isEnvironmentReady.value) {
     return false
   }
 
@@ -309,6 +353,18 @@ const canCompleteTask = computed(() => {
   }
 
   return task.value.status === 'in_review' && areAllNodesDone.value
+})
+
+const canStartEnvironment = computed(() => {
+  if (!task.value || !hasButtonAccess('executeTask') || actionLoading.value) {
+    return false
+  }
+
+  if (task.value.status === 'done') {
+    return false
+  }
+
+  return environment.value?.status !== 'ready' && environment.value?.status !== 'starting'
 })
 
 const selectedWorkflowNode = computed(() => {
@@ -417,6 +473,101 @@ const formatDate = (value?: string) => {
   })
 }
 
+const buildEnvironmentSteps = (
+  status: TaskEnvironmentStatus,
+  stage: TaskEnvironmentStage,
+  message: string | null,
+): TaskEnvironment['steps'] => {
+  const stepDefinitions: Array<{ key: TaskEnvironmentStage; label: string }> = [
+    { key: 'workspace_preparing', label: '准备任务工作区' },
+    { key: 'slot_claiming', label: '分配任务执行资源' },
+    { key: 'container_starting', label: '启动执行容器' },
+    { key: 'ready', label: '执行环境就绪' },
+  ]
+
+  const activeStage = status === 'failed' ? 'container_starting' : stage
+  const activeIndex = stepDefinitions.findIndex((step) => step.key === activeStage)
+
+  return stepDefinitions.map((step, index) => {
+    let stepStatus: TaskEnvironment['steps'][number]['status'] = 'pending'
+
+    if (status === 'ready' || status === 'stopped') {
+      stepStatus = 'done'
+    } else if (status === 'starting') {
+      if (activeIndex > index) {
+        stepStatus = 'done'
+      } else if (activeIndex === index) {
+        stepStatus = 'in_progress'
+      }
+    } else if (status === 'failed') {
+      if (activeIndex > index) {
+        stepStatus = 'done'
+      } else if (activeIndex === index) {
+        stepStatus = 'error'
+      }
+    }
+
+    return {
+      key: step.key,
+      label: step.label,
+      status: stepStatus,
+      message:
+        stepStatus === 'in_progress' ||
+        stepStatus === 'error' ||
+        (status === 'ready' && step.key === 'ready')
+          ? message
+          : null,
+    }
+  })
+}
+
+const updateEnvironmentFromLog = (log: TaskLog) => {
+  if (!log.payload || typeof log.payload !== 'object') {
+    return
+  }
+
+  const payload = log.payload as Record<string, unknown>
+  if (payload.scope !== 'task_environment') {
+    return
+  }
+
+  const nextStatus = payload.environmentStatus
+  const nextStage = payload.environmentStage
+  const nextMessage = payload.environmentMessage
+
+  if (
+    typeof nextStatus !== 'string' ||
+    typeof nextStage !== 'string' ||
+    (nextMessage !== null && nextMessage !== undefined && typeof nextMessage !== 'string')
+  ) {
+    return
+  }
+
+  const runtime = environment.value?.runtime ?? null
+  environment.value = {
+    status: nextStatus as TaskEnvironmentStatus,
+    stage: nextStage as TaskEnvironmentStage,
+    stageLabel:
+      nextStage === 'failed'
+        ? '执行环境启动失败'
+        : nextStage === 'stopped'
+          ? '执行环境已释放'
+          : buildEnvironmentSteps(
+              nextStatus as TaskEnvironmentStatus,
+              nextStage as TaskEnvironmentStage,
+              typeof nextMessage === 'string' ? nextMessage : null,
+            ).find((step) => step.key === nextStage)?.label || '执行环境',
+    message: typeof nextMessage === 'string' ? nextMessage : null,
+    updatedAt: log.createdAt,
+    runtime,
+    steps: buildEnvironmentSteps(
+      nextStatus as TaskEnvironmentStatus,
+      nextStage as TaskEnvironmentStage,
+      typeof nextMessage === 'string' ? nextMessage : null,
+    ),
+  }
+}
+
 const isAgentOutputLog = (log: TaskLog) => {
   return (
     log.message === 'Agent CLI stdout chunk' ||
@@ -515,6 +666,8 @@ const applyTaskLog = (payload: TaskLog) => {
   if (!isFresh) {
     return
   }
+
+  updateEnvironmentFromLog(payload)
 
   if (isAgentOutputLog(payload)) {
     scheduleRefreshMessages()
@@ -855,6 +1008,7 @@ const refreshAccessContext = async (projectId: string) => {
 
 const resetTaskState = () => {
   detail.value = null
+  environment.value = null
   logs.value = []
   messages.value = []
   selectedWorkflowNodeId.value = null
@@ -872,8 +1026,9 @@ const loadInitialTaskData = async () => {
   loading.value = true
 
   try {
-    const [detailResponse, logResponse, messageResponse] = await Promise.all([
+    const [detailResponse, environmentResponse, logResponse, messageResponse] = await Promise.all([
       tasksApi.detailWithNodes(taskId.value),
+      tasksApi.environment(taskId.value),
       tasksApi.logs(taskId.value, { limit: 300 }),
       tasksApi.messages(taskId.value),
     ])
@@ -889,6 +1044,7 @@ const loadInitialTaskData = async () => {
     }
 
     detail.value = detailResponse
+    environment.value = environmentResponse
     logs.value = [...logResponse].sort((left, right) => {
       const leftAt = new Date(left.createdAt).getTime()
       const rightAt = new Date(right.createdAt).getTime()
@@ -906,6 +1062,18 @@ const loadInitialTaskData = async () => {
   }
 }
 
+const refreshEnvironment = async () => {
+  if (!taskId.value) {
+    return
+  }
+
+  try {
+    environment.value = await tasksApi.environment(taskId.value)
+  } catch (error) {
+    message.error(toErrorMessage(error, '加载执行环境失败'))
+  }
+}
+
 const refreshTaskDetail = async () => {
   if (!taskId.value) {
     return
@@ -914,13 +1082,17 @@ const refreshTaskDetail = async () => {
   const requestId = ++detailRequestId
 
   try {
-    const detailResponse = await tasksApi.detailWithNodes(taskId.value)
+    const [detailResponse, environmentResponse] = await Promise.all([
+      tasksApi.detailWithNodes(taskId.value),
+      tasksApi.environment(taskId.value),
+    ])
 
     if (requestId !== detailRequestId) {
       return
     }
 
     detail.value = detailResponse
+    environment.value = environmentResponse
   } catch (error) {
     if (requestId === detailRequestId) {
       message.error(toErrorMessage(error, '加载任务详情失败'))
@@ -930,6 +1102,9 @@ const refreshTaskDetail = async () => {
 
 const executeTask = async () => {
   if (!taskId.value || !canExecute.value) {
+    if (!isEnvironmentReady.value) {
+      message.warning('请先启动执行环境')
+    }
     return
   }
 
@@ -940,6 +1115,41 @@ const executeTask = async () => {
     bumpRightPanelRefresh([])
   } catch (error) {
     message.error(toErrorMessage(error, '执行任务失败'))
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+const startEnvironment = async () => {
+  if (!taskId.value || !canStartEnvironment.value) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    environment.value = {
+      ...(environment.value ?? {
+        status: 'starting',
+        stage: 'workspace_preparing',
+        stageLabel: '准备任务工作区',
+        message: '开始准备任务执行环境',
+        updatedAt: new Date().toISOString(),
+        runtime: null,
+        steps: buildEnvironmentSteps('starting', 'workspace_preparing', '开始准备任务执行环境'),
+      }),
+      status: 'starting',
+      stage: 'workspace_preparing',
+      stageLabel: '准备任务工作区',
+      message: '开始准备任务执行环境',
+      updatedAt: new Date().toISOString(),
+      steps: buildEnvironmentSteps('starting', 'workspace_preparing', '开始准备任务执行环境'),
+    }
+    environment.value = await tasksApi.startEnvironment(taskId.value)
+    await refreshTaskDetail()
+  } catch (error) {
+    message.error(toErrorMessage(error, '启动执行环境失败'))
+    await refreshEnvironment()
   } finally {
     actionLoading.value = false
   }
@@ -1244,8 +1454,19 @@ function startDrag(e: MouseEvent) {
 
 <template>
   <div class="fade-up flex h-full min-h-0 w-full">
+    <TaskEnvironmentGate
+      v-if="!pageLoading && shouldShowEnvironmentGate && task"
+      :title="task.title"
+      :environment="environment"
+      :action-loading="actionLoading"
+      :can-start="canStartEnvironment"
+      :format-date="formatDate"
+      @start="startEnvironment"
+      @refresh="loadInitialTaskData"
+    />
+
     <section
-      v-if="!pageLoading"
+      v-else-if="!pageLoading"
       ref="containerRef"
       class="flex h-full w-full min-w-0 overflow-hidden"
     >
@@ -1299,12 +1520,18 @@ function startDrag(e: MouseEvent) {
               :status-class="taskStatusClass"
               :mode-label="taskModeLabel"
               :subtitle="contextSubtitle"
+              :environment-status="environment?.status || null"
+              :environment-status-label="environmentStatusLabel"
+              :environment-status-class="environmentStatusClass"
+              :environment-stage-label="environment?.stageLabel || ''"
               :action-loading="actionLoading"
+              :can-start-environment="canStartEnvironment"
               :can-execute="canExecute"
               :can-complete-task="canCompleteTask"
               :can-reset="canResetSelectedWorkflowNode"
               :can-remove="canRemove"
               :right-panel-visible="isRightPanelVisible"
+              @start-environment="startEnvironment"
               @execute="executeTask"
               @complete-task="completeTask"
               @reset="resetSelectedWorkflowNode"
@@ -1359,6 +1586,7 @@ function startDrag(e: MouseEvent) {
         :artifact-refresh-paths="rightPanelArtifactRefreshPaths"
         :logs="logs"
         default-right-tab="artifacts"
+        :environment-status="environment?.status || null"
         :format-date="formatDate"
         :artifact-file-path="artifactFilePath"
         :artifact-open-nonce="artifactOpenNonce"

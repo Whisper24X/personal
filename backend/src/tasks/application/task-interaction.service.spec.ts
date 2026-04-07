@@ -1,6 +1,7 @@
 import { TaskInteractionService } from './task-interaction.service';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
+import { ConflictException } from '@nestjs/common';
 
 const createTask = (overrides: Record<string, unknown> = {}) => ({
   id: 'task-1',
@@ -121,8 +122,8 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
   const taskSchedulerService = {
     triggerDispatch: jest.fn().mockResolvedValue(undefined),
   };
-  const projectExecutionSlotRepository = {
-    findByProjectId: jest.fn().mockResolvedValue(null),
+  const taskEnvironmentService = {
+    assertEnvironmentReady: jest.fn().mockResolvedValue(undefined),
   };
   const taskGitService = {
     commitIfChanged: jest.fn().mockResolvedValue({
@@ -154,7 +155,7 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
     taskStatusService as never,
     taskQueryService as never,
     taskSchedulerService as never,
-    projectExecutionSlotRepository as never,
+    taskEnvironmentService as never,
     taskGitService as never,
     taskWorkspaceWatchService as never,
     taskWorkspaceContextCache as never,
@@ -175,7 +176,7 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
     taskStatusService,
     taskQueryService,
     taskSchedulerService,
-    projectExecutionSlotRepository,
+    taskEnvironmentService,
     taskGitService,
     taskWorkspaceWatchService,
     taskWorkspaceContextCache,
@@ -217,6 +218,56 @@ describe('TaskInteractionService', () => {
     expect(taskWorkspaceContextCache.invalidateTask).toHaveBeenCalledWith(
       'task-1',
     );
+  });
+
+  it('should reject execute when environment is not ready', async () => {
+    const { service, taskEnvironmentService } = createService({
+      status: TaskStatus.todo,
+    });
+    const currentUser = createCurrentUser();
+    taskEnvironmentService.assertEnvironmentReady.mockRejectedValue(
+      new ConflictException('执行环境未就绪，请先启动环境'),
+    );
+
+    await expect(
+      service.execute('task-1', currentUser as never),
+    ).rejects.toThrow('执行环境未就绪，请先启动环境');
+  });
+
+  it('should queue execution after environment readiness passes', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskEnvironmentService,
+      taskStatusService,
+      taskSchedulerService,
+      taskLogService,
+    } = createService({
+      status: TaskStatus.todo,
+    });
+    const currentUser = createCurrentUser();
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      createNode({
+        id: 'node-todo',
+        status: TaskStatus.todo,
+        nodeOrder: 1,
+      }),
+    );
+
+    await service.execute('task-1', currentUser as never);
+
+    expect(taskEnvironmentService.assertEnvironmentReady).toHaveBeenCalled();
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        message: 'Task queued for execution',
+      }),
+    );
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-1',
+    );
+    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
   });
 
   it('should reuse the most recent done node with a cli session when replying', async () => {
@@ -451,7 +502,6 @@ describe('TaskInteractionService', () => {
     const {
       service,
       taskNodeRepository,
-      taskRuntimeOrchestrator,
       taskStatusService,
       taskSchedulerService,
     } = createService({
@@ -472,7 +522,6 @@ describe('TaskInteractionService', () => {
       service.execute('task-1', currentUser as never),
     ).rejects.toThrow('Task has in_review node and cannot execute');
 
-    expect(taskRuntimeOrchestrator.prepareTaskRuntime).toHaveBeenCalled();
     expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
     expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
   });
@@ -534,63 +583,6 @@ describe('TaskInteractionService', () => {
       'task-1',
     );
     expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
-  });
-
-  it('should reject execution when another task is already running in the same project', async () => {
-    const {
-      service,
-      taskRepository,
-      taskNodeRepository,
-      taskSchedulerService,
-    } = createService();
-    const currentUser = createCurrentUser();
-
-    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
-    taskRepository.hasRunningTaskInProject.mockResolvedValue(true);
-
-    await expect(
-      service.execute('task-1', currentUser as never),
-    ).rejects.toThrow(
-      '当前项目有任务在执行，本次执行失败，需要等待正在执行的任务完成或者删除该任务再继续',
-    );
-
-    expect(taskRepository.hasRunningTaskInProject).toHaveBeenCalledWith(
-      'project-1',
-      {
-        excludeTaskId: 'task-1',
-      },
-    );
-    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
-  });
-
-  it('should reject execution when another task already occupies the project slot', async () => {
-    const {
-      service,
-      taskRepository,
-      taskNodeRepository,
-      taskSchedulerService,
-      projectExecutionSlotRepository,
-    } = createService();
-    const currentUser = createCurrentUser();
-
-    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
-    taskRepository.hasRunningTaskInProject.mockResolvedValue(false);
-    projectExecutionSlotRepository.findByProjectId.mockResolvedValue({
-      projectId: 'project-1',
-      taskId: 'task-2',
-    });
-
-    await expect(
-      service.execute('task-1', currentUser as never),
-    ).rejects.toThrow(
-      '当前项目有任务在执行，本次执行失败，需要等待正在执行的任务完成或者删除该任务再继续',
-    );
-
-    expect(projectExecutionSlotRepository.findByProjectId).toHaveBeenCalledWith(
-      'project-1',
-    );
-    expect(taskRepository.hasRunningTaskInProject).not.toHaveBeenCalled();
-    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
   });
 
   it('should fall back to the current in_review node when retry payload points to a missing node', async () => {

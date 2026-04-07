@@ -1,6 +1,10 @@
 import { TaskStatus } from './dto/task-status.enum';
 import { TaskMode } from './dto/task-mode.enum';
 import { TasksService } from './tasks.service';
+import {
+  TaskEnvironmentStage,
+  TaskEnvironmentStatus,
+} from './dto/task-environment.dto';
 
 const createTask = () => ({
   id: 'task-1',
@@ -75,6 +79,26 @@ const createTasksService = () => {
   const outputService = {
     readNodeOutputSummary: jest.fn().mockResolvedValue('summary'),
   };
+  const environmentService = {
+    getEnvironment: jest.fn().mockResolvedValue({
+      status: TaskEnvironmentStatus.notStarted,
+      stage: TaskEnvironmentStage.workspacePreparing,
+      stageLabel: '准备任务工作区',
+      message: '尚未启动执行环境',
+      updatedAt: new Date(),
+      runtime: null,
+      steps: [],
+    }),
+    startEnvironment: jest.fn().mockResolvedValue({
+      status: TaskEnvironmentStatus.ready,
+      stage: TaskEnvironmentStage.ready,
+      stageLabel: '执行环境就绪',
+      message: '执行环境已就绪',
+      updatedAt: new Date(),
+      runtime: null,
+      steps: [],
+    }),
+  };
 
   const service = new TasksService(
     commandService as never,
@@ -84,6 +108,7 @@ const createTasksService = () => {
     accessService as never,
     statusService as never,
     outputService as never,
+    environmentService as never,
   );
 
   return {
@@ -96,6 +121,7 @@ const createTasksService = () => {
     accessService,
     statusService,
     outputService,
+    environmentService,
   };
 };
 
@@ -115,7 +141,7 @@ describe('TasksService', () => {
   });
 
   it('should delegate query methods to task query service', async () => {
-    const { service, queryService } = createTasksService();
+    const { service, queryService, environmentService } = createTasksService();
     const currentUser = createCurrentUser();
 
     await service.findAllWithPagination({
@@ -124,6 +150,7 @@ describe('TasksService', () => {
     });
     await service.findById('task-1', currentUser as never);
     await service.detailById('task-1', currentUser as never);
+    await service.environment('task-1', currentUser as never);
     await service.listMessages('task-1', currentUser as never);
     await service.listLogs(
       'task-1',
@@ -143,6 +170,10 @@ describe('TasksService', () => {
     expect(queryService.findAllWithPagination).toHaveBeenCalled();
     expect(queryService.findById).toHaveBeenCalledWith('task-1', currentUser);
     expect(queryService.detailById).toHaveBeenCalledWith('task-1', currentUser);
+    expect(environmentService.getEnvironment).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
     expect(queryService.listMessages).toHaveBeenCalledWith(
       'task-1',
       currentUser,
@@ -158,7 +189,7 @@ describe('TasksService', () => {
   });
 
   it('should delegate command and interaction mutations to application services', async () => {
-    const { service, commandService, interactionService } =
+    const { service, commandService, interactionService, environmentService } =
       createTasksService();
     const currentUser = createCurrentUser();
 
@@ -174,6 +205,7 @@ describe('TasksService', () => {
       currentUser as never,
     );
     await service.execute('task-1', currentUser as never);
+    await service.startEnvironment('task-1', currentUser as never);
     await service.repeat('task-1', currentUser as never);
     await service.repeatNode('task-1', 'node-1', currentUser as never);
     await service.retry(
@@ -199,6 +231,10 @@ describe('TasksService', () => {
     expect(commandService.remove).toHaveBeenCalledWith('task-1', currentUser);
     expect(interactionService.reply).toHaveBeenCalled();
     expect(interactionService.execute).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
+    expect(environmentService.startEnvironment).toHaveBeenCalledWith(
       'task-1',
       currentUser,
     );
@@ -254,10 +290,13 @@ describe('TasksService', () => {
     expect(accessService.assertCanAccessTask).toHaveBeenCalledWith(
       'task-1',
       currentUser,
+      undefined,
+      undefined,
     );
     expect(accessService.assertCanAccessTaskProject).toHaveBeenCalledWith(
       'task-1',
       currentUser,
+      undefined,
     );
 
     expect(serviceAny.calculateTaskStatus([])).toBe(TaskStatus.done);

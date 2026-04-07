@@ -32,6 +32,7 @@ import { ContainersModule } from '../containers/containers.module';
 import { TaskWorkspaceContextCacheService } from './application/task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
 import { GoalsModule } from '../goals/goals.module';
+import { TaskEnvironmentService } from './application/task-environment.service';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { GoalsModule } from '../goals/goals.module';
     TaskTitleSuggestionService,
     TaskWorkspaceContextCacheService,
     TaskWorkspaceWatchService,
+    TaskEnvironmentService,
     TerminalGateway,
   ],
   exports: [

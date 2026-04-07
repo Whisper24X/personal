@@ -66,12 +66,14 @@ export class ContainerOrchestrationService
     task: Task;
     project: Project;
     worktreePath: string;
+    trackProjectSlot?: boolean;
   }): Promise<{ containerId: string } | null> {
     if (!this.config.isDockerMode()) {
       return null;
     }
 
     const { task, project, worktreePath } = params;
+    const trackProjectSlot = params.trackProjectSlot !== false;
     const containerName = this.config.resolveContainerName(task);
     const runtimeExposure = this.resolveRuntimeExposure(project);
     const sandboxProfile = this.config.getSandboxProfile(project);
@@ -101,53 +103,55 @@ export class ContainerOrchestrationService
         existing.image === runnerImage &&
         this.platformMatches(runnerPlatform, existing.platform)
       ) {
-        const existingSlot = await this.slotRepository.findByProjectId(
-          task.projectId,
-        );
-        const existingAccessMetadata =
-          existingSlot?.accessMetadata ??
-          this.buildAccessMetadata({
-            project,
-            runtimeExposure,
-            publishedPort: this.selectPublishedPort(
-              existing.publishedPorts,
+        if (trackProjectSlot) {
+          const existingSlot = await this.slotRepository.findByProjectId(
+            task.projectId,
+          );
+          const existingAccessMetadata =
+            existingSlot?.accessMetadata ??
+            this.buildAccessMetadata({
+              project,
               runtimeExposure,
-            ),
-          });
-        if (existingAccessMetadata) {
-          await this.slotRepository.updateContainerRuntime(task.projectId, {
-            containerId: existing.id,
-            accessMetadata: existingAccessMetadata,
-          });
-          this.logger.log(
-            `reuse_runner_container_runtime_metadata ${JSON.stringify({
-              taskId: task.id,
-              projectId: task.projectId,
-              containerName,
+              publishedPort: this.selectPublishedPort(
+                existing.publishedPorts,
+                runtimeExposure,
+              ),
+            });
+          if (existingAccessMetadata) {
+            await this.slotRepository.updateContainerRuntime(task.projectId, {
               containerId: existing.id,
               accessMetadata: existingAccessMetadata,
-              source: existingSlot?.accessMetadata
-                ? 'slot'
-                : 'container_inspect',
-            })}`,
-          );
-        } else {
-          await this.slotRepository.updateContainerId(
-            task.projectId,
-            existing.id,
-          );
-          this.logger.warn(
-            `reuse_runner_container_metadata_missing ${JSON.stringify({
-              taskId: task.id,
-              projectId: task.projectId,
-              containerName,
-              containerId: existing.id,
-              runtimeExposure: runtimeExposure ?? null,
-              publishedPorts: existing.publishedPorts,
-            })}`,
-          );
+            });
+            this.logger.log(
+              `reuse_runner_container_runtime_metadata ${JSON.stringify({
+                taskId: task.id,
+                projectId: task.projectId,
+                containerName,
+                containerId: existing.id,
+                accessMetadata: existingAccessMetadata,
+                source: existingSlot?.accessMetadata
+                  ? 'slot'
+                  : 'container_inspect',
+              })}`,
+            );
+          } else {
+            await this.slotRepository.updateContainerId(
+              task.projectId,
+              existing.id,
+            );
+            this.logger.warn(
+              `reuse_runner_container_metadata_missing ${JSON.stringify({
+                taskId: task.id,
+                projectId: task.projectId,
+                containerName,
+                containerId: existing.id,
+                runtimeExposure: runtimeExposure ?? null,
+                publishedPorts: existing.publishedPorts,
+              })}`,
+            );
+          }
+          this.ensureSlotHeartbeat(task.projectId);
         }
-        this.ensureSlotHeartbeat(task.projectId);
         this.logger.log(
           `reuse_runner_container ${JSON.stringify({
             taskId: task.id,
@@ -218,18 +222,20 @@ export class ContainerOrchestrationService
           runtimeExposure,
         },
       );
-      if (accessMetadata) {
-        await this.slotRepository.updateContainerRuntime(task.projectId, {
-          containerId,
-          accessMetadata,
-        });
-      } else {
-        await this.slotRepository.updateContainerId(
-          task.projectId,
-          containerId,
-        );
+      if (trackProjectSlot) {
+        if (accessMetadata) {
+          await this.slotRepository.updateContainerRuntime(task.projectId, {
+            containerId,
+            accessMetadata,
+          });
+        } else {
+          await this.slotRepository.updateContainerId(
+            task.projectId,
+            containerId,
+          );
+        }
+        this.ensureSlotHeartbeat(task.projectId);
       }
-      this.ensureSlotHeartbeat(task.projectId);
       this.logger.log(
         `runner_container_ready ${JSON.stringify({
           taskId: task.id,
@@ -237,6 +243,7 @@ export class ContainerOrchestrationService
           containerName,
           containerId,
           accessMetadata: accessMetadata ?? null,
+          trackProjectSlot,
         })}`,
       );
       return { containerId };
@@ -258,6 +265,7 @@ export class ContainerOrchestrationService
           startTimeoutMs,
           errorMessage: message,
           platform: runnerPlatform,
+          trackProjectSlot,
         })}`,
       );
       if (this.config.isStrictMode()) {
@@ -268,6 +276,39 @@ export class ContainerOrchestrationService
       );
       return null;
     }
+  }
+
+  async inspectTaskContainer(params: {
+    task: Task;
+    project: Project;
+  }): Promise<{
+    containerId: string;
+    running: boolean;
+    accessMetadata: SlotAccessMetadata | null;
+  } | null> {
+    if (!this.config.isDockerMode()) {
+      return null;
+    }
+
+    const inspection = await this.isolatedRunner.inspect(
+      this.config.resolveContainerName(params.task),
+    );
+    if (!inspection) {
+      return null;
+    }
+
+    return {
+      containerId: inspection.id,
+      running: inspection.running,
+      accessMetadata: this.buildAccessMetadata({
+        project: params.project,
+        runtimeExposure: this.resolveRuntimeExposure(params.project),
+        publishedPort: this.selectPublishedPort(
+          inspection.publishedPorts,
+          this.resolveRuntimeExposure(params.project),
+        ),
+      }),
+    };
   }
 
   async removeContainerForTask(
@@ -316,10 +357,16 @@ export class ContainerOrchestrationService
       return;
     }
 
-    const slots = await this.slotRepository.findAll();
-    const now = new Date();
+    const allTasks = await this.taskRepository.findAllWithPagination({
+      paginationOptions: {
+        page: 1,
+        limit: 5000,
+      },
+    });
     const validTaskIds = new Set(
-      slots.filter((s) => s.expiresAt >= now).map((s) => s.taskId),
+      allTasks
+        .filter((task) => task.status !== TaskStatus.done)
+        .map((task) => task.id),
     );
 
     const containers = await this.isolatedRunner.listAinativeContainers();
