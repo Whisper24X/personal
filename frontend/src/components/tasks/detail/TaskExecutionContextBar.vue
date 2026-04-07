@@ -72,10 +72,6 @@ const environmentBadgeLabel = computed(() => {
 
   return `环境 ${props.environmentStatusLabel}`
 })
-
-const shouldShowEnvironmentStage = computed(() => {
-  return props.environmentStatus !== 'ready' && Boolean(props.environmentStageLabel)
-})
 </script>
 
 <template>
@@ -86,15 +82,6 @@ const shouldShowEnvironmentStage = computed(() => {
     <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
       <div class="flex min-w-0 flex-1 items-center gap-2">
         <span
-          class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-          :class="props.statusClass"
-        >
-          {{ props.statusLabel }}
-        </span>
-        <span class="text-muted-foreground truncate text-[11px] leading-snug">
-          {{ props.modeLabel }} · {{ props.subtitle }}
-        </span>
-        <span
           v-if="environmentBadgeLabel"
           class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
           :class="props.environmentStatusClass || 'bg-muted text-muted-foreground'"
@@ -102,10 +89,13 @@ const shouldShowEnvironmentStage = computed(() => {
           {{ environmentBadgeLabel }}
         </span>
         <span
-          v-if="shouldShowEnvironmentStage"
-          class="text-muted-foreground truncate text-[11px] leading-snug"
+          class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+          :class="props.statusClass"
         >
-          {{ props.environmentStageLabel }}
+          {{ props.statusLabel }}
+        </span>
+        <span class="text-muted-foreground truncate text-[11px] leading-snug">
+          {{ props.modeLabel }} · {{ props.subtitle }}
         </span>
       </div>
 
