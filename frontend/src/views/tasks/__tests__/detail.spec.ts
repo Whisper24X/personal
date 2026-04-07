@@ -113,6 +113,10 @@ beforeEach(() => {
     message: '执行环境已就绪',
     updatedAt: '2026-02-27T10:00:00.000Z',
     runtime: null,
+    preview: {
+      status: 'ready',
+      url: 'https://preview.example.com/p/task-1/',
+    },
     steps: [
       { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
       { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
@@ -128,6 +132,10 @@ beforeEach(() => {
     message: '执行环境已就绪',
     updatedAt: '2026-02-27T10:00:01.000Z',
     runtime: null,
+    preview: {
+      status: 'ready',
+      url: 'https://preview.example.com/p/task-1/',
+    },
     steps: [
       { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
       { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
@@ -163,6 +171,10 @@ describe('TaskDetailView toasts', () => {
       message: '尚未启动执行环境',
       updatedAt: '2026-02-27T10:00:00.000Z',
       runtime: null,
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
       steps: [
         { key: 'workspace_preparing', label: '准备任务工作区', status: 'pending' },
         { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
@@ -196,6 +208,10 @@ describe('TaskDetailView toasts', () => {
         message: '尚未启动执行环境',
         updatedAt: '2026-02-27T10:00:00.000Z',
         runtime: null,
+        preview: {
+          status: 'unavailable',
+          url: null,
+        },
         steps: [
           { key: 'workspace_preparing', label: '准备任务工作区', status: 'pending' },
           { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
@@ -210,6 +226,10 @@ describe('TaskDetailView toasts', () => {
         message: '执行环境已就绪',
         updatedAt: '2026-02-27T10:00:01.000Z',
         runtime: null,
+        preview: {
+          status: 'ready',
+          url: 'https://preview.example.com/p/task-1/',
+        },
         steps: [
           { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
           { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
@@ -224,6 +244,10 @@ describe('TaskDetailView toasts', () => {
         message: '执行环境已就绪',
         updatedAt: '2026-02-27T10:00:01.000Z',
         runtime: null,
+        preview: {
+          status: 'ready',
+          url: 'https://preview.example.com/p/task-1/',
+        },
         steps: [
           { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
           { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },

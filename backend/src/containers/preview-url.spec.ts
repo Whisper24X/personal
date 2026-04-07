@@ -7,10 +7,10 @@ describe('buildPreviewUrl', () => {
         previewBaseUrl: 'https://preview.example.com/workspace/',
         hostIp: '127.0.0.1',
         hostPort: 38080,
+        previewPath: '/app/',
       }),
     ).toEqual({
-      previewAddress: 'https://preview.example.com:38080',
-      baseUrl: 'https://preview.example.com:38080',
+      previewUrl: 'https://preview.example.com:38080/app/',
       source: 'configured-base-url',
       ignoredPath: true,
       invalidBaseUrl: false,
@@ -25,8 +25,7 @@ describe('buildPreviewUrl', () => {
         hostPort: 38123,
       }),
     ).toEqual({
-      previewAddress: '192.168.1.9:38123',
-      baseUrl: 'http://192.168.1.9:38123',
+      previewUrl: 'http://192.168.1.9:38123',
       source: 'host-ip',
       ignoredPath: false,
       invalidBaseUrl: true,
@@ -40,8 +39,7 @@ describe('buildPreviewUrl', () => {
         hostPort: 38123,
       }),
     ).toEqual({
-      previewAddress: '192.168.1.9:38123',
-      baseUrl: 'http://192.168.1.9:38123',
+      previewUrl: 'http://192.168.1.9:38123',
       source: 'host-ip',
       ignoredPath: false,
       invalidBaseUrl: false,

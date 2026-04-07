@@ -225,8 +225,6 @@ const configForm = reactive({
 
 const {
   containerSandboxProfileOptions,
-  containerNetworkModeOptions,
-  containerExposeModeOptions,
   syncFromContainerRuntime,
   validateContainerRuntime,
   buildProjectConfigJson: buildContainerRuntimeConfigJson,
@@ -2182,19 +2180,9 @@ onBeforeUnmount(() => {
               <dd class="mt-1 text-foreground">{{ configForm.containerSandboxProfile || '跟随全局' }}</dd>
             </div>
             <div>
-              <dt class="text-muted-foreground">容器网络模式</dt>
-              <dd class="mt-1 text-foreground">{{ configForm.containerNetworkMode || '跟随全局' }}</dd>
-            </div>
-            <div>
-              <dt class="text-muted-foreground">端口映射</dt>
+              <dt class="text-muted-foreground">启动超时</dt>
               <dd class="mt-1 text-foreground">
-                {{
-                  configForm.containerExposeMode === 'enabled'
-                    ? '开启'
-                    : configForm.containerExposeMode === 'disabled'
-                      ? '关闭'
-                      : '跟随全局'
-                }}
+                {{ configForm.containerStartTimeoutMs || '-' }} ms
               </dd>
             </div>
           </dl>
@@ -2802,7 +2790,7 @@ onBeforeUnmount(() => {
             <div class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
               <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
               <p class="mt-1 text-[11px] text-muted-foreground">
-                默认由后端容器自动生成预览页面、端口和服务路由；保存后仅覆盖当前项目的运行时参数。
+                预览地址由系统统一分配；项目只声明服务编排和主预览入口，保存后仅覆盖当前项目的运行时参数。
               </p>
             </div>
 
@@ -2812,26 +2800,6 @@ onBeforeUnmount(() => {
                 v-model="configForm.containerSandboxProfile"
                 aria-label="Sandbox Profile"
                 :options="containerSandboxProfileOptions"
-                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">容器网络模式</span>
-              <AppSelect
-                v-model="configForm.containerNetworkMode"
-                aria-label="容器网络模式"
-                :options="containerNetworkModeOptions"
-                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">端口映射</span>
-              <AppSelect
-                v-model="configForm.containerExposeMode"
-                aria-label="端口映射"
-                :options="containerExposeModeOptions"
                 trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
               />
             </label>
@@ -2882,34 +2850,13 @@ onBeforeUnmount(() => {
 
             <details class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
               <summary class="cursor-pointer list-none text-xs font-semibold text-muted-foreground">
-                高级配置：手工覆写页面、端口与编排
+                高级配置：手工覆写服务编排与预览入口
               </summary>
               <p class="mt-2 text-[11px] text-muted-foreground">
-                仅在特殊项目需要覆写后端自动生成行为时使用；常规项目无需指定页面路径和端口。
+                常规项目只需要调整 `services / routes / preview`；宿主 IP 和暴露端口由系统内部处理，不再由项目配置声明。
               </p>
 
               <div class="mt-3 grid gap-4 md:grid-cols-2">
-                <label class="space-y-1">
-                  <span class="text-xs font-semibold text-muted-foreground">暴露宿主 IP（可选）</span>
-                  <input
-                    v-model="configForm.containerExposeHostIp"
-                    class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                    placeholder="例如 127.0.0.1"
-                    type="text"
-                  />
-                </label>
-
-                <label class="space-y-1">
-                  <span class="text-xs font-semibold text-muted-foreground">容器暴露端口（可选）</span>
-                  <input
-                    v-model="configForm.containerExposeContainerPort"
-                    class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                    min="1"
-                    placeholder="例如 8080"
-                    type="number"
-                  />
-                </label>
-
                 <label class="space-y-1 md:col-span-2">
                   <span class="text-xs font-semibold text-muted-foreground">
                     结构化服务编排配置（JSON）
@@ -2917,7 +2864,7 @@ onBeforeUnmount(() => {
                   <textarea
                     v-model="configForm.containerRunnerOrchestration"
                     class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                    placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;ainative-backend&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-backend&quot;,&#10;      &quot;command&quot;: &quot;GOFLAGS='-p=1' air -c .air.toml&quot;,&#10;      &quot;port&quot;: 8000&#10;    },&#10;    {&#10;      &quot;name&quot;: &quot;ainative-shadow&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-shadow&quot;,&#10;      &quot;command&quot;: &quot;pnpm dev&quot;,&#10;      &quot;port&quot;: 5176&#10;    },&#10;    {&#10;      &quot;name&quot;: &quot;ainative-app&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-app&quot;,&#10;      &quot;command&quot;: &quot;npm run dev:h5:local&quot;,&#10;      &quot;port&quot;: 8200&#10;    }&#10;  ]&#10;}"
+                    placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;ainative-app&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-app&quot;,&#10;      &quot;command&quot;: &quot;npm run dev&quot;,&#10;      &quot;port&quot;: 5173&#10;    }&#10;  ],&#10;  &quot;preview&quot;: {&#10;    &quot;service&quot;: &quot;ainative-app&quot;,&#10;    &quot;path&quot;: &quot;/&quot;&#10;  }&#10;}"
                     spellcheck="false"
                   />
                   <p class="text-[11px] text-muted-foreground">

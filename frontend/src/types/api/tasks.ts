@@ -127,11 +127,17 @@ export type TaskEnvironmentStep = {
   message?: string | null
 }
 
+export type TaskPreviewStatus = 'unavailable' | 'provisioning' | 'ready' | 'failed'
+
 export type TaskEnvironmentRuntime = {
   gitWorktree?: string | null
   containerId?: string | null
-  previewAddress?: string | null
-  baseUrl?: string | null
+}
+
+export type TaskEnvironmentPreview = {
+  status: TaskPreviewStatus
+  url?: string | null
+  expiresAt?: string | null
 }
 
 export type TaskEnvironment = {
@@ -141,6 +147,7 @@ export type TaskEnvironment = {
   message?: string | null
   updatedAt: string
   runtime?: TaskEnvironmentRuntime | null
+  preview: TaskEnvironmentPreview
   steps: TaskEnvironmentStep[]
 }
 

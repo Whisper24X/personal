@@ -87,6 +87,10 @@ const createTasksService = () => {
       message: '尚未启动执行环境',
       updatedAt: new Date(),
       runtime: null,
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
       steps: [],
     }),
     startEnvironment: jest.fn().mockResolvedValue({
@@ -96,6 +100,10 @@ const createTasksService = () => {
       message: '执行环境已就绪',
       updatedAt: new Date(),
       runtime: null,
+      preview: {
+        status: 'ready',
+        url: 'https://preview.example.com/p/task-1/',
+      },
       steps: [],
     }),
   };

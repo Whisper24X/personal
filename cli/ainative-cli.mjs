@@ -74,10 +74,20 @@ const normalizeRunnerConfig = (value, repoRoot) => {
   const services = Array.isArray(orchestration.services) ? orchestration.services : []
   const sharedVolumes = Array.isArray(runtime?.sharedVolumes) ? runtime.sharedVolumes : []
   const env = toStringRecord(toObjectRecord(runtime?.env))
+  const preview = toObjectRecord(orchestration.preview)
   const repoName = path.basename(repoRoot)
   const containerName = sanitizeName(
     `ainative-runner-${source.project?.id || source.project?.name || repoName}`,
   )
+  const listenPort =
+    readPositiveNumber(runtime?.listenPort) ||
+    readPositiveNumber(runtime?.containerPort) ||
+    8080
+  const hostPort =
+    readPositiveNumber(runtime?.hostPort) ||
+    readPositiveNumber(runtime?.listenPort) ||
+    readPositiveNumber(runtime?.containerPort) ||
+    8080
 
   return {
     repoRoot,
@@ -86,14 +96,15 @@ const normalizeRunnerConfig = (value, repoRoot) => {
     image: readString(process.env.AINATIVE_RUNNER_IMAGE) || DEFAULT_IMAGE,
     networkMode: runtime?.networkMode === 'host' ? 'host' : 'bridge',
     hostIp: readString(runtime?.hostIp) || '127.0.0.1',
-    hostPort: readPositiveNumber(runtime?.hostPort) || readPositiveNumber(runtime?.containerPort) || 8080,
-    containerPort: readPositiveNumber(runtime?.containerPort) || 8080,
+    hostPort,
+    listenPort,
     startTimeoutMs: readPositiveNumber(runtime?.startTimeoutMs) || 300000,
     resourceLimits: {
       memoryMb: readPositiveNumber(runtime?.resourceLimits?.memoryMb),
       pidsLimit: readPositiveNumber(runtime?.resourceLimits?.pidsLimit),
     },
     env,
+    previewPath: readString(preview?.path) || '/',
     sharedVolumes: sharedVolumes
       .map((item) => {
         const volume = toObjectRecord(item)
@@ -163,7 +174,7 @@ const runUp = async (config, args) => {
   ]
 
   if (config.networkMode === 'bridge') {
-    argsList.push('-p', `${config.hostIp}:${hostPort}:${config.containerPort}`)
+    argsList.push('-p', `${config.hostIp}:${hostPort}:${config.listenPort}`)
   }
 
   if (config.resourceLimits.memoryMb) {
@@ -182,7 +193,7 @@ const runUp = async (config, args) => {
 
   const env = {
     ...config.env,
-    AINATIVE_RUNNER_LISTEN_PORT: String(config.containerPort),
+    AINATIVE_RUNNER_LISTEN_PORT: String(config.listenPort),
   }
   for (const [key, value] of Object.entries(env)) {
     argsList.push('-e', `${key}=${value}`)
@@ -250,7 +261,7 @@ const waitForReadiness = async (config, hostPort) => {
       config.containerName,
       'sh',
       '-lc',
-      `curl -fsS --max-time 2 http://127.0.0.1:${config.containerPort}/health >/dev/null`,
+      `curl -fsS --max-time 2 http://127.0.0.1:${config.listenPort}/health >/dev/null`,
     ], { allowFailure: true, quiet: true })
 
     if (code === 0) {
@@ -269,10 +280,10 @@ const printStatus = (config, hostPort) => {
   const baseUrl =
     config.networkMode === 'bridge'
       ? `http://${config.hostIp}:${hostPort}`
-      : `http://127.0.0.1:${config.containerPort}`
+      : `http://127.0.0.1:${config.listenPort}`
   console.log(`container: ${config.containerName}`)
   console.log(`config: ${config.configPath}`)
-  console.log(`url: ${baseUrl}`)
+  console.log(`url: ${appendPreviewPath(baseUrl, config.previewPath)}`)
 }
 
 const findConfigFile = async (startDir) => {
@@ -414,6 +425,14 @@ const toStringRecord = (value) => {
 
 const trimLeadingSlash = (value) => value.replace(/^\/+/, '')
 const sanitizeName = (value) => String(value).replace(/[^a-zA-Z0-9_.-]/g, '-')
+const appendPreviewPath = (baseUrl, previewPath) => {
+  const normalizedPath = readString(previewPath)
+  if (!normalizedPath || normalizedPath === '/') {
+    return baseUrl
+  }
+
+  return `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`
+}
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 await main().catch((error) => {

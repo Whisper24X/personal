@@ -49,19 +49,21 @@ export type RunnerNamedVolumeConfig = {
   target: string
 }
 
+export type RunnerPreviewConfig = {
+  service: string
+  path?: string
+}
+
 export type RunnerOrchestrationConfig = {
   services: RunnerServiceConfig[]
   routes?: RunnerRouteConfig[]
   homepage?: RunnerHomepageConfig
   sharedVolumes?: RunnerNamedVolumeConfig[]
+  preview?: RunnerPreviewConfig
 }
 
 export type ProjectContainerRuntimeConfig = {
   sandboxProfile?: 'runner-only' | 'preview-web'
-  networkMode?: 'host' | 'bridge'
-  exposeLocal?: boolean
-  exposeHostIp?: string
-  exposeContainerPort?: number
   startTimeoutMs?: number
   resourceLimits?: {
     memoryMb?: number

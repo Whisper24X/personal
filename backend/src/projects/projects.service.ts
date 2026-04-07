@@ -50,11 +50,6 @@ import { ProjectCustomRole } from './domain/project-custom-role';
 import { CreateProjectCustomRoleDto } from './dto/create-project-custom-role.dto';
 import { UpdateProjectCustomRoleDto } from './dto/update-project-custom-role.dto';
 import { WorkflowTemplateRepository } from '../workflow-templates/infrastructure/persistence/workflow-template.repository';
-import { ContainerExecutionConfigService } from '../containers/container-execution-config.service';
-import { IsolatedRunnerContainerService } from '../containers/isolated-runner-container.service';
-import { SlotAccessMetadata } from '../containers/domain/project-execution-slot';
-import { ProjectExecutionSlotRepository } from '../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
-import { buildPreviewUrl } from '../containers/preview-url';
 import { RunnerOrchestrationService } from '../containers/runner-orchestration.service';
 import {
   ALL_PROJECT_CAPABILITIES,
@@ -86,9 +81,6 @@ export class ProjectsService {
     { tail: Promise<void>; pending: number }
   >();
   private readonly deployLocks = new Map<string, string>();
-  private previewBaseUrlMissingWarned = false;
-  private previewBaseUrlInvalidWarned = false;
-  private previewBaseUrlIgnoredPathWarned = false;
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
   );
@@ -103,9 +95,6 @@ export class ProjectsService {
     private readonly projectCustomRoleRepository: ProjectCustomRoleRepository,
     private readonly workflowTemplateRepository: WorkflowTemplateRepository,
     private readonly accessService: AccessService,
-    private readonly slotRepository: ProjectExecutionSlotRepository,
-    private readonly containerConfig: ContainerExecutionConfigService,
-    private readonly isolatedRunner: IsolatedRunnerContainerService,
     private readonly configService: ConfigService = new ConfigService(),
     @Inject(forwardRef(() => AgentRunnerService))
     private readonly agentRunnerService: AgentRunnerService,
@@ -312,8 +301,7 @@ export class ProjectsService {
     id: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<Project | null> {
-    const project = await this.ensureCanAccessProject(id, currentUser);
-    return this.applyRuntimePreviewUrl(project);
+    return this.ensureCanAccessProject(id, currentUser);
   }
 
   async update(
@@ -417,6 +405,24 @@ export class ProjectsService {
     const nextConfigJson = { ...configJson };
     delete nextConfigJson.runnerTemplate;
     delete nextConfigJson.runnerImageBuild;
+    const containerRuntime =
+      nextConfigJson.containerRuntime &&
+      typeof nextConfigJson.containerRuntime === 'object' &&
+      !Array.isArray(nextConfigJson.containerRuntime)
+        ? { ...(nextConfigJson.containerRuntime as Record<string, unknown>) }
+        : null;
+
+    if (containerRuntime) {
+      delete containerRuntime.networkMode;
+      delete containerRuntime.exposeHostIp;
+      delete containerRuntime.exposeContainerPort;
+
+      if (Object.keys(containerRuntime).length > 0) {
+        nextConfigJson.containerRuntime = containerRuntime;
+      } else {
+        delete nextConfigJson.containerRuntime;
+      }
+    }
 
     return Object.keys(nextConfigJson).length > 0 ? nextConfigJson : null;
   }
@@ -2209,226 +2215,6 @@ export class ProjectsService {
       projectId,
       'project.dashboard.read',
     );
-  }
-
-  private async applyRuntimePreviewUrl(project: Project): Promise<Project> {
-    if (!this.containerConfig.isDockerMode()) {
-      return project;
-    }
-
-    const configJson =
-      project.configJson && typeof project.configJson === 'object'
-        ? { ...(project.configJson as Record<string, unknown>) }
-        : {};
-    const preview =
-      configJson.preview && typeof configJson.preview === 'object'
-        ? { ...(configJson.preview as Record<string, unknown>) }
-        : {};
-
-    const slot = await this.slotRepository.findByProjectId(project.id);
-    let access = slot?.accessMetadata ?? null;
-    let normalizedAddress = this.resolvePreviewAddress(project, access);
-
-    if (!normalizedAddress && slot?.containerId) {
-      access = await this.recoverRuntimePreviewAccess(
-        project,
-        slot.containerId,
-      );
-      normalizedAddress = this.resolvePreviewAddress(project, access);
-    }
-
-    if (!access || !normalizedAddress) {
-      return project;
-    }
-
-    return {
-      ...project,
-      configJson: {
-        ...configJson,
-        preview: {
-          ...preview,
-          runtimeUrl: normalizedAddress,
-          ...(typeof preview.url === 'string' && preview.url.trim()
-            ? {}
-            : { url: normalizedAddress }),
-        },
-      },
-    };
-  }
-
-  private async recoverRuntimePreviewAccess(
-    project: Project,
-    containerId: string,
-  ): Promise<SlotAccessMetadata | null> {
-    const inspection = await this.isolatedRunner.inspect(containerId);
-    if (!inspection?.running) {
-      this.logger.warn(
-        `runtime_preview_recover_container_missing ${JSON.stringify({
-          projectId: project.id,
-          containerId,
-        })}`,
-      );
-      return null;
-    }
-
-    const recovered = this.buildRuntimePreviewAccess(project, inspection);
-    if (!recovered) {
-      this.logger.warn(
-        `runtime_preview_recover_metadata_missing ${JSON.stringify({
-          projectId: project.id,
-          containerId,
-          publishedPorts: inspection.publishedPorts,
-          networkMode: this.containerConfig.getRunnerNetworkMode(project),
-        })}`,
-      );
-      return null;
-    }
-
-    await this.slotRepository.updateContainerRuntime(project.id, {
-      containerId: inspection.id,
-      accessMetadata: recovered,
-    });
-    this.logger.log(
-      `runtime_preview_recover_metadata ${JSON.stringify({
-        projectId: project.id,
-        containerId: inspection.id,
-        accessMetadata: recovered,
-      })}`,
-    );
-    return recovered;
-  }
-
-  private buildRuntimePreviewAccess(
-    project: Project,
-    inspection: {
-      publishedPorts: Array<{
-        hostIp: string;
-        hostPort: number;
-        containerPort: number;
-      }>;
-    },
-  ): SlotAccessMetadata | null {
-    if (!this.containerConfig.shouldExposeSandboxPort(project)) {
-      return null;
-    }
-
-    const networkMode = this.containerConfig.getRunnerNetworkMode(project);
-    const containerPort =
-      this.containerConfig.getRunnerExposeContainerPort(project);
-    const matchingPublishedPort =
-      inspection.publishedPorts.find(
-        (mapping) => mapping.containerPort === containerPort,
-      ) ?? inspection.publishedPorts[0];
-    const hostIp =
-      this.containerConfig.getRunnerExposeHostIp(project) ||
-      matchingPublishedPort?.hostIp ||
-      null;
-    const hostPort =
-      networkMode === 'host' ? containerPort : matchingPublishedPort?.hostPort;
-
-    if (!hostIp?.trim()) {
-      return null;
-    }
-    if (!hostPort || !Number.isFinite(hostPort) || hostPort <= 0) {
-      return null;
-    }
-
-    const normalizedHostIp = hostIp.trim();
-    const normalizedHostPort = Math.floor(hostPort);
-    const previewBaseUrl = this.containerConfig.getPreviewBaseUrl?.() ?? null;
-    const previewUrl = buildPreviewUrl({
-      previewBaseUrl,
-      hostIp: normalizedHostIp,
-      hostPort: normalizedHostPort,
-    });
-    if (!previewUrl) {
-      return null;
-    }
-
-    this.logPreviewUrlFallback(previewBaseUrl, previewUrl);
-
-    return {
-      hostIp: normalizedHostIp,
-      hostPort: normalizedHostPort,
-      containerPort,
-      previewAddress: previewUrl.previewAddress,
-      baseUrl: previewUrl.baseUrl,
-      networkMode,
-    };
-  }
-
-  private resolvePreviewAddress(
-    project: Project,
-    access?: {
-      previewAddress?: string | null;
-      baseUrl?: string | null;
-      hostIp?: string | null;
-      hostPort?: number | null;
-    } | null,
-  ): string | null {
-    if (!access) {
-      return null;
-    }
-
-    const previewBaseUrl = this.containerConfig.getPreviewBaseUrl?.() ?? null;
-    const composedPreviewUrl = buildPreviewUrl({
-      previewBaseUrl,
-      hostIp: access.hostIp,
-      hostPort: access.hostPort,
-    });
-    if (composedPreviewUrl) {
-      this.logPreviewUrlFallback(previewBaseUrl, composedPreviewUrl);
-      return composedPreviewUrl.previewAddress;
-    }
-
-    if (
-      typeof access.previewAddress === 'string' &&
-      access.previewAddress.trim()
-    ) {
-      return access.previewAddress.trim();
-    }
-    return typeof access.baseUrl === 'string' && access.baseUrl.trim()
-      ? access.baseUrl.trim()
-      : null;
-  }
-
-  private logPreviewUrlFallback(
-    previewBaseUrl: string | null,
-    previewUrl: ReturnType<typeof buildPreviewUrl>,
-  ): void {
-    if (!previewUrl) {
-      return;
-    }
-
-    if (previewUrl.ignoredPath && !this.previewBaseUrlIgnoredPathWarned) {
-      this.previewBaseUrlIgnoredPathWarned = true;
-      this.logger.warn(
-        `preview_base_url_path_ignored ${JSON.stringify({
-          previewBaseUrl,
-        })}`,
-      );
-    }
-
-    if (previewUrl.source !== 'host-ip') {
-      return;
-    }
-
-    if (previewBaseUrl?.trim()) {
-      if (!this.previewBaseUrlInvalidWarned) {
-        this.previewBaseUrlInvalidWarned = true;
-        this.logger.warn(
-          `preview_base_url_invalid ${JSON.stringify({
-            previewBaseUrl,
-          })}`,
-        );
-      }
-      return;
-    }
-
-    if (!this.previewBaseUrlMissingWarned) {
-      this.previewBaseUrlMissingWarned = true;
-      this.logger.warn('preview_base_url_missing using hostIp fallback');
-    }
   }
 
   private async ensureCanManageProject(

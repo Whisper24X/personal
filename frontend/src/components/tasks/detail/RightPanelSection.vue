@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import TaskRightPanel from './TaskRightPanel.vue'
-import type { TaskEnvironmentStatus, TaskLog } from '@/types/api/tasks'
+import type { TaskEnvironmentPreview, TaskEnvironmentStatus, TaskLog } from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskDetailRightPanelSection',
@@ -18,6 +18,7 @@ const props = withDefaults(
     logs?: TaskLog[]
     defaultRightTab?: 'artifacts' | 'preview' | 'files'
     environmentStatus?: TaskEnvironmentStatus | null
+    environmentPreview?: TaskEnvironmentPreview | null
     formatDate: (value?: string) => string
     artifactFilePath?: string | null
     artifactOpenNonce?: number
@@ -31,12 +32,13 @@ const props = withDefaults(
     logs: () => [],
     defaultRightTab: 'artifacts',
     environmentStatus: null,
+    environmentPreview: null,
     artifactFilePath: null,
     artifactOpenNonce: 0,
   },
 )
 
-const previewEnabled = computed(() => props.environmentStatus === 'ready')
+const previewEnabled = computed(() => props.environmentPreview?.status !== 'unavailable')
 </script>
 
 <template>
@@ -51,6 +53,7 @@ const previewEnabled = computed(() => props.environmentStatus === 'ready')
       :logs="props.logs"
       :default-right-tab="props.defaultRightTab"
       :preview-enabled="previewEnabled"
+      :preview="props.environmentPreview"
       :format-date="props.formatDate"
       :artifact-file-path="props.artifactFilePath ?? null"
       :artifact-open-nonce="props.artifactOpenNonce ?? 0"

@@ -2,6 +2,7 @@ import { ConflictException, Injectable, Optional } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
+import { RunnerOrchestrationService } from '../../containers/runner-orchestration.service';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskLog } from '../domain/task-log';
@@ -9,6 +10,7 @@ import {
   TaskEnvironmentDto,
   TaskEnvironmentStage,
   TaskEnvironmentStatus,
+  TaskPreviewStatus,
   TaskEnvironmentStepDto,
   TaskEnvironmentStepStatus,
 } from '../dto/task-environment.dto';
@@ -68,6 +70,8 @@ export class TaskEnvironmentService {
     private readonly containerOrchestration: ContainerOrchestrationService,
     @Optional()
     private readonly containerExecutionConfig?: ContainerExecutionConfigService,
+    @Optional()
+    private readonly runnerOrchestration?: RunnerOrchestrationService,
   ) {}
 
   async getEnvironment(
@@ -182,6 +186,7 @@ export class TaskEnvironmentService {
     const latestEnvironmentEvent =
       this.extractLatestEnvironmentEvent(latestLogs);
     const latestReadyAt = this.findLatestEnvironmentReadyAt(latestLogs);
+    const previewEnabled = this.hasPreview(project);
 
     if (!this.isDockerMode()) {
       if (latestEnvironmentEvent?.status === TaskEnvironmentStatus.failed) {
@@ -229,9 +234,12 @@ export class TaskEnvironmentService {
         runtime: {
           gitWorktree: task.gitWorktree ?? null,
           containerId: container.containerId,
-          previewAddress: container.accessMetadata?.previewAddress ?? null,
-          baseUrl: container.accessMetadata?.baseUrl ?? null,
         },
+        preview: this.buildPreview({
+          environmentStatus: TaskEnvironmentStatus.ready,
+          previewUrl: container.accessMetadata?.previewUrl ?? null,
+          previewEnabled,
+        }),
       });
     }
 
@@ -248,9 +256,12 @@ export class TaskEnvironmentService {
         runtime: {
           gitWorktree: task.gitWorktree ?? null,
           containerId: container.containerId,
-          previewAddress: container.accessMetadata?.previewAddress ?? null,
-          baseUrl: container.accessMetadata?.baseUrl ?? null,
         },
+        preview: this.buildPreview({
+          environmentStatus: TaskEnvironmentStatus.starting,
+          previewUrl: container.accessMetadata?.previewUrl ?? null,
+          previewEnabled,
+        }),
       });
     }
 
@@ -267,6 +278,10 @@ export class TaskEnvironmentService {
           gitWorktree: task.gitWorktree ?? null,
         },
         failedStage: latestEnvironmentEvent.failedStage,
+        preview: this.buildPreview({
+          environmentStatus: TaskEnvironmentStatus.failed,
+          previewEnabled,
+        }),
       });
     }
 
@@ -282,6 +297,10 @@ export class TaskEnvironmentService {
         runtime: {
           gitWorktree: task.gitWorktree ?? null,
         },
+        preview: this.buildPreview({
+          environmentStatus: TaskEnvironmentStatus.stopped,
+          previewEnabled,
+        }),
       });
     }
 
@@ -291,6 +310,10 @@ export class TaskEnvironmentService {
       message: '尚未启动执行环境',
       updatedAt:
         latestEnvironmentEvent?.createdAt ?? task.updatedAt ?? new Date(),
+      preview: this.buildPreview({
+        environmentStatus: TaskEnvironmentStatus.notStarted,
+        previewEnabled,
+      }),
     });
   }
 
@@ -302,9 +325,11 @@ export class TaskEnvironmentService {
     runtime?: {
       gitWorktree?: string | null;
       containerId?: string | null;
-      previewAddress?: string | null;
-      baseUrl?: string | null;
     } | null;
+    preview?: {
+      status: TaskPreviewStatus;
+      url?: string | null;
+    };
     failedStage?: TaskEnvironmentStage | null;
   }): TaskEnvironmentDto {
     return {
@@ -314,6 +339,12 @@ export class TaskEnvironmentService {
       message: params.message,
       updatedAt: params.updatedAt,
       runtime: params.runtime ?? null,
+      preview:
+        params.preview ??
+        this.buildPreview({
+          environmentStatus: params.status,
+          previewEnabled: false,
+        }),
       steps: this.buildSteps({
         status: params.status,
         stage: params.stage,
@@ -321,6 +352,56 @@ export class TaskEnvironmentService {
         failedStage: params.failedStage ?? null,
       }),
     };
+  }
+
+  private buildPreview(params: {
+    environmentStatus: TaskEnvironmentStatus;
+    previewUrl?: string | null;
+    previewEnabled: boolean;
+  }): {
+    status: TaskPreviewStatus;
+    url?: string | null;
+  } {
+    if (!params.previewEnabled) {
+      return {
+        status: TaskPreviewStatus.unavailable,
+        url: null,
+      };
+    }
+
+    const previewUrl = params.previewUrl?.trim() || null;
+    if (previewUrl) {
+      return {
+        status: TaskPreviewStatus.ready,
+        url: previewUrl,
+      };
+    }
+
+    if (
+      params.environmentStatus === TaskEnvironmentStatus.starting ||
+      params.environmentStatus === TaskEnvironmentStatus.ready
+    ) {
+      return {
+        status: TaskPreviewStatus.provisioning,
+        url: null,
+      };
+    }
+
+    if (params.environmentStatus === TaskEnvironmentStatus.failed) {
+      return {
+        status: TaskPreviewStatus.failed,
+        url: null,
+      };
+    }
+
+    return {
+      status: TaskPreviewStatus.unavailable,
+      url: null,
+    };
+  }
+
+  private hasPreview(project: Project): boolean {
+    return Boolean(this.runnerOrchestration?.resolvePreviewConfig(project));
   }
 
   private buildSteps(params: {

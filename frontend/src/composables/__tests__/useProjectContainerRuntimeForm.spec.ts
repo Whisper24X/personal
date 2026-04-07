@@ -12,9 +12,6 @@ describe('useProjectContainerRuntimeForm', () => {
     containerRuntimeForm.syncFromContainerRuntime()
 
     expect(form.containerSandboxProfile).toBe('runner-only')
-    expect(form.containerNetworkMode).toBe('bridge')
-    expect(form.containerExposeMode).toBe('enabled')
-    expect(form.containerExposeContainerPort).toBe('8080')
     expect(form.containerStartTimeoutMs).toBe('30000')
     expect(form.containerMemoryMb).toBe('0')
     expect(form.containerPidsLimit).toBe('0')
@@ -45,6 +42,7 @@ describe('useProjectContainerRuntimeForm', () => {
     expect(form.containerRunnerOrchestration).toContain('"ainative-backend"')
     expect(form.containerRunnerOrchestration).toContain('"ainative-shadow"')
     expect(form.containerRunnerOrchestration).toContain('"ainative-app"')
+    expect(form.containerRunnerOrchestration).toContain('"preview"')
 
     const configJson = containerRuntimeForm.buildProjectConfigJson({
       existing: true,
@@ -109,5 +107,19 @@ describe('useProjectContainerRuntimeForm', () => {
       routes: [],
     })
     expect(containerRuntimeForm.validateContainerRuntime()).toContain('services 数组')
+
+    form.containerRunnerOrchestration = JSON.stringify({
+      services: [
+        {
+          name: 'web',
+          workdir: 'web',
+          command: 'pnpm dev',
+        },
+      ],
+      preview: {
+        service: 'api',
+      },
+    })
+    expect(containerRuntimeForm.validateContainerRuntime()).toContain('预览入口服务不存在')
   })
 })

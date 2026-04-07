@@ -25,6 +25,13 @@ export enum TaskEnvironmentStepStatus {
   error = 'error',
 }
 
+export enum TaskPreviewStatus {
+  unavailable = 'unavailable',
+  provisioning = 'provisioning',
+  ready = 'ready',
+  failed = 'failed',
+}
+
 export class TaskEnvironmentStepDto {
   @ApiProperty({ type: String })
   key: string;
@@ -48,12 +55,17 @@ export class TaskEnvironmentRuntimeDto {
 
   @ApiPropertyOptional({ type: String, nullable: true })
   containerId?: string | null;
+}
 
+export class TaskEnvironmentPreviewDto {
   @ApiPropertyOptional({ type: String, nullable: true })
-  previewAddress?: string | null;
+  url?: string | null;
 
-  @ApiPropertyOptional({ type: String, nullable: true })
-  baseUrl?: string | null;
+  @ApiProperty({
+    enum: TaskPreviewStatus,
+    enumName: 'TaskPreviewStatus',
+  })
+  status: TaskPreviewStatus;
 }
 
 export class TaskEnvironmentDto {
@@ -80,6 +92,9 @@ export class TaskEnvironmentDto {
 
   @ApiPropertyOptional({ type: TaskEnvironmentRuntimeDto, nullable: true })
   runtime?: TaskEnvironmentRuntimeDto | null;
+
+  @ApiProperty({ type: TaskEnvironmentPreviewDto })
+  preview: TaskEnvironmentPreviewDto;
 
   @ApiProperty({ type: TaskEnvironmentStepDto, isArray: true })
   steps: TaskEnvironmentStepDto[];

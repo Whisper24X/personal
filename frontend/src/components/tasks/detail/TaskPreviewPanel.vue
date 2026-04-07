@@ -1,57 +1,28 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { projectsApi } from '@/api/projects'
-import type { TaskLog } from '@/types/api/tasks'
-import { toErrorMessage } from '@/utils/http/to-error-message'
+import { computed, ref } from 'vue'
+import type { TaskEnvironmentPreview, TaskLog } from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskDetailPreviewPanel',
 })
 
-type PreviewConfig = {
-  runtimeUrl?: string
-}
-
 const props = withDefaults(
   defineProps<{
-    taskId: string
-    projectId?: string
-    refreshToken?: number
+    preview?: TaskEnvironmentPreview | null
     logs?: TaskLog[]
     formatDate?: (value?: string) => string
   }>(),
   {
-    projectId: '',
-    refreshToken: 0,
+    preview: null,
     logs: () => [],
     formatDate: undefined,
   },
 )
 
-const runtimePreviewUrl = ref('')
-const iframeSrc = ref('')
-const errorMessage = ref('')
 const logOpen = ref(false)
-const configLoaded = ref(false)
+const iframeReloadNonce = ref(0)
 
 const MAX_LOG_LINES = 2000
-
-const applyUrl = () => {
-  const rawUrl = runtimePreviewUrl.value.trim()
-  if (!rawUrl) {
-    iframeSrc.value = ''
-    return
-  }
-
-  iframeSrc.value =
-    rawUrl.startsWith('http://') || rawUrl.startsWith('https://') ? rawUrl : `http://${rawUrl}`
-}
-
-const resetPreviewConfig = () => {
-  runtimePreviewUrl.value = ''
-  iframeSrc.value = ''
-  errorMessage.value = ''
-}
 
 const resolveLogMessage = (log: TaskLog) => {
   const payload = log.payload && typeof log.payload === 'object' ? log.payload : null
@@ -76,62 +47,38 @@ const visibleLogs = computed(() => {
   }))
 })
 
-const loadConfig = async () => {
-  if (!props.projectId) {
-    resetPreviewConfig()
-    configLoaded.value = true
-    return
+const iframeSrc = computed(() => {
+  const rawUrl = props.preview?.url?.trim()
+  if (!rawUrl) {
+    return ''
   }
 
-  configLoaded.value = false
+  return rawUrl.startsWith('http://') || rawUrl.startsWith('https://') ? rawUrl : `http://${rawUrl}`
+})
 
-  try {
-    const project = await projectsApi.detail(props.projectId)
-    const configJson = (project.configJson ?? {}) as Record<string, unknown>
-    const preview = (configJson.preview ?? null) as PreviewConfig | null
-
-    runtimePreviewUrl.value = typeof preview?.runtimeUrl === 'string' ? preview.runtimeUrl : ''
-    errorMessage.value = ''
-    applyUrl()
-  } catch (error) {
-    resetPreviewConfig()
-    errorMessage.value = toErrorMessage(error, '加载容器预览失败')
-  } finally {
-    configLoaded.value = true
+const previewHint = computed(() => {
+  if (props.preview?.status === 'provisioning') {
+    return '容器预览生成中...'
   }
-}
+
+  if (props.preview?.status === 'failed') {
+    return '容器预览生成失败'
+  }
+
+  return '容器预览尚未就绪'
+})
 
 const refreshPreview = () => {
   if (!iframeSrc.value) {
     return
   }
 
-  const currentSrc = iframeSrc.value
-  iframeSrc.value = ''
-
-  nextTick(() => {
-    iframeSrc.value = currentSrc
-  })
+  iframeReloadNonce.value += 1
 }
 
 const toggleLog = () => {
   logOpen.value = !logOpen.value
 }
-
-watch(
-  () => props.projectId,
-  () => {
-    void loadConfig()
-  },
-  { immediate: true },
-)
-
-watch(
-  () => props.refreshToken,
-  () => {
-    void loadConfig()
-  },
-)
 </script>
 
 <template>
@@ -143,8 +90,7 @@ watch(
           :class="iframeSrc ? 'bg-green-500' : 'bg-muted-foreground/40'"
         />
         <span v-if="iframeSrc" class="text-foreground truncate text-xs">{{ iframeSrc }}</span>
-        <span v-else-if="configLoaded" class="text-muted-foreground text-xs">容器预览尚未就绪</span>
-        <span v-else class="text-muted-foreground text-xs">加载预览配置中...</span>
+        <span v-else class="text-muted-foreground text-xs">{{ previewHint }}</span>
       </div>
 
       <div class="flex shrink-0 items-center gap-1">
@@ -181,6 +127,7 @@ watch(
     <div class="min-h-0 flex-1">
       <iframe
         v-if="iframeSrc"
+        :key="iframeReloadNonce"
         :src="iframeSrc"
         class="h-full w-full border-0"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
@@ -189,12 +136,15 @@ watch(
         v-else
         class="text-muted-foreground flex h-full flex-col items-center justify-center gap-2"
       >
-        <span class="text-sm">容器预览尚未就绪</span>
-        <span class="max-w-xs text-center text-xs">
-          预览地址由后端任务容器自动提供，不再手工配置页面和端口。
+        <span class="text-sm">{{ previewHint }}</span>
+        <span v-if="props.preview?.status === 'provisioning'" class="max-w-xs text-center text-xs">
+          系统正在为当前任务分配预览地址，地址就绪后会自动展示。
         </span>
-        <span v-if="errorMessage" class="max-w-xs text-center text-xs text-destructive">
-          {{ errorMessage }}
+        <span v-else-if="props.preview?.status === 'failed'" class="max-w-xs text-center text-xs text-destructive">
+          系统未能为当前任务生成可访问的预览地址，请刷新任务状态或重新启动环境。
+        </span>
+        <span v-else class="max-w-xs text-center text-xs">
+          预览地址由系统统一分配和托管，不再从项目配置或容器端口直接读取。
         </span>
       </div>
     </div>

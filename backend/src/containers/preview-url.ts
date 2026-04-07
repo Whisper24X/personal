@@ -1,6 +1,5 @@
 export type PreviewUrlBuildResult = {
-  previewAddress: string;
-  baseUrl: string;
+  previewUrl: string;
   source: 'configured-base-url' | 'host-ip';
   ignoredPath: boolean;
   invalidBaseUrl: boolean;
@@ -64,20 +63,28 @@ export const buildPreviewUrl = (params: {
   previewBaseUrl?: string | null;
   hostIp?: string | null;
   hostPort?: number | null;
+  previewPath?: string | null;
 }): PreviewUrlBuildResult | null => {
   const port = normalizePort(params.hostPort);
   if (!port) {
     return null;
   }
 
+  const previewPath =
+    typeof params.previewPath === 'string' && params.previewPath.trim()
+      ? normalizePreviewPath(params.previewPath)
+      : null;
+
   const normalizedPreviewBase = resolveConfiguredPreviewBase(
     params.previewBaseUrl,
   );
   if (normalizedPreviewBase) {
-    const externalUrl = `${normalizedPreviewBase.protocol}//${normalizedPreviewBase.host}:${port}`;
+    const externalUrl = appendPreviewPath(
+      `${normalizedPreviewBase.protocol}//${normalizedPreviewBase.host}:${port}`,
+      previewPath,
+    );
     return {
-      previewAddress: externalUrl,
-      baseUrl: externalUrl,
+      previewUrl: externalUrl,
       source: 'configured-base-url',
       ignoredPath: normalizedPreviewBase.ignoredPath,
       invalidBaseUrl: false,
@@ -90,10 +97,26 @@ export const buildPreviewUrl = (params: {
   }
 
   return {
-    previewAddress: `${host}:${port}`,
-    baseUrl: `http://${host}:${port}`,
+    previewUrl: appendPreviewPath(`http://${host}:${port}`, previewPath),
     source: 'host-ip',
     ignoredPath: false,
     invalidBaseUrl: Boolean(params.previewBaseUrl?.trim()),
   };
+};
+
+const normalizePreviewPath = (value: string): string => {
+  const normalized = value.trim();
+  if (!normalized || normalized === '/') {
+    return '/';
+  }
+
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+};
+
+const appendPreviewPath = (baseUrl: string, previewPath: string | null) => {
+  if (!previewPath || previewPath === '/') {
+    return baseUrl;
+  }
+
+  return `${baseUrl}${previewPath}`;
 };

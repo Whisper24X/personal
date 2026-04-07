@@ -4,15 +4,10 @@ import type {
   RunnerOrchestrationConfig,
 } from '@/types/api/projects'
 
-export type ContainerExposeMode = 'inherit' | 'enabled' | 'disabled'
 type SandboxProfile = NonNullable<ProjectContainerRuntimeConfig['sandboxProfile']>
 
 export type ProjectContainerRuntimeFormState = {
   containerSandboxProfile: string
-  containerNetworkMode: string
-  containerExposeMode: ContainerExposeMode
-  containerExposeHostIp: string
-  containerExposeContainerPort: string
   containerStartTimeoutMs: string
   containerMemoryMb: string
   containerPidsLimit: string
@@ -21,9 +16,6 @@ export type ProjectContainerRuntimeFormState = {
 }
 
 const DEFAULT_SANDBOX_PROFILE: SandboxProfile = 'runner-only'
-const DEFAULT_NETWORK_MODE: NonNullable<ProjectContainerRuntimeConfig['networkMode']> = 'bridge'
-const DEFAULT_EXPOSE_MODE: ContainerExposeMode = 'enabled'
-const DEFAULT_EXPOSE_CONTAINER_PORT = 8080
 const DEFAULT_RUNNER_ONLY_START_TIMEOUT_MS = 30_000
 const DEFAULT_PREVIEW_WEB_START_TIMEOUT_MS = 300_000
 const DEFAULT_PREVIEW_WEB_MEMORY_MB = 2048
@@ -163,21 +155,14 @@ const DEFAULT_PREVIEW_WEB_ORCHESTRATION: RunnerOrchestrationConfig = {
       },
     ],
   },
+  preview: {
+    service: 'ainative-app',
+    path: '/',
+  },
 }
 
 const resolveSandboxProfile = (value: unknown): SandboxProfile => {
   return value === 'preview-web' ? 'preview-web' : DEFAULT_SANDBOX_PROFILE
-}
-
-const resolveDefaultExposeHostIp = () => {
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname?.trim()
-    if (hostname) {
-      return hostname
-    }
-  }
-
-  return '127.0.0.1'
 }
 
 const resolveDefaultRunnerOrchestration = (
@@ -198,10 +183,6 @@ const buildDefaultFormState = (
   profile: SandboxProfile = DEFAULT_SANDBOX_PROFILE,
 ): ProjectContainerRuntimeFormState => ({
   containerSandboxProfile: profile,
-  containerNetworkMode: DEFAULT_NETWORK_MODE,
-  containerExposeMode: DEFAULT_EXPOSE_MODE,
-  containerExposeHostIp: resolveDefaultExposeHostIp(),
-  containerExposeContainerPort: String(DEFAULT_EXPOSE_CONTAINER_PORT),
   containerStartTimeoutMs: String(resolveDefaultStartTimeoutMs(profile)),
   containerMemoryMb:
     profile === 'preview-web' ? String(DEFAULT_PREVIEW_WEB_MEMORY_MB) : '0',
@@ -227,18 +208,6 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
     { label: '跟随全局默认', value: '' },
     { label: 'runner-only', value: 'runner-only' },
     { label: 'preview-web', value: 'preview-web' },
-  ]
-
-  const containerNetworkModeOptions = [
-    { label: '跟随全局默认', value: '' },
-    { label: 'host', value: 'host' },
-    { label: 'bridge', value: 'bridge' },
-  ]
-
-  const containerExposeModeOptions = [
-    { label: '跟随全局默认', value: 'inherit' },
-    { label: '开启端口映射', value: 'enabled' },
-    { label: '关闭端口映射', value: 'disabled' },
   ]
 
   const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
@@ -324,6 +293,46 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
         }
       }
 
+      if (parsed.preview != null) {
+        if (!isObjectRecord(parsed.preview)) {
+          return {
+            config: undefined,
+            error: '预览入口配置 preview 必须是一个对象',
+          }
+        }
+
+        const previewService =
+          typeof parsed.preview.service === 'string' ? parsed.preview.service.trim() : ''
+        if (!previewService) {
+          return {
+            config: undefined,
+            error: '预览入口配置必须包含 preview.service',
+          }
+        }
+
+        const serviceNames = new Set(
+          parsed.services
+            .map((service) => (isObjectRecord(service) ? service.name : ''))
+            .filter((serviceName): serviceName is string => typeof serviceName === 'string')
+            .map((serviceName) => serviceName.trim())
+            .filter(Boolean),
+        )
+
+        if (!serviceNames.has(previewService)) {
+          return {
+            config: undefined,
+            error: `预览入口服务不存在：${previewService}`,
+          }
+        }
+
+        if ('path' in parsed.preview && typeof parsed.preview.path !== 'string') {
+          return {
+            config: undefined,
+            error: '预览入口路径 preview.path 必须是字符串',
+          }
+        }
+      }
+
       return {
         config: parsed as ProjectContainerRuntimeConfig['runnerOrchestration'],
         error: '',
@@ -355,29 +364,6 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
         containerRuntime.sandboxProfile === 'preview-web'
       ) {
         form.containerSandboxProfile = containerRuntime.sandboxProfile
-      }
-
-      if (containerRuntime.networkMode === 'host' || containerRuntime.networkMode === 'bridge') {
-        form.containerNetworkMode = containerRuntime.networkMode
-      }
-
-      if (containerRuntime.exposeLocal === true) {
-        form.containerExposeMode = 'enabled'
-      } else if (containerRuntime.exposeLocal === false) {
-        form.containerExposeMode = 'disabled'
-      }
-
-      if (
-        typeof containerRuntime.exposeHostIp === 'string' &&
-        containerRuntime.exposeHostIp.trim()
-      ) {
-        form.containerExposeHostIp = containerRuntime.exposeHostIp.trim()
-      }
-
-      if (typeof containerRuntime.exposeContainerPort === 'number') {
-        form.containerExposeContainerPort = toPositiveNumberText(
-          containerRuntime.exposeContainerPort,
-        )
       }
 
       if (typeof containerRuntime.startTimeoutMs === 'number') {
@@ -462,33 +448,6 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
       runtimeConfig.sandboxProfile = form.containerSandboxProfile
     }
 
-    if (
-      (form.containerNetworkMode === 'host' || form.containerNetworkMode === 'bridge') &&
-      form.containerNetworkMode !== DEFAULT_NETWORK_MODE
-    ) {
-      runtimeConfig.networkMode = form.containerNetworkMode
-    }
-
-    if (form.containerExposeMode === 'disabled') {
-      runtimeConfig.exposeLocal = false
-    }
-
-    const normalizedExposeHostIp = form.containerExposeHostIp.trim()
-    if (
-      normalizedExposeHostIp &&
-      normalizedExposeHostIp !== defaultFormState.containerExposeHostIp
-    ) {
-      runtimeConfig.exposeHostIp = normalizedExposeHostIp
-    }
-
-    const exposeContainerPort = Math.floor(Number(form.containerExposeContainerPort) || 0)
-    if (
-      exposeContainerPort > 0 &&
-      exposeContainerPort !== Number(defaultFormState.containerExposeContainerPort)
-    ) {
-      runtimeConfig.exposeContainerPort = exposeContainerPort
-    }
-
     const startTimeoutMs = Math.floor(Number(form.containerStartTimeoutMs) || 0)
     if (
       startTimeoutMs > 0 &&
@@ -561,8 +520,6 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
 
   return {
     containerSandboxProfileOptions,
-    containerNetworkModeOptions,
-    containerExposeModeOptions,
     syncFromContainerRuntime,
     parseContainerEnvInput,
     parseRunnerOrchestrationInput,

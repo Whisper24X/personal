@@ -56,6 +56,10 @@ describe('TaskRightPanel', () => {
         taskId: 'task-1',
         projectId: 'project-1',
         previewEnabled: true,
+        preview: {
+          status: 'ready',
+          url: 'https://preview.example.com/p/task-1/',
+        },
         refreshToken: 3,
         formatDate: () => '',
       },
@@ -65,9 +69,7 @@ describe('TaskRightPanel', () => {
           TaskPreviewPanel: defineComponent({
             name: 'TaskDetailPreviewPanelStub',
             props: {
-              taskId: { type: String, required: true },
-              projectId: { type: String, default: '' },
-              refreshToken: { type: Number, default: 0 },
+              preview: { type: Object, default: null },
               logs: { type: Array, default: () => [] },
               formatDate: { type: Function, required: true },
             },
@@ -88,9 +90,10 @@ describe('TaskRightPanel', () => {
     await wrapper.findAll('button')[1]?.trigger('click')
 
     expect(previewProps[previewProps.length - 1]).toEqual({
-      taskId: 'task-1',
-      projectId: 'project-1',
-      refreshToken: 3,
+      preview: {
+        status: 'ready',
+        url: 'https://preview.example.com/p/task-1/',
+      },
       logs: [],
       formatDate: expect.any(Function),
     })

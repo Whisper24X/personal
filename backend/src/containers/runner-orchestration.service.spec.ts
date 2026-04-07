@@ -44,8 +44,8 @@ describe('RunnerOrchestrationService', () => {
     expect(configFile).toMatchObject({
       version: 1,
       runtime: {
-        hostIp: '127.0.0.1',
-        containerPort: 8080,
+        networkMode: 'bridge',
+        listenPort: 8080,
       },
       orchestration: {
         services: expect.arrayContaining([
@@ -81,6 +81,10 @@ describe('RunnerOrchestrationService', () => {
         homepage: expect.objectContaining({
           title: 'AINative Workspace',
         }),
+        preview: {
+          service: 'ainative-app',
+          path: '/',
+        },
       },
     });
   });
@@ -111,6 +115,10 @@ describe('RunnerOrchestrationService', () => {
                 upstreamPath: '/',
               },
             ],
+            preview: {
+              service: 'api',
+              path: '/api/',
+            },
           },
         },
       }) as never,
@@ -128,6 +136,10 @@ describe('RunnerOrchestrationService', () => {
         service: 'api',
       }),
     ]);
+    expect(configFile?.orchestration.preview).toEqual({
+      service: 'api',
+      path: '/api/',
+    });
   });
 
   it('should derive anonymous node_modules mounts from services with install commands', () => {

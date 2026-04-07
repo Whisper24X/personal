@@ -544,6 +544,7 @@ const updateEnvironmentFromLog = (log: TaskLog) => {
   }
 
   const runtime = environment.value?.runtime ?? null
+  const preview = environment.value?.preview ?? { status: 'unavailable', url: null }
   environment.value = {
     status: nextStatus as TaskEnvironmentStatus,
     stage: nextStage as TaskEnvironmentStage,
@@ -560,6 +561,7 @@ const updateEnvironmentFromLog = (log: TaskLog) => {
     message: typeof nextMessage === 'string' ? nextMessage : null,
     updatedAt: log.createdAt,
     runtime,
+    preview,
     steps: buildEnvironmentSteps(
       nextStatus as TaskEnvironmentStatus,
       nextStage as TaskEnvironmentStage,
@@ -1136,6 +1138,10 @@ const startEnvironment = async () => {
         message: '开始准备任务执行环境',
         updatedAt: new Date().toISOString(),
         runtime: null,
+        preview: {
+          status: 'provisioning',
+          url: null,
+        },
         steps: buildEnvironmentSteps('starting', 'workspace_preparing', '开始准备任务执行环境'),
       }),
       status: 'starting',
@@ -1143,6 +1149,13 @@ const startEnvironment = async () => {
       stageLabel: '准备任务工作区',
       message: '开始准备任务执行环境',
       updatedAt: new Date().toISOString(),
+      preview:
+        environment.value?.preview?.status === 'ready'
+          ? environment.value.preview
+          : {
+              status: 'provisioning',
+              url: null,
+            },
       steps: buildEnvironmentSteps('starting', 'workspace_preparing', '开始准备任务执行环境'),
     }
     environment.value = await tasksApi.startEnvironment(taskId.value)
@@ -1587,6 +1600,7 @@ function startDrag(e: MouseEvent) {
         :logs="logs"
         default-right-tab="artifacts"
         :environment-status="environment?.status || null"
+        :environment-preview="environment?.preview || null"
         :format-date="formatDate"
         :artifact-file-path="artifactFilePath"
         :artifact-open-nonce="artifactOpenNonce"

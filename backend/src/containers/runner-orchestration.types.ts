@@ -44,11 +44,17 @@ export type RunnerNamedVolumeConfig = {
   target: string;
 };
 
+export type RunnerPreviewConfig = {
+  service: string;
+  path?: string;
+};
+
 export type RunnerOrchestrationConfig = {
   services: RunnerServiceConfig[];
   routes?: RunnerRouteConfig[];
   homepage?: RunnerHomepageConfig;
   sharedVolumes?: RunnerNamedVolumeConfig[];
+  preview?: RunnerPreviewConfig;
 };
 
 export type ProjectRunnerConfigFile = {
@@ -62,9 +68,7 @@ export type ProjectRunnerConfigFile = {
   runtime: {
     platform?: string;
     networkMode: RunnerNetworkMode;
-    hostIp: string;
-    hostPort: number;
-    containerPort: number;
+    listenPort: number;
     startTimeoutMs: number;
     resourceLimits?: {
       memoryMb?: number;

@@ -123,7 +123,6 @@ describe('ContainerExecutionConfigService', () => {
       AINATIVE_TASK_SANDBOX_PROFILE: 'runner-only',
       AINATIVE_RUNNER_PLATFORM: 'linux/arm64',
       AINATIVE_RUNNER_NETWORK_MODE: 'host',
-      AINATIVE_RUNNER_EXPOSE_LOCAL: 'true',
       AINATIVE_RUNNER_EXPOSE_HOST_IP: '127.0.0.1',
       AINATIVE_RUNNER_EXPOSE_CONTAINER_PORT: '8080',
       AINATIVE_RUNNER_START_TIMEOUT_MS: '30000',
@@ -132,10 +131,6 @@ describe('ContainerExecutionConfigService', () => {
       containerRuntime: {
         sandboxProfile: 'preview-web',
         platform: 'linux/amd64',
-        networkMode: 'bridge',
-        exposeLocal: false,
-        exposeHostIp: '192.168.50.8',
-        exposeContainerPort: 4173,
         startTimeoutMs: 90000,
         resourceLimits: {
           memoryMb: 3072,
@@ -152,12 +147,10 @@ describe('ContainerExecutionConfigService', () => {
     expect(service.getRunnerPlatform()).toBe('linux/arm64');
     expect(service.getRunnerPlatform(project as never)).toBe('linux/amd64');
     expect(service.usesSandboxEntrypoint(project as never)).toBe(true);
-    expect(service.getRunnerNetworkMode(project as never)).toBe('bridge');
+    expect(service.getRunnerNetworkMode(project as never)).toBe('host');
     expect(service.shouldExposeSandboxPort(project as never)).toBe(true);
-    expect(service.getRunnerExposeHostIp(project as never)).toBe(
-      '192.168.50.8',
-    );
-    expect(service.getRunnerExposeContainerPort(project as never)).toBe(4173);
+    expect(service.getRunnerExposeHostIp(project as never)).toBe('127.0.0.1');
+    expect(service.getRunnerExposeContainerPort(project as never)).toBe(8080);
     expect(service.getRunnerStartTimeoutMs(project as never)).toBe(90_000);
     expect(service.resourceLimitsForProfile(project as never)).toEqual({
       memoryMb: 3072,
@@ -167,6 +160,27 @@ describe('ContainerExecutionConfigService', () => {
       PORT: '4173',
       NODE_ENV: 'development',
     });
+  });
+
+  it('should ignore legacy project-level port exposure fields', () => {
+    const service = createService({
+      AINATIVE_RUNNER_NETWORK_MODE: 'bridge',
+      AINATIVE_RUNNER_EXPOSE_HOST_IP: '192.168.1.20',
+      AINATIVE_RUNNER_EXPOSE_CONTAINER_PORT: '18080',
+    });
+    const project = createProject({
+      containerRuntime: {
+        networkMode: 'host',
+        exposeHostIp: '10.0.0.10',
+        exposeContainerPort: 4173,
+      },
+    });
+
+    expect(service.getRunnerNetworkMode(project as never)).toBe('bridge');
+    expect(service.getRunnerExposeHostIp(project as never)).toBe(
+      '192.168.1.20',
+    );
+    expect(service.getRunnerExposeContainerPort(project as never)).toBe(18_080);
   });
 
   it('should ignore invalid runner platform values', () => {

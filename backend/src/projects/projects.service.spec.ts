@@ -77,21 +77,6 @@ const createProjectsService = () => {
     hasBusinessLineCapability: jest.fn(),
     hasProjectCapability: jest.fn(),
   };
-  const slotRepository = {
-    findByProjectId: jest.fn().mockResolvedValue(null),
-    updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-  };
-  const containerConfig = {
-    isDockerMode: jest.fn().mockReturnValue(true),
-    shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
-    getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
-    getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
-    getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
-    getPreviewBaseUrl: jest.fn().mockReturnValue(null),
-  };
-  const isolatedRunner = {
-    inspect: jest.fn().mockResolvedValue(null),
-  };
   const configService = {
     get: jest.fn((key: string) => {
       if (key === 'AINATIVE_DATA_ROOT_DIR') {
@@ -121,9 +106,6 @@ const createProjectsService = () => {
     projectCustomRoleRepository as never,
     workflowTemplateRepository as never,
     accessService as never,
-    slotRepository as never,
-    containerConfig as never,
-    isolatedRunner as never,
     configService as never,
     agentRunnerService as never,
   );
@@ -138,9 +120,6 @@ const createProjectsService = () => {
     projectCustomRoleRepository,
     workflowTemplateRepository,
     accessService,
-    slotRepository,
-    containerConfig,
-    isolatedRunner,
     agentRunnerService,
   };
 };
@@ -547,6 +526,9 @@ describe('ProjectsService', () => {
     const nextConfigJson = {
       containerRuntime: {
         sandboxProfile: 'preview-web',
+        networkMode: 'bridge',
+        exposeHostIp: '192.168.50.8',
+        exposeContainerPort: 4173,
       },
       runnerTemplate: {
         dockerfileRunner: 'FROM node:22',
@@ -587,213 +569,22 @@ describe('ProjectsService', () => {
     );
   });
 
-  it('should inject runtime preview url when project config has no preview url', async () => {
-    const { service, accessService, slotRepository } = createProjectsService();
-    const currentUser = createCurrentUser();
-    const project = createProject();
-
-    accessService.assertProjectCapability.mockResolvedValue(project);
-    slotRepository.findByProjectId.mockResolvedValue({
-      projectId: project.id,
-      accessMetadata: {
-        hostIp: '192.168.1.9',
-        hostPort: 38123,
-        containerPort: 8080,
-        previewAddress: '192.168.1.9:38123',
-        baseUrl: 'http://192.168.1.9:38123',
-        networkMode: 'bridge',
-      },
-    });
-
-    const result = await service.findById(project.id, currentUser);
-
-    expect(result?.configJson).toMatchObject({
-      preview: {
-        url: '192.168.1.9:38123',
-        runtimeUrl: '192.168.1.9:38123',
-      },
-    });
-  });
-
-  it('should keep configured preview url unchanged while adding runtime preview url', async () => {
-    const { service, accessService, slotRepository } = createProjectsService();
+  it('should return project detail without injecting runtime preview data', async () => {
+    const { service, accessService } = createProjectsService();
     const currentUser = createCurrentUser();
     const project = {
       ...createProject(),
       configJson: {
-        preview: { url: 'my-preview.local:3000' },
+        preview: {
+          url: 'https://preview.example.com/p/task-1/',
+        },
       },
     };
 
     accessService.assertProjectCapability.mockResolvedValue(project);
-    slotRepository.findByProjectId.mockResolvedValue({
-      projectId: project.id,
-      accessMetadata: {
-        hostIp: '127.0.0.1',
-        hostPort: 48080,
-        containerPort: 8080,
-        previewAddress: '127.0.0.1:48080',
-        baseUrl: 'http://127.0.0.1:48080',
-        networkMode: 'bridge',
-      },
-    });
 
     const result = await service.findById(project.id, currentUser);
 
-    expect(slotRepository.findByProjectId).toHaveBeenCalledWith(project.id);
-    expect(result?.configJson).toEqual({
-      preview: {
-        url: 'my-preview.local:3000',
-        runtimeUrl: '127.0.0.1:48080',
-      },
-    });
-  });
-
-  it('should publish runtime preview url using the configured preview base url', async () => {
-    const { service, accessService, slotRepository, containerConfig } =
-      createProjectsService();
-    const currentUser = createCurrentUser();
-    const project = createProject();
-
-    accessService.assertProjectCapability.mockResolvedValue(project);
-    containerConfig.getPreviewBaseUrl = jest
-      .fn()
-      .mockReturnValue('https://preview.example.com/workspace/');
-    slotRepository.findByProjectId.mockResolvedValue({
-      projectId: project.id,
-      accessMetadata: {
-        hostIp: '127.0.0.1',
-        hostPort: 38123,
-        containerPort: 8080,
-        previewAddress: '127.0.0.1:38123',
-        baseUrl: 'http://127.0.0.1:38123',
-        networkMode: 'bridge',
-      },
-    });
-
-    const result = await service.findById(project.id, currentUser);
-
-    expect(result?.configJson).toMatchObject({
-      preview: {
-        url: 'https://preview.example.com:38123',
-        runtimeUrl: 'https://preview.example.com:38123',
-      },
-    });
-  });
-
-  it('should recover runtime preview url from inspected container when slot metadata is missing', async () => {
-    const {
-      service,
-      accessService,
-      slotRepository,
-      isolatedRunner,
-      containerConfig,
-    } = createProjectsService();
-    const currentUser = createCurrentUser();
-    const project = createProject();
-
-    accessService.assertProjectCapability.mockResolvedValue(project);
-    slotRepository.findByProjectId.mockResolvedValue({
-      projectId: project.id,
-      containerId: 'container-1',
-      accessMetadata: null,
-    });
-    isolatedRunner.inspect.mockResolvedValue({
-      id: 'container-1',
-      status: 'running',
-      running: true,
-      image: 'ainative/runner:fresh',
-      publishedPorts: [
-        {
-          hostIp: '0.0.0.0',
-          hostPort: 38123,
-          containerPort: 8080,
-        },
-      ],
-    });
-    containerConfig.getRunnerExposeHostIp.mockReturnValue('192.168.1.9');
-
-    const result = await service.findById(project.id, currentUser);
-
-    expect(isolatedRunner.inspect).toHaveBeenCalledWith('container-1');
-    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
-      project.id,
-      {
-        containerId: 'container-1',
-        accessMetadata: {
-          hostIp: '192.168.1.9',
-          hostPort: 38123,
-          containerPort: 8080,
-          previewAddress: '192.168.1.9:38123',
-          baseUrl: 'http://192.168.1.9:38123',
-          networkMode: 'bridge',
-        },
-      },
-    );
-    expect(result?.configJson).toMatchObject({
-      preview: {
-        url: '192.168.1.9:38123',
-        runtimeUrl: '192.168.1.9:38123',
-      },
-    });
-  });
-
-  it('should persist recovered runtime preview access using the configured preview base url', async () => {
-    const {
-      service,
-      accessService,
-      slotRepository,
-      isolatedRunner,
-      containerConfig,
-    } = createProjectsService();
-    const currentUser = createCurrentUser();
-    const project = createProject();
-
-    accessService.assertProjectCapability.mockResolvedValue(project);
-    containerConfig.getPreviewBaseUrl = jest
-      .fn()
-      .mockReturnValue('https://preview.example.com/root/');
-    slotRepository.findByProjectId.mockResolvedValue({
-      projectId: project.id,
-      containerId: 'container-1',
-      accessMetadata: null,
-    });
-    isolatedRunner.inspect.mockResolvedValue({
-      id: 'container-1',
-      status: 'running',
-      running: true,
-      image: 'ainative/runner:fresh',
-      publishedPorts: [
-        {
-          hostIp: '0.0.0.0',
-          hostPort: 38123,
-          containerPort: 8080,
-        },
-      ],
-    });
-    containerConfig.getRunnerExposeHostIp.mockReturnValue('192.168.1.9');
-
-    const result = await service.findById(project.id, currentUser);
-
-    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
-      project.id,
-      {
-        containerId: 'container-1',
-        accessMetadata: {
-          hostIp: '192.168.1.9',
-          hostPort: 38123,
-          containerPort: 8080,
-          previewAddress: 'https://preview.example.com:38123',
-          baseUrl: 'https://preview.example.com:38123',
-          networkMode: 'bridge',
-        },
-      },
-    );
-    expect(result?.configJson).toMatchObject({
-      preview: {
-        url: 'https://preview.example.com:38123',
-        runtimeUrl: 'https://preview.example.com:38123',
-      },
-    });
+    expect(result).toEqual(project);
   });
 });

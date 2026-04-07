@@ -30,8 +30,6 @@ const containerRuntimeForm = reactive(createProjectContainerRuntimeFormState())
 
 const {
   containerSandboxProfileOptions,
-  containerNetworkModeOptions,
-  containerExposeModeOptions,
   syncFromContainerRuntime,
   validateContainerRuntime,
   buildContainerRuntimeConfig,
@@ -145,7 +143,7 @@ watch(() => [props.initialContainerRuntime, props.projectName], () => {
           <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
             <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
             <p class="mt-1 text-[11px] text-muted-foreground">
-              默认由后端容器自动生成预览页面、端口和服务路由；保存后仅覆盖当前项目的运行时参数。
+              预览地址由系统统一分配；项目只声明服务编排和主预览入口，保存后仅覆盖当前项目的运行时参数。
             </p>
           </div>
 
@@ -155,28 +153,6 @@ watch(() => [props.initialContainerRuntime, props.projectName], () => {
               v-model="containerRuntimeForm.containerSandboxProfile"
               aria-label="Sandbox Profile"
               :options="containerSandboxProfileOptions"
-              :panel-z-index="PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX"
-              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">容器网络模式</span>
-            <AppSelect
-              v-model="containerRuntimeForm.containerNetworkMode"
-              aria-label="容器网络模式"
-              :options="containerNetworkModeOptions"
-              :panel-z-index="PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX"
-              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">端口映射</span>
-            <AppSelect
-              v-model="containerRuntimeForm.containerExposeMode"
-              aria-label="端口映射"
-              :options="containerExposeModeOptions"
               :panel-z-index="PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX"
               trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
             />
@@ -228,34 +204,13 @@ watch(() => [props.initialContainerRuntime, props.projectName], () => {
 
           <details class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
             <summary class="cursor-pointer list-none text-xs font-semibold text-muted-foreground">
-              高级配置：手工覆写页面、端口与编排
+              高级配置：手工覆写服务编排与预览入口
             </summary>
             <p class="mt-2 text-[11px] text-muted-foreground">
-              仅在特殊项目需要覆写后端自动生成行为时使用；常规项目无需指定页面路径和端口。
+              常规项目只需要调整 `services / routes / preview`；宿主 IP 和暴露端口由系统内部处理，不再由项目配置声明。
             </p>
 
             <div class="mt-3 grid gap-3 md:grid-cols-2">
-              <label class="block space-y-1">
-                <span class="text-xs font-semibold text-muted-foreground">暴露宿主 IP（可选）</span>
-                <input
-                  v-model="containerRuntimeForm.containerExposeHostIp"
-                  type="text"
-                  class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                  placeholder="例如 127.0.0.1"
-                />
-              </label>
-
-              <label class="block space-y-1">
-                <span class="text-xs font-semibold text-muted-foreground">容器暴露端口（可选）</span>
-                <input
-                  v-model="containerRuntimeForm.containerExposeContainerPort"
-                  type="number"
-                  min="1"
-                  class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                  placeholder="例如 8080"
-                />
-              </label>
-
               <label class="block space-y-1 md:col-span-2">
                 <span class="text-xs font-semibold text-muted-foreground">
                   结构化服务编排配置（JSON）
@@ -264,7 +219,7 @@ watch(() => [props.initialContainerRuntime, props.projectName], () => {
                   v-model="containerRuntimeForm.containerRunnerOrchestration"
                   class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
                   spellcheck="false"
-                  placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;ainative-backend&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-backend&quot;,&#10;      &quot;command&quot;: &quot;GOFLAGS='-p=1' air -c .air.toml&quot;,&#10;      &quot;port&quot;: 8000&#10;    },&#10;    {&#10;      &quot;name&quot;: &quot;ainative-shadow&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-shadow&quot;,&#10;      &quot;command&quot;: &quot;pnpm dev&quot;,&#10;      &quot;port&quot;: 5176&#10;    },&#10;    {&#10;      &quot;name&quot;: &quot;ainative-app&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-app&quot;,&#10;      &quot;command&quot;: &quot;npm run dev:h5:local&quot;,&#10;      &quot;port&quot;: 8200&#10;    }&#10;  ]&#10;}"
+                  placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;ainative-app&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-app&quot;,&#10;      &quot;command&quot;: &quot;npm run dev&quot;,&#10;      &quot;port&quot;: 5173&#10;    }&#10;  ],&#10;  &quot;preview&quot;: {&#10;    &quot;service&quot;: &quot;ainative-app&quot;,&#10;    &quot;path&quot;: &quot;/&quot;&#10;  }&#10;}"
                 />
                 <p class="text-[11px] text-muted-foreground">
                   平台配置是唯一真源；保存后会导出仓库根目录 `ainative.runner.json` 作为本地启动备份。

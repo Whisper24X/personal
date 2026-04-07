@@ -35,6 +35,19 @@ describe('ContainerOrchestrationService', () => {
     deletedAt: null,
   });
 
+  const createPreviewConfig = (path = '/') => ({
+    service: 'ainative-app',
+    path,
+  });
+
+  const createRunnerOrchestration = (
+    previewConfig = createPreviewConfig(),
+  ) => ({
+    resolvePreviewConfig: jest.fn().mockReturnValue(previewConfig),
+    buildProjectRunnerConfigFile: jest.fn().mockReturnValue(null),
+    buildAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -206,9 +219,7 @@ describe('ContainerOrchestrationService', () => {
       runtime: {
         platform: 'linux/amd64',
         networkMode: 'bridge',
-        hostIp: '192.168.50.8',
-        hostPort: 4173,
-        containerPort: 4173,
+        listenPort: 4173,
         startTimeoutMs: 90000,
         resourceLimits: {
           memoryMb: 3072,
@@ -227,9 +238,16 @@ describe('ContainerOrchestrationService', () => {
             port: 9000,
           },
         ],
+        preview: {
+          service: 'backend',
+          path: '/',
+        },
       },
     };
     const runnerOrchestration = {
+      resolvePreviewConfig: jest
+        .fn()
+        .mockReturnValue({ service: 'backend', path: '/' }),
       buildProjectRunnerConfigFile: jest.fn().mockReturnValue(runnerConfig),
       buildAnonymousVolumeMounts: jest
         .fn()
@@ -264,10 +282,6 @@ describe('ContainerOrchestrationService', () => {
       project: createProject({
         containerRuntime: {
           sandboxProfile: 'preview-web',
-          networkMode: 'bridge',
-          exposeLocal: true,
-          exposeHostIp: '192.168.50.8',
-          exposeContainerPort: 4173,
           startTimeoutMs: 90000,
           resourceLimits: {
             memoryMb: 3072,
@@ -397,6 +411,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      createRunnerOrchestration() as never,
     );
     jest
       .spyOn(service as never, 'allocatePublishedPort' as never)
@@ -471,6 +486,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      createRunnerOrchestration() as never,
     );
 
     const result = await service.ensureContainer({
@@ -494,7 +510,7 @@ describe('ContainerOrchestrationService', () => {
           hostIp: '127.0.0.1',
           hostPort: 8080,
           containerPort: 8080,
-          previewAddress: '127.0.0.1:8080',
+          previewUrl: 'http://127.0.0.1:8080',
           networkMode: 'host',
         }),
       }),
@@ -558,6 +574,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      createRunnerOrchestration() as never,
     );
     jest
       .spyOn(service as never, 'allocatePublishedPort' as never)
@@ -578,8 +595,7 @@ describe('ContainerOrchestrationService', () => {
           hostIp: '192.168.50.8',
           hostPort: 38080,
           containerPort: 4173,
-          previewAddress: 'https://preview.example.com:38080',
-          baseUrl: 'https://preview.example.com:38080',
+          previewUrl: 'https://preview.example.com:38080',
           networkMode: 'bridge',
         },
       },
@@ -624,8 +640,7 @@ describe('ContainerOrchestrationService', () => {
       hostIp: '192.168.50.8',
       hostPort: 38080,
       containerPort: 4173,
-      previewAddress: '192.168.50.8:38080',
-      baseUrl: 'http://192.168.50.8:38080',
+      previewUrl: 'http://192.168.50.8:38080',
       networkMode: 'bridge',
     };
     const slotRepository = {
@@ -648,6 +663,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      createRunnerOrchestration() as never,
     );
 
     const result = await service.ensureContainer({
@@ -728,6 +744,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      createRunnerOrchestration() as never,
     );
     const result = await service.ensureContainer({
       task: createTask(TaskStatus.inProgress) as never,
@@ -744,8 +761,7 @@ describe('ContainerOrchestrationService', () => {
           hostIp: '192.168.50.8',
           hostPort: 38080,
           containerPort: 4173,
-          previewAddress: '192.168.50.8:38080',
-          baseUrl: 'http://192.168.50.8:38080',
+          previewUrl: 'http://192.168.50.8:38080',
           networkMode: 'bridge',
         },
       },
@@ -807,6 +823,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      createRunnerOrchestration() as never,
     );
     const loggerWarn = jest
       .spyOn((service as any).logger, 'warn')
@@ -827,8 +844,7 @@ describe('ContainerOrchestrationService', () => {
           hostIp: '127.0.0.1',
           hostPort: 8080,
           containerPort: 8080,
-          previewAddress: '127.0.0.1:8080',
-          baseUrl: 'http://127.0.0.1:8080',
+          previewUrl: 'http://127.0.0.1:8080',
           networkMode: 'host',
         },
       },
@@ -893,6 +909,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      createRunnerOrchestration() as never,
     );
     const loggerWarn = jest
       .spyOn((service as any).logger, 'warn')
@@ -939,6 +956,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      createRunnerOrchestration() as never,
     );
     const loggerLog = jest
       .spyOn((service as any).logger, 'log')

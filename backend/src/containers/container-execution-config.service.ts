@@ -11,10 +11,6 @@ export type RunnerPlatform = string;
 export type ProjectContainerRuntimeConfig = {
   sandboxProfile?: SandboxProfile;
   platform?: string;
-  networkMode?: RunnerNetworkMode;
-  exposeLocal?: boolean;
-  exposeHostIp?: string;
-  exposeContainerPort?: number;
   startTimeoutMs?: number;
   resourceLimits?: {
     memoryMb?: number;
@@ -148,10 +144,7 @@ export class ContainerExecutionConfigService {
   }
 
   getRunnerNetworkMode(project?: Project | null): RunnerNetworkMode {
-    const projectConfig = this.readProjectContainerRuntimeConfig(project);
-    if (projectConfig?.networkMode) {
-      return projectConfig.networkMode;
-    }
+    void project;
 
     const mode = this.configService
       .get<string>('AINATIVE_RUNNER_NETWORK_MODE', { infer: true })
@@ -169,10 +162,7 @@ export class ContainerExecutionConfigService {
   }
 
   getRunnerExposeHostIp(project?: Project | null): string {
-    const projectConfig = this.readProjectContainerRuntimeConfig(project);
-    if (projectConfig?.exposeHostIp) {
-      return projectConfig.exposeHostIp;
-    }
+    void project;
 
     const configured = this.configService
       .get<string>('AINATIVE_RUNNER_EXPOSE_HOST_IP', { infer: true })
@@ -192,10 +182,7 @@ export class ContainerExecutionConfigService {
   }
 
   getRunnerExposeContainerPort(project?: Project | null): number {
-    const projectConfig = this.readProjectContainerRuntimeConfig(project);
-    if (projectConfig?.exposeContainerPort) {
-      return projectConfig.exposeContainerPort;
-    }
+    void project;
 
     return this.readPositiveNumberFromEnv(
       'AINATIVE_RUNNER_EXPOSE_CONTAINER_PORT',
@@ -323,19 +310,6 @@ export class ContainerExecutionConfigService {
 
     const sandboxProfile = this.resolveSandboxProfile(rawConfig.sandboxProfile);
     const platform = this.resolveRunnerPlatform(rawConfig.platform);
-    const networkMode = this.resolveRunnerNetworkMode(rawConfig.networkMode);
-    const exposeLocal =
-      typeof rawConfig.exposeLocal === 'boolean'
-        ? rawConfig.exposeLocal
-        : undefined;
-    const exposeHostIp =
-      typeof rawConfig.exposeHostIp === 'string' &&
-      rawConfig.exposeHostIp.trim()
-        ? rawConfig.exposeHostIp.trim()
-        : undefined;
-    const exposeContainerPort = this.readPositiveNumberFromUnknown(
-      rawConfig.exposeContainerPort,
-    );
     const startTimeoutMs = this.readPositiveNumberFromUnknown(
       rawConfig.startTimeoutMs,
     );
@@ -348,10 +322,6 @@ export class ContainerExecutionConfigService {
     return {
       ...(sandboxProfile ? { sandboxProfile } : {}),
       ...(platform ? { platform } : {}),
-      ...(networkMode ? { networkMode } : {}),
-      ...(exposeLocal !== undefined ? { exposeLocal } : {}),
-      ...(exposeHostIp ? { exposeHostIp } : {}),
-      ...(exposeContainerPort ? { exposeContainerPort } : {}),
       ...(startTimeoutMs ? { startTimeoutMs } : {}),
       ...(resourceLimitsSource
         ? {
@@ -412,13 +382,6 @@ export class ContainerExecutionConfigService {
     }
 
     return normalized;
-  }
-
-  private resolveRunnerNetworkMode(value: unknown): RunnerNetworkMode | null {
-    if (value === 'host' || value === 'bridge') {
-      return value;
-    }
-    return null;
   }
 
   private resolveStringEnv(

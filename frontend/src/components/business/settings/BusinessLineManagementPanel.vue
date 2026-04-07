@@ -551,9 +551,6 @@ const summarizeProjectRuntimeConfig = (project: ProjectItem) => {
   if (containerRuntime?.sandboxProfile) {
     summary.push(`Profile: ${containerRuntime.sandboxProfile}`)
   }
-  if (containerRuntime?.networkMode) {
-    summary.push(`网络: ${containerRuntime.networkMode}`)
-  }
   if (containerRuntime?.resourceLimits?.memoryMb) {
     summary.push(`内存: ${containerRuntime.resourceLimits.memoryMb}MB`)
   }
@@ -562,6 +559,11 @@ const summarizeProjectRuntimeConfig = (project: ProjectItem) => {
   }
   if (Array.isArray(containerRuntime?.runnerOrchestration?.services)) {
     summary.push(`服务: ${containerRuntime.runnerOrchestration.services.length}`)
+  }
+  if (containerRuntime?.runnerOrchestration?.preview?.service) {
+    summary.push(
+      `预览: ${containerRuntime.runnerOrchestration.preview.path || '/'} -> ${containerRuntime.runnerOrchestration.preview.service}`,
+    )
   }
 
   return summary.length > 0 ? summary.join(' · ') : '当前使用默认容器配置'

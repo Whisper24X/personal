@@ -2,8 +2,7 @@ export type SlotAccessMetadata = {
   hostIp: string;
   hostPort: number;
   containerPort: number;
-  previewAddress: string;
-  baseUrl: string;
+  previewUrl: string;
   networkMode: 'host' | 'bridge';
 };
 

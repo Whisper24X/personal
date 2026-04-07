@@ -75,7 +75,11 @@ export class ContainerOrchestrationService
     const { task, project, worktreePath } = params;
     const trackProjectSlot = params.trackProjectSlot !== false;
     const containerName = this.config.resolveContainerName(task);
-    const runtimeExposure = this.resolveRuntimeExposure(project);
+    const previewConfig = this.resolvePreviewConfig(project);
+    const runtimeExposure = this.resolveRuntimeExposure(
+      project,
+      Boolean(previewConfig),
+    );
     const sandboxProfile = this.config.getSandboxProfile(project);
     const runnerPlatform = this.config.getRunnerPlatform(project);
     const readinessProbeUrl = this.config.getRunnerReadinessProbeUrl(project);
@@ -107,16 +111,18 @@ export class ContainerOrchestrationService
           const existingSlot = await this.slotRepository.findByProjectId(
             task.projectId,
           );
-          const existingAccessMetadata =
-            existingSlot?.accessMetadata ??
-            this.buildAccessMetadata({
-              project,
+          const derivedAccessMetadata = this.buildAccessMetadata({
+            project,
+            runtimeExposure,
+            previewConfig,
+            publishedPort: this.selectPublishedPort(
+              existing.publishedPorts,
               runtimeExposure,
-              publishedPort: this.selectPublishedPort(
-                existing.publishedPorts,
-                runtimeExposure,
-              ),
-            });
+            ),
+          });
+          const existingAccessMetadata =
+            derivedAccessMetadata ??
+            (previewConfig ? (existingSlot?.accessMetadata ?? null) : null);
           if (existingAccessMetadata) {
             await this.slotRepository.updateContainerRuntime(task.projectId, {
               containerId: existing.id,
@@ -129,9 +135,11 @@ export class ContainerOrchestrationService
                 containerName,
                 containerId: existing.id,
                 accessMetadata: existingAccessMetadata,
-                source: existingSlot?.accessMetadata
-                  ? 'slot'
-                  : 'container_inspect',
+                source: derivedAccessMetadata
+                  ? 'container_inspect'
+                  : existingSlot?.accessMetadata
+                    ? 'slot'
+                    : 'container_inspect',
               })}`,
             );
           } else {
@@ -139,16 +147,18 @@ export class ContainerOrchestrationService
               task.projectId,
               existing.id,
             );
-            this.logger.warn(
-              `reuse_runner_container_metadata_missing ${JSON.stringify({
-                taskId: task.id,
-                projectId: task.projectId,
-                containerName,
-                containerId: existing.id,
-                runtimeExposure: runtimeExposure ?? null,
-                publishedPorts: existing.publishedPorts,
-              })}`,
-            );
+            if (previewConfig) {
+              this.logger.warn(
+                `reuse_runner_container_metadata_missing ${JSON.stringify({
+                  taskId: task.id,
+                  projectId: task.projectId,
+                  containerName,
+                  containerId: existing.id,
+                  runtimeExposure: runtimeExposure ?? null,
+                  publishedPorts: existing.publishedPorts,
+                })}`,
+              );
+            }
           }
           this.ensureSlotHeartbeat(task.projectId);
         }
@@ -220,6 +230,7 @@ export class ContainerOrchestrationService
           project,
           worktreePath,
           runtimeExposure,
+          previewConfig,
         },
       );
       if (trackProjectSlot) {
@@ -297,15 +308,22 @@ export class ContainerOrchestrationService
       return null;
     }
 
+    const previewConfig = this.resolvePreviewConfig(params.project);
+    const runtimeExposure = this.resolveRuntimeExposure(
+      params.project,
+      Boolean(previewConfig),
+    );
+
     return {
       containerId: inspection.id,
       running: inspection.running,
       accessMetadata: this.buildAccessMetadata({
         project: params.project,
-        runtimeExposure: this.resolveRuntimeExposure(params.project),
+        runtimeExposure,
+        previewConfig,
         publishedPort: this.selectPublishedPort(
           inspection.publishedPorts,
-          this.resolveRuntimeExposure(params.project),
+          runtimeExposure,
         ),
       }),
     };
@@ -482,6 +500,10 @@ export class ContainerOrchestrationService
     project: Project;
     worktreePath: string;
     runtimeExposure: RuntimeExposure;
+    previewConfig: {
+      service: string;
+      path?: string;
+    } | null;
   }): Promise<{
     containerId: string;
     accessMetadata: SlotAccessMetadata | null;
@@ -555,6 +577,7 @@ export class ContainerOrchestrationService
           accessMetadata: this.buildAccessMetadata({
             project: params.project,
             runtimeExposure: params.runtimeExposure,
+            previewConfig: params.previewConfig,
             publishedPort: mapping,
           }),
         };
@@ -575,8 +598,11 @@ export class ContainerOrchestrationService
       : new Error('Failed to start runner container');
   }
 
-  private resolveRuntimeExposure(project: Project): RuntimeExposure {
-    if (!this.config.shouldExposeSandboxPort(project)) {
+  private resolveRuntimeExposure(
+    project: Project,
+    previewEnabled: boolean,
+  ): RuntimeExposure {
+    if (!previewEnabled || !this.config.shouldExposeSandboxPort(project)) {
       return null;
     }
     return {
@@ -609,13 +635,17 @@ export class ContainerOrchestrationService
   private buildAccessMetadata(params: {
     project: Project;
     runtimeExposure: RuntimeExposure;
+    previewConfig: {
+      service: string;
+      path?: string;
+    } | null;
     publishedPort?: {
       hostIp: string;
       hostPort: number;
       containerPort: number;
     };
   }): SlotAccessMetadata | null {
-    if (!params.runtimeExposure) {
+    if (!params.runtimeExposure || !params.previewConfig) {
       return null;
     }
 
@@ -656,6 +686,7 @@ export class ContainerOrchestrationService
       previewBaseUrl,
       hostIp: normalizedHostIp,
       hostPort: normalizedHostPort,
+      previewPath: params.previewConfig.path,
     });
     if (!previewUrl) {
       return null;
@@ -667,8 +698,7 @@ export class ContainerOrchestrationService
       hostIp: normalizedHostIp,
       hostPort: normalizedHostPort,
       containerPort: normalizedContainerPort,
-      previewAddress: previewUrl.previewAddress,
-      baseUrl: previewUrl.baseUrl,
+      previewUrl: previewUrl.previewUrl,
       networkMode,
     };
   }
@@ -784,6 +814,10 @@ export class ContainerOrchestrationService
       normalized.includes('port is already allocated') ||
       normalized.includes('address already in use')
     );
+  }
+
+  private resolvePreviewConfig(project: Project) {
+    return this.runnerOrchestration?.resolvePreviewConfig(project) ?? null;
   }
 }
 

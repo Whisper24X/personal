@@ -10,6 +10,7 @@ import {
   ProjectRunnerConfigFile,
   RunnerNamedVolumeConfig,
   RunnerOrchestrationConfig,
+  RunnerPreviewConfig,
   RunnerRouteConfig,
   RunnerServiceConfig,
 } from './runner-orchestration.types';
@@ -53,6 +54,10 @@ export class RunnerOrchestrationService {
     );
   }
 
+  resolvePreviewConfig(project?: Project | null): RunnerPreviewConfig | null {
+    return this.buildEffectiveOrchestration(project)?.preview ?? null;
+  }
+
   buildProjectRunnerConfigFile(
     project: Project,
   ): ProjectRunnerConfigFile | null {
@@ -80,10 +85,7 @@ export class RunnerOrchestrationService {
       runtime: {
         ...(runnerPlatform ? { platform: runnerPlatform } : {}),
         networkMode: this.containerConfig.getRunnerNetworkMode(project),
-        hostIp: this.containerConfig.getRunnerExposeHostIp(project),
-        hostPort: this.containerConfig.getRunnerExposeContainerPort(project),
-        containerPort:
-          this.containerConfig.getRunnerExposeContainerPort(project),
+        listenPort: this.containerConfig.getRunnerExposeContainerPort(project),
         startTimeoutMs: this.containerConfig.getRunnerStartTimeoutMs(project),
         resourceLimits: this.containerConfig.resourceLimitsForProfile(project),
         env: this.containerConfig.getRunnerEnv(project),
@@ -274,6 +276,10 @@ export class RunnerOrchestrationService {
             },
           ],
         },
+        preview: {
+          service: 'ainative-app',
+          path: '/',
+        },
       };
     }
 
@@ -322,12 +328,17 @@ export class RunnerOrchestrationService {
           )
           .filter((value): value is RunnerNamedVolumeConfig => value !== null)
       : [];
+    const preview = this.normalizePreview(
+      this.toObjectRecord(input.preview),
+      new Set(services.map((service) => service.name)),
+    );
 
     return {
       services,
       ...(routes.length ? { routes } : {}),
       ...(homepage ? { homepage } : {}),
       ...(sharedVolumes.length ? { sharedVolumes } : {}),
+      ...(preview ? { preview } : {}),
     };
   }
 
@@ -477,6 +488,35 @@ export class RunnerOrchestrationService {
     }
 
     return { name, target };
+  }
+
+  private normalizePreview(
+    input: Record<string, unknown> | null,
+    serviceNames: Set<string>,
+  ): RunnerPreviewConfig | null {
+    if (!input) {
+      return null;
+    }
+
+    const service = this.readNonEmptyString(input.service);
+    if (!service || !serviceNames.has(service)) {
+      return null;
+    }
+
+    const pathValue = this.normalizePreviewPath(input.path);
+    return {
+      service,
+      ...(pathValue ? { path: pathValue } : {}),
+    };
+  }
+
+  private normalizePreviewPath(value: unknown): string | null {
+    const pathValue = this.readNonEmptyString(value);
+    if (!pathValue) {
+      return null;
+    }
+
+    return pathValue.startsWith('/') ? pathValue : `/${pathValue}`;
   }
 
   private mergeSharedVolumes(

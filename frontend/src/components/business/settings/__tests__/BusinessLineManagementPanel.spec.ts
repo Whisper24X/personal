@@ -447,7 +447,6 @@ describe('BusinessLineManagementPanel', () => {
     runtimeSettingsModal.vm.$emit('submit', {
       containerRuntime: {
         sandboxProfile: 'preview-web',
-        networkMode: 'bridge',
       },
     })
     await flushPromises()
@@ -460,7 +459,6 @@ describe('BusinessLineManagementPanel', () => {
       configJson: {
         containerRuntime: {
           sandboxProfile: 'preview-web',
-          networkMode: 'bridge',
         },
       },
     })
