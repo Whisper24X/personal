@@ -11,12 +11,12 @@ import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { AgentCliAdapterRegistry } from '../agent-cli/agent-cli-adapter.registry';
-import { AgentRunnerService } from '../agent-runner.service';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
+import { RunnerAgentExecutionService } from '../runner-agent-execution.service';
 import { TaskGitService } from '../task-git.service';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskConfigResolverService } from './task-config-resolver.service';
@@ -41,7 +41,7 @@ export class TaskNodeExecutionService {
     private readonly taskRepository: TaskRepository,
     private readonly taskNodeRepository: TaskNodeRepository,
     private readonly taskRuntimeService: TaskRuntimeService,
-    private readonly agentRunnerService: AgentRunnerService,
+    private readonly runnerAgentExecutionService: RunnerAgentExecutionService,
     private readonly taskConfigResolver: TaskConfigResolverService,
     private readonly taskOutputService: TaskOutputService,
     private readonly taskLogService: TaskLogService,
@@ -305,62 +305,63 @@ export class TaskNodeExecutionService {
       });
     }
 
-    const executionResult = await this.agentRunnerService.executeAgentNode({
-      task,
-      node,
-      project,
-      containerExecRef,
-      runtimeContext: runtimeContext
-        ? {
-            gitBranch: runtimeContext.gitBranch,
-            gitBaseBranch: runtimeContext.gitBaseBranch,
-            gitWorktree: runtimeContext.gitWorktree,
-            gitWorktreePath: runtimeContext.worktreePath,
-          }
-        : undefined,
-      callbacks: {
-        onPrepared: async ({ adapter, prompt, preparedAt }) => {
-          await this.appendPreExecutionOutputRecords({
-            task,
-            node,
-            adapter,
-            prompt,
-            preparedAt,
-          });
-        },
-        onStdoutLine: (line) => {
-          streamedStdoutLineCount += 1;
-          const lineIndex = streamedStdoutLineCount;
-          streamPersistQueue = streamPersistQueue.then(async () => {
-            persistedStdoutJsonlLineCount +=
+    const executionResult =
+      await this.runnerAgentExecutionService.executeAgentNode({
+        task,
+        node,
+        project,
+        containerExecRef,
+        runtimeContext: runtimeContext
+          ? {
+              gitBranch: runtimeContext.gitBranch,
+              gitBaseBranch: runtimeContext.gitBaseBranch,
+              gitWorktree: runtimeContext.gitWorktree,
+              gitWorktreePath: runtimeContext.worktreePath,
+            }
+          : undefined,
+        callbacks: {
+          onPrepared: async ({ adapter, prompt, preparedAt }) => {
+            await this.appendPreExecutionOutputRecords({
+              task,
+              node,
+              adapter,
+              prompt,
+              preparedAt,
+            });
+          },
+          onStdoutLine: (line) => {
+            streamedStdoutLineCount += 1;
+            const lineIndex = streamedStdoutLineCount;
+            streamPersistQueue = streamPersistQueue.then(async () => {
+              persistedStdoutJsonlLineCount +=
+                await this.persistAgentCliStreamLine({
+                  taskId,
+                  nodeId,
+                  task,
+                  node,
+                  stream: 'stdout',
+                  line,
+                  lineIndex,
+                });
+            });
+          },
+          onStderrLine: (line) => {
+            streamedStderrLineCount += 1;
+            const lineIndex = streamedStderrLineCount;
+            streamPersistQueue = streamPersistQueue.then(async () => {
               await this.persistAgentCliStreamLine({
                 taskId,
                 nodeId,
                 task,
                 node,
-                stream: 'stdout',
+                stream: 'stderr',
                 line,
                 lineIndex,
               });
-          });
-        },
-        onStderrLine: (line) => {
-          streamedStderrLineCount += 1;
-          const lineIndex = streamedStderrLineCount;
-          streamPersistQueue = streamPersistQueue.then(async () => {
-            await this.persistAgentCliStreamLine({
-              taskId,
-              nodeId,
-              task,
-              node,
-              stream: 'stderr',
-              line,
-              lineIndex,
             });
-          });
+          },
         },
-      },
-    });
+      });
 
     await streamPersistQueue;
 
@@ -529,7 +530,7 @@ export class TaskNodeExecutionService {
         const latestNode = await this.taskNodeRepository.findById(nodeId);
 
         if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
-          this.agentRunnerService.interruptExecution(nodeId);
+          this.runnerAgentExecutionService.interruptExecution(nodeId);
           stopped = true;
           clearInterval(watcherTimer);
         }

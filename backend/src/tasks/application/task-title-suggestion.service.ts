@@ -1,21 +1,15 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { Injectable, Logger } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { ProjectsService } from '../../projects/projects.service';
-import { WorkflowTemplatesService } from '../../workflow-templates/workflow-templates.service';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
-import { TaskMode } from '../dto/task-mode.enum';
-import { TaskStatus } from '../dto/task-status.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
-import { AgentRunnerService } from '../agent-runner.service';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
-import { TaskConfigResolverService } from './task-config-resolver.service';
+import { ControlPlaneAgentExecutionService } from '../control-plane-agent-execution.service';
 import { TaskLogService } from './task-log.service';
 import { TaskAccessService } from './task-access.service';
-import { SuggestTaskTitleResponseDto } from '../dto/suggest-task-title.dto';
 import {
   MAX_TASK_TITLE_DB,
   initialTitleFromPrompt,
@@ -29,108 +23,12 @@ export class TaskTitleSuggestionService {
 
   constructor(
     private readonly projectsService: ProjectsService,
-    private readonly workflowTemplatesService: WorkflowTemplatesService,
-    private readonly taskConfigResolver: TaskConfigResolverService,
-    private readonly agentRunnerService: AgentRunnerService,
+    private readonly controlPlaneAgentExecutionService: ControlPlaneAgentExecutionService,
     private readonly taskRepository: TaskRepository,
     private readonly taskNodeRepository: TaskNodeRepository,
     private readonly taskLogService: TaskLogService,
     private readonly taskAccessService: TaskAccessService,
   ) {}
-
-  async suggestTitle(
-    currentUser: JwtPayloadType,
-    input: {
-      projectId: string;
-      mode: TaskMode;
-      prompt: string;
-      agentCliId?: string;
-      agentCliConfigId?: string;
-      workflowTemplateId?: string;
-    },
-  ): Promise<SuggestTaskTitleResponseDto> {
-    const project = await this.projectsService.assertProjectCapability(
-      input.projectId,
-      currentUser,
-      'project.task.read',
-    );
-
-    const prompt = input.prompt.trim();
-    if (!prompt) {
-      throw new BadRequestException('prompt is required');
-    }
-
-    const clampedPrompt =
-      prompt.length > MAX_PROMPT_IN_PROMPT
-        ? `${prompt.slice(0, MAX_PROMPT_IN_PROMPT)}…`
-        : prompt;
-
-    const { agentCliId, agentCliConfigId } = await this.resolveTargetAgents(
-      project,
-      input,
-    );
-
-    const now = new Date();
-    const taskId = randomUUID();
-    const nodeId = randomUUID();
-
-    const syntheticTask: Task = {
-      id: taskId,
-      projectId: project.id,
-      businessLineId: project.businessLineId,
-      mode: input.mode,
-      title: '—',
-      prompt: clampedPrompt,
-      status: TaskStatus.todo,
-      gitBranch: null,
-      gitBaseBranch: null,
-      gitWorktree: null,
-      configJson:
-        input.mode === TaskMode.workflow
-          ? {
-              workflowTemplateId: input.workflowTemplateId ?? undefined,
-            }
-          : {
-              agentCliId,
-              agentCliConfigId,
-            },
-      createdBy: currentUser.sub,
-      startedAt: null,
-      finishedAt: null,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-    };
-
-    const syntheticNode: TaskNode = {
-      id: nodeId,
-      taskId,
-      nodeOrder: 1,
-      name: 'title-suggestion',
-      input: {},
-      agentClioutput: null,
-      agentCliSessionId: null,
-      agentCliId,
-      agentCliConfigId,
-      configJson: null,
-      loopJson: null,
-      runtimeJson: null,
-      status: TaskStatus.todo,
-      startedAt: null,
-      finishedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    const title = await this.generateTitleFromClampedPrompt(
-      project,
-      syntheticTask,
-      syntheticNode,
-      clampedPrompt,
-    );
-
-    return { title };
-  }
 
   /**
    * 创建任务成功后异步生成标题并写库；失败仅打日志，不抛错。
@@ -212,18 +110,20 @@ export class TaskTitleSuggestionService {
 
     let result;
     try {
-      result = await this.agentRunnerService.runWithCustomPrompt({
-        task,
-        node,
-        project,
-        prompt: llmPrompt,
-      });
+      result = await this.controlPlaneAgentExecutionService.executeCustomPrompt(
+        {
+          task,
+          node,
+          project,
+          prompt: llmPrompt,
+        },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        this.isRunnerUnavailableError(message)
-          ? `task_title_suggest_runner_unavailable ${message}`
-          : `task_title_suggest_runner_error ${message}`,
+        this.isExecutionUnavailableError(message)
+          ? `task_title_suggest_execution_unavailable ${message}`
+          : `task_title_suggest_execution_error ${message}`,
       );
       return this.fallbackTitle(clampedPrompt);
     }
@@ -232,9 +132,9 @@ export class TaskTitleSuggestionService {
       const diagnostic =
         `${result.errorMessage ?? ''} ${result.stderr.slice(0, 400)}`.trim();
       this.logger.warn(
-        this.isRunnerUnavailableError(diagnostic)
-          ? `task_title_suggest_runner_unavailable ${diagnostic}`
-          : `task_title_suggest_runner_failed exit=${result.exitCode} stderr=${result.stderr.slice(0, 400)}`,
+        this.isExecutionUnavailableError(diagnostic)
+          ? `task_title_suggest_execution_unavailable ${diagnostic}`
+          : `task_title_suggest_execution_failed exit=${result.exitCode} stderr=${result.stderr.slice(0, 400)}`,
       );
       return this.fallbackTitle(clampedPrompt);
     }
@@ -243,74 +143,13 @@ export class TaskTitleSuggestionService {
     return parsed ? this.clipTitle(parsed) : this.fallbackTitle(clampedPrompt);
   }
 
-  private isRunnerUnavailableError(message: string): boolean {
+  private isExecutionUnavailableError(message: string): boolean {
     return (
       message.includes('requires docker exec handoff') ||
-      message.includes('runnable task container')
+      message.includes('runnable task container') ||
+      message.includes('not found') ||
+      message.includes('ENOENT')
     );
-  }
-
-  private async resolveTargetAgents(
-    project: Project,
-    input: {
-      mode: TaskMode;
-      agentCliId?: string;
-      agentCliConfigId?: string;
-      workflowTemplateId?: string;
-    },
-  ): Promise<{ agentCliId: string; agentCliConfigId: string }> {
-    if (input.mode === TaskMode.conversation) {
-      const agentCliId = input.agentCliId?.trim();
-      const agentCliConfigId = input.agentCliConfigId?.trim();
-      if (!agentCliId || !agentCliConfigId) {
-        throw new BadRequestException(
-          'Conversation mode requires agentCliId and agentCliConfigId',
-        );
-      }
-      return { agentCliId, agentCliConfigId };
-    }
-
-    const workflowTemplateId = input.workflowTemplateId?.trim();
-    if (!workflowTemplateId) {
-      throw new BadRequestException(
-        'Workflow mode requires workflowTemplateId',
-      );
-    }
-
-    const template = await this.workflowTemplatesService.getTemplateForTask({
-      templateId: workflowTemplateId,
-      projectId: project.id,
-      projectBusinessLineId: project.businessLineId,
-    });
-
-    this.taskConfigResolver.ensureTemplateNodesSupported(template.nodesJson);
-
-    const sorted = [...template.nodesJson].sort(
-      (left, right) => left.nodeOrder - right.nodeOrder,
-    );
-    const first = sorted[0];
-    if (!first) {
-      throw new BadRequestException('Workflow template has no nodes');
-    }
-
-    const taskConfig = this.taskConfigResolver.mergeTaskConfig(
-      null,
-      this.taskConfigResolver.toObjectRecord({
-        workflowTemplateId,
-      }),
-    );
-    const defaultNodeExecution =
-      this.taskConfigResolver.readNodeExecutionConfig(taskConfig);
-    const nodeExecution =
-      this.taskConfigResolver.resolveRequiredNodeExecutionConfig(
-        first.input,
-        defaultNodeExecution,
-      );
-
-    return {
-      agentCliId: nodeExecution.agentCliId,
-      agentCliConfigId: nodeExecution.agentCliConfigId,
-    };
   }
 
   private parseTitleFromStdout(stdout: string): string | null {

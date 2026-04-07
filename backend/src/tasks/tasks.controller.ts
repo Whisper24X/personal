@@ -19,7 +19,6 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiBody,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -78,11 +77,6 @@ import { ListWorktreeFilesDto } from './dto/list-worktree-files.dto';
 import { TaskWorkspaceService } from './task-workspace.service';
 import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
-import {
-  SuggestTaskTitleRequestDto,
-  SuggestTaskTitleResponseDto,
-} from './dto/suggest-task-title.dto';
-import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
 import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
 import { TaskEnvironmentDto } from './dto/task-environment.dto';
 
@@ -99,20 +93,8 @@ export class TasksController {
     private readonly taskWorkspaceService: TaskWorkspaceService,
     private readonly taskGitService: TaskGitService,
     private readonly taskTerminalService: TaskTerminalService,
-    private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
   ) {}
-
-  @Post('suggest-title')
-  @ApiBody({ type: SuggestTaskTitleRequestDto })
-  @ApiOkResponse({ type: SuggestTaskTitleResponseDto })
-  @HttpCode(HttpStatus.OK)
-  suggestTaskTitle(
-    @Request() request,
-    @Body() body: SuggestTaskTitleRequestDto,
-  ): Promise<SuggestTaskTitleResponseDto> {
-    return this.taskTitleSuggestionService.suggestTitle(request.user, body);
-  }
 
   @Post()
   @ApiCreatedResponse({ type: Task })

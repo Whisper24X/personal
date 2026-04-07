@@ -8,13 +8,16 @@ import { WorkflowTemplatesModule } from '../workflow-templates/workflow-template
 import { TaskLogEventsService } from './task-log-events.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TaskRuntimeService } from './task-runtime.service';
-import { AgentRunnerService } from './agent-runner.service';
 import { RelationalBusinessLinePersistenceModule } from '../business-lines/infrastructure/persistence/relational/relational-persistence.module';
 import { TaskWorkspaceService } from './task-workspace.service';
 import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
 import { TerminalGateway } from './terminal.gateway';
 import { PromptTemplateService } from './prompt-template.service';
+import { AgentExecutionConfigResolverService } from './agent-execution-config-resolver.service';
+import { ControlPlaneAgentExecutionService } from './control-plane-agent-execution.service';
+import { LocalProcessLauncherService } from './local-process-launcher.service';
+import { RunnerAgentExecutionService } from './runner-agent-execution.service';
 import { TaskConfigResolverService } from './application/task-config-resolver.service';
 import { TaskOutputService } from './application/task-output.service';
 import { TaskLogService } from './application/task-log.service';
@@ -50,8 +53,11 @@ import { TaskEnvironmentService } from './application/task-environment.service';
     TasksService,
     TaskLogEventsService,
     TaskRuntimeService,
-    AgentRunnerService,
     PromptTemplateService,
+    AgentExecutionConfigResolverService,
+    LocalProcessLauncherService,
+    ControlPlaneAgentExecutionService,
+    RunnerAgentExecutionService,
     TaskWorkspaceService,
     TaskGitService,
     TaskTerminalService,
@@ -76,7 +82,8 @@ import { TaskEnvironmentService } from './application/task-environment.service';
   exports: [
     TasksService,
     TaskRuntimeService,
-    AgentRunnerService,
+    ControlPlaneAgentExecutionService,
+    RunnerAgentExecutionService,
     RelationalTaskPersistenceModule,
   ],
 })

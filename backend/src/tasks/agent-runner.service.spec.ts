@@ -2157,7 +2157,7 @@ describe('AgentRunnerService', () => {
     childProcess.kill = jest.fn().mockReturnValue(true);
 
     const launcher = {
-      spawnViaDockerExec: jest.fn().mockReturnValue(childProcess),
+      spawn: jest.fn().mockReturnValue(childProcess),
     };
     const containerExecutionConfig = {
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
@@ -2310,11 +2310,11 @@ describe('AgentRunnerService', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorMessage).toContain(
-      'Docker execution requires docker exec handoff',
+      'Runner execution requires docker exec handoff',
     );
     expect(result.errorMessage).toContain('containerExecRef is missing');
     expect(result.errorMessage).toContain(
-      'AgentProcessLauncherService is unavailable',
+      'DockerExecProcessLauncherService is unavailable',
     );
     expect(spawnMock).not.toHaveBeenCalled();
   });
@@ -2333,7 +2333,7 @@ describe('AgentRunnerService', () => {
     childProcess.kill = jest.fn().mockReturnValue(true);
 
     const launcher = {
-      spawnViaDockerExec: jest.fn().mockReturnValue(childProcess),
+      spawn: jest.fn().mockReturnValue(childProcess),
     };
     const containerExecutionConfig = {
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
@@ -2381,7 +2381,7 @@ describe('AgentRunnerService', () => {
       exitCode: 0,
       sessionId: 'session-1',
     });
-    expect(launcher.spawnViaDockerExec).toHaveBeenCalledWith(
+    expect(launcher.spawn).toHaveBeenCalledWith(
       expect.objectContaining({
         containerRef: 'container-123',
         command: 'codex',

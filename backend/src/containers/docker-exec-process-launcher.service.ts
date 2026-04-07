@@ -2,12 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ChildProcess, spawn } from 'child_process';
 
 @Injectable()
-export class AgentProcessLauncherService {
-  /**
-   * Run a command inside the task runner container; returns the docker exec child process
-   * (same shape as a direct CLI spawn) so AgentRunnerService can reuse stream/interrupt logic.
-   */
-  spawnViaDockerExec(params: {
+export class DockerExecProcessLauncherService {
+  spawn(params: {
     containerRef: string;
     command: string;
     args: string[];

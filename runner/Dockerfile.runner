@@ -142,7 +142,8 @@ RUN bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash' \
 
 
 # Go 编译的 CLI（OpenCode、Codex）依赖系统 CA 证书，需显式指定路径
-ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}" \
+    SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 
 # ============================================================
 # 配置文件 & 入口脚本

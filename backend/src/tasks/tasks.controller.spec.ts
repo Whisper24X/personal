@@ -42,9 +42,6 @@ describe('TasksController', () => {
       stopSession: jest.fn(),
       openSessionStream: jest.fn(),
     };
-    const taskTitleSuggestionService = {
-      suggestTitle: jest.fn(),
-    };
     const taskWorkspaceWatchService = {
       subscribe: jest.fn().mockReturnValue(() => undefined),
     };
@@ -54,7 +51,6 @@ describe('TasksController', () => {
       taskWorkspaceService as never,
       taskGitService as never,
       taskTerminalService as never,
-      taskTitleSuggestionService as never,
       taskWorkspaceWatchService as never,
     );
     const observable = await controller.stream(
@@ -121,9 +117,6 @@ describe('TasksController', () => {
       stopSession: jest.fn(),
       openSessionStream: jest.fn(),
     };
-    const taskTitleSuggestionService = {
-      suggestTitle: jest.fn(),
-    };
     const taskWorkspaceWatchService = {
       subscribe: jest.fn().mockImplementation((_taskId, listener) => {
         listener({
@@ -142,7 +135,6 @@ describe('TasksController', () => {
       taskWorkspaceService as never,
       taskGitService as never,
       taskTerminalService as never,
-      taskTitleSuggestionService as never,
       taskWorkspaceWatchService as never,
     );
 

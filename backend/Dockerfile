@@ -72,7 +72,8 @@ RUN bash -o pipefail -c 'curl -fsSL https://opencode.ai/install | bash' \
 RUN bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash' \
     || echo "WARN: Cursor CLI install failed or unavailable for this platform; docker mode cursor-agent steps need a working agent binary."
 
-ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}" \
+    SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 
 WORKDIR /usr/src/app
 

@@ -1,3 +1,4 @@
+import { spawn } from 'child_process';
 import { createReadStream, existsSync } from 'fs';
 import {
   BadRequestException,
@@ -12,7 +13,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { QueryFailedError } from 'typeorm';
-import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -43,7 +43,7 @@ import { UsersService } from '../users/users.service';
 import { ProjectMemberRole } from './dto/project-member-role.enum';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
-import { AgentRunnerService } from '../tasks/agent-runner.service';
+import { ControlPlaneAgentExecutionService } from '../tasks/control-plane-agent-execution.service';
 import { AccessService } from '../access/access.service';
 import { ProjectCustomRoleRepository } from './infrastructure/persistence/project-custom-role.repository';
 import { ProjectCustomRole } from './domain/project-custom-role';
@@ -96,8 +96,8 @@ export class ProjectsService {
     private readonly workflowTemplateRepository: WorkflowTemplateRepository,
     private readonly accessService: AccessService,
     private readonly configService: ConfigService = new ConfigService(),
-    @Inject(forwardRef(() => AgentRunnerService))
-    private readonly agentRunnerService: AgentRunnerService,
+    @Inject(forwardRef(() => ControlPlaneAgentExecutionService))
+    private readonly controlPlaneAgentExecutionService: ControlPlaneAgentExecutionService,
     private readonly runnerOrchestration?: RunnerOrchestrationService,
   ) {}
 
@@ -2079,73 +2079,30 @@ export class ProjectsService {
     prompt: string;
     onChunk?: (chunk: string) => void;
   }): Promise<{ success: boolean; stdout: string; stderr: string }> {
-    const projectConfig =
-      project.configJson && typeof project.configJson === 'object'
-        ? (project.configJson as Record<string, unknown>)
-        : {};
-    const adapter =
-      typeof projectConfig.agentAdapter === 'string'
-        ? projectConfig.agentAdapter.trim().toLowerCase()
-        : 'codex';
-
-    const command =
-      typeof process.env.AINATIVE_CODEX_RUNNER_COMMAND === 'string' &&
-      process.env.AINATIVE_CODEX_RUNNER_COMMAND.trim()
-        ? process.env.AINATIVE_CODEX_RUNNER_COMMAND.trim()
-        : adapter === 'cursor'
-          ? 'agent'
-          : 'codex';
-    const args =
-      adapter === 'cursor'
-        ? ['-p', '--trust', '--force', prompt]
-        : ['exec', '--skip-git-repo-check', '-'];
-
-    return new Promise((resolve) => {
-      const child = spawn(command, args, {
-        cwd: repositoryRoot,
-        env: process.env,
-        stdio: 'pipe',
+    const result =
+      await this.controlPlaneAgentExecutionService.executeProjectPrompt({
+        project,
+        repositoryRoot,
+        prompt,
+        callbacks: onChunk
+          ? {
+              onStdoutChunk: onChunk,
+            }
+          : undefined,
       });
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout?.on('data', (chunk) => {
-        const text = chunk.toString('utf-8');
-        stdout += text;
-        onChunk?.(text);
-      });
-      child.stderr?.on('data', (chunk) => {
-        stderr += chunk.toString('utf-8');
-      });
-
-      child.on('error', (error) => {
-        resolve({
-          success: false,
-          stdout: '',
-          stderr: error.message,
-        });
-      });
-
-      if (adapter !== 'cursor') {
-        child.stdin?.write(prompt);
-        child.stdin?.end();
-      }
-
-      child.on('close', (code) => {
-        resolve({
-          success: code === 0,
-          stdout: stdout.trim(),
-          stderr: stderr.trim() || `Agent exit code ${code ?? 'null'}`,
-        });
-      });
-    });
+    return {
+      success: result.success,
+      stdout: result.stdout.trim(),
+      stderr:
+        [result.stderr, result.errorMessage]
+          .filter(Boolean)
+          .join('\n')
+          .trim() || '',
+    };
   }
 
   /**
-   * 在已就绪的项目仓库上下文中执行 Agent。
-   * 若同时传入 agentCliId + agentCliConfigId，则与对话任务节点一致走 AgentRunner（业务线工具配置、api key 等）；
-   * 否则回退为项目级 agentAdapter 的 codex/cursor spawn（与知识问答相同）。
+   * 在已就绪的项目仓库上下文中执行控制面 Agent。
    */
   async executeProjectAgentPrompt(
     projectId: Project['id'],
@@ -2166,13 +2123,14 @@ export class ProjectsService {
     const cliConfigId = options?.agentCliConfigId?.trim();
 
     if (cliId && cliConfigId) {
-      const agentResult = await this.agentRunnerService.executeGoalPrompt({
-        project,
-        repositoryRoot,
-        prompt,
-        agentCliId: cliId,
-        agentCliConfigId: cliConfigId,
-      });
+      const agentResult =
+        await this.controlPlaneAgentExecutionService.executeProjectPrompt({
+          project,
+          repositoryRoot,
+          prompt,
+          agentCliId: cliId,
+          agentCliConfigId: cliConfigId,
+        });
       const stderr =
         [agentResult.stderr, agentResult.errorMessage]
           .filter(Boolean)

@@ -92,8 +92,8 @@ const createProjectsService = () => {
     }),
   };
 
-  const agentRunnerService = {
-    executeGoalPrompt: jest.fn(),
+  const controlPlaneAgentExecutionService = {
+    executeProjectPrompt: jest.fn(),
   };
 
   const service = new ProjectsService(
@@ -107,7 +107,7 @@ const createProjectsService = () => {
     workflowTemplateRepository as never,
     accessService as never,
     configService as never,
-    agentRunnerService as never,
+    controlPlaneAgentExecutionService as never,
   );
 
   return {
@@ -120,7 +120,7 @@ const createProjectsService = () => {
     projectCustomRoleRepository,
     workflowTemplateRepository,
     accessService,
-    agentRunnerService,
+    controlPlaneAgentExecutionService,
   };
 };
 
