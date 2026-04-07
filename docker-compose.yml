@@ -60,7 +60,7 @@ services:
       # 任务容器通过宿主机 docker.sock 再次做 bind mount，需要宿主机绝对路径。
       AINATIVE_DATA_ROOT_DIR: ${PWD}/tmp
       GITLAB_USERNAME: ${GITLAB_USERNAME:-oauth2}
-      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-7euWM1mwZw2C3P6FQ_l9Z286MQp1OjlnCA.01.0y1txlsoy}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./tmp:/usr/src/tmp

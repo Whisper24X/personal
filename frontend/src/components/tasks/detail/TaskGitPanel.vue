@@ -820,7 +820,7 @@ watch(fullscreenOpen, async (open) => {
         </aside>
 
         <section class="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div class="min-h-0 flex-1 overflow-hidden p-3">
+          <div class="min-h-0 flex-1 overflow-hidden">
             <section
               class="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-background"
             >
