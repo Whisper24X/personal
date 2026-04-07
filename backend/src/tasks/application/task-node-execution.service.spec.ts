@@ -82,7 +82,7 @@ const createNode = (status: TaskStatus): TaskNode => ({
 });
 
 const containerOrchestrationStub = {
-  ensureContainer: jest.fn().mockResolvedValue(null),
+  ensureContainer: jest.fn().mockResolvedValue({ containerId: 'container-1' }),
   onNodeFinished: jest.fn().mockResolvedValue(undefined),
 };
 
@@ -418,7 +418,9 @@ describe('TaskNodeExecutionService', () => {
       }),
     };
     const containerOrchestrationStub = {
-      ensureContainer: jest.fn().mockResolvedValue(null),
+      ensureContainer: jest
+        .fn()
+        .mockResolvedValue({ containerId: 'container-1' }),
     };
 
     const service = new TaskNodeExecutionService(
@@ -543,7 +545,9 @@ describe('TaskNodeExecutionService', () => {
       }),
     };
     const containerOrchestrationStub = {
-      ensureContainer: jest.fn().mockResolvedValue(null),
+      ensureContainer: jest
+        .fn()
+        .mockResolvedValue({ containerId: 'container-1' }),
     };
 
     const service = new TaskNodeExecutionService(
@@ -660,7 +664,9 @@ describe('TaskNodeExecutionService', () => {
         .mockRejectedValue(new Error('git commit failed')),
     };
     const containerOrchestrationStub = {
-      ensureContainer: jest.fn().mockResolvedValue(null),
+      ensureContainer: jest
+        .fn()
+        .mockResolvedValue({ containerId: 'container-1' }),
     };
 
     const service = new TaskNodeExecutionService(
@@ -1374,6 +1380,8 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
+      undefined,
       undefined,
       undefined,
       notificationsService as never,
@@ -1632,7 +1640,7 @@ describe('TaskNodeExecutionService', () => {
     );
   });
 
-  it('should fail before agent launch when strict docker handoff has no container ref', async () => {
+  it('should fail before agent launch when docker handoff has no container ref', async () => {
     jest.useFakeTimers();
 
     const task = createTask();
@@ -1682,12 +1690,10 @@ describe('TaskNodeExecutionService', () => {
       createRuntimeTaskSnapshot: jest.fn().mockImplementation(() => task),
     };
     const containerOrchestration = {
-      ensureContainer: jest.fn().mockResolvedValue(null),
+      ensureContainer: jest.fn().mockResolvedValue({}),
       onNodeFinished: jest.fn().mockResolvedValue(undefined),
     };
     const containerExecutionConfig = {
-      isDockerMode: jest.fn().mockReturnValue(true),
-      isStrictMode: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
     };
 
@@ -1721,7 +1727,7 @@ describe('TaskNodeExecutionService', () => {
         taskId: task.id,
         taskNodeId: runningNode.id,
         level: TaskLogLevel.error,
-        message: 'Strict Docker handoff failed before agent launch',
+        message: 'Docker handoff failed before agent launch',
         payload: expect.objectContaining({
           containerName: 'ainative-task-task-1',
           worktreePath: '/tmp/worktrees/wk-task-1',
@@ -1732,7 +1738,7 @@ describe('TaskNodeExecutionService', () => {
       expect.objectContaining({
         output: expect.objectContaining({
           summary: expect.stringContaining(
-            'Strict Docker orchestration did not provide a runnable task container',
+            'Docker orchestration did not provide a runnable task container',
           ),
         }),
       }),

@@ -14,7 +14,6 @@ import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskLogService } from './task-log.service';
-import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 
 @Injectable()
@@ -24,7 +23,6 @@ export class TaskStatusService {
     private readonly taskNodeRepository: TaskNodeRepository,
     private readonly notificationsService: NotificationsService,
     private readonly taskLogService: TaskLogService,
-    private readonly containerExecutionConfig: ContainerExecutionConfigService,
     private readonly containerOrchestration: ContainerOrchestrationService,
     @Inject(forwardRef(() => GoalsService))
     private readonly goalsService: GoalsService,
@@ -115,10 +113,7 @@ export class TaskStatusService {
     gitWorktree: string | null | undefined,
     status: TaskStatus,
   ): Promise<void> {
-    if (
-      this.containerExecutionConfig.isDockerMode() &&
-      status === TaskStatus.done
-    ) {
+    if (status === TaskStatus.done) {
       const task = await this.taskRepository.findById(taskId);
       if (task) {
         await this.containerOrchestration.removeContainerForTask(

@@ -1,7 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess } from 'child_process';
 import path from 'path';
 import { AgentToolConfig } from '../business-lines/domain/agent-tool-config';
 import { AgentToolConfigRepository } from '../business-lines/infrastructure/persistence/agent-tool-config.repository';
@@ -132,7 +132,7 @@ export class AgentRunnerService {
     project: Project;
     runtimeContext?: PromptTemplateRuntimeContext;
     callbacks?: AgentRunnerStreamCallbacks;
-    /** Docker container id or name for `docker exec`; host mode ignores */
+    /** Docker container id or name for `docker exec` */
     containerExecRef?: string;
   }): Promise<AgentRunnerResult> {
     const executionContext = {
@@ -1559,10 +1559,7 @@ export class AgentRunnerService {
   private async resolveContainerExecRefForTask(
     task: Task,
   ): Promise<string | null> {
-    if (!this.containerExecutionConfig?.isDockerMode()) {
-      return null;
-    }
-    if (!this.isolatedRunnerContainer) {
+    if (!this.containerExecutionConfig || !this.isolatedRunnerContainer) {
       return null;
     }
     const containerName =
@@ -1620,39 +1617,32 @@ export class AgentRunnerService {
 
       const useDockerExec =
         !!containerExecRef &&
-        !!this.containerExecutionConfig?.isDockerMode() &&
+        !!this.containerExecutionConfig &&
         !!this.agentProcessLauncher;
 
-      if (
-        this.containerExecutionConfig?.isDockerMode() &&
-        this.containerExecutionConfig.isStrictMode() &&
-        !useDockerExec
-      ) {
+      if (!useDockerExec) {
         const missingReasons: string[] = [];
         if (!containerExecRef) {
           missingReasons.push('containerExecRef is missing');
+        }
+        if (!this.containerExecutionConfig) {
+          missingReasons.push('ContainerExecutionConfigService is unavailable');
         }
         if (!this.agentProcessLauncher) {
           missingReasons.push('AgentProcessLauncherService is unavailable');
         }
         throw new Error(
-          `Docker execution mode (strict) requires docker exec handoff, but ${missingReasons.join(', ') || 'the task container is not runnable'} (taskId=${executionContext.taskId}, nodeId=${executionContext.nodeId}, cwd=${config.cwd})`,
+          `Docker execution requires docker exec handoff, but ${missingReasons.join(', ') || 'the task container is not runnable'} (taskId=${executionContext.taskId}, nodeId=${executionContext.nodeId}, cwd=${config.cwd})`,
         );
       }
 
-      const childProcess = useDockerExec
-        ? this.agentProcessLauncher!.spawnViaDockerExec({
-            containerRef: containerExecRef,
-            command: config.command,
-            args: spawnArgs,
-            cwd: this.containerExecutionConfig!.getRunnerWorkspace(),
-            env: this.buildDockerExecEnvironment(config.env),
-          })
-        : spawn(config.command, spawnArgs, {
-            cwd: config.cwd,
-            env: mergedEnv,
-            stdio: 'pipe',
-          });
+      const childProcess = this.agentProcessLauncher!.spawnViaDockerExec({
+        containerRef: containerExecRef,
+        command: config.command,
+        args: spawnArgs,
+        cwd: this.containerExecutionConfig!.getRunnerWorkspace(),
+        env: this.buildDockerExecEnvironment(config.env),
+      });
       const activeExecution: ActiveAgentExecution = {
         childProcess,
         stopReason: null,

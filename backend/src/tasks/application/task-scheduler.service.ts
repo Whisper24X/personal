@@ -188,26 +188,24 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
           }
 
           let claimedNewProjectSlot = false;
-          if (this.containerExecutionConfig.isDockerMode()) {
-            const existingSlot =
-              await this.projectExecutionSlotRepository.findByProjectId(
+          const existingSlot =
+            await this.projectExecutionSlotRepository.findByProjectId(
+              task.projectId,
+            );
+          if (existingSlot && existingSlot.taskId !== task.id) {
+            continue;
+          }
+          if (!existingSlot) {
+            const claimed =
+              await this.projectExecutionSlotRepository.tryClaimSlot(
                 task.projectId,
+                task.id,
+                this.containerExecutionConfig.getSlotTtlMs(),
               );
-            if (existingSlot && existingSlot.taskId !== task.id) {
+            if (!claimed) {
               continue;
             }
-            if (!existingSlot) {
-              const claimed =
-                await this.projectExecutionSlotRepository.tryClaimSlot(
-                  task.projectId,
-                  task.id,
-                  this.containerExecutionConfig.getSlotTtlMs(),
-                );
-              if (!claimed) {
-                continue;
-              }
-              claimedNewProjectSlot = true;
-            }
+            claimedNewProjectSlot = true;
           }
 
           const claimedNode = await this.taskNodeRepository.claimFirstTodoNode(
@@ -344,19 +342,17 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
           await this.taskStatusService.recalculateTaskStatus(latestNode.taskId);
         }
 
-        if (this.containerExecutionConfig.isDockerMode()) {
-          await this.containerOrchestration.recoverExpiredSlots(
-            async ({ taskId }) => {
-              await this.taskLogService.appendLog({
-                taskId,
-                taskNodeId: null,
-                level: TaskLogLevel.error,
-                message: 'Container slot expired and recovered',
-                payload: {},
-              });
-            },
-          );
-        }
+        await this.containerOrchestration.recoverExpiredSlots(
+          async ({ taskId }) => {
+            await this.taskLogService.appendLog({
+              taskId,
+              taskNodeId: null,
+              level: TaskLogLevel.error,
+              message: 'Container slot expired and recovered',
+              payload: {},
+            });
+          },
+        );
       });
     } finally {
       this.recoveringExpiredNodes = false;

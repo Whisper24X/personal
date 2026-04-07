@@ -58,6 +58,20 @@ RUN ARCH=$(uname -m) \
     && rm -rf /tmp/docker /tmp/docker.tgz \
     && docker --version
 
+
+# ============================================================
+# AI Coding CLI 工具
+# ============================================================
+
+# Claude Code / Codex / Gemini CLI（npm 全局安装）
+RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest
+
+# OpenCode / Cursor CLI 为 best-effort 安装：网络或上游变更可能导致安装失败，不阻断镜像构建
+RUN bash -o pipefail -c 'curl -fsSL https://opencode.ai/install | bash' \
+    || echo "WARN: OpenCode install failed; opencode steps in docker mode need a working binary."
+RUN bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash' \
+    || echo "WARN: Cursor CLI install failed or unavailable for this platform; docker mode cursor-agent steps need a working agent binary."
+
 ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 
 WORKDIR /usr/src/app

@@ -1,6 +1,6 @@
 # 任务隔离容器方案（完整说明）
 
-下文自洽描述当前实现：**在 Docker 执行模式下，为每个任务（或每个 workflow run）准备一个长期存活的 runner 容器，通过 bind mount 挂上宿主机构建好的 Git worktree，在容器内用 `docker exec` 跑 Agent CLI**；调度、状态、Git、数据库仍在 Nest 进程一侧，容器只承担隔离后的命令执行（以及可选的预览/全量沙箱进程）。
+下文自洽描述当前实现：**为每个任务（或每个 workflow run）准备一个长期存活的 runner 容器，通过 bind mount 挂上宿主机构建好的 Git worktree，在容器内用 `docker exec` 跑 Agent CLI**；调度、状态、Git、数据库仍在 Nest 进程一侧，容器只承担隔离后的命令执行（以及可选的预览/全量沙箱进程）。
 
 ---
 
@@ -24,12 +24,12 @@
 **执行面（任务容器内）**
 
 - 各类 Agent（Cursor、Codex 等）在容器内由 **`docker exec`** 拉起（stdin/argv 等由 launcher 适配）。
-- 部分「短 prompt」辅助能力（如标题建议、步骤摘要）在实现上可能：**若该任务容器已存在则 exec 进容器**；若尚不存在则可能暂时在宿主 `spawn`——具体以 `AgentRunnerService` 与 launcher 逻辑为准。
+- 部分「短 prompt」辅助能力（如标题建议、步骤摘要）在实现上会：**若该任务容器已存在则 exec 进容器**；若尚不存在则返回 runner unavailable，由调用方决定降级策略。
 - 选用带 entrypoint 的沙箱画像时，容器内还可跑 nginx、前后端 dev 等，用于预览或全量沙箱。
 
 **两种部署方式**
 
-- **后端在宿主跑、Docker 只跑任务容器**：设 `AINATIVE_TASK_EXECUTION_MODE=docker`，本机 Docker daemon 可用，`AINATIVE_DATA_ROOT_DIR` 下的 worktree 路径必须能被 Docker bind mount。
+- **后端在宿主跑、Docker 只跑任务容器**：本机 Docker daemon 可用，`AINATIVE_DATA_ROOT_DIR` 下的 worktree 路径必须能被 Docker bind mount。
 - **后端也在 compose 里**：通常把 `docker.sock` 挂进后端容器，由容器内 Nest 调 `docker`，与宿主共用同一 daemon。
 
 ---
@@ -46,8 +46,6 @@
 
 | 变量 | 作用 |
 |------|------|
-| `AINATIVE_TASK_EXECUTION_MODE` | `docker`：Agent 走隔离容器；`host` 或未设置：在 Nest 进程所在环境直接 `spawn`。 |
-| `AINATIVE_DOCKER_STRICT_EXECUTION` | 在 `docker` 模式下为 `true`/`1` 时，**不允许**在无法使用 runner 时静默回到宿主执行；缺少运行中容器时会直接失败。 |
 | `AINATIVE_TASK_ISOLATION_SCOPE` | `task`（默认）或 `workflow_run`，见上一节。 |
 | `AINATIVE_RUNNER_IMAGE` | Runner 镜像名，默认 `ainative/runner:latest`，由仓库根目录用 `runner/Dockerfile.runner` 构建。 |
 | `AINATIVE_RUNNER_WORKSPACE` | 容器内工作区挂载点，默认 `/workspace`，须与 `docker run -v` 一致。 |
@@ -56,7 +54,7 @@
 | `AINATIVE_RUNNER_READINESS_URL` | 非 `runner-only` 时探测就绪的 URL，默认 `http://127.0.0.1:8080/health`。 |
 | `AINATIVE_SLOT_HEARTBEAT_MS` / `AINATIVE_SLOT_TTL_MS` | 槽位心跳间隔与租约 TTL，用于过期与清理。 |
 
-本地临时排障时，若 daemon 不可用，可将 strict 关掉或暂时改 `host` 模式（仅开发环境，生产应坚持隔离语义）。
+本地临时排障时，需优先确认 Docker daemon、runner 镜像与 bind mount 路径都可用；当前实现不再回退到宿主执行。
 
 ---
 
@@ -81,7 +79,7 @@
 
 - 表 **`project_execution_slots`** 记录项目当前槽位占用者与容器标识，并依赖**心跳**续期；超 TTL 则视为可清理的僵尸租约。
 - **`ContainerOrchestrationService` 在进程启动时**：会先对数据库里仍有效的槽位**恢复心跳定时器**，再执行孤儿容器回收。这样任务停在 **`in_review`（审批等待）** 时，**仅因后端重启**不会立刻丢槽、误杀仍应保留的 runner。
-- **严格模式**下若逻辑要求「必须有运行中的任务容器」，而容器不存在，会直接报错，避免在宿主静默执行破坏隔离假设。
+- 当前实现要求「必须有运行中的任务容器」；容器不存在或不可用时会直接报错，避免破坏隔离假设。
 
 ---
 
@@ -107,11 +105,11 @@
 
 ## 九、验收与排查（实操顺序）
 
-**建议至少人工验一条路径**：多步任务 → 中间某步进入 `in_review` → 确认 `ainative-task-*` 仍在 → 最终审批到 `done` → 容器被删；再配合 **strict + 容器已运行** 跑通。
+**建议至少人工验一条路径**：多步任务 → 中间某步进入 `in_review` → 确认 `ainative-task-*` 仍在 → 最终审批到 `done` → 容器被删；再配合容器已运行的正常执行路径一起跑通。
 
 **排查时可按序自问**：
 
-1. 当前是否为 `docker` 模式？strict 是否打开？报错是否提示「需要运行中的任务容器」？
+1. Docker daemon 是否可用？报错是否提示「需要运行中的任务容器」？
 2. 沙箱画像是 `runner-only` 还是带 entrypoint？后者是否已通过 health 检查？
 3. 任务状态是 `in_review` 还是 `done`？`project_execution_slots` 里是否还有本任务一行？
 4. 后端是否刚重启过？若槽位逻辑异常，是否先怀疑心跳恢复与 TTL？

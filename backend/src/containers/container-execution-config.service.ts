@@ -24,22 +24,6 @@ export type ProjectContainerRuntimeConfig = {
 export class ContainerExecutionConfigService {
   constructor(private readonly configService: ConfigService) {}
 
-  isDockerMode(): boolean {
-    const mode = this.configService
-      .get<string>('AINATIVE_TASK_EXECUTION_MODE', { infer: true })
-      ?.trim()
-      .toLowerCase();
-    return mode === 'docker';
-  }
-
-  isStrictMode(): boolean {
-    const raw = this.configService.get<string>(
-      'AINATIVE_DOCKER_STRICT_EXECUTION',
-      { infer: true },
-    );
-    return raw === 'true' || raw === '1';
-  }
-
   getIsolationScope(): 'task' | 'workflow_run' {
     const scope = this.configService
       .get<string>('AINATIVE_TASK_ISOLATION_SCOPE', { infer: true })

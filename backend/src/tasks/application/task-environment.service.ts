@@ -1,6 +1,5 @@
 import { ConflictException, Injectable, Optional } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
-import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 import { RunnerOrchestrationService } from '../../containers/runner-orchestration.service';
 import { Project } from '../../projects/domain/project';
@@ -69,8 +68,6 @@ export class TaskEnvironmentService {
     private readonly taskRepository: TaskRepository,
     private readonly containerOrchestration: ContainerOrchestrationService,
     @Optional()
-    private readonly containerExecutionConfig?: ContainerExecutionConfigService,
-    @Optional()
     private readonly runnerOrchestration?: RunnerOrchestrationService,
   ) {}
 
@@ -100,6 +97,7 @@ export class TaskEnvironmentService {
     if (currentEnvironment.status === TaskEnvironmentStatus.ready) {
       return currentEnvironment;
     }
+    let failedStage = TaskEnvironmentStage.workspacePreparing;
     try {
       await this.appendEnvironmentEvent(task.id, TaskLogLevel.info, {
         status: TaskEnvironmentStatus.starting,
@@ -112,27 +110,28 @@ export class TaskEnvironmentService {
         currentUser,
       );
 
-      if (this.isDockerMode()) {
-        await this.appendEnvironmentEvent(task.id, TaskLogLevel.info, {
-          status: TaskEnvironmentStatus.starting,
-          stage: TaskEnvironmentStage.slotClaiming,
-          message: '正在为当前任务分配执行资源',
-        });
+      failedStage = TaskEnvironmentStage.slotClaiming;
+      await this.appendEnvironmentEvent(task.id, TaskLogLevel.info, {
+        status: TaskEnvironmentStatus.starting,
+        stage: TaskEnvironmentStage.slotClaiming,
+        message: '正在为当前任务分配执行资源',
+      });
 
-        await this.appendEnvironmentEvent(task.id, TaskLogLevel.info, {
-          status: TaskEnvironmentStatus.starting,
-          stage: TaskEnvironmentStage.containerStarting,
-          message: '正在启动执行容器',
-        });
+      failedStage = TaskEnvironmentStage.containerStarting;
+      await this.appendEnvironmentEvent(task.id, TaskLogLevel.info, {
+        status: TaskEnvironmentStatus.starting,
+        stage: TaskEnvironmentStage.containerStarting,
+        message: '正在启动执行容器',
+      });
 
-        await this.containerOrchestration.ensureContainer({
-          task: prepared.task,
-          project: prepared.project,
-          worktreePath: prepared.task.gitWorktree ?? '',
-          trackProjectSlot: false,
-        });
-      }
+      await this.containerOrchestration.ensureContainer({
+        task: prepared.task,
+        project: prepared.project,
+        worktreePath: prepared.task.gitWorktree ?? '',
+        trackProjectSlot: false,
+      });
 
+      failedStage = TaskEnvironmentStage.ready;
       await this.appendEnvironmentEvent(task.id, TaskLogLevel.info, {
         status: TaskEnvironmentStatus.ready,
         stage: TaskEnvironmentStage.ready,
@@ -150,9 +149,7 @@ export class TaskEnvironmentService {
         status: TaskEnvironmentStatus.failed,
         stage: TaskEnvironmentStage.failed,
         message: errorMessage,
-        failedStage: this.isDockerMode()
-          ? TaskEnvironmentStage.containerStarting
-          : TaskEnvironmentStage.workspacePreparing,
+        failedStage,
       });
 
       throw error;
@@ -187,42 +184,6 @@ export class TaskEnvironmentService {
       this.extractLatestEnvironmentEvent(latestLogs);
     const latestReadyAt = this.findLatestEnvironmentReadyAt(latestLogs);
     const previewEnabled = this.hasPreview(project);
-
-    if (!this.isDockerMode()) {
-      if (latestEnvironmentEvent?.status === TaskEnvironmentStatus.failed) {
-        return this.buildDto({
-          status: TaskEnvironmentStatus.failed,
-          stage: TaskEnvironmentStage.failed,
-          message: latestEnvironmentEvent.message,
-          updatedAt: latestEnvironmentEvent.createdAt,
-          runtime: {
-            gitWorktree: task.gitWorktree ?? null,
-          },
-          failedStage: latestEnvironmentEvent.failedStage,
-        });
-      }
-
-      if (task.gitWorktree?.trim()) {
-        return this.buildDto({
-          status: TaskEnvironmentStatus.ready,
-          stage: TaskEnvironmentStage.ready,
-          message: '执行环境已就绪',
-          updatedAt:
-            latestEnvironmentEvent?.createdAt ?? task.updatedAt ?? new Date(),
-          runtime: {
-            gitWorktree: task.gitWorktree,
-          },
-        });
-      }
-
-      return this.buildDto({
-        status: TaskEnvironmentStatus.notStarted,
-        stage: TaskEnvironmentStage.workspacePreparing,
-        message: '尚未启动执行环境',
-        updatedAt:
-          latestEnvironmentEvent?.createdAt ?? task.updatedAt ?? new Date(),
-      });
-    }
 
     if (container?.running && container.containerId) {
       return this.buildDto({
@@ -551,9 +512,5 @@ export class TaskEnvironmentService {
     }
 
     return payload;
-  }
-
-  private isDockerMode(): boolean {
-    return this.containerExecutionConfig?.isDockerMode() ?? false;
   }
 }

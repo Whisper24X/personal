@@ -39,9 +39,6 @@ export class ContainerOrchestrationService
   ) {}
 
   onModuleInit(): void {
-    if (!this.config.isDockerMode()) {
-      return;
-    }
     void this.resumeActiveSlotsOnStartup()
       .then(() => this.recoverOrphanContainers())
       .catch((error) => {
@@ -67,11 +64,7 @@ export class ContainerOrchestrationService
     project: Project;
     worktreePath: string;
     trackProjectSlot?: boolean;
-  }): Promise<{ containerId: string } | null> {
-    if (!this.config.isDockerMode()) {
-      return null;
-    }
-
+  }): Promise<{ containerId: string }> {
     const { task, project, worktreePath } = params;
     const trackProjectSlot = params.trackProjectSlot !== false;
     const containerName = this.config.resolveContainerName(task);
@@ -279,13 +272,7 @@ export class ContainerOrchestrationService
           trackProjectSlot,
         })}`,
       );
-      if (this.config.isStrictMode()) {
-        throw new Error(message);
-      }
-      this.logger.warn(
-        `Docker runner start failed; strict mode off — falling back to host execution: ${message}`,
-      );
-      return null;
+      throw new Error(message);
     }
   }
 
@@ -297,10 +284,6 @@ export class ContainerOrchestrationService
     running: boolean;
     accessMetadata: SlotAccessMetadata | null;
   } | null> {
-    if (!this.config.isDockerMode()) {
-      return null;
-    }
-
     const inspection = await this.isolatedRunner.inspect(
       this.config.resolveContainerName(params.task),
     );
@@ -333,10 +316,6 @@ export class ContainerOrchestrationService
     taskId: string,
     projectId: string,
   ): Promise<void> {
-    if (!this.config.isDockerMode()) {
-      return;
-    }
-
     const task = await this.taskRepository.findById(taskId);
     if (!task) {
       this.logger.log(
@@ -371,10 +350,6 @@ export class ContainerOrchestrationService
   }
 
   async recoverOrphanContainers(): Promise<void> {
-    if (!this.config.isDockerMode()) {
-      return;
-    }
-
     const allTasks = await this.taskRepository.findAllWithPagination({
       paginationOptions: {
         page: 1,
@@ -410,10 +385,6 @@ export class ContainerOrchestrationService
       projectId: string;
     }) => Promise<void>,
   ): Promise<void> {
-    if (!this.config.isDockerMode()) {
-      return;
-    }
-
     const now = new Date();
     const expired = await this.slotRepository.findExpiredSlots(now);
     for (const slot of expired) {
@@ -429,10 +400,6 @@ export class ContainerOrchestrationService
   }
 
   async resumeActiveSlotsOnStartup(): Promise<void> {
-    if (!this.config.isDockerMode()) {
-      return;
-    }
-
     const now = new Date();
     const slots = await this.slotRepository.findAll();
 

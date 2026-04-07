@@ -131,21 +131,15 @@ RUN npm config set registry https://registry.npmmirror.com \
 # AI Coding CLI 工具
 # ============================================================
 
+# Claude Code / Codex / Gemini CLI（npm 全局安装）
+RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest
+
 # OpenCode / Cursor CLI 为 best-effort 安装：网络或上游变更可能导致安装失败，不阻断镜像构建
 RUN bash -o pipefail -c 'curl -fsSL https://opencode.ai/install | bash' \
     || echo "WARN: OpenCode install failed; opencode steps in docker mode need a working binary."
 RUN bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash' \
     || echo "WARN: Cursor CLI install failed or unavailable for this platform; docker mode cursor-agent steps need a working agent binary."
 
-# Claude Code / Codex / Gemini CLI（npm 全局安装）
-RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest
-
-# 仅在 Cursor CLI 安装成功时校验可执行性
-RUN if command -v agent >/dev/null 2>&1; then \
-      test -x "$(command -v agent)"; \
-    else \
-      echo "WARN: agent (Cursor CLI) not on PATH; skipping executable check."; \
-    fi
 
 # Go 编译的 CLI（OpenCode、Codex）依赖系统 CA 证书，需显式指定路径
 ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"

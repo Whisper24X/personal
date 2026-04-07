@@ -16,9 +16,6 @@ const createService = () => {
   const taskLogService = {
     appendLog: jest.fn().mockResolvedValue(undefined),
   };
-  const containerExecutionConfig = {
-    isDockerMode: jest.fn().mockReturnValue(true),
-  };
   const containerOrchestration = {
     removeContainerForTask: jest.fn().mockResolvedValue(undefined),
   };
@@ -31,7 +28,6 @@ const createService = () => {
     taskNodeRepository as never,
     notificationsService as never,
     taskLogService as never,
-    containerExecutionConfig as never,
     containerOrchestration as never,
     goalsService as never,
   );
@@ -42,7 +38,6 @@ const createService = () => {
     taskNodeRepository,
     notificationsService,
     taskLogService,
-    containerExecutionConfig,
     containerOrchestration,
     goalsService,
   };
@@ -150,7 +145,7 @@ describe('TaskStatusService', () => {
       createdBy: 'user-1',
     });
     taskNodeRepository.findByTaskId.mockResolvedValue([
-      createNode(TaskStatus.inReview),
+      createNode(TaskStatus.done),
     ]);
 
     await service.recalculateTaskStatus('task-1');
@@ -178,12 +173,7 @@ describe('TaskStatusService', () => {
   });
 
   it('should remove the task container only when status reaches done', async () => {
-    const {
-      service,
-      taskRepository,
-      taskNodeRepository,
-      containerOrchestration,
-    } = createService();
+    const { service, taskRepository, containerOrchestration } = createService();
 
     taskRepository.findById.mockResolvedValue({
       id: 'task-1',
@@ -195,11 +185,8 @@ describe('TaskStatusService', () => {
       gitWorktree: 'wk-task-1',
       createdBy: 'user-1',
     });
-    taskNodeRepository.findByTaskId.mockResolvedValue([
-      createNode(TaskStatus.done),
-    ]);
 
-    await service.recalculateTaskStatus('task-1');
+    await service.setTaskStatus('task-1', TaskStatus.done);
 
     expect(containerOrchestration.removeContainerForTask).toHaveBeenCalledWith(
       'task-1',

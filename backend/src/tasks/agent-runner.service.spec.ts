@@ -1058,7 +1058,7 @@ describe('AgentRunnerService', () => {
     expect(result.args).toContain('-c');
     expect(result.args).toContain('model_provider="ainative"');
     expect(result.args).toContain(
-      'model_providers.ainative.base_url="https://my-gateway.example.com"',
+      'model_providers.ainative.base_url="https://my-gateway.example.com/v1"',
     );
     expect(result.args).toContain(
       'model_providers.ainative.env_key="OPENAI_API_KEY"',
@@ -1106,7 +1106,7 @@ describe('AgentRunnerService', () => {
     expect(result.args).toContain('-c');
     expect(result.args).toContain('model_provider="mygateway"');
     expect(result.args).toContain(
-      'model_providers.mygateway.base_url="https://my-gateway.example.com"',
+      'model_providers.mygateway.base_url="https://my-gateway.example.com/v1"',
     );
     expect(result.args).toContain(
       'model_providers.mygateway.wire_api="responses"',
@@ -2145,11 +2145,6 @@ describe('AgentRunnerService', () => {
   });
 
   it('should treat interrupted execution as failed even when process exits with code 0', async () => {
-    const service = new AgentRunnerService(
-      createRepositoryMock() as unknown as AgentToolConfigRepository,
-    );
-    const serviceAny = service as any;
-
     const stdout = new EventEmitter();
     const stderr = new EventEmitter();
     const childProcess = new EventEmitter() as any;
@@ -2161,7 +2156,22 @@ describe('AgentRunnerService', () => {
     };
     childProcess.kill = jest.fn().mockReturnValue(true);
 
-    spawnMock.mockReturnValue(childProcess);
+    const launcher = {
+      spawnViaDockerExec: jest.fn().mockReturnValue(childProcess),
+    };
+    const containerExecutionConfig = {
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+    };
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      undefined,
+      containerExecutionConfig as any,
+      launcher as any,
+    );
+    const serviceAny = service as any;
 
     const resultPromise = serviceAny.runWithConfig(
       {
@@ -2178,6 +2188,8 @@ describe('AgentRunnerService', () => {
         projectId: 'project-1',
         businessLineId: 'business-line-1',
       },
+      undefined,
+      'container-123',
     );
 
     expect(service.interruptExecution('node-1')).toBe(true);
@@ -2264,11 +2276,10 @@ describe('AgentRunnerService', () => {
     }
   });
 
-  it('should return a diagnostic strict docker error when docker exec handoff is incomplete', async () => {
+  it('should return a diagnostic docker handoff error when docker exec handoff is incomplete', async () => {
     const repositoryMock = createRepositoryMock();
     const containerExecutionConfig = {
-      isDockerMode: jest.fn().mockReturnValue(true),
-      isStrictMode: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
     };
     const service = new AgentRunnerService(
       repositoryMock as unknown as AgentToolConfigRepository,
@@ -2299,7 +2310,7 @@ describe('AgentRunnerService', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorMessage).toContain(
-      'Docker execution mode (strict) requires docker exec handoff',
+      'Docker execution requires docker exec handoff',
     );
     expect(result.errorMessage).toContain('containerExecRef is missing');
     expect(result.errorMessage).toContain(
@@ -2308,7 +2319,7 @@ describe('AgentRunnerService', () => {
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
-  it('should use docker exec launcher when strict docker handoff is complete', async () => {
+  it('should use docker exec launcher when docker handoff is complete', async () => {
     const repositoryMock = createRepositoryMock();
     const stdout = new EventEmitter();
     const stderr = new EventEmitter();
@@ -2325,8 +2336,6 @@ describe('AgentRunnerService', () => {
       spawnViaDockerExec: jest.fn().mockReturnValue(childProcess),
     };
     const containerExecutionConfig = {
-      isDockerMode: jest.fn().mockReturnValue(true),
-      isStrictMode: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
     };
     const service = new AgentRunnerService(

@@ -164,8 +164,8 @@ export class TaskNodeExecutionService {
           worktreePath: runtime.worktreePath,
         },
       );
-      const containerExecRef = containerBundle?.containerId;
-      await this.assertStrictDockerHandoff({
+      const containerExecRef = containerBundle.containerId;
+      await this.assertDockerHandoff({
         task: executionTask,
         nodeId,
         worktreePath: runtime.worktreePath,
@@ -235,7 +235,7 @@ export class TaskNodeExecutionService {
     }
   }
 
-  private async assertStrictDockerHandoff({
+  private async assertDockerHandoff({
     task,
     nodeId,
     worktreePath,
@@ -246,28 +246,25 @@ export class TaskNodeExecutionService {
     worktreePath: string;
     containerExecRef?: string;
   }): Promise<void> {
-    if (
-      !this.containerExecutionConfig?.isDockerMode() ||
-      !this.containerExecutionConfig.isStrictMode() ||
-      containerExecRef
-    ) {
+    if (containerExecRef) {
       return;
     }
 
     const containerName =
-      this.containerExecutionConfig.resolveContainerName(task);
+      this.containerExecutionConfig?.resolveContainerName(task) ??
+      `ainative-task-${task.id}`;
     await this.taskLogService.appendLog({
       taskId: task.id,
       taskNodeId: nodeId,
       level: TaskLogLevel.error,
-      message: 'Strict Docker handoff failed before agent launch',
+      message: 'Docker handoff failed before agent launch',
       payload: {
         containerName,
         worktreePath,
       },
     });
     throw new Error(
-      `Strict Docker orchestration did not provide a runnable task container (taskId=${task.id}, nodeId=${nodeId}, containerName=${containerName}, worktreePath=${worktreePath})`,
+      `Docker orchestration did not provide a runnable task container (taskId=${task.id}, nodeId=${nodeId}, containerName=${containerName}, worktreePath=${worktreePath})`,
     );
   }
 
