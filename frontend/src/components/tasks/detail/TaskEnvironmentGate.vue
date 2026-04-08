@@ -11,12 +11,15 @@ const props = defineProps<{
   environment: TaskEnvironment | null
   actionLoading: boolean
   canStart: boolean
+  canRemove: boolean
+  removeLoading: boolean
   formatDate: (value?: string) => string
 }>()
 
 const emit = defineEmits<{
   start: []
   refresh: []
+  remove: []
 }>()
 
 const statusLabelMap: Record<string, string> = {
@@ -95,7 +98,11 @@ const headerTitle = computed(() => {
   return '当前任务环境尚未启动'
 })
 
-const shouldShowHeaderCopy = computed(() => props.environment?.status !== 'stopped')
+const shouldShowHeaderCopy = computed(() => {
+  const status = props.environment?.status ?? 'not_started'
+
+  return status === 'starting' || status === 'failed'
+})
 
 const helperText = computed(() => {
   if (props.environment?.status === 'starting') {
@@ -184,6 +191,15 @@ const primaryActionLabel = computed(() => {
               >
                 <span v-if="isStarting" class="environment-button-spinner mr-2" />
                 {{ primaryActionLabel }}
+              </button>
+              <button
+                v-if="props.canRemove"
+                class="inline-flex h-11 items-center rounded-xl border border-destructive/25 bg-destructive/8 px-5 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/12 disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                :disabled="props.actionLoading || props.removeLoading"
+                @click="emit('remove')"
+              >
+                {{ props.removeLoading ? '删除中...' : '删除任务' }}
               </button>
             </div>
           </div>

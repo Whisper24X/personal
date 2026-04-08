@@ -140,12 +140,21 @@ const onRegisterSubmit = async () => {
         <div class="auth-grid grid w-full grid-cols-1 justify-center">
           <section class="auth-panel">
             <header class="auth-header">
+              <div class="auth-badge-row">
+                <span class="auth-badge auth-badge-primary">后台工作台</span>
+                <span class="auth-badge">安全登录</span>
+              </div>
               <div class="auth-logo-badge">AI</div>
               <p class="auth-kicker">AI Native Workspace</p>
               <h1 class="auth-title">{{ mode === 'login' ? '欢迎回来' : '创建新账号' }}</h1>
               <p class="auth-subtitle">
                 {{ mode === 'login' ? '登录后继续你的项目、任务与自动化流程。' : '注册后自动登录，立即开始使用 AI Native 平台。' }}
               </p>
+              <div class="auth-highlight-row" aria-hidden="true">
+                <span class="auth-highlight-chip">任务协同</span>
+                <span class="auth-highlight-chip">环境启动</span>
+                <span class="auth-highlight-chip">交付追踪</span>
+              </div>
             </header>
 
             <div class="auth-mode-switch" role="tablist" aria-label="登录注册切换">
@@ -319,22 +328,32 @@ const onRegisterSubmit = async () => {
 
 <style scoped>
 .auth-stage {
+  --auth-accent: #0f766e;
+  --auth-accent-soft: #14b8a6;
+  --auth-secondary: #2563eb;
+  --auth-secondary-soft: #38bdf8;
+  --auth-warm: #f59e0b;
   background:
     radial-gradient(
-      circle at 12% 16%,
-      color-mix(in oklab, var(--primary) 14%, transparent) 0%,
-      transparent 34%
+      circle at 14% 16%,
+      color-mix(in oklab, var(--auth-accent-soft) 22%, transparent) 0%,
+      transparent 32%
     ),
     radial-gradient(
-      circle at 88% 82%,
-      color-mix(in oklab, var(--secondary) 16%, transparent) 0%,
-      transparent 36%
+      circle at 84% 14%,
+      color-mix(in oklab, var(--auth-warm) 16%, transparent) 0%,
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 82% 84%,
+      color-mix(in oklab, var(--auth-secondary-soft) 18%, transparent) 0%,
+      transparent 34%
     ),
     linear-gradient(
       160deg,
-      color-mix(in oklab, var(--sidebar) 92%, transparent) 0%,
-      color-mix(in oklab, var(--background) 84%, transparent) 48%,
-      color-mix(in oklab, var(--sidebar) 94%, transparent) 100%
+      color-mix(in oklab, var(--background) 88%, #f7fbff) 0%,
+      color-mix(in oklab, var(--sidebar) 78%, #edf7ff) 44%,
+      color-mix(in oklab, var(--background) 92%, #f8fafc) 100%
     );
 }
 
@@ -345,16 +364,17 @@ const onRegisterSubmit = async () => {
 .auth-noise {
   position: absolute;
   inset: 0;
-  opacity: 0.06;
+  opacity: 0.045;
   background-image: radial-gradient(circle at 1px 1px, var(--foreground) 1px, transparent 0);
-  background-size: 24px 24px;
+  background-size: 22px 22px;
+  mask-image: linear-gradient(180deg, rgba(255, 255, 255, 0.6), transparent 88%);
 }
 
 .auth-orb {
   position: absolute;
   border-radius: 9999px;
-  opacity: 0.44;
-  filter: blur(72px);
+  opacity: 0.5;
+  filter: blur(82px);
   will-change: transform;
   animation: auth-float 10.5s ease-in-out infinite;
 }
@@ -364,7 +384,7 @@ const onRegisterSubmit = async () => {
   left: -6rem;
   width: 24rem;
   height: 24rem;
-  background: color-mix(in oklab, var(--primary) 28%, transparent);
+  background: color-mix(in oklab, var(--auth-accent-soft) 30%, transparent);
 }
 
 .auth-orb-secondary {
@@ -372,32 +392,34 @@ const onRegisterSubmit = async () => {
   bottom: -8rem;
   width: 26rem;
   height: 26rem;
-  background: color-mix(in oklab, var(--secondary) 30%, transparent);
+  background: color-mix(in oklab, var(--auth-secondary-soft) 32%, transparent);
   animation-delay: -3.5s;
 }
 
 .auth-panel {
   position: relative;
   overflow: hidden;
-  border-radius: 1.6rem;
-  border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  border-radius: 1.85rem;
+  border: 1px solid color-mix(in oklab, white 56%, var(--border));
   background:
     linear-gradient(
-      165deg,
-      color-mix(in oklab, var(--card) 92%, transparent) 0%,
-      color-mix(in oklab, var(--card) 86%, transparent) 100%
+      180deg,
+      color-mix(in oklab, white 82%, var(--card)) 0%,
+      color-mix(in oklab, #f5fbff 54%, var(--card)) 46%,
+      color-mix(in oklab, white 78%, var(--card)) 100%
     );
   box-shadow:
-    0 24px 56px -36px color-mix(in oklab, black 40%, transparent),
-    0 1px 0 color-mix(in oklab, white 40%, transparent) inset;
-  backdrop-filter: blur(18px);
+    0 36px 80px -44px color-mix(in oklab, #0f172a 42%, transparent),
+    0 20px 44px -36px color-mix(in oklab, var(--auth-secondary-soft) 22%, transparent),
+    0 1px 0 color-mix(in oklab, white 70%, transparent) inset;
+  backdrop-filter: blur(22px);
   width: 100%;
-  max-width: 35rem;
+  max-width: 37rem;
   margin-inline: auto;
-  padding: clamp(1.35rem, 3.6vw, 2.1rem);
+  padding: clamp(1.45rem, 3.8vw, 2.35rem);
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 1.25rem;
 }
 
 .auth-panel::before {
@@ -406,76 +428,150 @@ const onRegisterSubmit = async () => {
   left: 0;
   right: 0;
   top: 0;
-  height: 3px;
+  height: 4px;
   background: linear-gradient(
     90deg,
-    color-mix(in oklab, var(--primary) 88%, transparent) 0%,
-    color-mix(in oklab, var(--secondary) 84%, transparent) 100%
+    color-mix(in oklab, var(--auth-accent) 90%, transparent) 0%,
+    color-mix(in oklab, var(--auth-secondary) 84%, transparent) 62%,
+    color-mix(in oklab, var(--auth-warm) 76%, transparent) 100%
   );
+}
+
+.auth-panel::after {
+  content: '';
+  position: absolute;
+  top: -4.5rem;
+  right: -4.5rem;
+  height: 13rem;
+  width: 13rem;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle, color-mix(in oklab, var(--auth-warm) 16%, transparent) 0%, transparent 66%);
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 .auth-header {
   display: grid;
-  gap: 0.42rem;
+  gap: 0.58rem;
+}
+
+.auth-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--border) 78%, white 22%);
+  background: color-mix(in oklab, white 72%, var(--background));
+  padding: 0.34rem 0.72rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));
+}
+
+.auth-badge-primary {
+  border-color: color-mix(in oklab, var(--auth-accent) 22%, white 78%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--auth-accent) 14%, white 86%) 0%,
+    color-mix(in oklab, var(--auth-secondary) 10%, white 90%) 100%
+  );
+  color: color-mix(in oklab, var(--auth-accent) 72%, var(--foreground));
 }
 
 .auth-logo-badge {
   display: grid;
-  height: 2.95rem;
-  width: 2.95rem;
+  height: 3.2rem;
+  width: 3.2rem;
   place-items: center;
-  border-radius: 0.9rem;
-  font-size: 0.86rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in oklab, white 34%, transparent);
+  font-size: 0.88rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--primary-foreground);
   background: linear-gradient(
-    120deg,
-    color-mix(in oklab, var(--primary) 90%, black) 0%,
-    color-mix(in oklab, var(--secondary) 84%, var(--primary)) 100%
+    130deg,
+    color-mix(in oklab, var(--auth-accent) 90%, black) 0%,
+    color-mix(in oklab, var(--auth-secondary) 82%, var(--auth-accent)) 72%,
+    color-mix(in oklab, var(--auth-warm) 74%, var(--auth-secondary)) 100%
   );
-  box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 58%, transparent);
+  box-shadow:
+    0 18px 30px -18px color-mix(in oklab, var(--auth-secondary) 45%, transparent),
+    0 1px 0 rgba(255, 255, 255, 0.25) inset;
 }
 
 .auth-kicker {
   font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: color-mix(in oklab, var(--auth-accent) 46%, var(--muted-foreground));
 }
 
 .auth-title {
   font-family: var(--font-serif);
-  font-size: clamp(1.54rem, 2.25vw, 1.95rem);
+  max-width: 12ch;
+  font-size: clamp(1.72rem, 2.55vw, 2.2rem);
   font-weight: 700;
-  line-height: 1.16;
-  letter-spacing: -0.02em;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
 }
 
 .auth-subtitle {
-  max-width: 34ch;
-  font-size: 0.89rem;
-  line-height: 1.62;
-  color: var(--muted-foreground);
+  max-width: 38ch;
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: color-mix(in oklab, var(--foreground) 46%, var(--muted-foreground));
+}
+
+.auth-highlight-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.auth-highlight-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--border) 75%, white 25%);
+  background: color-mix(in oklab, white 62%, var(--background));
+  padding: 0.38rem 0.78rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
 }
 
 .auth-mode-switch {
   display: grid;
   width: 100%;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.35rem;
-  padding: 0.35rem;
-  border-radius: 0.95rem;
-  border: 1px solid color-mix(in oklab, var(--border) 84%, transparent);
-  background: color-mix(in oklab, var(--background) 88%, transparent);
+  gap: 0.4rem;
+  padding: 0.4rem;
+  border-radius: 1.05rem;
+  border: 1px solid color-mix(in oklab, white 42%, var(--border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, white 58%, var(--background)) 0%,
+      color-mix(in oklab, #eef7ff 36%, var(--background)) 100%
+    );
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset;
 }
 
 .auth-mode-button {
-  height: 2.25rem;
+  height: 2.45rem;
   border: 0;
-  border-radius: 0.72rem;
-  font-size: 0.79rem;
+  border-radius: 0.8rem;
+  font-size: 0.8rem;
   font-weight: 700;
   color: var(--muted-foreground);
   background: transparent;
@@ -493,11 +589,14 @@ const onRegisterSubmit = async () => {
 .auth-mode-button.is-active {
   color: var(--primary-foreground);
   background: linear-gradient(
-    120deg,
-    color-mix(in oklab, var(--primary) 88%, black) 0%,
-    color-mix(in oklab, var(--secondary) 78%, var(--primary)) 100%
+    125deg,
+    color-mix(in oklab, var(--auth-accent) 92%, black) 0%,
+    color-mix(in oklab, var(--auth-secondary) 78%, var(--auth-accent)) 72%,
+    color-mix(in oklab, var(--auth-secondary-soft) 68%, var(--auth-secondary)) 100%
   );
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    0 10px 24px -18px color-mix(in oklab, var(--auth-secondary) 55%, transparent),
+    0 1px 0 rgba(255, 255, 255, 0.2) inset;
 }
 
 .auth-form-shell {
@@ -512,11 +611,11 @@ const onRegisterSubmit = async () => {
 
 .auth-input {
   width: 100%;
-  height: 2.95rem;
-  border-radius: 0.9rem;
-  border: 1px solid color-mix(in oklab, var(--border) 90%, transparent);
-  background: color-mix(in oklab, var(--background) 93%, transparent);
-  padding: 0 0.9rem;
+  height: 3.1rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in oklab, white 35%, var(--border));
+  background: color-mix(in oklab, white 76%, var(--background));
+  padding: 0 1rem;
   font-size: 0.9rem;
   color: var(--foreground);
   transition:
@@ -525,26 +624,34 @@ const onRegisterSubmit = async () => {
     background-color 170ms ease;
 }
 
+.auth-input::placeholder {
+  color: color-mix(in oklab, var(--muted-foreground) 82%, white 18%);
+}
+
+.auth-input:hover {
+  border-color: color-mix(in oklab, var(--auth-secondary) 16%, var(--border));
+}
+
 .auth-password-field {
   position: relative;
 }
 
 .auth-input-password {
-  padding-right: 4.3rem;
+  padding-right: 4.8rem;
 }
 
 .auth-input:focus {
-  border-color: color-mix(in oklab, var(--primary) 56%, var(--ring));
+  border-color: color-mix(in oklab, var(--auth-secondary) 52%, var(--ring));
   box-shadow:
-    0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent),
-    0 10px 20px -16px color-mix(in oklab, var(--primary) 46%, transparent);
-  background: color-mix(in oklab, var(--background) 98%, transparent);
+    0 0 0 3px color-mix(in oklab, var(--auth-secondary-soft) 18%, transparent),
+    0 14px 28px -20px color-mix(in oklab, var(--auth-secondary) 38%, transparent);
+  background: color-mix(in oklab, white 84%, var(--background));
 }
 
 .auth-password-toggle {
   position: absolute;
   top: 50%;
-  right: 0.85rem;
+  right: 0.95rem;
   border: 0;
   padding: 0;
   background: transparent;
@@ -566,20 +673,20 @@ const onRegisterSubmit = async () => {
 
 .auth-submit {
   width: 100%;
-  height: 2.95rem;
+  height: 3.1rem;
   border: 0;
-  border-radius: 0.92rem;
+  border-radius: 1rem;
   font-size: 0.92rem;
   font-weight: 700;
   color: var(--primary-foreground);
   background: linear-gradient(
     118deg,
-    color-mix(in oklab, var(--primary) 92%, black) 0%,
-    color-mix(in oklab, var(--primary) 70%, var(--secondary)) 58%,
-    color-mix(in oklab, var(--secondary) 86%, var(--primary)) 100%
+    color-mix(in oklab, var(--auth-accent) 92%, black) 0%,
+    color-mix(in oklab, var(--auth-secondary) 74%, var(--auth-accent)) 58%,
+    color-mix(in oklab, var(--auth-secondary-soft) 66%, var(--auth-secondary)) 100%
   );
   box-shadow:
-    0 14px 28px -16px color-mix(in oklab, var(--primary) 62%, transparent),
+    0 18px 32px -18px color-mix(in oklab, var(--auth-secondary) 52%, transparent),
     0 1px 0 color-mix(in oklab, white 42%, transparent) inset;
   transition:
     transform 170ms ease,
@@ -589,8 +696,8 @@ const onRegisterSubmit = async () => {
 
 .auth-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 16px 28px -16px color-mix(in oklab, var(--primary) 58%, transparent);
-  filter: saturate(1.06);
+  box-shadow: 0 20px 36px -18px color-mix(in oklab, var(--auth-secondary) 48%, transparent);
+  filter: saturate(1.08);
 }
 
 .auth-submit:disabled {
@@ -612,7 +719,7 @@ const onRegisterSubmit = async () => {
   background: transparent;
   font-size: inherit;
   font-weight: 700;
-  color: var(--primary);
+  color: color-mix(in oklab, var(--auth-accent) 72%, var(--auth-secondary));
   transition: opacity 160ms ease;
 }
 
@@ -697,9 +804,19 @@ html[data-theme-color='mono'] .login-view .auth-panel::before {
   background: var(--primary);
 }
 
+html[data-theme-color='mono'] .login-view .auth-panel::after {
+  display: none;
+}
+
 html[data-theme-color='mono'] .login-view .auth-logo-badge {
   background: var(--primary);
   box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 58%, transparent);
+}
+
+html[data-theme-color='mono'] .login-view .auth-badge-primary,
+html[data-theme-color='mono'] .login-view .auth-highlight-chip {
+  background: color-mix(in oklab, var(--primary) 10%, var(--card));
+  color: var(--foreground);
 }
 
 html[data-theme-color='mono'] .login-view .auth-mode-button.is-active {

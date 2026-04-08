@@ -106,6 +106,7 @@ beforeEach(() => {
 
   tasksApi.logs.mockResolvedValue([])
   tasksApi.messages.mockResolvedValue([])
+  tasksApi.remove.mockResolvedValue(undefined)
   tasksApi.environment.mockResolvedValue({
     status: 'ready',
     stage: 'ready',
@@ -192,8 +193,70 @@ describe('TaskDetailView toasts', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('启动环境')
-    expect(wrapper.text()).toContain('当前任务环境尚未启动')
+    expect(wrapper.text()).toContain('删除任务')
+    expect(wrapper.text()).not.toContain('当前任务环境尚未启动')
+    expect(wrapper.text()).not.toContain(
+      '启动后这里会直接切换为实时启动舞台，展示工作区准备、资源分配和容器拉起过程。',
+    )
     expect(wrapper.findComponent({ name: 'TaskDetailExecutionPanel' }).exists()).toBe(false)
+  })
+
+  it('opens delete dialog from environment gate and removes the task', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'not_started',
+      stage: 'workspace_preparing',
+      stageLabel: '准备任务工作区',
+      message: '尚未启动执行环境',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'pending' },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
+        { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    const deleteButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '删除任务')
+
+    expect(deleteButton).toBeDefined()
+
+    await deleteButton!.trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('确认删除')
+
+    const confirmButton = [...document.body.querySelectorAll('button')].find((button) => {
+      return button.textContent?.trim() === '确认删除'
+    })
+
+    expect(confirmButton).toBeDefined()
+
+    confirmButton!.click()
+    await flushPromises()
+
+    expect(tasksApi.remove).toHaveBeenCalledWith('task-1')
+
+    const messageStore = useMessageStore()
+    expect(messageStore.items[0]?.type).toBe('success')
+    expect(messageStore.items[0]?.text).toBe('任务已删除')
   })
 
   it('starts environment from gate and then renders task detail content', async () => {

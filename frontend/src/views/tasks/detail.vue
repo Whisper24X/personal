@@ -1473,9 +1473,12 @@ function startDrag(e: MouseEvent) {
       :environment="environment"
       :action-loading="actionLoading"
       :can-start="canStartEnvironment"
+      :can-remove="canRemove"
+      :remove-loading="removingTask"
       :format-date="formatDate"
       @start="startEnvironment"
       @refresh="loadInitialTaskData"
+      @remove="deleteOpen = true"
     />
 
     <section
