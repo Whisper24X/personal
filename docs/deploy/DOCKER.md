@@ -6,12 +6,11 @@
 
 - 已安装 Docker 和 Docker Compose
 - 已安装 Node.js 和 `pnpm`
+- 当前本地 Docker 运行仅支持 Linux / macOS
 
 ## 2. 构建并启动
 
-Linux / macOS 默认使用 [docker-compose.yml](../../docker-compose.yml)。
-
-Windows PowerShell 使用 [docker-compose.windows.yml](../../docker-compose.windows.yml)。
+本地 Docker 运行统一使用 [docker-compose.yml](../../docker-compose.yml)。
 
 ```bash
 NODE_ENV=development pnpm run docker:up:build
@@ -60,20 +59,6 @@ NODE_ENV=development pnpm run docker:up:build
 NODE_ENV=test pnpm run docker:build
 ```
 
-Windows PowerShell:
-
-```powershell
-$env:NODE_ENV = "development"
-pnpm run docker:up:build:windows
-```
-
-如果只想预先构建镜像：
-
-```powershell
-$env:NODE_ENV = "development"
-pnpm run docker:build:windows
-```
-
 ## 3. 常用运行命令
 
 ```bash
@@ -81,15 +66,6 @@ pnpm run docker:down
 pnpm run docker:logs
 pnpm run docker:restart
 pnpm run docker:clean
-```
-
-Windows PowerShell:
-
-```powershell
-pnpm run docker:down:windows
-pnpm run docker:logs:windows
-pnpm run docker:restart:windows
-pnpm run docker:clean:windows
 ```
 
 说明：
@@ -129,8 +105,6 @@ AINATIVE_RUNNER_BUILD_PLATFORM=linux/amd64
 - 使用 Deploy Token 时，`GITLAB_USERNAME` 使用 GitLab 提供的 deploy token 用户名
 - `GITLAB_TOKEN` 至少需要具备私有依赖仓库的读取权限，通常为 `read_repository`
 
-Linux / macOS:
-
 ```bash
 export GITLAB_USERNAME=oauth2
 export GITLAB_TOKEN=your_gitlab_token
@@ -139,31 +113,15 @@ export AINATIVE_RUNNER_BUILD_PLATFORM=linux/amd64
 NODE_ENV=development pnpm run docker:build:runner
 ```
 
-Windows PowerShell:
-
-```powershell
-$env:GITLAB_USERNAME = "oauth2"
-$env:GITLAB_TOKEN = "your_gitlab_token"
-pnpm run docker:build:runner:windows
-```
-
 ## 5. Runner 镜像构建
 
 `docker compose` 默认不会帮你构建 `ainative/runner:latest`。这个镜像会在 backend 或本地 CLI 需要拉起任务容器时单独使用，所以需要预先构建一次。
 
 当前仓库的内置预览应用包含 Taro H5 开发链路；在 `linux/arm64` runner 中，`@tarojs/binding-linux-arm64-gnu` 缺失会导致 `ainative-app` 无法启动。因此 runner 镜像与运行平台默认都建议使用 `linux/amd64`。
 
-Linux / macOS:
-
 ```bash
 # 如果仓库根目录已经有 .env，可直接执行
 pnpm run docker:build:runner
-```
-
-Windows PowerShell:
-
-```powershell
-pnpm run docker:build:runner:windows
 ```
 
 默认镜像名是 `ainative/runner:latest`。如果构建成功，`ainative runner up` 和后端的 Docker 任务执行模式都会直接复用这张镜像。若 `/.env` 里 `GITLAB_TOKEN` 为空，runner 构建会直接报缺失，避免拿模板值去尝试拉私有依赖。
@@ -176,15 +134,9 @@ docker buildx build --load --platform linux/amd64 -f runner/Dockerfile.runner -t
 
 如果你确实要覆盖构建平台，可以设置 `AINATIVE_RUNNER_BUILD_PLATFORM`；runner 运行时平台则由 `AINATIVE_RUNNER_PLATFORM` 或项目级 `configJson.containerRuntime.platform` 决定。
 
-## 6. Windows 说明
+## 6. 常见问题
 
-- `docker-compose.windows.yml` 仅面向 Docker Desktop 的 Linux containers 模式。
-- 该文件将 `AINATIVE_DATA_ROOT_DIR` 固定为容器内路径 `/usr/src/tmp`，避免 PowerShell 下 `${PWD}` 展开后的 Windows 盘符路径触发 `too many colons`。
-- 如果后端后续需要把容器内工作目录再次透传给宿主机 Docker 做 bind mount，Windows 原生路径语义仍可能与 Linux 版不一致；这种场景优先使用 WSL2 运行 Compose。
-
-## 7. 常见问题
-
-### 7.1 Runner 镜像构建失败
+### 6.1 Runner 镜像构建失败
 
 优先检查：
 
@@ -195,16 +147,10 @@ docker buildx build --load --platform linux/amd64 -f runner/Dockerfile.runner -t
 - Token 是否具备私有依赖仓库的读取权限
 - 构建机是否具备访问 `gitlab.yc345.tv` 的网络权限
 
-### 7.2 Runner 镜像不存在
+### 6.2 Runner 镜像不存在
 
 如果后端或 CLI 提示找不到 `ainative/runner:latest`，先在仓库根目录执行：
 
 ```bash
 pnpm run docker:build:runner
-```
-
-Windows 使用：
-
-```powershell
-pnpm run docker:build:runner:windows
 ```
