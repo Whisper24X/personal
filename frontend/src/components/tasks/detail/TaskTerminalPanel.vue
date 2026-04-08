@@ -27,6 +27,7 @@ let fitAddon: FitAddon | null = null
 let resizeObserver: ResizeObserver | null = null
 let wsConnection: TerminalWsConnection | null = null
 let wsReady = false
+let attachedSessionId: string | null = null
 
 const getTaskTerminalSessionStorageKey = (taskId: string) => {
   return `${STORAGE_KEYS.taskDetailTerminalSessionId}:${taskId}`
@@ -121,11 +122,12 @@ const connectWs = () => {
     onOpen: () => {
       wsReady = true
       if (activeSessionId.value) {
-        wsConnection?.attach(props.taskId, activeSessionId.value)
+        attachToSession(activeSessionId.value)
       }
     },
     onClose: () => {
       wsReady = false
+      attachedSessionId = null
     },
   })
 
@@ -136,14 +138,21 @@ const disconnectWs = () => {
   wsConnection?.dispose()
   wsConnection = null
   wsReady = false
+  attachedSessionId = null
+}
+
+const resetTerminalDisplay = () => {
+  terminal?.reset()
 }
 
 const attachToSession = (sessionId: string) => {
-  terminal?.clear()
-
-  if (wsReady && wsConnection) {
-    wsConnection.attach(props.taskId, sessionId)
+  if (!wsReady || !wsConnection || attachedSessionId === sessionId) {
+    return
   }
+
+  resetTerminalDisplay()
+  wsConnection.attach(props.taskId, sessionId)
+  attachedSessionId = sessionId
 }
 
 const loadSessions = async ({ autoCreate = false } = {}) => {
@@ -238,7 +247,8 @@ watch(
 
     if (!sessionId) {
       wsConnection?.detach()
-      terminal?.clear()
+      attachedSessionId = null
+      resetTerminalDisplay()
       return
     }
 

@@ -39,6 +39,7 @@ const props = withDefaults(
 )
 
 const previewEnabled = computed(() => props.environmentPreview?.status !== 'unavailable')
+const terminalEnabled = computed(() => props.environmentStatus === 'ready')
 </script>
 
 <template>
@@ -53,6 +54,7 @@ const previewEnabled = computed(() => props.environmentPreview?.status !== 'unav
       :logs="props.logs"
       :default-right-tab="props.defaultRightTab"
       :preview-enabled="previewEnabled"
+      :terminal-enabled="terminalEnabled"
       :preview="props.environmentPreview"
       :format-date="props.formatDate"
       :artifact-file-path="props.artifactFilePath ?? null"

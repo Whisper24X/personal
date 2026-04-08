@@ -24,6 +24,7 @@ const props = withDefaults(
     logs?: TaskLog[]
     defaultRightTab?: 'artifacts' | 'preview' | 'files'
     previewEnabled?: boolean
+    terminalEnabled?: boolean
     preview?: TaskEnvironmentPreview | null
     formatDate: (value?: string) => string
     /** 产物面板当前展示的文件路径（工作区预览） */
@@ -40,6 +41,7 @@ const props = withDefaults(
     logs: () => [],
     defaultRightTab: 'artifacts',
     previewEnabled: false,
+    terminalEnabled: false,
     preview: null,
     artifactFilePath: null,
     artifactOpenNonce: 0,
@@ -63,6 +65,15 @@ watch(
   () => props.previewEnabled,
   (enabled) => {
     if (!enabled && activeTab.value === 'preview') {
+      activeTab.value = 'artifact'
+    }
+  },
+)
+
+watch(
+  () => props.terminalEnabled,
+  (enabled) => {
+    if (!enabled && activeTab.value === 'terminal') {
       activeTab.value = 'artifact'
     }
   },
@@ -123,6 +134,7 @@ watch(
           Git
         </button>
         <button
+          v-if="props.terminalEnabled"
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
           :class="
             activeTab === 'terminal'
@@ -191,7 +203,10 @@ watch(
         :base-branch="props.baseBranch"
       />
 
-      <TaskTerminalPanel v-else-if="activeTab === 'terminal'" :task-id="props.taskId" />
+      <TaskTerminalPanel
+        v-else-if="activeTab === 'terminal' && props.terminalEnabled"
+        :task-id="props.taskId"
+      />
 
       <TaskLogsPanel
         v-else-if="activeTab === 'logs'"

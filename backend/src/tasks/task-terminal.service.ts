@@ -5,9 +5,10 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
 import * as pty from 'node-pty';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { ContainerExecutionConfigService } from '../containers/container-execution-config.service';
+import { ContainerOrchestrationService } from '../containers/container-orchestration.service';
 import {
   CreateTaskTerminalSessionDto,
   TaskTerminalEventDto,
@@ -15,9 +16,9 @@ import {
   TaskTerminalSessionDto,
   TaskTerminalSessionStatus,
 } from './dto/task-terminal.dto';
-import { Task } from './domain/task';
-import { TaskRuntimeService } from './task-runtime.service';
 import { TasksService } from './tasks.service';
+
+const TERMINAL_ENVIRONMENT_NOT_READY_MESSAGE = '执行环境未就绪，请先启动环境';
 
 type TerminalSessionInternal = {
   id: string;
@@ -44,7 +45,8 @@ export class TaskTerminalService implements OnModuleDestroy {
 
   constructor(
     private readonly tasksService: TasksService,
-    private readonly taskRuntimeService: TaskRuntimeService,
+    private readonly containerOrchestration: ContainerOrchestrationService,
+    private readonly containerExecutionConfig: ContainerExecutionConfigService,
   ) {}
 
   onModuleDestroy(): void {
@@ -62,7 +64,7 @@ export class TaskTerminalService implements OnModuleDestroy {
     payload: CreateTaskTerminalSessionDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskTerminalSessionDto> {
-    const { workspacePath } = await this.resolveTaskWorkspace(
+    const { containerId, runnerWorkspace } = await this.resolveTaskContainer(
       taskId,
       currentUser,
     );
@@ -73,18 +75,26 @@ export class TaskTerminalService implements OnModuleDestroy {
     const sessionId = randomUUID();
     const now = new Date();
 
-    const ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-256color',
-      cols,
-      rows,
-      cwd: workspacePath,
-      env: this.buildTerminalEnv(process.env),
-    });
+    const ptyProcess = pty.spawn(
+      'docker',
+      this.buildDockerExecArgs({
+        containerId,
+        runnerWorkspace,
+        shell,
+      }),
+      {
+        name: 'xterm-256color',
+        cols,
+        rows,
+        cwd: process.cwd(),
+        env: this.buildTerminalEnv(process.env),
+      },
+    );
 
     const session: TerminalSessionInternal = {
       id: sessionId,
       taskId,
-      cwd: workspacePath,
+      cwd: runnerWorkspace,
       shell,
       cols,
       rows,
@@ -345,11 +355,6 @@ export class TaskTerminalService implements OnModuleDestroy {
       return candidate;
     }
 
-    const envShell = process.env.SHELL?.trim();
-    if (envShell) {
-      return envShell;
-    }
-
     return '/bin/bash';
   }
 
@@ -376,27 +381,40 @@ export class TaskTerminalService implements OnModuleDestroy {
     return normalizedKey === 'init_cwd' || normalizedKey.startsWith('npm_');
   }
 
-  private async resolveTaskWorkspace(
+  private buildDockerExecArgs(params: {
+    containerId: string;
+    runnerWorkspace: string;
+    shell: string;
+  }): string[] {
+    return [
+      'exec',
+      '-it',
+      '-w',
+      params.runnerWorkspace,
+      '-e',
+      'TERM=xterm-256color',
+      params.containerId,
+      params.shell,
+    ];
+  }
+
+  private async resolveTaskContainer(
     taskId: string,
     currentUser: JwtPayloadType,
-  ): Promise<{ task: Task; workspacePath: string }> {
+  ): Promise<{ containerId: string; runnerWorkspace: string }> {
     const { task, project } =
       await this.tasksService.assertCanAccessTaskProject(taskId, currentUser);
-
-    if (!task.gitWorktree?.trim()) {
-      throw new ConflictException('Task workspace is not initialized');
+    const container = await this.containerOrchestration.inspectTaskContainer({
+      task,
+      project,
+    });
+    if (!container?.running || !container.containerId) {
+      throw new ConflictException(TERMINAL_ENVIRONMENT_NOT_READY_MESSAGE);
     }
 
-    const runtimeWorkspacePath =
-      this.taskRuntimeService.resolveTaskWorktreePath(task, project);
-
-    const workspacePath = await fs.realpath(runtimeWorkspacePath).catch(() => {
-      throw new NotFoundException('Task workspace does not exist');
-    });
-
     return {
-      task,
-      workspacePath,
+      containerId: container.containerId,
+      runnerWorkspace: this.containerExecutionConfig.getRunnerWorkspace(),
     };
   }
 

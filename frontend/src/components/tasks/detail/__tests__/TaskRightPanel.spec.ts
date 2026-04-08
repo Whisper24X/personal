@@ -9,6 +9,7 @@ describe('TaskRightPanel', () => {
       props: {
         taskId: 'task-1',
         previewEnabled: true,
+        terminalEnabled: true,
         formatDate: () => '',
       },
       global: {
@@ -56,6 +57,7 @@ describe('TaskRightPanel', () => {
         taskId: 'task-1',
         projectId: 'project-1',
         previewEnabled: true,
+        terminalEnabled: true,
         preview: {
           status: 'ready',
           url: 'https://preview.example.com/p/task-1/',
@@ -104,6 +106,7 @@ describe('TaskRightPanel', () => {
       props: {
         taskId: 'task-1',
         previewEnabled: false,
+        terminalEnabled: true,
         formatDate: () => '',
       },
       global: {
@@ -122,5 +125,66 @@ describe('TaskRightPanel', () => {
     const tabs = wrapper.findAll('button').map((node) => node.text().trim())
 
     expect(tabs).not.toContain('预览')
+  })
+
+  it('hides terminal tab when runtime environment is not ready', () => {
+    const wrapper = mount(TaskRightPanel, {
+      props: {
+        taskId: 'task-1',
+        terminalEnabled: false,
+        formatDate: () => '',
+      },
+      global: {
+        stubs: {
+          TaskArtifactsPanel: true,
+          TaskPreviewPanel: true,
+          TaskFilesPanel: true,
+          TaskGitPanel: true,
+          TaskTerminalPanel: true,
+          TaskLogsPanel: true,
+          TaskDeployPanel: true,
+        },
+      },
+    })
+
+    const tabs = wrapper.findAll('button').map((node) => node.text().trim())
+
+    expect(tabs).not.toContain('终端')
+  })
+
+  it('falls back to artifact tab when terminal becomes unavailable', async () => {
+    const wrapper = mount(TaskRightPanel, {
+      props: {
+        taskId: 'task-1',
+        terminalEnabled: true,
+        formatDate: () => '',
+      },
+      global: {
+        stubs: {
+          TaskArtifactsPanel: {
+            template: '<div data-test="artifacts-panel">artifacts</div>',
+          },
+          TaskPreviewPanel: true,
+          TaskFilesPanel: true,
+          TaskGitPanel: true,
+          TaskTerminalPanel: {
+            template: '<div data-test="terminal-panel">terminal</div>',
+          },
+          TaskLogsPanel: true,
+          TaskDeployPanel: true,
+        },
+      },
+    })
+
+    const terminalTab = wrapper.findAll('button').find((node) => node.text().trim() === '终端')
+    expect(terminalTab).toBeDefined()
+
+    await terminalTab!.trigger('click')
+    expect(wrapper.find('[data-test="terminal-panel"]').exists()).toBe(true)
+
+    await wrapper.setProps({ terminalEnabled: false })
+
+    expect(wrapper.find('[data-test="terminal-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="artifacts-panel"]').exists()).toBe(true)
   })
 })

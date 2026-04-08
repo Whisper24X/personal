@@ -339,6 +339,50 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.findComponent({ name: 'TaskDetailExecutionPanel' }).exists()).toBe(true)
   })
 
+  it('hides failed environment header copy when start is blocked by the project container limit', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'failed',
+      stage: 'failed',
+      stageLabel: '分配任务执行资源',
+      message: '当前项目已达到容器启动上限（1）',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+        {
+          key: 'slot_claiming',
+          label: '分配任务执行资源',
+          status: 'error',
+          message: '当前项目已达到容器启动上限（1）',
+        },
+        { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('环境状态')
+    expect(wrapper.text()).toContain('任务：Demo task')
+    expect(wrapper.text()).toContain('分配任务执行资源')
+    expect(wrapper.text()).toContain('当前项目已达到容器启动上限（1）')
+    expect(wrapper.text()).not.toContain('任务环境启动失败')
+    expect(wrapper.text()).not.toContain('启动失败')
+  })
+
   it('renders ready environment as a single badge without duplicate stage text', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

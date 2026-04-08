@@ -143,6 +143,7 @@ export type TaskEnvironmentPreview = {
 export type TaskEnvironment = {
   status: TaskEnvironmentStatus
   stage: TaskEnvironmentStage
+  failedStage?: TaskEnvironmentStage | null
   stageLabel: string
   message?: string | null
   updatedAt: string

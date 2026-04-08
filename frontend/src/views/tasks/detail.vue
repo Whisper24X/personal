@@ -477,6 +477,7 @@ const buildEnvironmentSteps = (
   status: TaskEnvironmentStatus,
   stage: TaskEnvironmentStage,
   message: string | null,
+  failedStage?: TaskEnvironmentStage | null,
 ): TaskEnvironment['steps'] => {
   const stepDefinitions: Array<{ key: TaskEnvironmentStage; label: string }> = [
     { key: 'workspace_preparing', label: '准备任务工作区' },
@@ -485,7 +486,7 @@ const buildEnvironmentSteps = (
     { key: 'ready', label: '执行环境就绪' },
   ]
 
-  const activeStage = status === 'failed' ? 'container_starting' : stage
+  const activeStage = status === 'failed' ? (failedStage ?? 'container_starting') : stage
   const activeIndex = stepDefinitions.findIndex((step) => step.key === activeStage)
 
   return stepDefinitions.map((step, index) => {
@@ -534,10 +535,14 @@ const updateEnvironmentFromLog = (log: TaskLog) => {
   const nextStatus = payload.environmentStatus
   const nextStage = payload.environmentStage
   const nextMessage = payload.environmentMessage
+  const nextFailedStage = payload.failedStage
 
   if (
     typeof nextStatus !== 'string' ||
     typeof nextStage !== 'string' ||
+    (nextFailedStage !== null &&
+      nextFailedStage !== undefined &&
+      typeof nextFailedStage !== 'string') ||
     (nextMessage !== null && nextMessage !== undefined && typeof nextMessage !== 'string')
   ) {
     return
@@ -548,6 +553,8 @@ const updateEnvironmentFromLog = (log: TaskLog) => {
   environment.value = {
     status: nextStatus as TaskEnvironmentStatus,
     stage: nextStage as TaskEnvironmentStage,
+    failedStage:
+      typeof nextFailedStage === 'string' ? (nextFailedStage as TaskEnvironmentStage) : null,
     stageLabel:
       nextStage === 'failed'
         ? '执行环境启动失败'
@@ -557,6 +564,9 @@ const updateEnvironmentFromLog = (log: TaskLog) => {
               nextStatus as TaskEnvironmentStatus,
               nextStage as TaskEnvironmentStage,
               typeof nextMessage === 'string' ? nextMessage : null,
+              typeof nextFailedStage === 'string'
+                ? (nextFailedStage as TaskEnvironmentStage)
+                : null,
             ).find((step) => step.key === nextStage)?.label || '执行环境',
     message: typeof nextMessage === 'string' ? nextMessage : null,
     updatedAt: log.createdAt,
@@ -566,6 +576,9 @@ const updateEnvironmentFromLog = (log: TaskLog) => {
       nextStatus as TaskEnvironmentStatus,
       nextStage as TaskEnvironmentStage,
       typeof nextMessage === 'string' ? nextMessage : null,
+      typeof nextFailedStage === 'string'
+        ? (nextFailedStage as TaskEnvironmentStage)
+        : null,
     ),
   }
 }

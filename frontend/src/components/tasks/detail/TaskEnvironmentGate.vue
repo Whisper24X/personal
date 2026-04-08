@@ -49,6 +49,7 @@ const statusClass = computed(() => {
 })
 
 const isStarting = computed(() => props.environment?.status === 'starting')
+const shouldShowStatusBadge = computed(() => props.environment?.status !== 'failed')
 const shouldShowSteps = computed(() => {
   return props.environment?.status === 'starting' || props.environment?.status === 'failed'
 })
@@ -58,8 +59,14 @@ const stageMeta = computed(() => {
   }
 
   const items: string[] = []
-  if (props.environment?.stageLabel) {
-    items.push(props.environment.stageLabel)
+  const failedStepLabel =
+    props.environment?.status === 'failed'
+      ? (props.environment.steps.find((step) => step.status === 'error')?.label ?? null)
+      : null
+  const stageLabel = failedStepLabel || props.environment?.stageLabel
+
+  if (stageLabel) {
+    items.push(stageLabel)
   }
 
   const formattedDate = props.formatDate(props.environment?.updatedAt)
@@ -101,7 +108,7 @@ const headerTitle = computed(() => {
 const shouldShowHeaderCopy = computed(() => {
   const status = props.environment?.status ?? 'not_started'
 
-  return status === 'starting' || status === 'failed'
+  return status === 'starting'
 })
 
 const helperText = computed(() => {
@@ -152,6 +159,7 @@ const primaryActionLabel = computed(() => {
                   {{ headerEyebrow }}
                 </div>
                 <span
+                  v-if="shouldShowStatusBadge"
                   class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
                   :class="statusClass"
                 >
