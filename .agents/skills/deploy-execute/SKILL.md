@@ -1,6 +1,6 @@
 ---
 name: deploy-execute
-description: 执行部署命令并监控进度：运行 make sandbox-restart、读取 ./logs/ 目录下的日志文件判断服务启动状态，发现错误立即修复并重启，输出日志到 deployLog.md 和结果到 deployResult.md。当需要执行 sandbox 部署、监控服务启动或记录部署日志时使用。
+description: 执行部署命令并监控进度：运行项目约定的重启命令、读取 ./logs/ 目录下的日志文件判断服务启动状态，发现错误立即修复并重启，输出日志到 deployLog.md 和结果到 deployResult.md。当需要执行部署、监控服务启动或记录部署日志时使用。
 ---
 
 # ExecuteDeployment - 执行部署
@@ -24,14 +24,14 @@ description: 执行部署命令并监控进度：运行 make sandbox-restart、�
 
 ### 1. 执行重启命令
 
-执行 `make sandbox-restart`，该命令会自动完成：
+执行项目约定的重启命令（如 `make restart`），该命令通常会自动完成：
 
 - 停止现有容器（`dc stop`）
 - 清空所有日志文件（`./logs/*.log`）
 - 重新启动容器并等待就绪（`dc up -d --wait`）
 
 ```bash
-make sandbox-restart
+make restart
 ```
 
 - 如果遇到 Docker 未运行等错误，分析并解决后重试
@@ -39,9 +39,9 @@ make sandbox-restart
 
 ### 2. 发现服务列表并等待就绪
 
-**步骤 2a：从 `sandbox/supervisord.conf` 读取服务列表**
+**步骤 2a：从服务管理配置读取服务列表**
 
-解析项目中的 `sandbox/supervisord.conf`，找出所有 `[program:X]` 段，提取：
+解析项目中的服务管理配置（如 `supervisord.conf`），找出所有 `[program:X]` 段，提取：
 
 - 服务名（`X`）
 - 对应的日志文件路径（`stdout_logfile`，路径中 `/workspace/` 对应项目根目录的 `./logs/`）
@@ -90,16 +90,16 @@ app     → ./logs/app.log
 2. 自主判断是否可修复：
    - 可修复 → 直接修改相关文件或执行修复命令
              → 将修复动作写入 deployLog.md 的「## 修复记录」章节
-             → 重新执行 make sandbox-restart（内部重启计数 +1）
+             → 重新执行项目约定的重启命令（内部重启计数 +1）
              → 返回步骤 2b 继续监控
    - 无法判断如何修复 → 将错误详情写入 deployLog.md，标记「部署失败」，终止
 3. 内部重启计数达到 2 次后仍失败 → 写入错误详情，标记「部署失败」，终止
 ```
 
 > **Go 版本冲突的特殊规定**：
-> 当错误为 `go.mod requires go >= X.Y (running go A.B)` 时，修复方式必须是将 go.mod 中的 `go X.Y` 降低为沙箱实际运行的版本（即 `go A.B`）。
-> 禁止通过设置 `GOTOOLCHAIN=auto`、`GOTOOLCHAIN=path` 或修改 `Makefile`/`air.toml` 来让沙箱下载更高版本的 Go 工具链。
-> 沙箱环境的 Go 版本是固定基准，代码应适配环境，而非环境适配代码。
+> 当错误为 `go.mod requires go >= X.Y (running go A.B)` 时，修复方式必须是将 go.mod 中的 `go X.Y` 降低为部署环境实际运行的版本（即 `go A.B`）。
+> 禁止通过设置 `GOTOOLCHAIN=auto`、`GOTOOLCHAIN=path` 或修改 `Makefile`/`air.toml` 来让部署环境临时下载更高版本的 Go 工具链。
+> 部署环境的 Go 版本是固定基准，代码应适配环境，而非环境适配代码。
 
 修复记录格式（追加到 `docs/deploy/deployLog.md`）：
 

@@ -3,9 +3,9 @@
 type EnvType = "local" | "development" | "test" | "stage" | "production"
 // API基础地址配置
 const API_BASE_URL = {
-  // 本地沙箱，仅 H5 联调使用（需 make sandbox，pnpm dev:h5:local）
+  // 本地联调入口，仅 H5 模式使用
   local: "http://localhost:8080/api",
-  // 开发/测试环境：小程序连接公网测试服，不连本地沙箱
+  // 开发/测试环境：小程序连接公网测试服，不连本地联调地址
   development: "https://trip-api-test.yangcong345.com",
   test: "https://trip-api-test.yangcong345.com",
   stage: "https://trip-api-stage.yangcong345.com",
@@ -30,7 +30,7 @@ export const BASE_API = API_BASE_URL[CURRENT_ENV]
 // H5基础地址 - 使用全局变量
 export const BASE_H5 = H5_BASE_URL[CURRENT_ENV]
 
-// 是否为本地联调环境（连接沙箱，绕过公网）
+// 是否为本地联调环境
 export const IS_LOCAL = CURRENT_ENV === "local"
 
 // 是否为开发环境

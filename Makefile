@@ -301,51 +301,6 @@ subtree-list:
 		echo "";)
 
 # ==============================================================================
-# 沙箱环境
-# ==============================================================================
-
-.PHONY: sandbox sandbox-build sandbox-stop sandbox-shell sandbox-logs sandbox-clean sandbox-restart sandbox-list sandbox-mirror sandbox-doctor
-
-SANDBOX := ./sandbox/sandbox.sh
-
-## 启动沙箱
-sandbox:
-	@$(SANDBOX) start
-
-## 构建沙箱镜像
-sandbox-build:
-	@$(SANDBOX) build
-
-## 停止沙箱
-sandbox-stop:
-	@$(SANDBOX) stop
-
-## 进入沙箱终端
-sandbox-shell:
-	@$(SANDBOX) shell
-
-## 查看沙箱日志 (用法: make sandbox-logs backend)
-sandbox-logs:
-	@$(SANDBOX) logs $(word 2,$(MAKECMDGOALS))
-
-## 清理沙箱
-sandbox-clean:
-	@$(SANDBOX) clean
-
-## 重启沙箱
-sandbox-restart:
-	@$(SANDBOX) restart
-
-## 诊断 Docker/沙箱环境问题
-sandbox-doctor:
-	@bash ./sandbox/setup-rootless-docker.sh --check
-
-## 配置 Docker 镜像加速
-sandbox-mirror:
-	@echo '{"registry-mirrors":["https://dockerproxy.com","https://docker.mirrors.ustc.edu.cn","https://docker.nju.edu.cn"]}' > ~/.docker/daemon.json
-	@echo "$(C_GREEN)✓ 已配置镜像加速，请重启 Docker Desktop$(C_RESET)"
-
-# ==============================================================================
 # 帮助
 # ==============================================================================
 
@@ -378,16 +333,6 @@ help:
 	@echo "  $(C_GREEN)make subtree-push-test$(C_RESET)      推送 test 到子仓库 (backend=test, shadow/app=develop)"
 	@echo "  $(C_GREEN)make merge-to-test$(C_RESET)          合并当前分支到 test"
 	@echo "  $(C_GREEN)make push-test$(C_RESET)  切换 test→拉取子仓→合并当前分支→推送主仓和子仓"
-	@echo ""
-	@echo "$(C_YELLOW)沙箱环境$(C_RESET)"
-	@echo "  $(C_GREEN)make sandbox$(C_RESET)           启动沙箱"
-	@echo "  $(C_GREEN)make sandbox-build$(C_RESET)     构建沙箱镜像"
-	@echo "  $(C_GREEN)make sandbox-stop$(C_RESET)      停止沙箱"
-	@echo "  $(C_GREEN)make sandbox-shell$(C_RESET)     进入沙箱终端"
-	@echo "  $(C_GREEN)make sandbox-logs$(C_RESET)      查看沙箱日志"
-	@echo "  $(C_GREEN)make sandbox-clean$(C_RESET)     清理沙箱"
-	@echo "  $(C_GREEN)make sandbox-restart$(C_RESET)   重启沙箱"
-	@echo "  $(C_GREEN)make sandbox-mirror$(C_RESET)    配置 Docker 镜像加速"
 	@echo ""
 
 # .PHONY 声明

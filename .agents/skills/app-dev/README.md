@@ -222,7 +222,7 @@ export const useUserStore = defineStore(
 
 ```bash
 pnpm dev:weapp              # 微信小程序开发（development）
-pnpm dev:weapp:local        # 本地沙箱
+pnpm dev:weapp:local        # 本地联调
 pnpm dev:h5                 # H5 开发
 pnpm build:weapp:test       # 测试包
 pnpm build:weapp:stage      # 预发布包

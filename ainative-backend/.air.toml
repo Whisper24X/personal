@@ -1,18 +1,16 @@
 # .air.toml - air 热重载配置文件
+# 变更后通过 kratos run 启动（需已安装 Kratos CLI：go install github.com/go-kratos/kratos/cmd/kratos@latest，且 kratos 在 PATH）
 # 文档: https://github.com/air-verse/air
 
 root = "."
 tmp_dir = "tmp"
 
 [build]
-# 预构建命令（避免每次热重载都执行 go mod tidy）
 pre_cmd = []
-# 构建命令
-cmd = "GOMAXPROCS=2 GOFLAGS='-p=1' go build -tags dynamic -o ./tmp/main ./cmd/yanxue"
-# 二进制文件路径
-bin = "./tmp/main"
-# 运行参数
-args_bin = ["-conf", "./configs"]
+# 不使用 go build 产出二进制；占位以满足 Air「先执行 cmd 再启动进程」流程
+cmd = "true"
+# 仅 cmd 下单一入口时会自动选用；内部为 go run
+entrypoint = ["kratos", "run"]
 # 监听文件变化的扩展名
 include_ext = ["go", "yaml", "yml"]
 # 排除的目录

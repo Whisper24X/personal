@@ -9,7 +9,6 @@ yanxue-main/
 ├── ainative-backend/   # Go 后端服务
 ├── ainative-shadow/    # 管理后台（Vue3 + Element Plus）
 ├── ainative-app/       # 小程序（Taro + Vue3）
-├── sandbox/           # 沙箱开发环境
 └── Makefile          # 统一管理脚本
 ```
 
@@ -52,18 +51,6 @@ make subtree-pull-app      # 拉取小程序代码
 make subtree-push-backend  # 推送后端代码
 make subtree-push-shadow   # 推送管理后台代码
 make subtree-push-app      # 推送小程序代码
-```
-
-### 沙箱环境
-
-```bash
-make sandbox           # 启动沙箱
-make sandbox-build     # 构建沙箱镜像
-make sandbox-stop      # 停止沙箱
-make sandbox-shell     # 进入沙箱终端
-make sandbox-logs      # 查看沙箱日志
-make sandbox-clean     # 清理沙箱
-make sandbox-restart   # 重启沙箱
 ```
 
 ## 子项目说明

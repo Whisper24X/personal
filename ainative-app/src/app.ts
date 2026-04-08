@@ -116,7 +116,7 @@ setTimeout(() => {
   const userStore = useUserStore()
   const configStore = useConfigStore()
 
-  // H5 沙箱本地联调：注入固定 dev token，便于 H5 无法微信登录时访问所有页面
+  // H5 本地联调：注入固定 dev token，便于 H5 无法微信登录时访问所有页面
   if (IS_LOCAL && process.env.TARO_ENV === "h5" && !userStore.token) {
     userStore.setToken("h5-dev-local-token")
     console.log("[H5 本地联调] 已注入 dev token，可访问需登录页面")

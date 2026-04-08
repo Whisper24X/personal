@@ -98,7 +98,7 @@ export default defineConfig<"vite">(async (merge, { command, mode }) => {
     h5: {
       publicPath: "/",
       staticDirectory: "static",
-      // 沙箱中 Nginx 期望 app 监听 8200
+      // 本地代理联调时约定 app 监听 8200
       ...(process.env.TARO_APP_API && {
         devServer: { port: 8200, host: "0.0.0.0", open: false }
       }),

@@ -3,7 +3,7 @@ import { CURRENT_ENV, IS_DEV, IS_LOCAL } from "../config/env"
 
 // 环境列表
 const ENV_LIST = [
-  { label: "本地联调(沙箱)", value: "local" },
+  { label: "本地联调", value: "local" },
   { label: "开发环境", value: "development" },
   { label: "测试环境", value: "test" },
   { label: "预发布环境", value: "stage" },

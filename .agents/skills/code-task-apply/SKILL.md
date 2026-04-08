@@ -100,12 +100,11 @@ grep -rn 'HelloWorld\|TheWelcome\|欢迎使用YC-vue3模版\|AINative Workspace\
 - **frontend / 前端模式**：在 `routeModules` / `asyncRoutes` 注册静态路由即可，菜单从代码读取
 - **backend / 后端模式**：静态路由**单独不够**，必须额外向数据库 `sys_menu` / `sys_role_menu` 注入菜单数据并执行 sqlimport，否则管理后台界面不会显示该菜单
 
-**菜单 SQL 注入（强制）**：若任务涉及生成 `*_menu.sql`（如 `carousel_menu.sql`），在创建 SQL 文件后必须执行导入（PG_DB 从 `sandbox/.env` 读取）：
+**菜单 SQL 注入（强制）**：若任务涉及生成 `*_menu.sql`（如 `carousel_menu.sql`），在创建 SQL 文件后必须执行导入。SQL 目录名以 `ainative-backend/doc/sql/` 下实际目录为准，当前仓库使用 `yanxue`：
 
 ```bash
-PG_DB=$(grep -E '^PG_DB=' sandbox/.env | cut -d= -f2-)
 export PATH="$PATH:/usr/local/go/bin:$(go env GOPATH)/bin"
-cd ainative-backend && make sqlimport ./doc/sql/${PG_DB}/{module}_menu.sql
+cd ainative-backend && make sqlimport ./doc/sql/yanxue/{module}_menu.sql
 ```
 
 **菜单 SQL 注入后必须验证（强制）**：sqlimport 执行后，必须完成以下两步验证，不可跳过：
@@ -117,8 +116,8 @@ cd ainative-backend && make sqlimport ./doc/sql/${PG_DB}/{module}_menu.sql
 # 查找并删除角色-菜单关联缓存（key 前缀以实际项目为准，可先 KEYS 确认）
 # 格式通常为：{app-name}:DBCache:{db-name}:SysRoleMenuByRoleID:{roleId}
 # 以及菜单详情缓存：{app-name}:DBCache:{db-name}:SysMenuByID:{menuId}
-# 示例（从 sandbox/.env 读取 redis 连接信息）：
-REDIS_ADDR=$(grep -E '^REDIS_ADDR=' sandbox/.env | cut -d= -f2-)
+# 示例（从当前使用的 backend 配置文件读取 redis 连接信息）：
+REDIS_ADDR=$(grep -E '^[[:space:]]+addr:' ainative-backend/configs/test.yaml | head -n 1 | awk '{print $2}')
 redis-cli -h ${REDIS_ADDR%:*} -p ${REDIS_ADDR#*:} -n <REDIS_DB> \
   DEL "$(redis-cli -h ${REDIS_ADDR%:*} -p ${REDIS_ADDR#*:} -n <REDIS_DB> KEYS '*SysRoleMenu*' | tr '\n' ' ')"
 ```
@@ -164,7 +163,7 @@ redis-cli -h ${REDIS_ADDR%:*} -p ${REDIS_ADDR#*:} -n <REDIS_DB> \
 
 ③ **验证 API 路径可被 nginx 正确路由**
 
-查看 `sandbox/nginx.conf`（或等价代理配置），**逐条列出所有 `location` 规则及其 `proxy_pass` 目标**，然后将新增接口路径与每条规则逐一对照，确认能匹配到正确的后端服务端口。
+查看项目实际代理配置（如 `nginx.conf`、`rsbuild.config.ts`、`vite.config.ts` 或其他等价配置），**逐条列出相关转发规则及其目标服务**，然后将新增接口路径与每条规则逐一对照，确认能匹配到正确的后端服务端口。
 
 > ❌ 禁止凭直觉判断（如"路径里有 shadow 关键字就走 shadow 服务"），必须以 nginx 实际配置的前缀规则为准。例如：`/api/shadow/...` 和 `/shadow/...` 走的是不同的 `location`，若项目中其他 API 文件均用 `/shadow/...`，则新文件也必须用 `/shadow/...`，不得擅自加 `/api/` 前缀。
 

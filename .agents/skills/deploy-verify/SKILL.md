@@ -23,7 +23,7 @@ description: 验证部署结果：读取 ./logs/ 目录日志文件确认服务�
 
 **检查来源（按优先级）**：
 
-1. **解析 `sandbox/supervisord.conf` 获取服务列表**：
+1. **解析服务管理配置获取服务列表**：
    - 读取所有 `[program:X]` 段，提取服务名和对应日志文件路径（`stdout_logfile`）
    - 这是本次验证的服务枚举来源，不要硬编码服务名
 
@@ -34,9 +34,9 @@ description: 验证部署结果：读取 ./logs/ 目录日志文件确认服务�
 3. **读取 `docs/deploy/deployResult.md`**：获取 deploy-execute 阶段的汇总结论
 
 4. **获取端口号**：
-   - 读取 `sandbox/.env` 获取 `SANDBOX_PORT`（默认 `8080`）
+   - 读取项目环境配置获取服务端口
    - 或从 `docs/deploy/deployLog.md` 中提取端口号
-   - 按固定路径构造地址：`http://localhost:${SANDBOX_PORT}/`、`/api/`、`/shadow/`、`/app/`
+   - 按项目实际入口构造访问地址
 
 **本机 IP 识别**（写入 deploy.md 前必须执行）：
 
@@ -100,7 +100,7 @@ curl -s -o /dev/null -w "%{http_code}" http://[地址]:[端口]
 - 只包含实际存在的服务，不要添加项目中不存在的服务
 - 有任何报错（Docker 启动失败、服务启动失败）时，取对应日志文件的最后 **50 行**写入 `## 错误日志` 节：
   - Docker 启动失败：执行 `journalctl -u docker -n 50 --no-pager`
-  - 服务启动失败：从 `sandbox/supervisord.conf` 中找到该服务的 `stdout_logfile`，读取最后 50 行
+  - 服务启动失败：从服务管理配置中找到该服务的 `stdout_logfile`，读取最后 50 行
   - 日志中无 `Error` / `Exception` / `Fatal` / `panic` 等关键词时，不附加日志
 - 日志用代码块包裹
 - 这些日志将用于下次循环时分析和修复问题

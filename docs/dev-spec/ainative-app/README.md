@@ -63,28 +63,6 @@ pnpm dev:weapp
 1. 使用微信开发者工具打开 `ainative-app/dist` 目录
 2. 如首次使用，需配置 AppID
 
-### 本地联调（绕过公网）
-
-在测试环境下，如需连接本地沙箱后端进行前后端联调（不经过公网）：
-
-1. **启动沙箱**（项目根目录）：
-   ```bash
-   SANDBOX_ENV=test make sandbox
-   ```
-
-2. **启动小程序（local 模式）**：
-   ```bash
-   cd ainative-app
-   pnpm dev:weapp:local
-   ```
-
-3. **微信开发者工具**：打开 `ainative-app/dist`，在「详情 → 本地设置」中勾选：
-   - **不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书**
-
-4. 小程序将请求 `http://localhost:8070/api`，由沙箱 Nginx 转发到本地后端。
-
-> 真机调试需手机与电脑同网段，并将 `env.ts` 中 `local` 的 API 地址改为本机 IP（如 `http://192.168.1.100:8070/api`）。
-
 ### 开发流程
 
 ```mermaid

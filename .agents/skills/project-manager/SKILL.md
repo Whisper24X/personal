@@ -82,7 +82,7 @@ flowchart TD
 
 - 在 `tasks.md` 中添加菜单数据库注入任务
 - 任务描述必须包含：**生成 `{module}_menu.sql` 并执行 `make sqlimport` 导入**
-- 验收标准必须包含：**执行 `make sqlimport ./doc/sql/{PG_DB}/{module}_menu.sql` 成功**（PG_DB 从 sandbox/.env 读取）
+- 验收标准必须包含：**执行 `make sqlimport ./doc/sql/yanxue/{module}_menu.sql` 成功**
 
 ---
 

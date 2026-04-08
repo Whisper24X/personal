@@ -94,10 +94,9 @@ cd ainative-backend && make sqldump TABLES={table}
 
 1. 在 `ainative-backend/doc/sql/ainative_backend/` 下创建 `{module}_menu.sql`（如 `carousel_menu.sql`）
 2. SQL 内容：向 `sys_menu` 插入菜单项，向 `sys_role_menu` 绑定 super 角色，使用 `INSERT...SELECT...WHERE NOT EXISTS` 保证幂等
-3. **必须执行导入**（PG_DB 从 `sandbox/.env` 读取）：
+3. **必须执行导入**（SQL 目录以 `ainative-backend/doc/sql/` 下实际目录为准，当前仓库为 `yanxue`）：
    ```bash
-   PG_DB=$(grep -E '^PG_DB=' sandbox/.env | cut -d= -f2-)
-   cd ainative-backend && make sqlimport ./doc/sql/${PG_DB}/{module}_menu.sql
+   cd ainative-backend && make sqlimport ./doc/sql/yanxue/{module}_menu.sql
    ```
 4. 验证：检查输出无报错，登录 Shadow 确认菜单已显示
 

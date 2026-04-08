@@ -65,18 +65,17 @@ export const staticRoutes: RouteRecordRaw[] = [
 
 菜单注入任务必须包含以下两步，**缺一不可**：
 
-1. **生成 SQL 文件**：先读 `sandbox/.env` 取出 `PG_DB` 的实际值，在 `ainative-backend/doc/sql/<PG_DB实际值>/` 下创建 `<module>_menu.sql`（如 `carousel_menu.sql`）。SQL 必须使用 `gen_random_uuid()` 作为 id、通过 path 引用 pid，详见 `backend-database` 技能及 `schema-guide.md` 菜单 SQL 模板。
-2. **执行导入**：在编码环节**立即执行**。读取 `sandbox/.env` 取出 `PG_DB` 实际值，在 agent 容器内执行以下命令：
+1. **生成 SQL 文件**：在 `ainative-backend/doc/sql/yanxue/` 下创建 `<module>_menu.sql`（如 `carousel_menu.sql`）。SQL 必须使用 `gen_random_uuid()` 作为 id、通过 path 引用 pid，详见 `backend-database` 技能及 `schema-guide.md` 菜单 SQL 模板。
+2. **执行导入**：在编码环节**立即执行**，执行以下命令：
 
    ```bash
-   PG_DB=$(grep '^PG_DB=' sandbox/.env | cut -d= -f2 | tr -d '\r')
    export PATH="$PATH:/usr/local/go/bin:$(go env GOPATH)/bin"
-   cd ainative-backend && make sqlimport ./doc/sql/${PG_DB}/<module>_menu.sql
+   cd ainative-backend && make sqlimport ./doc/sql/yanxue/<module>_menu.sql
    ```
 
    > ⚠️ **必须显式设置 PATH**：agent 使用非交互式 shell，Go bin 目录不在默认 PATH 中。不设置会导致 `ycTurboKitCheck` 判定 `yc_turbo_kit` 未安装，触发 `go install gitlab.yc345.tv/...` 因私有仓库无认证而失败，make 报错退出。
 
-> **注意**：`init.sql` 仅沙箱首次启动时执行，新增菜单 SQL 不会自动纳入。必须执行导入，否则 Shadow 界面不会显示新菜单。
+> **注意**：`init.sql` 不会自动纳入新增菜单 SQL。必须执行导入，否则 Shadow 界面不会显示新菜单。
 
 ## 检查清单
 

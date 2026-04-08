@@ -109,12 +109,6 @@ export default defineConfig({
   server: {
     port: 5176,
   },
-  dev: {
-    // 沙箱环境下，HMR WebSocket 通过 Nginx 代理，使用页面自身的 host/port
-    client: process.env.SANDBOX === 'true'
-      ? { host: '', port: '' }
-      : {},
-  },
   performance: {
     chunkSplit: {
       strategy: 'split-by-module',

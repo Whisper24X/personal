@@ -27,9 +27,9 @@ description: 部署前环境准备：检查 Docker 环境、代码完整性、�
    - 执行 `systemctl status docker` 检查 Docker 是否运行（rootfull 模式，系统级服务）
    - 如果 Docker 未运行，执行 `sudo systemctl start docker` 尝试启动
 
-2. **Docker 可用性**（关键：sandbox 脚本会执行 `docker info`）
+2. **Docker 可用性**（关键：部署流程通常会执行 `docker info`）
    - 执行 `docker info` 验证当前用户能否访问 Docker
-   - 若 `docker info` 失败，后续 `make sandbox-stop` 会失败，必须在此阶段发现并处理
+   - 若 `docker info` 失败，后续容器化部署命令会失败，必须在此阶段发现并处理
 
 **判定标准**：
 
@@ -72,8 +72,8 @@ description: 部署前环境准备：检查 Docker 环境、代码完整性、�
 
 2. **构建脚本**
    - 检查是否存在构建命令（`build`、`dev`、`start` 等 npm scripts）
-   - 检查 `Makefile` 是否存在，是否包含 `sandbox` 目标
-   - 检查 `sandbox/sandbox.sh` 脚本是否存在
+   - 检查 `Makefile` 是否存在，是否包含项目约定的启动或重启目标
+   - 检查项目部署脚本是否存在
 
 3. **TypeScript 配置**
    - 检查 `tsconfig.json` 是否存在
