@@ -60,22 +60,21 @@ const mergedEnv = {
   ...fileEnv,
   ...process.env,
 };
+const gitlabUsername = (mergedEnv.GITLAB_USERNAME || '').trim() || 'oauth2';
+const gitlabToken = (mergedEnv.GITLAB_TOKEN || '').trim();
 
-const placeholderValues = new Set(['replace_with_your_gitlab_token']);
-const requiredKeys = ['GITLAB_USERNAME', 'GITLAB_TOKEN'];
-const missingKeys = requiredKeys.filter((key) => {
-  const value = (mergedEnv[key] || '').trim();
-  return !value || placeholderValues.has(value);
-});
+const placeholderValues = new Set(['replace_with_your_gitlab_token', 'your_gitlab_token']);
+const missingKeys = placeholderValues.has(gitlabToken) || !gitlabToken ? ['GITLAB_TOKEN'] : [];
 
 if (missingKeys.length > 0) {
   console.error(
     [
       `Missing required env: ${missingKeys.join(', ')}`,
-      'Provide them either in the current shell or in repo root .env.',
+      'Provide it either in the current shell or in repo root .env.',
       'Example:',
-      '  GITLAB_USERNAME=oauth2',
       '  GITLAB_TOKEN=your_gitlab_token',
+      'Optional:',
+      '  GITLAB_USERNAME=oauth2',
     ].join('\n'),
   );
   process.exit(1);
@@ -96,9 +95,9 @@ const dockerArgs = [
   buildPlatform,
   ...extraArgs,
   '--build-arg',
-  `GITLAB_USERNAME=${mergedEnv.GITLAB_USERNAME}`,
+  `GITLAB_USERNAME=${gitlabUsername}`,
   '--build-arg',
-  `GITLAB_TOKEN=${mergedEnv.GITLAB_TOKEN}`,
+  `GITLAB_TOKEN=${gitlabToken}`,
   '-f',
   'runner/Dockerfile.runner',
   '-t',

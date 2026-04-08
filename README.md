@@ -8,6 +8,21 @@
 - pnpm
 - Docker & Docker Compose
 
+### 环境变量初始化
+
+首次使用前，先在仓库根目录准备根级环境变量文件：
+
+```bash
+cp .env.example .env
+```
+
+根目录 `/.env` 主要用于：
+
+- `docker-compose.yml` 的变量展开
+- `pnpm run docker:build:runner` 等根级脚本
+
+如需访问私有 GitLab 仓库，请将 `GITLAB_TOKEN` 改成你本地可用的值。
+
 ### 1. 开发环境（本地调试）
 
 一键启动 PostgreSQL + Redis + 后端(NestJS watch) + 前端(Vite dev server)：

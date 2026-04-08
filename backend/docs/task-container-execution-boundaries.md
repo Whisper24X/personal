@@ -27,7 +27,7 @@ This document maps what runs **on the NestJS host (API/Worker)** versus **inside
 Use this when you **start the API/Worker on the host** (e.g. `pnpm run start:dev` in `backend/`) but still want **Codex/Cursor/etc. inside `ainative-task-*` containers**.
 
 1. Install and run **Docker Desktop** (or equivalent) so the host user can run `docker` and the daemon is reachable.
-2. Ensure the **runner image** exists locally: `docker pull <AINATIVE_RUNNER_IMAGE>` (default `ainative/runner:latest`), or build it from the repo root with `pnpm run docker:build:runner` after setting real `GITLAB_USERNAME` / `GITLAB_TOKEN` values in the shell or repo root `/.env`.
+2. Ensure the **runner image** exists locally: `docker pull <AINATIVE_RUNNER_IMAGE>` (default `ainative/runner:latest`), or build it from the repo root with `pnpm run docker:build:runner` after setting `GITLAB_TOKEN` in the shell or repo root `/.env` (and `GITLAB_USERNAME` as needed).
 3. **`AINATIVE_DATA_ROOT_DIR`** worktrees must live on the **host filesystem** paths that Docker can bind-mount (`docker run -v hostWorktree:...`). Relative dirs resolve from the Nest process cwd.
 
 Nest started **inside** `docker-compose` already mounts `docker.sock` into the backend container; the hybrid case relies on the **host** Docker CLI talking to the same daemon.

@@ -12,6 +12,12 @@
 
 本地 Docker 运行统一使用 [docker-compose.yml](../../docker-compose.yml)。
 
+首次使用建议先初始化根目录环境变量文件：
+
+```bash
+cp .env.example .env
+```
+
 ```bash
 NODE_ENV=development pnpm run docker:up:build
 ```
@@ -92,6 +98,12 @@ AINATIVE_RUNNER_PLATFORM=linux/amd64
 AINATIVE_RUNNER_BUILD_PLATFORM=linux/amd64
 ```
 
+推荐直接从模板复制：
+
+```bash
+cp .env.example .env
+```
+
 如果你不构建 runner，也不需要 backend 访问私有 GitLab HTTP 仓库，可以不设置 `GITLAB_TOKEN`。
 
 也可以不写文件，继续只在当前 shell 中设置以下环境变量：
@@ -124,7 +136,7 @@ NODE_ENV=development pnpm run docker:build:runner
 pnpm run docker:build:runner
 ```
 
-默认镜像名是 `ainative/runner:latest`。如果构建成功，`ainative runner up` 和后端的 Docker 任务执行模式都会直接复用这张镜像。若 `/.env` 里 `GITLAB_TOKEN` 为空，runner 构建会直接报缺失，避免拿模板值去尝试拉私有依赖。
+默认镜像名是 `ainative/runner:latest`。如果构建成功，`ainative runner up` 和后端的 Docker 任务执行模式都会直接复用这张镜像。若当前 shell 和仓库根目录 `/.env` 都未提供真实的 `GITLAB_TOKEN`，runner 构建会直接报缺失。
 
 `pnpm run docker:build:runner` 现在会默认执行等价于：
 
@@ -141,7 +153,7 @@ docker buildx build --load --platform linux/amd64 -f runner/Dockerfile.runner -t
 优先检查：
 
 - 当前 shell 是否已设置 `GITLAB_USERNAME` 和 `GITLAB_TOKEN`
-- 仓库根目录 `/.env` 是否存在，且包含真实的 `GITLAB_USERNAME` / `GITLAB_TOKEN`
+- 仓库根目录 `/.env` 是否存在，且包含预期的 `GITLAB_USERNAME` / `GITLAB_TOKEN`
 - Personal Access Token 是否配合 `GITLAB_USERNAME=oauth2`
 - Deploy Token 是否使用了 GitLab 提供的专用用户名
 - Token 是否具备私有依赖仓库的读取权限
