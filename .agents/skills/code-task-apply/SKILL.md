@@ -104,6 +104,7 @@ grep -rn 'HelloWorld\|TheWelcome\|欢迎使用YC-vue3模版\|AINative Workspace\
 
 ```bash
 PG_DB=$(grep -E '^PG_DB=' sandbox/.env | cut -d= -f2-)
+export PATH="$PATH:/usr/local/go/bin:$(go env GOPATH)/bin"
 cd ainative-backend && make sqlimport ./doc/sql/${PG_DB}/{module}_menu.sql
 ```
 
