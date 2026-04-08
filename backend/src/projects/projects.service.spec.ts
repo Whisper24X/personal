@@ -91,9 +91,16 @@ const createProjectsService = () => {
       return undefined;
     }),
   };
-
-  const controlPlaneAgentExecutionService = {
-    executeProjectPrompt: jest.fn(),
+  const projectAccessService = {
+    assertCanAccessProject: jest.fn(),
+    assertCanManageProject: jest.fn(),
+    assertProjectCapability: jest.fn(),
+  };
+  const projectRepositoryWorkspaceService = {
+    ensureProjectRepository: jest.fn(),
+    ensureProjectRepositoryReady: jest.fn(),
+    runWithProjectRepositoryLock: jest.fn(),
+    syncRunnerConfigBackup: jest.fn(),
   };
 
   const service = new ProjectsService(
@@ -107,7 +114,8 @@ const createProjectsService = () => {
     workflowTemplateRepository as never,
     accessService as never,
     configService as never,
-    controlPlaneAgentExecutionService as never,
+    projectAccessService as never,
+    projectRepositoryWorkspaceService as never,
   );
 
   return {
@@ -120,7 +128,8 @@ const createProjectsService = () => {
     projectCustomRoleRepository,
     workflowTemplateRepository,
     accessService,
-    controlPlaneAgentExecutionService,
+    projectAccessService,
+    projectRepositoryWorkspaceService,
   };
 };
 
@@ -148,6 +157,7 @@ describe('ProjectsService', () => {
       projectRepository,
       projectMemberRepository,
       businessLineRepository,
+      projectRepositoryWorkspaceService,
     } = createProjectsService();
     const serviceAny = service as any;
     const dto = createProjectDto();
@@ -171,15 +181,20 @@ describe('ProjectsService', () => {
     const validateGitSpy = jest
       .spyOn(serviceAny, 'validateGitRepositoryAccessible')
       .mockResolvedValue(undefined);
-    const ensureRepoSpy = jest
-      .spyOn(serviceAny, 'ensureProjectRepository')
-      .mockResolvedValue(undefined);
+    projectRepositoryWorkspaceService.ensureProjectRepository.mockResolvedValue(
+      '/tmp/ainative-project-repo',
+    );
+    projectRepositoryWorkspaceService.syncRunnerConfigBackup.mockResolvedValue(
+      undefined,
+    );
 
     const result = await service.create(dto, currentUser);
 
     expect(result).toEqual(project);
     expect(validateGitSpy).toHaveBeenCalledWith(dto.gitUrl);
-    expect(ensureRepoSpy).toHaveBeenCalledWith(project);
+    expect(
+      projectRepositoryWorkspaceService.ensureProjectRepository,
+    ).toHaveBeenCalledWith(project);
     expect(projectMemberRepository.create).toHaveBeenCalledTimes(1);
   });
 
@@ -214,6 +229,7 @@ describe('ProjectsService', () => {
       projectRepository,
       projectMemberRepository,
       businessLineRepository,
+      projectRepositoryWorkspaceService,
     } = createProjectsService();
     const serviceAny = service as any;
     const dto = createProjectDto();
@@ -232,9 +248,9 @@ describe('ProjectsService', () => {
     jest
       .spyOn(serviceAny, 'validateGitRepositoryAccessible')
       .mockResolvedValue(undefined);
-    jest
-      .spyOn(serviceAny, 'ensureProjectRepository')
-      .mockRejectedValue(new Error('git fetch failed'));
+    projectRepositoryWorkspaceService.ensureProjectRepository.mockRejectedValue(
+      new Error('git fetch failed'),
+    );
 
     await expect(service.create(dto, currentUser)).rejects.toBeInstanceOf(
       BadRequestException,
@@ -243,36 +259,18 @@ describe('ProjectsService', () => {
     expect(projectMemberRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should list docs without forcing remote sync', async () => {
-    const { service } = createProjectsService();
-    const currentUser = createCurrentUser();
-
-    const ensureRepoReadySpy = jest
-      .spyOn(service, 'ensureProjectRepositoryReady')
-      .mockResolvedValue({
-        project: createProject(),
-        repositoryRoot: '/tmp/ainative-project-repo',
-      } as never);
-    jest.spyOn(service as any, 'pathExists').mockResolvedValue(false);
-
-    const result = await service.listDocs('project-1', currentUser);
-
-    expect(result).toEqual([]);
-    expect(ensureRepoReadySpy).toHaveBeenCalledWith('project-1', currentUser, {
-      syncRemote: false,
-    });
-  });
-
   it('should forward explicit repository sync options', async () => {
-    const { service } = createProjectsService();
-    const serviceAny = service as any;
+    const { service, projectRepositoryWorkspaceService } =
+      createProjectsService();
     const currentUser = createCurrentUser();
     const project = createProject();
 
-    jest.spyOn(serviceAny, 'ensureCanAccessProject').mockResolvedValue(project);
-    const ensureRepoSpy = jest
-      .spyOn(serviceAny, 'ensureProjectRepository')
-      .mockResolvedValue('/tmp/ainative-project-repo');
+    projectRepositoryWorkspaceService.ensureProjectRepositoryReady.mockResolvedValue(
+      {
+        project,
+        repositoryRoot: '/tmp/ainative-project-repo',
+      },
+    );
 
     const result = await service.ensureProjectRepositoryReady(
       project.id,
@@ -286,81 +284,11 @@ describe('ProjectsService', () => {
       project,
       repositoryRoot: '/tmp/ainative-project-repo',
     });
-    expect(ensureRepoSpy).toHaveBeenCalledWith(project, { syncRemote: false });
-  });
-
-  it('should clone repository with the project default branch checked out', async () => {
-    const { service } = createProjectsService();
-    const serviceAny = service as any;
-    const project = {
-      ...createProject(),
-      defaultBranch: 'develop',
-    };
-    const repositoryRoot = serviceAny.resolveRepositoryRoot(project);
-    const runCommandSpy = jest
-      .spyOn(serviceAny, 'runCommand')
-      .mockResolvedValue({
-        success: true,
-        stdout: '',
-        stderr: '',
-      });
-
-    jest.spyOn(serviceAny, 'pathExists').mockResolvedValue(false);
-
-    const result = await serviceAny.ensureProjectRepository(project);
-
-    expect(result).toBe(repositoryRoot);
-    expect(runCommandSpy).toHaveBeenNthCalledWith(1, 'git', [
-      'clone',
-      '--origin',
-      'origin',
-      '--branch',
-      'develop',
-      project.gitUrl,
-      repositoryRoot,
-    ]);
-    expect(runCommandSpy).toHaveBeenNthCalledWith(2, 'git', [
-      '-C',
-      repositoryRoot,
-      'fetch',
-      '--all',
-      '--prune',
-    ]);
-  });
-
-  it('should clone gitlab ssh repository via https token auth when configured', async () => {
-    process.env.GITLAB_USERNAME = 'oauth2';
-    process.env.GITLAB_TOKEN = 'token-value';
-
-    const { service } = createProjectsService();
-    const serviceAny = service as any;
-    const project = {
-      ...createProject(),
-      gitUrl: 'git@gitlab.yc345.tv:frontend/ainative.git',
-      defaultBranch: 'develop',
-    };
-    const repositoryRoot = serviceAny.resolveRepositoryRoot(project);
-    const runCommandSpy = jest
-      .spyOn(serviceAny, 'runCommand')
-      .mockResolvedValue({
-        success: true,
-        stdout: '',
-        stderr: '',
-      });
-
-    jest.spyOn(serviceAny, 'pathExists').mockResolvedValue(false);
-
-    await serviceAny.ensureProjectRepository(project);
-
-    expect(runCommandSpy).toHaveBeenNthCalledWith(1, 'git', [
-      'clone',
-      '--origin',
-      'origin',
-      '--branch',
-      'develop',
-      'https://oauth2:token-value@gitlab.yc345.tv/frontend/ainative.git',
-      repositoryRoot,
-    ]);
+    expect(
+      projectRepositoryWorkspaceService.ensureProjectRepositoryReady,
+    ).toHaveBeenCalledWith(project.id, currentUser, {
+      syncRemote: false,
+    });
   });
 
   it('should inspect repository and prioritize master as recommended default branch', async () => {
@@ -570,7 +498,7 @@ describe('ProjectsService', () => {
   });
 
   it('should return project detail without injecting runtime preview data', async () => {
-    const { service, accessService } = createProjectsService();
+    const { service, projectAccessService } = createProjectsService();
     const currentUser = createCurrentUser();
     const project = {
       ...createProject(),
@@ -581,7 +509,7 @@ describe('ProjectsService', () => {
       },
     };
 
-    accessService.assertProjectCapability.mockResolvedValue(project);
+    projectAccessService.assertCanAccessProject.mockResolvedValue(project);
 
     const result = await service.findById(project.id, currentUser);
 

@@ -1,4 +1,4 @@
-import { TaskMessageRole } from '../dto/task-message.dto';
+import { TaskMessageRole } from '../../tasks/dto/task-message.dto';
 import {
   AgentCliAdapter,
   AgentCliContinuationOptions,

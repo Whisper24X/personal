@@ -1,6 +1,9 @@
 import { mkdtemp, rm } from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { ConfigService } from '@nestjs/config';
+import { AgentCliAdapterRegistry } from '../../agent-execution/agent-cli/agent-cli-adapter.registry';
+import { ProjectWorkspacePathsService } from '../../project-workspace/project-workspace-paths.service';
 import { TaskOutputService } from './task-output.service';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
@@ -53,6 +56,15 @@ const createNode = (): TaskNode => ({
   updatedAt: new Date('2026-03-19T10:05:00.000Z'),
 });
 
+const createTaskOutputService = (): TaskOutputService => {
+  const configService = new ConfigService();
+
+  return new TaskOutputService(
+    new ProjectWorkspacePathsService(configService),
+    new AgentCliAdapterRegistry(),
+  );
+};
+
 describe('TaskOutputService', () => {
   const originalDataRootDir = process.env.AINATIVE_DATA_ROOT_DIR;
 
@@ -71,7 +83,7 @@ describe('TaskOutputService', () => {
     process.env.AINATIVE_DATA_ROOT_DIR = tempRootDir;
 
     try {
-      const service = new TaskOutputService();
+      const service = createTaskOutputService();
       const task = createTask();
       const node = createNode();
 
@@ -117,7 +129,7 @@ describe('TaskOutputService', () => {
     process.env.AINATIVE_DATA_ROOT_DIR = tempRootDir;
 
     try {
-      const service = new TaskOutputService();
+      const service = createTaskOutputService();
       const task = createTask();
       const node = createNode();
 

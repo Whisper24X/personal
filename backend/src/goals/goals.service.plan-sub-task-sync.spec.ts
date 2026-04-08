@@ -25,6 +25,9 @@ describe('GoalsService.syncPlanSubTaskStatusFromLinkedTask', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
       {} as GoalsMetricsService,
     );
     return { service, goalRepository };
@@ -73,6 +76,9 @@ describe('GoalsService.patchPlanSubTask', () => {
     const service = new GoalsService(
       goalRepository as never,
       projectsService as never,
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

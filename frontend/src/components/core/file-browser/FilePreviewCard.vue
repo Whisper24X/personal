@@ -157,7 +157,7 @@ const closeFullscreen = () => {
         </div>
       </div>
 
-      <div class="mt-4 flex flex-1 flex-col gap-3 min-h-0">
+      <div class="flex flex-1 flex-col gap-3 min-h-0">
         <div
           :class="[
             'flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background',

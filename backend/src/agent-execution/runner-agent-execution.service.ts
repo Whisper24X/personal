@@ -5,9 +5,9 @@ import { ContainerExecutionConfigService } from '../containers/container-executi
 import { DockerExecProcessLauncherService } from '../containers/docker-exec-process-launcher.service';
 import { IsolatedRunnerContainerService } from '../containers/isolated-runner-container.service';
 import { Project } from '../projects/domain/project';
+import { Task } from '../tasks/domain/task';
+import { TaskNode } from '../tasks/domain/task-node';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
-import { Task } from './domain/task';
-import { TaskNode } from './domain/task-node';
 import { AgentExecutionConfigResolverService } from './agent-execution-config-resolver.service';
 import {
   AgentExecutionConfig,
@@ -15,7 +15,7 @@ import {
   AgentExecutionResult,
   AgentExecutionStreamCallbacks,
 } from './agent-execution.types';
-import { PromptTemplateRuntimeContext } from './prompt-template.service';
+import { PromptTemplateRuntimeContext } from './agent-prompt-template.service';
 
 type ActiveAgentExecution = {
   childProcess: ChildProcess;
@@ -32,8 +32,8 @@ export class RunnerAgentExecutionService {
 
   constructor(
     private readonly configResolver: AgentExecutionConfigResolverService,
-    private readonly configService: ConfigService = new ConfigService(),
-    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
+    private readonly configService: ConfigService,
+    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry,
     @Optional()
     private readonly containerExecutionConfig?: ContainerExecutionConfigService,
     @Optional()

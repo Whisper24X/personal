@@ -66,7 +66,7 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
     private readonly taskRepository: TaskRepository,
     private readonly projectRepository: ProjectRepository,
     private readonly taskRuntimeService: TaskRuntimeService,
-    private readonly configService: ConfigService = new ConfigService(),
+    private readonly configService: ConfigService,
   ) {}
 
   subscribe(taskId: string, listener: TaskWorkspaceListener): () => void {

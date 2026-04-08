@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
-import { existsSync, promises as fs } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { Project } from '../projects/domain/project';
-import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
+import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
+import { ProjectRepositoryWorkspaceService } from '../projects/project-repository-workspace.service';
 import { Task } from './domain/task';
 import { resolveGitRemoteUrlWithHttpAuth } from '../git/git-remote-auth.util';
 
@@ -28,18 +29,15 @@ type GitDiffArtifact = {
 
 @Injectable()
 export class TaskRuntimeService {
-  private readonly configService = new ConfigService();
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
   private readonly maxDiffLength = 120_000;
-  private readonly defaultDataRootDir = path.resolve(
-    resolveAinativeDataRootDir(),
-  );
-  private readonly legacyDefaultWorktreeBaseDir = path.resolve(
-    process.cwd(),
-    'tmp',
-    'worktrees',
-  );
+
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
+    private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
+  ) {}
 
   async ensureRuntime(
     task: Task,
@@ -403,53 +401,21 @@ export class TaskRuntimeService {
     project: Project,
     options?: { preferLegacyExistingPath?: boolean },
   ): string {
-    const gitWorktree = this.resolveGitWorktreeIdentifier(task);
-
-    if (path.isAbsolute(gitWorktree)) {
-      return gitWorktree;
-    }
-
-    const baseDir = this.resolveWorktreeBaseDir(project);
-    const nextPath = path.join(baseDir, gitWorktree);
-
-    if (options?.preferLegacyExistingPath) {
-      const legacyBaseDir = this.resolveLegacyProjectWorktreeBaseDir(project);
-      const legacyPath = path.join(legacyBaseDir, gitWorktree);
-
-      if (legacyPath !== nextPath && existsSync(legacyPath)) {
-        return legacyPath;
-      }
-    }
-
-    return nextPath;
+    return this.projectWorkspacePathsService.resolveTaskWorktreePath(
+      task,
+      project,
+      options,
+    );
   }
 
   private resolveGitWorktreeIdentifier(task: Task): string {
-    const gitWorktree = task.gitWorktree?.trim();
-
-    if (gitWorktree) {
-      return gitWorktree;
-    }
-
-    return `wk-${task.id}`;
+    return this.projectWorkspacePathsService.resolveTaskWorktreeIdentifier(
+      task,
+    );
   }
 
   private resolveWorktreeBaseDir(project: Project): string {
-    const config = (project.configJson ?? {}) as Record<string, unknown>;
-
-    if (
-      typeof config.worktreeBaseDir === 'string' &&
-      config.worktreeBaseDir.trim()
-    ) {
-      return path.resolve(config.worktreeBaseDir);
-    }
-
-    const worktreeBaseDir = this.readTrimmedEnv('AINATIVE_WORKTREE_BASE_DIR');
-    if (worktreeBaseDir) {
-      return path.resolve(worktreeBaseDir);
-    }
-
-    return this.resolveProjectWorktreeBaseDir(project);
+    return this.projectWorkspacePathsService.resolveWorktreeBaseDir(project);
   }
 
   private sanitizeSegment(value: string): string {
@@ -483,60 +449,24 @@ export class TaskRuntimeService {
   }
 
   private resolveRepositoryRoot(project: Project): string {
-    const config = (project.configJson ?? {}) as Record<string, unknown>;
-
-    if (
-      typeof config.repoLocalPath === 'string' &&
-      config.repoLocalPath.trim()
-    ) {
-      return path.resolve(config.repoLocalPath.trim());
-    }
-
-    const cacheBaseDir =
-      typeof config.repoCacheBaseDir === 'string' &&
-      config.repoCacheBaseDir.trim()
-        ? config.repoCacheBaseDir.trim()
-        : this.readTrimmedEnv('AINATIVE_REPO_CACHE_BASE_DIR');
-
-    const repositoryDirName = this.resolveRepositoryDirectoryName(project);
-
-    if (!cacheBaseDir) {
-      return path.join(
-        this.resolveProjectStorageBaseDir(project),
-        repositoryDirName,
-      );
-    }
-
-    return path.resolve(cacheBaseDir, `${repositoryDirName}-${project.id}`);
+    return this.projectWorkspacePathsService.resolveRepositoryRoot(project);
   }
 
   private resolveProjectStorageBaseDir(project: Project): string {
-    const businessLineId =
-      project.businessLineId?.trim() || 'unknown-business-line';
-    const projectId = project.id?.trim() || 'unknown-project';
-
-    return path.resolve(
-      this.defaultDataRootDir,
-      businessLineId,
-      'projects',
-      projectId,
+    return this.projectWorkspacePathsService.resolveProjectStorageBaseDir(
+      project,
     );
   }
 
   private resolveProjectWorktreeBaseDir(project: Project): string {
-    return path.join(this.resolveProjectStorageBaseDir(project), 'worktrees');
+    return this.projectWorkspacePathsService.resolveProjectWorktreeBaseDir(
+      project,
+    );
   }
 
   private resolveLegacyProjectWorktreeBaseDir(project: Project): string {
-    const businessLineId =
-      project.businessLineId?.trim() || 'unknown-business-line';
-    const projectId = project.id?.trim() || 'unknown-project';
-
-    return path.resolve(
-      this.defaultDataRootDir,
-      businessLineId,
-      'worktrees',
-      projectId,
+    return this.projectWorkspacePathsService.resolveLegacyProjectWorktreeBaseDir(
+      project,
     );
   }
 
@@ -572,52 +502,9 @@ export class TaskRuntimeService {
   }
 
   private async ensureProjectRepository(project: Project): Promise<string> {
-    const repositoryRoot = this.resolveRepositoryRoot(project);
-    const gitDirPath = path.join(repositoryRoot, '.git');
-    const hasGit = await this.pathExists(gitDirPath);
-    const resolvedGitUrl = this.resolveGitRemoteUrl(project.gitUrl);
-
-    if (!hasGit) {
-      await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
-
-      const cloneResult = await this.runCommand('git', [
-        'clone',
-        '--origin',
-        'origin',
-        '--no-checkout',
-        resolvedGitUrl,
-        repositoryRoot,
-      ]);
-
-      if (!cloneResult.success) {
-        throw new Error(
-          cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
-        );
-      }
-    } else {
-      await this.runCommand('git', [
-        '-C',
-        repositoryRoot,
-        'remote',
-        'set-url',
-        'origin',
-        resolvedGitUrl,
-      ]);
-    }
-
-    const fetchResult = await this.runCommand('git', [
-      '-C',
-      repositoryRoot,
-      'fetch',
-      '--all',
-      '--prune',
-    ]);
-
-    if (!fetchResult.success) {
-      throw new Error(fetchResult.stderr || 'git fetch failed');
-    }
-
-    return repositoryRoot;
+    return this.projectRepositoryWorkspaceService.ensureProjectRepository(
+      project,
+    );
   }
 
   private async deleteTaskBranch(
@@ -918,44 +805,20 @@ export class TaskRuntimeService {
   }
 
   private resolveWorktreeAllowedRoot(project: Project): string {
-    const config = (project.configJson ?? {}) as Record<string, unknown>;
-
-    if (
-      typeof config.worktreeAllowedRoot === 'string' &&
-      config.worktreeAllowedRoot.trim()
-    ) {
-      return path.resolve(config.worktreeAllowedRoot.trim());
-    }
-
-    const allowedRoot = this.readTrimmedEnv('AINATIVE_WORKTREE_ALLOWED_ROOT');
-    if (allowedRoot) {
-      return path.resolve(allowedRoot);
-    }
-
-    return this.resolveWorktreeBaseDir(project);
-  }
-
-  private resolveGlobalWorktreeAllowedRoot(): string {
-    const allowedRoot = this.readTrimmedEnv('AINATIVE_WORKTREE_ALLOWED_ROOT');
-    if (allowedRoot) {
-      return path.resolve(allowedRoot);
-    }
-
-    const worktreeBaseDir = this.readTrimmedEnv('AINATIVE_WORKTREE_BASE_DIR');
-    if (worktreeBaseDir) {
-      return path.resolve(worktreeBaseDir);
-    }
-
-    return this.legacyDefaultWorktreeBaseDir;
+    return this.projectWorkspacePathsService.resolveWorktreeAllowedRoot(
+      project,
+    );
   }
 
   private ensureWorktreePathAllowed(
     worktreePath: string,
     allowedRoot: string,
   ): string {
-    const resolvedWorktreePath = path.resolve(worktreePath);
-    this.ensurePathWithinAllowedRoot(resolvedWorktreePath, allowedRoot);
-    return resolvedWorktreePath;
+    return this.projectWorkspacePathsService.ensurePathWithinAllowedRoot(
+      worktreePath,
+      allowedRoot,
+      { allowEqual: false },
+    );
   }
 
   private readTrimmedEnv(key: string): string | undefined {
@@ -983,14 +846,12 @@ export class TaskRuntimeService {
     targetPath: string,
     allowedRoot: string,
   ): boolean {
-    const normalizedRoot = path.resolve(allowedRoot);
-    const normalizedTarget = path.resolve(targetPath);
-    const relativePath = path.relative(normalizedRoot, normalizedTarget);
-
-    return (
-      relativePath !== '' &&
-      !relativePath.startsWith('..') &&
-      !path.isAbsolute(relativePath)
+    return this.projectWorkspacePathsService.isPathWithinAllowedRoot(
+      targetPath,
+      allowedRoot,
+      {
+        allowEqual: false,
+      },
     );
   }
 

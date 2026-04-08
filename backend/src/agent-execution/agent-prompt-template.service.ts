@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import path from 'path';
 import { Project } from '../projects/domain/project';
-import { Task } from './domain/task';
-import { TaskNode } from './domain/task-node';
+import { Task } from '../tasks/domain/task';
+import { TaskNode } from '../tasks/domain/task-node';
 
 export type PromptTemplateRuntimeContext = {
   gitBranch?: string | null;
@@ -18,7 +18,7 @@ const PROMPT_TEMPLATE_VARIABLE_PATTERN =
   /\{\{\s*([A-Za-z][A-Za-z0-9]*)\s*\}\}/g;
 
 @Injectable()
-export class PromptTemplateService {
+export class AgentPromptTemplateService {
   renderPromptTemplate(
     template: string,
     context: {

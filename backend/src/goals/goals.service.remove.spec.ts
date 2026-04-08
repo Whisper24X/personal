@@ -19,6 +19,8 @@ describe('GoalsService.remove', () => {
     };
     const projectsService = {
       assertProjectCapability: jest.fn(),
+    };
+    const projectDocsService = {
       removeGoalDocsSubtree: jest.fn(),
     };
     const taskRepository = {
@@ -35,9 +37,12 @@ describe('GoalsService.remove', () => {
     const service = new GoalsService(
       goalRepository as never,
       projectsService as never,
+      projectDocsService as never,
+      {} as never,
       gitService as never,
       taskRepository as never,
       tasksService as never,
+      {} as never,
       goalsMetrics,
     );
 
@@ -45,6 +50,7 @@ describe('GoalsService.remove', () => {
       service,
       goalRepository,
       projectsService,
+      projectDocsService,
       taskRepository,
       tasksService,
       gitService,
@@ -55,7 +61,7 @@ describe('GoalsService.remove', () => {
     const {
       service,
       goalRepository,
-      projectsService,
+      projectDocsService,
       taskRepository,
       tasksService,
       gitService,
@@ -95,7 +101,7 @@ describe('GoalsService.remove', () => {
       'feature/goal-x',
       user,
     );
-    expect(projectsService.removeGoalDocsSubtree).toHaveBeenCalledWith(
+    expect(projectDocsService.removeGoalDocsSubtree).toHaveBeenCalledWith(
       'project-1',
       'goal-1',
       user,
@@ -110,7 +116,7 @@ describe('GoalsService.remove', () => {
     const {
       service,
       goalRepository,
-      projectsService,
+      projectDocsService,
       taskRepository,
       tasksService,
       gitService,
@@ -145,7 +151,7 @@ describe('GoalsService.remove', () => {
       'feature/goal-y',
       user,
     );
-    expect(projectsService.removeGoalDocsSubtree).toHaveBeenCalledWith(
+    expect(projectDocsService.removeGoalDocsSubtree).toHaveBeenCalledWith(
       'project-2',
       'goal-2',
       user,

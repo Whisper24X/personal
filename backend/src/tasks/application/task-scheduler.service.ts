@@ -78,7 +78,7 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly containerOrchestration: ContainerOrchestrationService,
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
     private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
-    private readonly configService: ConfigService = new ConfigService(),
+    private readonly configService: ConfigService,
     @Optional()
     @Inject(NotificationsService)
     private readonly notificationsService: Pick<

@@ -13,7 +13,7 @@ import path from 'path';
 import { Skill } from './domain/skill';
 import { FindAllSkillsDto } from './dto/find-all-skills.dto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
-import { ProjectsService } from '../projects/projects.service';
+import { ProjectAccessService } from '../projects/project-access.service';
 import {
   buildSkillDirectoryTree,
   loadBusinessLineLocalSkills,
@@ -45,7 +45,7 @@ export class SkillsService {
   private static readonly SKILL_UPLOAD_EXTENSIONS = new Set(['.zip']);
   private static readonly SKILL_UPLOAD_COMMAND_TIMEOUT_MS = 15_000;
 
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(private readonly projectAccessService: ProjectAccessService) {}
 
   async findAllWithPagination(
     query: FindAllSkillsDto,
@@ -55,7 +55,7 @@ export class SkillsService {
       return [];
     }
 
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectAccessService.assertCanAccessProject(
       query.projectId,
       currentUser,
     );
@@ -69,7 +69,7 @@ export class SkillsService {
     query: GetSkillContentDto,
     currentUser: JwtPayloadType,
   ): Promise<SkillContentDto> {
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectAccessService.assertCanAccessProject(
       query.projectId,
       currentUser,
     );
@@ -91,7 +91,7 @@ export class SkillsService {
     projectId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ id: string; name: string; tree: SkillTreeNode[] }> {
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectAccessService.assertCanAccessProject(
       projectId,
       currentUser,
     );
@@ -118,7 +118,7 @@ export class SkillsService {
     filePath: string,
     currentUser: JwtPayloadType,
   ): Promise<{ path: string; content: string }> {
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectAccessService.assertCanAccessProject(
       projectId,
       currentUser,
     );
@@ -147,7 +147,7 @@ export class SkillsService {
     projectId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ buffer: Buffer; fileName: string }> {
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectAccessService.assertCanAccessProject(
       projectId,
       currentUser,
     );
@@ -173,7 +173,7 @@ export class SkillsService {
     dto: CopyBusinessLineSkillDto,
     currentUser: JwtPayloadType,
   ): Promise<ProjectLocalSkillResultDto> {
-    const project = await this.projectsService.assertCanManageProject(
+    const project = await this.projectAccessService.assertCanManageProject(
       dto.projectId,
       currentUser,
     );
@@ -260,7 +260,7 @@ export class SkillsService {
     file: Express.Multer.File | undefined,
     currentUser: JwtPayloadType,
   ): Promise<ProjectLocalSkillResultDto> {
-    const project = await this.projectsService.assertCanManageProject(
+    const project = await this.projectAccessService.assertCanManageProject(
       query.projectId,
       currentUser,
     );
@@ -409,7 +409,7 @@ export class SkillsService {
     skillId: string,
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    const project = await this.projectsService.assertCanManageProject(
+    const project = await this.projectAccessService.assertCanManageProject(
       projectId,
       currentUser,
     );

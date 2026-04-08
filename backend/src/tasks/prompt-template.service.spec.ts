@@ -1,9 +1,9 @@
 import { Project } from '../projects/domain/project';
+import { AgentPromptTemplateService } from '../agent-execution/agent-prompt-template.service';
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
 import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
-import { PromptTemplateService } from './prompt-template.service';
 
 const createTask = (overrides: Partial<Task> = {}): Task => ({
   id: 'task-1',
@@ -62,8 +62,8 @@ const createProject = (overrides: Partial<Project> = {}): Project => ({
   ...overrides,
 });
 
-describe('PromptTemplateService', () => {
-  const service = new PromptTemplateService();
+describe('AgentPromptTemplateService', () => {
+  const service = new AgentPromptTemplateService();
 
   it('should render the supported prompt variables from runtime and domain context', () => {
     const result = service.renderPromptTemplate(

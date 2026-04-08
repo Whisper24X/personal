@@ -8,7 +8,7 @@ import path from 'path';
 import { Mcp } from './domain/mcp';
 import { FindAllMcpsDto } from './dto/find-all-mcps.dto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
-import { ProjectsService } from '../projects/projects.service';
+import { ProjectAccessService } from '../projects/project-access.service';
 import {
   loadProjectLocalMcps,
   resolveProjectLocalMcpConfigPath,
@@ -25,7 +25,7 @@ import { RemoveProjectLocalMcpDto } from './dto/remove-project-local-mcp.dto';
 
 @Injectable()
 export class McpsService {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(private readonly projectAccessService: ProjectAccessService) {}
 
   async findAllWithPagination(
     query: FindAllMcpsDto,
@@ -35,7 +35,7 @@ export class McpsService {
       return [];
     }
 
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectAccessService.assertCanAccessProject(
       query.projectId,
       currentUser,
     );
@@ -48,7 +48,7 @@ export class McpsService {
     query: GetProjectLocalMcpConfigDto,
     currentUser: JwtPayloadType,
   ): Promise<ProjectLocalMcpConfigDto> {
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectAccessService.assertCanAccessProject(
       query.projectId,
       currentUser,
     );
@@ -131,7 +131,7 @@ export class McpsService {
     importProjectLocalMcpsDto: ImportProjectLocalMcpsDto,
     currentUser: JwtPayloadType,
   ): Promise<ImportProjectLocalMcpsResultDto> {
-    const project = await this.projectsService.assertCanManageProject(
+    const project = await this.projectAccessService.assertCanManageProject(
       importProjectLocalMcpsDto.projectId,
       currentUser,
     );
@@ -242,7 +242,7 @@ export class McpsService {
     dto: RemoveProjectLocalMcpDto,
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    const project = await this.projectsService.assertCanManageProject(
+    const project = await this.projectAccessService.assertCanManageProject(
       dto.projectId,
       currentUser,
     );

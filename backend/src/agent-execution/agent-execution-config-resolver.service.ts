@@ -1,22 +1,21 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import path from 'path';
 import { AgentToolConfig } from '../business-lines/domain/agent-tool-config';
 import { AgentToolConfigRepository } from '../business-lines/infrastructure/persistence/agent-tool-config.repository';
+import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { Project } from '../projects/domain/project';
-import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
+import { Task } from '../tasks/domain/task';
+import { TaskNode } from '../tasks/domain/task-node';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
 import {
   AgentCliAdapterId,
   AgentCliRunnerConfigInput,
 } from './agent-cli/agent-cli-adapter.interface';
-import { Task } from './domain/task';
-import { TaskNode } from './domain/task-node';
 import {
+  AgentPromptTemplateService,
   PromptTemplateRuntimeContext,
-  PromptTemplateService,
-} from './prompt-template.service';
-import { TaskRuntimeService } from './task-runtime.service';
+} from './agent-prompt-template.service';
 import { AgentExecutionConfig } from './agent-execution.types';
 
 type AgentAdapter = AgentCliAdapterId;
@@ -40,16 +39,12 @@ type ResolvedAgentToolConfig = {
 
 @Injectable()
 export class AgentExecutionConfigResolverService {
-  private readonly defaultDataRootDir = path.resolve(
-    resolveAinativeDataRootDir(),
-  );
-
   constructor(
     private readonly agentToolConfigRepository: AgentToolConfigRepository,
-    private readonly configService: ConfigService = new ConfigService(),
-    private readonly promptTemplateService: PromptTemplateService = new PromptTemplateService(),
-    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
-    @Optional() private readonly taskRuntimeService?: TaskRuntimeService,
+    private readonly configService: ConfigService,
+    private readonly promptTemplateService: AgentPromptTemplateService,
+    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry,
+    private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
   ) {}
 
   async resolveExecutionConfig(
@@ -247,11 +242,10 @@ export class AgentExecutionConfigResolverService {
       return process.cwd();
     }
 
-    const cwd = path.isAbsolute(taskWorktree)
-      ? path.resolve(taskWorktree)
-      : this.taskRuntimeService
-        ? this.taskRuntimeService.resolveTaskWorktreePath(task, project)
-        : path.join(this.resolveProjectWorktreeBaseDir(project), taskWorktree);
+    const cwd = this.projectWorkspacePathsService.resolveTaskWorktreePath(
+      task,
+      project,
+    );
 
     const allowedRoot = this.resolveWorktreeAllowedRoot(project);
     if (!this.isPathWithinAllowedRoot(cwd, allowedRoot)) {
@@ -264,54 +258,20 @@ export class AgentExecutionConfigResolverService {
   }
 
   private resolveWorktreeAllowedRoot(project: Project): string {
-    const config = (project.configJson ?? {}) as Record<string, unknown>;
-
-    if (
-      typeof config.worktreeAllowedRoot === 'string' &&
-      config.worktreeAllowedRoot.trim()
-    ) {
-      return path.resolve(config.worktreeAllowedRoot.trim());
-    }
-
-    const worktreeAllowedRoot = this.readTrimmedEnv(
-      'AINATIVE_WORKTREE_ALLOWED_ROOT',
+    return this.projectWorkspacePathsService.resolveWorktreeAllowedRoot(
+      project,
     );
-    if (worktreeAllowedRoot) {
-      return path.resolve(worktreeAllowedRoot);
-    }
-
-    if (
-      typeof config.worktreeBaseDir === 'string' &&
-      config.worktreeBaseDir.trim()
-    ) {
-      return path.resolve(config.worktreeBaseDir.trim());
-    }
-
-    const worktreeBaseDir = this.readTrimmedEnv('AINATIVE_WORKTREE_BASE_DIR');
-    if (worktreeBaseDir) {
-      return path.resolve(worktreeBaseDir);
-    }
-
-    return this.resolveProjectWorktreeBaseDir(project);
   }
 
   private resolveProjectStorageBaseDir(project: Project): string {
-    const businessLineId =
-      project.businessLineId?.trim() || 'unknown-business-line';
-    const projectId = project.id?.trim() || 'unknown-project';
-
-    return path.resolve(
-      this.defaultDataRootDir,
-      businessLineId,
-      'projects',
-      projectId,
+    return this.projectWorkspacePathsService.resolveProjectStorageBaseDir(
+      project,
     );
   }
 
   private resolveProjectWorktreeBaseDir(project: Project): string {
-    return path.resolve(
-      this.resolveProjectStorageBaseDir(project),
-      'worktrees',
+    return this.projectWorkspacePathsService.resolveProjectWorktreeBaseDir(
+      project,
     );
   }
 
@@ -319,11 +279,11 @@ export class AgentExecutionConfigResolverService {
     targetPath: string,
     allowedRoot: string,
   ): boolean {
-    const normalizedRoot = path.resolve(allowedRoot);
-    const normalizedTarget = path.resolve(targetPath);
-    const relativePath = path.relative(normalizedRoot, normalizedTarget);
-
-    return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+    return this.projectWorkspacePathsService.isPathWithinAllowedRoot(
+      targetPath,
+      allowedRoot,
+      { allowEqual: true },
+    );
   }
 
   private toObjectRecord(value: unknown): Record<string, unknown> {

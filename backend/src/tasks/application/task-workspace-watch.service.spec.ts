@@ -355,6 +355,7 @@ describe('TaskWorkspaceWatchService', () => {
       taskRepository as never,
       projectRepository as never,
       taskRuntimeService as never,
+      createConfigService() as never,
     );
 
     service.subscribe('task-1', jest.fn());
@@ -406,6 +407,7 @@ describe('TaskWorkspaceWatchService', () => {
       taskRepository as never,
       projectRepository as never,
       taskRuntimeService as never,
+      createConfigService() as never,
     );
     const warnSpy = jest
       .spyOn((service as any).logger, 'warn')

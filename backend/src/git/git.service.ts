@@ -15,14 +15,16 @@ import { GitPullMainDto } from './dto/git-pull-main.dto';
 import { GitStatusDto } from './dto/git-status.dto';
 import { GitCreateBranchResultDto } from './dto/git-create-branch-result.dto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
-import { ProjectsService } from '../projects/projects.service';
+import { ProjectRepositoryWorkspaceService } from '../projects/project-repository-workspace.service';
 
 @Injectable()
 export class GitService {
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly fallbackDefaultBranch = 'main';
 
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(
+    private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
+  ) {}
 
   async listBranches(
     projectId: string,
@@ -156,7 +158,7 @@ export class GitService {
       '基准 ref',
     );
 
-    return this.projectsService.runWithProjectRepositoryLock(
+    return this.projectRepositoryWorkspaceService.runWithProjectRepositoryLock(
       projectId,
       currentUser,
       { syncRemote: true },
@@ -201,7 +203,7 @@ export class GitService {
       return;
     }
 
-    return this.projectsService.runWithProjectRepositoryLock(
+    return this.projectRepositoryWorkspaceService.runWithProjectRepositoryLock(
       projectId,
       currentUser,
       { syncRemote: false },
@@ -328,7 +330,7 @@ export class GitService {
     options: { syncRemote?: boolean } = {},
   ): Promise<{ repositoryRoot: string; defaultBranch: string }> {
     const { project, repositoryRoot } =
-      await this.projectsService.ensureProjectRepositoryReady(
+      await this.projectRepositoryWorkspaceService.ensureProjectRepositoryReady(
         projectId,
         currentUser,
         options,

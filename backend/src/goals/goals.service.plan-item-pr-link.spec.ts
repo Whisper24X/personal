@@ -34,6 +34,9 @@ describe('GoalsService.getPlanItemPrLink', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
       {} as GoalsMetricsService,
     );
 

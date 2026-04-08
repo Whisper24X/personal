@@ -65,6 +65,9 @@ import {
   UploadProjectDocDto,
 } from './dto/project-doc.dto';
 import type { Response } from 'express';
+import { ProjectDeployService } from './project-deploy.service';
+import { ProjectDocsService } from './project-docs.service';
+import { ProjectKnowledgeService } from './project-knowledge.service';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
@@ -74,7 +77,12 @@ import type { Response } from 'express';
   version: '1',
 })
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(
+    private readonly projectsService: ProjectsService,
+    private readonly projectDocsService: ProjectDocsService,
+    private readonly projectKnowledgeService: ProjectKnowledgeService,
+    private readonly projectDeployService: ProjectDeployService,
+  ) {}
 
   @Post('inspect-repository')
   @ApiOkResponse({ type: ProjectRepositoryInspectionDto })
@@ -335,7 +343,7 @@ export class ProjectsController {
   @ApiOkResponse({ type: ProjectDocItemDto, isArray: true })
   @HttpCode(HttpStatus.OK)
   listDocs(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
-    return this.projectsService.listDocs(id, request.user);
+    return this.projectDocsService.listDocs(id, request.user);
   }
 
   @Get(':id/docs/tree')
@@ -347,7 +355,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ProjectDocsTreeQueryDto,
   ) {
-    return this.projectsService.docsTree(id, query, request.user);
+    return this.projectDocsService.docsTree(id, query, request.user);
   }
 
   @Get(':id/docs/file/raw')
@@ -360,7 +368,7 @@ export class ProjectsController {
     @Res() res: Response,
   ) {
     const { stream, mimeType, size } =
-      await this.projectsService.docsFileStream(id, query, request.user);
+      await this.projectDocsService.docsFileStream(id, query, request.user);
     res.set({
       'Content-Type': mimeType,
       'Content-Length': size,
@@ -378,7 +386,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ProjectDocsPreviewQueryDto,
   ) {
-    return this.projectsService.docsPreview(id, query, request.user);
+    return this.projectDocsService.docsPreview(id, query, request.user);
   }
 
   @Get(':id/docs/content')
@@ -390,7 +398,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ReadProjectDocDto,
   ) {
-    return this.projectsService.readDoc(id, query.path, request.user);
+    return this.projectDocsService.readDoc(id, query.path, request.user);
   }
 
   @Post(':id/docs/upload')
@@ -430,7 +438,7 @@ export class ProjectsController {
     if (!file?.buffer) {
       throw new BadRequestException('file is required');
     }
-    return this.projectsService.uploadProjectDoc(
+    return this.projectDocsService.uploadProjectDoc(
       id,
       body.path,
       file.buffer,
@@ -447,7 +455,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() payload: SaveProjectDocDto,
   ) {
-    return this.projectsService.createDoc(id, payload, request.user);
+    return this.projectDocsService.createDoc(id, payload, request.user);
   }
 
   @Patch(':id/docs')
@@ -459,7 +467,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() payload: SaveProjectDocDto,
   ) {
-    return this.projectsService.updateDoc(id, payload, request.user);
+    return this.projectDocsService.updateDoc(id, payload, request.user);
   }
 
   @Delete(':id/docs')
@@ -471,7 +479,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ReadProjectDocDto,
   ): Promise<void> {
-    await this.projectsService.removeDoc(id, query.path, request.user);
+    await this.projectDocsService.removeDoc(id, query.path, request.user);
   }
 
   @Post(':id/docs/query')
@@ -483,7 +491,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() payload: QueryProjectDocsDto,
   ) {
-    return this.projectsService.queryDocs(id, payload, request.user);
+    return this.projectKnowledgeService.queryDocs(id, payload, request.user);
   }
 
   @Get(':id/docs/query/stream')
@@ -500,7 +508,7 @@ export class ProjectsController {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
-    await this.projectsService.streamDocsQuery(
+    await this.projectKnowledgeService.streamDocsQuery(
       id,
       query,
       request.user,
@@ -526,7 +534,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('taskId') taskId: string,
   ): Promise<{ featureBranch: string | null }> {
-    return this.projectsService.getDeployInfo(id, taskId, request.user);
+    return this.projectDeployService.getDeployInfo(id, taskId, request.user);
   }
 
   @Post(':id/deploy')
@@ -560,7 +568,7 @@ export class ProjectsController {
       }
     };
 
-    await this.projectsService.deployToTest(
+    await this.projectDeployService.deployToTest(
       id,
       body.taskId,
       request.user,

@@ -399,7 +399,7 @@ const onRegisterSubmit = async () => {
 .auth-panel {
   position: relative;
   overflow: hidden;
-  border-radius: 1.85rem;
+  border-radius: 0;
   border: 1px solid color-mix(in oklab, white 56%, var(--border));
   background:
     linear-gradient(

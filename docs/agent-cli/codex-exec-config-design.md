@@ -317,7 +317,7 @@ Codex 配置弹窗中有以下约束：
 
 当前实现主要位于：
 
-- `backend/src/tasks/agent-runner.service.ts`
+- `backend/src/agent-execution/runner-agent-execution.service.ts`
 - `backend/src/tasks/agent-runner.service.spec.ts`
 - `frontend/src/components/business/settings/modals/AgentToolConfigModal.vue`
 - `frontend/src/components/business/settings/__tests__/AgentToolConfigModal.spec.ts`
@@ -334,4 +334,3 @@ Codex 配置弹窗中有以下约束：
 
 - 只要当前项目还走 `codex exec`
 - 就不要再回到“UI 字段很多，但后端只透传一小部分”的设计
-

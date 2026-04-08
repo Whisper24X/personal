@@ -2,11 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { Project } from '../projects/domain/project';
+import { Task } from '../tasks/domain/task';
+import { TaskNode } from '../tasks/domain/task-node';
+import { TaskMode } from '../tasks/dto/task-mode.enum';
+import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
-import { Task } from './domain/task';
-import { TaskNode } from './domain/task-node';
-import { TaskMode } from './dto/task-mode.enum';
-import { TaskStatus } from './dto/task-status.enum';
 import { AgentExecutionConfigResolverService } from './agent-execution-config-resolver.service';
 import {
   AgentExecutionConfig,
@@ -15,7 +15,7 @@ import {
   AgentExecutionStreamCallbacks,
 } from './agent-execution.types';
 import { LocalProcessLauncherService } from './local-process-launcher.service';
-import { PromptTemplateRuntimeContext } from './prompt-template.service';
+import { PromptTemplateRuntimeContext } from './agent-prompt-template.service';
 
 @Injectable()
 export class ControlPlaneAgentExecutionService {
@@ -25,8 +25,8 @@ export class ControlPlaneAgentExecutionService {
   constructor(
     private readonly configResolver: AgentExecutionConfigResolverService,
     private readonly localProcessLauncher: LocalProcessLauncherService,
-    private readonly configService: ConfigService = new ConfigService(),
-    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
+    private readonly configService: ConfigService,
+    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry,
   ) {}
 
   async executeCustomPrompt({

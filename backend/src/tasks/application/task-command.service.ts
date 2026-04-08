@@ -8,7 +8,7 @@ import { randomInt } from 'crypto';
 import path from 'path';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { Project } from '../../projects/domain/project';
-import { ProjectsService } from '../../projects/projects.service';
+import { ProjectAccessService } from '../../projects/project-access.service';
 import { WorkflowTemplatesService } from '../../workflow-templates/workflow-templates.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
@@ -45,7 +45,7 @@ export class TaskCommandService {
   constructor(
     private readonly taskRepository: TaskRepository,
     private readonly taskNodeRepository: TaskNodeRepository,
-    private readonly projectsService: ProjectsService,
+    private readonly projectAccessService: ProjectAccessService,
     private readonly workflowTemplatesService: WorkflowTemplatesService,
     private readonly taskRuntimeService: TaskRuntimeService,
     private readonly taskConfigResolver: TaskConfigResolverService,
@@ -65,7 +65,7 @@ export class TaskCommandService {
     createTaskDto: CreateTaskDto,
     currentUser: JwtPayloadType,
   ): Promise<Task> {
-    const project = await this.projectsService.assertProjectCapability(
+    const project = await this.projectAccessService.assertProjectCapability(
       createTaskDto.projectId,
       currentUser,
       'project.task.read',

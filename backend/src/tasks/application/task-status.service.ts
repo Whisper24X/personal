@@ -1,10 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  NotFoundException,
-  forwardRef,
-} from '@nestjs/common';
-import { GoalsService } from '../../goals/goals.service';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
@@ -15,6 +9,7 @@ import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskLogService } from './task-log.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
+import { TaskGoalService } from './task-goal.service';
 
 @Injectable()
 export class TaskStatusService {
@@ -24,8 +19,7 @@ export class TaskStatusService {
     private readonly notificationsService: NotificationsService,
     private readonly taskLogService: TaskLogService,
     private readonly containerOrchestration: ContainerOrchestrationService,
-    @Inject(forwardRef(() => GoalsService))
-    private readonly goalsService: GoalsService,
+    private readonly taskGoalService: TaskGoalService,
   ) {}
 
   async recalculateTaskStatus(taskId: string): Promise<void> {
@@ -85,10 +79,7 @@ export class TaskStatusService {
       finishedAt: status === TaskStatus.done ? new Date() : null,
     });
 
-    await this.goalsService.syncPlanSubTaskStatusFromLinkedTask(
-      task.id,
-      status,
-    );
+    await this.taskGoalService.syncPlanSubTaskStatusFromTask(task.id, status);
 
     if (previousStatus !== status) {
       await this.applySandboxLifecycle(task.id, task.gitWorktree, status);

@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { TaskWorkspaceArtifactService } from './application/task-workspace-artifact.service';
 import { TaskGitService } from './task-git.service';
 
 const runGit = (args: string[], cwd: string): string => {
@@ -38,6 +39,19 @@ const initializeRepository = async (
   return directory;
 };
 
+const createTaskGitServices = () => {
+  const artifactService = new TaskWorkspaceArtifactService(
+    {} as any,
+    {} as any,
+  );
+  const service = new TaskGitService({} as any, {} as any, artifactService);
+
+  return {
+    service,
+    artifactService,
+  };
+};
+
 describe('TaskGitService', () => {
   const createdDirectories: string[] = [];
 
@@ -50,7 +64,7 @@ describe('TaskGitService', () => {
   });
 
   it('should expand untracked directories into file paths when reading git status', async () => {
-    const service = new TaskGitService({} as any, {} as any);
+    const { service } = createTaskGitServices();
 
     jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
       task: {
@@ -108,7 +122,7 @@ describe('TaskGitService', () => {
   });
 
   it('should decode git C-style octal escapes in porcelain paths to UTF-8', async () => {
-    const service = new TaskGitService({} as any, {} as any);
+    const { service } = createTaskGitServices();
 
     jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
       task: {
@@ -160,20 +174,22 @@ describe('TaskGitService', () => {
     await fs.writeFile(path.join(repositoryPath, 'docs.md'), '# docs\n');
     runGit(['add', 'src/nested/demo.ts'], repositoryPath);
 
-    const service = new TaskGitService({} as any, {} as any);
-    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
-      task: {
-        gitBaseBranch: 'main',
-      },
-      worktreePath: repositoryPath,
-    });
+    const { artifactService } = createTaskGitServices();
+    jest
+      .spyOn(artifactService as any, 'resolveTaskWorkspaceContext')
+      .mockResolvedValue({
+        task: {
+          gitBaseBranch: 'main',
+        },
+        worktreePath: repositoryPath,
+      });
 
-    const rootTree = await service.getArtifactTree(
+    const rootTree = await artifactService.getArtifactTree(
       'task-1',
       { path: '.' } as never,
       {} as never,
     );
-    const nestedTree = await service.getArtifactTree(
+    const nestedTree = await artifactService.getArtifactTree(
       'task-1',
       { path: 'src' } as never,
       {} as never,
@@ -201,15 +217,17 @@ describe('TaskGitService', () => {
     runGit(['add', 'README.md'], repositoryPath);
     await fs.writeFile(readmePath, '# unstaged version\n');
 
-    const service = new TaskGitService({} as any, {} as any);
-    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
-      task: {
-        gitBaseBranch: 'main',
-      },
-      worktreePath: repositoryPath,
-    });
+    const { artifactService } = createTaskGitServices();
+    jest
+      .spyOn(artifactService as any, 'resolveTaskWorkspaceContext')
+      .mockResolvedValue({
+        task: {
+          gitBaseBranch: 'main',
+        },
+        worktreePath: repositoryPath,
+      });
 
-    const preview = await service.getArtifactPreview(
+    const preview = await artifactService.getArtifactPreview(
       'task-1',
       { path: 'README.md' } as never,
       {} as never,
@@ -228,15 +246,17 @@ describe('TaskGitService', () => {
     runGit(['add', 'README.md'], repositoryPath);
     await fs.unlink(readmePath);
 
-    const service = new TaskGitService({} as any, {} as any);
-    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
-      task: {
-        gitBaseBranch: 'main',
-      },
-      worktreePath: repositoryPath,
-    });
+    const { artifactService } = createTaskGitServices();
+    jest
+      .spyOn(artifactService as any, 'resolveTaskWorkspaceContext')
+      .mockResolvedValue({
+        task: {
+          gitBaseBranch: 'main',
+        },
+        worktreePath: repositoryPath,
+      });
 
-    const preview = await service.getArtifactPreview(
+    const preview = await artifactService.getArtifactPreview(
       'task-1',
       { path: 'README.md' } as never,
       {} as never,
@@ -250,7 +270,7 @@ describe('TaskGitService', () => {
     const repositoryPath = await initializeRepository();
     createdDirectories.push(repositoryPath);
 
-    const service = new TaskGitService({} as any, {} as any);
+    const { service } = createTaskGitServices();
     jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
       task: {
         gitBaseBranch: 'main',
@@ -279,7 +299,7 @@ describe('TaskGitService', () => {
       '# updated in workspace\n',
     );
 
-    const service = new TaskGitService({} as any, {} as any);
+    const { service } = createTaskGitServices();
     jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
       task: {
         gitBaseBranch: 'main',
@@ -314,7 +334,7 @@ describe('TaskGitService', () => {
       '# updated from runtime task\n',
     );
 
-    const service = new TaskGitService({} as any, {} as any);
+    const { service } = createTaskGitServices();
     jest
       .spyOn(service as any, 'resolveTaskGitWorktreePath')
       .mockResolvedValue(repositoryPath);
@@ -354,7 +374,7 @@ describe('TaskGitService', () => {
       '# updated without identity\n',
     );
 
-    const service = new TaskGitService({} as any, {} as any);
+    const { service } = createTaskGitServices();
     jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
       task: {
         gitBaseBranch: 'main',

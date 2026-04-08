@@ -1,7 +1,9 @@
 import { spawnSync } from 'child_process';
+import { ConfigService } from '@nestjs/config';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { Project } from '../projects/domain/project';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
@@ -75,8 +77,28 @@ const initializeRepository = async (): Promise<string> => {
   return directory;
 };
 
+const createTaskRuntimeService = (): TaskRuntimeService => {
+  const configService = new ConfigService();
+  const projectWorkspacePathsService = new ProjectWorkspacePathsService(
+    configService,
+  );
+  const projectRepositoryWorkspaceService = {
+    ensureProjectRepository: jest.fn((project: Project) =>
+      Promise.resolve(
+        projectWorkspacePathsService.resolveRepositoryRoot(project),
+      ),
+    ),
+  };
+
+  return new TaskRuntimeService(
+    configService,
+    projectWorkspacePathsService,
+    projectRepositoryWorkspaceService as never,
+  );
+};
+
 describe('TaskRuntimeService', () => {
-  const service = new TaskRuntimeService();
+  const service = createTaskRuntimeService();
   const createdDirectories: string[] = [];
   const originalGitRuntimeEnabled = process.env.AINATIVE_GIT_RUNTIME_ENABLED;
   const originalGitlabUsername = process.env.GITLAB_USERNAME;
@@ -328,7 +350,7 @@ describe('TaskRuntimeService', () => {
     ]);
   });
 
-  it('should clone runtime repository via https token auth for gitlab ssh remote', async () => {
+  it('should delegate runtime repository setup to project repository workspace service', async () => {
     process.env.GITLAB_USERNAME = 'oauth2';
     process.env.GITLAB_TOKEN = 'token-value';
 
@@ -336,26 +358,16 @@ describe('TaskRuntimeService', () => {
       gitUrl: 'git@gitlab.yc345.tv:frontend/yanxue-main.git',
     });
     const repositoryRoot = (service as any).resolveRepositoryRoot(project);
-    const runCommandSpy = jest
-      .spyOn(service as any, 'runCommand')
-      .mockResolvedValue({
-        success: true,
-        stdout: '',
-        stderr: '',
-      });
-
-    jest.spyOn(service as any, 'pathExists').mockResolvedValue(false);
+    const ensureProjectRepositorySpy = jest
+      .spyOn(
+        (service as any).projectRepositoryWorkspaceService,
+        'ensureProjectRepository',
+      )
+      .mockResolvedValue(repositoryRoot);
 
     await (service as any).ensureProjectRepository(project);
 
-    expect(runCommandSpy).toHaveBeenNthCalledWith(1, 'git', [
-      'clone',
-      '--origin',
-      'origin',
-      '--no-checkout',
-      'https://oauth2:token-value@gitlab.yc345.tv/frontend/yanxue-main.git',
-      repositoryRoot,
-    ]);
+    expect(ensureProjectRepositorySpy).toHaveBeenCalledWith(project);
   });
 
   it('should resolve default repository and worktree paths under tmp tree', () => {

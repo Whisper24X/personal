@@ -15,7 +15,7 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 import { WorkflowTemplateNodeDto } from './dto/workflow-template-node.dto';
 import { ReorderWorkflowTemplateNodesDto } from './dto/reorder-workflow-template-nodes.dto';
 import { WorkflowTemplateScope } from './dto/workflow-template-scope.enum';
-import { ProjectsService } from '../projects/projects.service';
+import { ProjectAccessService } from '../projects/project-access.service';
 import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
 import { BusinessLineMemberRepository } from '../business-lines/infrastructure/persistence/business-line-member.repository';
 import { BusinessLineCustomRoleRepository } from '../business-lines/infrastructure/persistence/business-line-custom-role.repository';
@@ -25,7 +25,7 @@ import { canReadWorkflowByCapabilities } from '../access/access.constants';
 export class WorkflowTemplatesService {
   constructor(
     private readonly workflowTemplateRepository: WorkflowTemplateRepository,
-    private readonly projectsService: ProjectsService,
+    private readonly projectAccessService: ProjectAccessService,
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
     private readonly businessLineCustomRoleRepository: BusinessLineCustomRoleRepository,
@@ -67,7 +67,7 @@ export class WorkflowTemplatesService {
           'businessLineId is only supported for business_line scope',
         );
       }
-      const project = await this.projectsService.assertProjectCapability(
+      const project = await this.projectAccessService.assertProjectCapability(
         projectId,
         currentUser,
         'project.workflow.read',
@@ -140,7 +140,7 @@ export class WorkflowTemplatesService {
     let includeGlobal = false;
 
     if (projectId) {
-      const project = await this.projectsService.assertProjectCapability(
+      const project = await this.projectAccessService.assertProjectCapability(
         projectId,
         currentUser,
         'project.workflow.read',
@@ -477,7 +477,7 @@ export class WorkflowTemplatesService {
       throw new NotFoundException('Workflow template project not found');
     }
 
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       template.projectId,
       currentUser,
       'project.workflow.read',
@@ -510,7 +510,7 @@ export class WorkflowTemplatesService {
       throw new NotFoundException('Workflow template project not found');
     }
 
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       template.projectId,
       currentUser,
       'project.workflow.read',

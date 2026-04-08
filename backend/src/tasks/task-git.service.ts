@@ -10,6 +10,7 @@ import path from 'path';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { Project } from '../projects/domain/project';
 import { TaskAccessService } from './application/task-access.service';
+import { TaskWorkspaceArtifactService } from './application/task-workspace-artifact.service';
 import {
   TaskGitActionResultDto,
   TaskGitBranchDiffFilesDto,
@@ -60,8 +61,6 @@ export type TaskGitCommitIfChangedResult = {
 export class TaskGitService {
   private readonly defaultGitTimeoutMs = 90_000;
   private readonly maxDiffTextLength = 180_000;
-  private readonly maxTextPreviewBytes = 256 * 1024;
-  private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
   private readonly fallbackCommitAuthorName =
     process.env.AINATIVE_GIT_USER_NAME?.trim() || 'AINative Bot';
   private readonly fallbackCommitAuthorEmail =
@@ -70,6 +69,7 @@ export class TaskGitService {
   constructor(
     private readonly taskAccessService: TaskAccessService,
     private readonly taskRuntimeService: TaskRuntimeService,
+    private readonly taskWorkspaceArtifactService: TaskWorkspaceArtifactService,
   ) {}
 
   async getStatus(
@@ -265,17 +265,11 @@ export class TaskGitService {
     query: TaskWorkspaceTreeQueryDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskWorkspaceTreeDto> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    return this.taskWorkspaceArtifactService.getArtifactTree(
       taskId,
+      query,
       currentUser,
     );
-    const cwd = this.normalizeBrowserPath(query.path);
-    const changedFiles = await this.listArtifactFiles(worktreePath);
-
-    return {
-      cwd,
-      entries: this.buildArtifactEntries(changedFiles, cwd),
-    };
   }
 
   async getArtifactPreview(
@@ -283,105 +277,11 @@ export class TaskGitService {
     query: TaskWorkspaceFileQueryDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskWorkspacePreviewDto> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    return this.taskWorkspaceArtifactService.getArtifactPreview(
       taskId,
+      query,
       currentUser,
     );
-    const relativePath = this.normalizeRelativePath(query.path);
-    const fileBuffer = await this.readArtifactBuffer(
-      worktreePath,
-      relativePath,
-    );
-
-    if (!fileBuffer) {
-      throw new NotFoundException('Artifact not found');
-    }
-
-    const mimeType = this.resolveMimeType(relativePath);
-
-    if (mimeType === 'application/pdf') {
-      return {
-        path: relativePath,
-        previewType: 'pdf',
-        tooLarge: false,
-        size: fileBuffer.length,
-        mimeType,
-      };
-    }
-
-    if (mimeType.startsWith('video/')) {
-      return {
-        path: relativePath,
-        previewType: 'video',
-        tooLarge: false,
-        size: fileBuffer.length,
-        mimeType,
-      };
-    }
-
-    if (mimeType.startsWith('audio/')) {
-      return {
-        path: relativePath,
-        previewType: 'audio',
-        tooLarge: false,
-        size: fileBuffer.length,
-        mimeType,
-      };
-    }
-
-    if (mimeType.startsWith('image/')) {
-      if (fileBuffer.length > this.maxImagePreviewBytes) {
-        return {
-          path: relativePath,
-          previewType: 'image',
-          tooLarge: true,
-          size: fileBuffer.length,
-          mimeType,
-          dataUrl: null,
-        };
-      }
-
-      return {
-        path: relativePath,
-        previewType: 'image',
-        tooLarge: false,
-        size: fileBuffer.length,
-        mimeType,
-        dataUrl: `data:${mimeType};base64,${fileBuffer.toString('base64')}`,
-      };
-    }
-
-    if (fileBuffer.length > this.maxTextPreviewBytes) {
-      return {
-        path: relativePath,
-        previewType: this.isTextLikeMime(mimeType) ? 'text' : 'binary',
-        tooLarge: true,
-        size: fileBuffer.length,
-        mimeType,
-      };
-    }
-
-    const isText =
-      this.isTextLikeMime(mimeType) || this.isTextBuffer(fileBuffer);
-
-    if (!isText) {
-      return {
-        path: relativePath,
-        previewType: 'binary',
-        tooLarge: false,
-        size: fileBuffer.length,
-        mimeType,
-      };
-    }
-
-    return {
-      path: relativePath,
-      previewType: 'text',
-      tooLarge: false,
-      size: fileBuffer.length,
-      mimeType,
-      text: fileBuffer.toString('utf-8'),
-    };
   }
 
   async getArtifactRawFile(
@@ -394,26 +294,11 @@ export class TaskGitService {
     size: number;
     content: Buffer;
   }> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    return this.taskWorkspaceArtifactService.getArtifactRawFile(
       taskId,
+      query,
       currentUser,
     );
-    const relativePath = this.normalizeRelativePath(query.path);
-    const fileBuffer = await this.readArtifactBuffer(
-      worktreePath,
-      relativePath,
-    );
-
-    if (!fileBuffer) {
-      throw new NotFoundException('Artifact not found');
-    }
-
-    return {
-      name: path.basename(relativePath),
-      mimeType: this.resolveMimeType(relativePath),
-      size: fileBuffer.length,
-      content: fileBuffer,
-    };
   }
 
   async stageFiles(
@@ -888,7 +773,8 @@ export class TaskGitService {
     worktreePath: string,
     message: string,
   ): Promise<TaskGitCommitIfChangedResult> {
-    const changedFiles = await this.listArtifactFiles(worktreePath);
+    const changedFiles =
+      await this.taskWorkspaceArtifactService.listArtifactFiles(worktreePath);
 
     if (!changedFiles.length) {
       return {
@@ -1090,144 +976,6 @@ export class TaskGitService {
     });
   }
 
-  private async listArtifactFiles(worktreePath: string): Promise<string[]> {
-    const result = await this.runGitCommand(
-      worktreePath,
-      this.withGitUtf8Paths(['status', '--porcelain', '--untracked-files=all']),
-    );
-
-    if (!result.success) {
-      throw this.toGitException(
-        'Failed to read changed artifact files',
-        result,
-      );
-    }
-
-    const files = this.parseChangedFiles(result.stdout)
-      .map((file) => this.normalizeRelativePath(file.path))
-      .filter(Boolean);
-
-    return Array.from(new Set(files));
-  }
-
-  private buildArtifactEntries(
-    stagedFiles: string[],
-    cwd: string,
-  ): TaskWorkspaceTreeDto['entries'] {
-    const entriesByPath = new Map<
-      string,
-      { name: string; path: string; isDir: boolean }
-    >();
-
-    for (const filePath of stagedFiles) {
-      const relativePath =
-        cwd === '.' ? filePath : path.posix.relative(cwd, filePath);
-
-      if (
-        !relativePath ||
-        relativePath === '.' ||
-        relativePath.startsWith('../')
-      ) {
-        continue;
-      }
-
-      const [firstSegment, ...remainingSegments] = relativePath
-        .split('/')
-        .filter(Boolean);
-
-      if (!firstSegment) {
-        continue;
-      }
-
-      const entryPath = cwd === '.' ? firstSegment : `${cwd}/${firstSegment}`;
-
-      entriesByPath.set(entryPath, {
-        name: firstSegment,
-        path: entryPath,
-        isDir: remainingSegments.length > 0,
-      });
-    }
-
-    return [...entriesByPath.values()].sort((left, right) => {
-      if (left.isDir && !right.isDir) {
-        return -1;
-      }
-      if (!left.isDir && right.isDir) {
-        return 1;
-      }
-
-      return left.name.localeCompare(right.name, undefined, {
-        numeric: true,
-        sensitivity: 'base',
-      });
-    });
-  }
-
-  private async readStagedArtifactBuffer(
-    worktreePath: string,
-    relativePath: string,
-  ): Promise<Buffer | null> {
-    const existsResult = await this.runGitCommand(worktreePath, [
-      'cat-file',
-      '-e',
-      `:${relativePath}`,
-    ]);
-
-    if (!existsResult.success) {
-      return null;
-    }
-
-    const contentResult = await this.runGitCommandBuffer(worktreePath, [
-      'show',
-      `:${relativePath}`,
-    ]);
-
-    if (!contentResult.success) {
-      throw this.toGitException('Failed to read staged artifact content', {
-        ...contentResult,
-        stdout: contentResult.stdout.toString('utf-8'),
-      });
-    }
-
-    return contentResult.stdout;
-  }
-
-  private async readArtifactBuffer(
-    worktreePath: string,
-    relativePath: string,
-  ): Promise<Buffer | null> {
-    const workspaceBuffer = await this.readWorkspaceArtifactBuffer(
-      worktreePath,
-      relativePath,
-    );
-
-    if (workspaceBuffer) {
-      return workspaceBuffer;
-    }
-
-    return this.readStagedArtifactBuffer(worktreePath, relativePath);
-  }
-
-  private async readWorkspaceArtifactBuffer(
-    worktreePath: string,
-    relativePath: string,
-  ): Promise<Buffer | null> {
-    const workspaceRoot = path.resolve(worktreePath);
-    const fullPath = path.resolve(workspaceRoot, relativePath);
-    const relative = path.relative(workspaceRoot, fullPath);
-
-    if (relative.startsWith('..') || path.isAbsolute(relative)) {
-      throw new BadRequestException('File path cannot escape workspace root');
-    }
-
-    const stat = await fs.stat(fullPath).catch(() => null);
-    if (!stat || !stat.isFile()) {
-      return null;
-    }
-
-    return fs.readFile(fullPath);
-  }
-
   private parseChangedFiles(statusText: string): TaskGitStatusDto['files'] {
     return statusText
       .split('\n')
@@ -1413,70 +1161,6 @@ export class TaskGitService {
     result: GitExecutionResult,
   ): BadRequestException {
     return new BadRequestException(this.formatGitFailure(summary, result));
-  }
-
-  private isTextBuffer(value: Buffer): boolean {
-    const inspectLength = Math.min(value.length, 8_192);
-
-    for (let index = 0; index < inspectLength; index += 1) {
-      if (value[index] === 0) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  private resolveMimeType(filePath: string): string {
-    const ext = path.extname(filePath).toLowerCase();
-
-    const mimeTypeMap: Record<string, string> = {
-      '.txt': 'text/plain',
-      '.md': 'text/markdown',
-      '.json': 'application/json',
-      '.yml': 'text/yaml',
-      '.yaml': 'text/yaml',
-      '.ts': 'text/typescript',
-      '.tsx': 'text/typescript',
-      '.js': 'text/javascript',
-      '.jsx': 'text/javascript',
-      '.vue': 'text/plain',
-      '.css': 'text/css',
-      '.scss': 'text/x-scss',
-      '.html': 'text/html',
-      '.xml': 'application/xml',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-      '.svg': 'image/svg+xml',
-      '.bmp': 'image/bmp',
-      '.ico': 'image/x-icon',
-      '.pdf': 'application/pdf',
-      '.mp4': 'video/mp4',
-      '.webm': 'video/webm',
-      '.mov': 'video/quicktime',
-      '.mp3': 'audio/mpeg',
-      '.wav': 'audio/wav',
-      '.ogg': 'audio/ogg',
-      '.zip': 'application/zip',
-      '.tar': 'application/x-tar',
-      '.gz': 'application/gzip',
-    };
-
-    return mimeTypeMap[ext] ?? 'application/octet-stream';
-  }
-
-  private isTextLikeMime(mimeType: string): boolean {
-    return (
-      mimeType.startsWith('text/') ||
-      mimeType === 'application/json' ||
-      mimeType === 'application/xml' ||
-      mimeType === 'text/yaml' ||
-      mimeType === 'text/typescript' ||
-      mimeType === 'text/javascript'
-    );
   }
 
   private formatGitFailure(

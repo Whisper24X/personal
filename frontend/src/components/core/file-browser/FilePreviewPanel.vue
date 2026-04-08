@@ -165,7 +165,7 @@ const sourceUnsupported = computed(() => {
 
         <div
           v-else-if="props.preview?.previewType === 'markdown'"
-          class="flex-1 min-h-0 overflow-auto p-4 bg-background"
+          class="flex-1 min-h-0 overflow-auto bg-background"
         >
           <MarkdownPreview :content="props.preview.text ?? ''" />
         </div>

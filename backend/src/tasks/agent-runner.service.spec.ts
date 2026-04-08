@@ -1,12 +1,20 @@
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import path from 'path';
+import { ConfigService } from '@nestjs/config';
 import { AgentToolConfigRepository } from '../business-lines/infrastructure/persistence/agent-tool-config.repository';
+import { AgentCliAdapterRegistry } from '../agent-execution/agent-cli/agent-cli-adapter.registry';
+import { AgentExecutionConfigResolverService } from '../agent-execution/agent-execution-config-resolver.service';
+import { AgentPromptTemplateService } from '../agent-execution/agent-prompt-template.service';
+import { RunnerAgentExecutionService } from '../agent-execution/runner-agent-execution.service';
+import { ContainerExecutionConfigService } from '../containers/container-execution-config.service';
+import { DockerExecProcessLauncherService } from '../containers/docker-exec-process-launcher.service';
+import { IsolatedRunnerContainerService } from '../containers/isolated-runner-container.service';
+import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { Project } from '../projects/domain/project';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
-import { AgentRunnerService } from './agent-runner.service';
 import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
 
@@ -90,6 +98,36 @@ const createRepositoryMock = () => ({
   update: jest.fn(),
   remove: jest.fn(),
 });
+
+class AgentRunnerService extends RunnerAgentExecutionService {
+  constructor(
+    agentToolConfigRepository: AgentToolConfigRepository,
+    configService: ConfigService = new ConfigService(),
+    promptTemplateService: AgentPromptTemplateService = new AgentPromptTemplateService(),
+    agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
+    projectWorkspacePathsService: ProjectWorkspacePathsService = new ProjectWorkspacePathsService(
+      configService,
+    ),
+    containerExecutionConfig?: ContainerExecutionConfigService,
+    dockerExecProcessLauncher?: DockerExecProcessLauncherService,
+    isolatedRunnerContainer?: IsolatedRunnerContainerService,
+  ) {
+    super(
+      new AgentExecutionConfigResolverService(
+        agentToolConfigRepository,
+        configService,
+        promptTemplateService,
+        agentCliAdapterRegistry,
+        projectWorkspacePathsService,
+      ),
+      configService,
+      agentCliAdapterRegistry,
+      containerExecutionConfig,
+      dockerExecProcessLauncher,
+      isolatedRunnerContainer,
+    );
+  }
+}
 
 describe('AgentRunnerService', () => {
   afterEach(() => {
@@ -2167,7 +2205,7 @@ describe('AgentRunnerService', () => {
       undefined as any,
       undefined as any,
       undefined as any,
-      undefined,
+      undefined as any,
       containerExecutionConfig as any,
       launcher as any,
     );
@@ -2286,7 +2324,7 @@ describe('AgentRunnerService', () => {
       undefined as any,
       undefined as any,
       undefined as any,
-      undefined,
+      undefined as any,
       containerExecutionConfig as any,
     );
     const serviceAny = service as any;
@@ -2343,7 +2381,7 @@ describe('AgentRunnerService', () => {
       undefined as any,
       undefined as any,
       undefined as any,
-      undefined,
+      undefined as any,
       containerExecutionConfig as any,
       launcher as any,
     );

@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { resolveAinativeDataRootDir } from '../../utils/workspace-paths';
+import { AgentCliAdapterId } from '../../agent-execution/agent-cli/agent-cli-adapter.interface';
+import { AgentCliAdapterRegistry } from '../../agent-execution/agent-cli/agent-cli-adapter.registry';
+import { ProjectWorkspacePathsService } from '../../project-workspace/project-workspace-paths.service';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskMessageDto, TaskMessageRole } from '../dto/task-message.dto';
-import { AgentCliAdapterRegistry } from '../agent-cli/agent-cli-adapter.registry';
-import { AgentCliAdapterId } from '../agent-cli/agent-cli-adapter.interface';
 
 export type ReadNodeOutputMessagesMetrics = {
   outputPath: string | null;
@@ -42,9 +42,6 @@ type CachedNodeOutputMessagesEntry = {
 
 @Injectable()
 export class TaskOutputService {
-  private readonly defaultDataRootDir = path.resolve(
-    resolveAinativeDataRootDir(),
-  );
   private readonly maxNodeOutputMessageCacheEntries = 256;
   private readonly nodeOutputMessageCache = new Map<
     string,
@@ -52,7 +49,8 @@ export class TaskOutputService {
   >();
 
   constructor(
-    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
+    private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
+    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry,
   ) {}
 
   async writeNodeOutputJsonl({
@@ -393,10 +391,10 @@ export class TaskOutputService {
 
   resolveNodeOutputPath(task: Task, node: TaskNode): string {
     return path.resolve(
-      this.defaultDataRootDir,
-      task.businessLineId?.trim() || 'unknown-business-line',
-      'projects',
-      task.projectId?.trim() || 'unknown-project',
+      this.projectWorkspacePathsService.resolveProjectStorageBaseDirByIds(
+        task.businessLineId,
+        task.projectId,
+      ),
       'tasks',
       task.id,
       'nodes',

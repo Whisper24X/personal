@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
-import { ProjectsService } from '../projects/projects.service';
+import { ProjectAccessService } from '../projects/project-access.service';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { AutomationStatus } from './domain/automation-status.enum';
 import { Automation } from './domain/automation';
@@ -17,14 +17,14 @@ import { AutomationRepository } from './infrastructure/persistence/automation.re
 export class AutomationsService {
   constructor(
     private readonly automationRepository: AutomationRepository,
-    private readonly projectsService: ProjectsService,
+    private readonly projectAccessService: ProjectAccessService,
   ) {}
 
   async create(
     createAutomationDto: CreateAutomationDto,
     currentUser: JwtPayloadType,
   ): Promise<Automation> {
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       createAutomationDto.projectId,
       currentUser,
       'project.automation.read',
@@ -56,7 +56,7 @@ export class AutomationsService {
     query: FindAllAutomationsDto,
     currentUser: JwtPayloadType,
   ): Promise<Automation[]> {
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       query.projectId,
       currentUser,
       'project.automation.read',
@@ -85,7 +85,7 @@ export class AutomationsService {
       throw new NotFoundException('Automation not found');
     }
 
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       automation.projectId,
       currentUser,
       'project.automation.read',
@@ -105,7 +105,7 @@ export class AutomationsService {
       throw new NotFoundException('Automation not found');
     }
 
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       existedAutomation.projectId,
       currentUser,
       'project.automation.read',
@@ -153,7 +153,7 @@ export class AutomationsService {
     currentUser: JwtPayloadType,
   ): Promise<void> {
     const automation = await this.findById(id, currentUser);
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       automation.projectId,
       currentUser,
       'project.automation.read',

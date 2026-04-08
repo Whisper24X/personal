@@ -1,8 +1,9 @@
 import { Project } from '../../projects/domain/project';
+import { AgentCliAdapterRegistry } from '../../agent-execution/agent-cli/agent-cli-adapter.registry';
+import { AgentExecutionResult as AgentRunnerResult } from '../../agent-execution/agent-execution.types';
 import { readFile } from 'node:fs/promises';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
-import { AgentRunnerResult } from '../agent-runner.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
@@ -85,6 +86,7 @@ const containerOrchestrationStub = {
   ensureContainer: jest.fn().mockResolvedValue({ containerId: 'container-1' }),
   onNodeFinished: jest.fn().mockResolvedValue(undefined),
 };
+const agentCliAdapterRegistry = new AgentCliAdapterRegistry();
 
 describe('TaskNodeExecutionService', () => {
   afterEach(() => {
@@ -195,6 +197,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -326,6 +329,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -434,6 +438,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
       undefined as never,
       taskGitService as never,
     );
@@ -561,6 +566,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
       undefined as never,
       taskGitService as never,
     );
@@ -680,6 +686,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
       undefined as never,
       taskGitService as never,
     );
@@ -812,6 +819,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -924,6 +932,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -1039,6 +1048,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -1152,6 +1162,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -1264,6 +1275,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -1381,7 +1393,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
-      undefined,
+      agentCliAdapterRegistry as never,
       undefined,
       undefined,
       notificationsService as never,
@@ -1501,6 +1513,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -1620,6 +1633,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -1708,6 +1722,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestration as never,
+      agentCliAdapterRegistry as never,
       containerExecutionConfig as never,
     );
 
@@ -1812,6 +1827,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestration as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({
@@ -1922,6 +1938,7 @@ describe('TaskNodeExecutionService', () => {
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
       containerOrchestration as never,
+      agentCliAdapterRegistry as never,
     );
 
     const executionPromise = service.runNode({

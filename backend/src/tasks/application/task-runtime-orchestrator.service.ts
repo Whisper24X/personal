@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
-import { ProjectsService } from '../../projects/projects.service';
+import { ProjectAccessService } from '../../projects/project-access.service';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
@@ -19,7 +19,7 @@ type TaskRuntimeSnapshot = {
 @Injectable()
 export class TaskRuntimeOrchestratorService {
   constructor(
-    private readonly projectsService: ProjectsService,
+    private readonly projectAccessService: ProjectAccessService,
     private readonly taskRepository: TaskRepository,
     private readonly taskRuntimeService: TaskRuntimeService,
     private readonly taskLogService: TaskLogService,
@@ -31,7 +31,7 @@ export class TaskRuntimeOrchestratorService {
     task: Task,
     currentUser: JwtPayloadType,
   ): Promise<{ task: Task; project: Project }> {
-    const project = await this.projectsService.assertProjectCapability(
+    const project = await this.projectAccessService.assertProjectCapability(
       task.projectId,
       currentUser,
       'project.task.read',

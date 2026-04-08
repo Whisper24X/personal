@@ -1,24 +1,22 @@
 import {
   BadRequestException,
   ConflictException,
-  Inject,
   Injectable,
   Logger,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { randomInt, randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
-import path from 'path';
-import extractZip from 'extract-zip';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { ProjectDocsService } from '../projects/project-docs.service';
+import { ProjectKnowledgeService } from '../projects/project-knowledge.service';
 import { ProjectsService } from '../projects/projects.service';
 import { buildPullRequestUrl } from '../git/pull-request-url.util';
 import { GitService } from '../git/git.service';
-import { TasksService } from '../tasks/tasks.service';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
 import { TaskMode } from '../tasks/dto/task-mode.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
+import { TaskProvisioningService } from '../tasks/application/task-provisioning.service';
+import { GoalSourceDocsService } from './goal-source-docs.service';
 import { GoalRepository } from './infrastructure/persistence/goal.repository';
 import { Goal } from './domain/goal';
 import { GoalPlanItem } from './domain/goal-plan-item';
@@ -37,7 +35,6 @@ import { PatchPlanSubTaskDto } from './dto/patch-plan-sub-task.dto';
 import { MaterializeTasksDto } from './dto/materialize-tasks.dto';
 import { ReplaceTaskDependenciesDto } from './dto/replace-task-dependencies.dto';
 import {
-  goalInputDirRelativePath,
   goalPrdRelativePath,
   goalTaskPlanRelativePath,
 } from './goal-doc-paths';
@@ -58,15 +55,6 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { GoalDetailDto } from './dto/goal-detail.dto';
 import { GoalsMetricsService } from './goals-metrics.service';
-import {
-  GOAL_UNPACK_MAX_DEPTH,
-  GOAL_UNPACK_MAX_FILES,
-  assertSafeZipEntry,
-  assertUnpackedPathDepth,
-  docTypeForUnpackedFile,
-  isProbablyTextBuffer,
-  shouldSkipUnpackedRelativePath,
-} from './goal-unpack-input';
 
 const PRD_MAX_ATTEMPTS = 3;
 const PLAN_MAX_ATTEMPTS = 3;
@@ -153,8 +141,8 @@ function assertGoalAgentCliForGeneration(
 }
 
 /**
- * Cursor/Claude 等 CLI 使用 stream-json 时 stdout 为 NDJSON，不能整段当单个 JSON 解析。
- * 与 task-title-suggestion 一致：先抽取 type=assistant 的正文再解析目标 JSON。
+ * Cursor/Claude/Codex 等 CLI 使用 stream-json / NDJSON 时 stdout 不是单个 JSON。
+ * 需先抽取 assistant / agent_message 正文，再解析其中的目标 JSON。
  */
 function findMatchingJsonObjectEnd(s: string, start: number): number {
   let depth = 0;
@@ -196,41 +184,97 @@ function findMatchingJsonObjectEnd(s: string, start: number): number {
 function extractAssistantMessageText(
   msg: Record<string, unknown>,
 ): string | null {
-  const message = msg.message;
-  if (message && typeof message === 'object' && !Array.isArray(message)) {
-    const m = message as Record<string, unknown>;
-    const content = m.content;
-    if (typeof content === 'string') {
-      return content.trim() || null;
-    }
-    if (Array.isArray(content)) {
-      const textParts: string[] = [];
-      for (const item of content) {
-        if (typeof item === 'string') {
-          textParts.push(item);
-          continue;
-        }
-        if (item && typeof item === 'object') {
-          const r = item as Record<string, unknown>;
-          const t =
-            typeof r.text === 'string'
-              ? r.text
-              : typeof r.content === 'string'
-                ? r.content
-                : '';
-          if (t) {
-            textParts.push(t);
-          }
-        }
-      }
-      const joined = textParts.join('').trim();
-      return joined || null;
+  const candidates = [
+    msg.text,
+    msg.content,
+    msg.message,
+    msg.output,
+    msg.result,
+  ];
+
+  for (const candidate of candidates) {
+    const text = extractTextContent(candidate);
+    if (text) {
+      return text;
     }
   }
+
   return null;
 }
 
-/** 拼接 stream-json 中 assistant / result 里可能含 PRD JSON 的片段 */
+function extractTextContent(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value.trim() || null;
+  }
+
+  if (Array.isArray(value)) {
+    const textParts = value
+      .map((item) => extractTextContent(item))
+      .filter((item): item is string => Boolean(item));
+    const joined = textParts.join('').trim();
+    return joined || null;
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    for (const key of ['text', 'content', 'message', 'output', 'result']) {
+      const text = extractTextContent(record[key]);
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  return null;
+}
+
+function isAssistantLikeRecord(record: Record<string, unknown>): boolean {
+  return ['type', 'event', 'method', 'kind', 'role', 'subtype'].some((key) => {
+    const value = record[key];
+    if (typeof value !== 'string') {
+      return false;
+    }
+    const normalized = value.trim().toLowerCase().replace(/\./g, '_');
+    return (
+      normalized === 'assistant' ||
+      normalized === 'assistant_message' ||
+      normalized === 'agent_message' ||
+      normalized === 'agent_message_delta' ||
+      normalized === 'model'
+    );
+  });
+}
+
+function extractAssistantTextFromRecord(
+  record: Record<string, unknown>,
+): string | null {
+  const queue: Array<Record<string, unknown>> = [record];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      continue;
+    }
+
+    if (isAssistantLikeRecord(current)) {
+      const text = extractAssistantMessageText(current);
+      if (text) {
+        return text;
+      }
+    }
+
+    ['item', 'message', 'params', 'result', 'event'].forEach((key) => {
+      const nested = current[key];
+      if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+        queue.push(nested as Record<string, unknown>);
+      }
+    });
+  }
+
+  return null;
+}
+
+/** 拼接 stream-json 中 assistant / agent_message / result 里可能含目标 JSON 的片段 */
 function extractStreamJsonGoalChunks(stdout: string): string {
   const parts: string[] = [];
   for (const line of stdout.split(/\r?\n/)) {
@@ -248,14 +292,12 @@ function extractStreamJsonGoalChunks(stdout: string): string {
       continue;
     }
     const rec = obj as Record<string, unknown>;
-    const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
-    if (type === 'assistant') {
-      const text = extractAssistantMessageText(rec);
-      if (text) {
-        parts.push(text);
-      }
+    const text = extractAssistantTextFromRecord(rec);
+    if (text) {
+      parts.push(text);
       continue;
     }
+    const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
     if (type === 'result') {
       const r = rec.result;
       if (
@@ -420,10 +462,12 @@ export class GoalsService {
   constructor(
     private readonly goalRepository: GoalRepository,
     private readonly projectsService: ProjectsService,
+    private readonly projectDocsService: ProjectDocsService,
+    private readonly projectKnowledgeService: ProjectKnowledgeService,
     private readonly gitService: GitService,
     private readonly taskRepository: TaskRepository,
-    @Inject(forwardRef(() => TasksService))
-    private readonly tasksService: TasksService,
+    private readonly taskProvisioningService: TaskProvisioningService,
+    private readonly goalSourceDocsService: GoalSourceDocsService,
     private readonly goalsMetrics: GoalsMetricsService,
   ) {}
 
@@ -679,7 +723,7 @@ export class GoalsService {
 
     const tasks = await this.taskRepository.findByGoalId(id);
     for (const task of tasks) {
-      await this.tasksService.remove(task.id, currentUser);
+      await this.taskProvisioningService.remove(task.id, currentUser);
     }
 
     const goalBranch = goal.gitBranch?.trim();
@@ -691,7 +735,7 @@ export class GoalsService {
       );
     }
 
-    await this.projectsService.removeGoalDocsSubtree(
+    await this.projectDocsService.removeGoalDocsSubtree(
       goal.projectId,
       id,
       currentUser,
@@ -707,16 +751,8 @@ export class GoalsService {
     currentUser: JwtPayloadType,
   ) {
     const goal = await this.assertGoalAccess(goalId, currentUser);
-    const path = this.projectsService.normalizeProjectDocPath(
-      dto.projectDocPath,
-    );
-    await this.projectsService.readDoc(goal.projectId, path, currentUser);
-    return this.goalRepository.insertSourceDoc({
-      goalId,
-      projectDocPath: path,
-      docType: dto.docType,
-      sortOrder: dto.sortOrder ?? 0,
-    });
+
+    return this.goalSourceDocsService.addSourceDoc(goal, dto, currentUser);
   }
 
   /**
@@ -728,196 +764,7 @@ export class GoalsService {
     currentUser: JwtPayloadType,
   ): Promise<{ extractedFileCount: number; paths: string[] }> {
     const goal = await this.assertGoalAccess(goalId, currentUser);
-    const normalizedZipPath = this.projectsService.normalizeProjectDocPath(
-      dto.projectDocPath,
-    );
-    const inputPrefix = `goals/${goalId}/input/`;
-    if (!normalizedZipPath.toLowerCase().endsWith('.zip')) {
-      throw new BadRequestException('仅支持解压 .zip 文件');
-    }
-    if (!normalizedZipPath.startsWith(inputPrefix)) {
-      throw new BadRequestException('zip 须位于该需求的 input 目录下');
-    }
-
-    const { repositoryRoot } =
-      await this.projectsService.ensureProjectRepositoryReady(
-        goal.projectId,
-        currentUser,
-        { syncRemote: false },
-      );
-    const docsRoot = path.join(repositoryRoot, 'docs');
-    const zipAbsPath = path.join(docsRoot, normalizedZipPath);
-    const zipStat = await fs.stat(zipAbsPath).catch(() => null);
-    if (!zipStat?.isFile()) {
-      throw new NotFoundException('未找到 zip 文件');
-    }
-
-    const extractDirName = `${randomUUID()}-unpacked`;
-    const extractRelative = `${inputPrefix}${extractDirName}`;
-    const extractAbsPath = path.join(docsRoot, extractRelative);
-
-    await fs.mkdir(extractAbsPath, { recursive: true });
-
-    try {
-      await extractZip(zipAbsPath, {
-        dir: extractAbsPath,
-        onEntry: (entry) => {
-          assertSafeZipEntry(extractAbsPath, entry);
-        },
-      });
-    } catch (e) {
-      await fs.rm(extractAbsPath, { recursive: true, force: true });
-      throw e;
-    }
-
-    const sourceDocs = await this.goalRepository.listSourceDocs(goalId);
-    const maxSort = sourceDocs.reduce((m, d) => Math.max(m, d.sortOrder), -1);
-    let sortOrder = maxSort + 1;
-
-    const collected = await this.collectFilesUnderExtractDir(extractAbsPath);
-    if (collected.length > GOAL_UNPACK_MAX_FILES) {
-      await fs.rm(extractAbsPath, { recursive: true, force: true });
-      throw new BadRequestException(
-        `解压文件过多（超过 ${GOAL_UNPACK_MAX_FILES} 个）`,
-      );
-    }
-
-    const writtenPaths: string[] = [];
-    for (const abs of collected) {
-      assertUnpackedPathDepth(extractAbsPath, abs);
-      const relFromDocs = path
-        .relative(docsRoot, abs)
-        .split(path.sep)
-        .join('/');
-      if (shouldSkipUnpackedRelativePath(relFromDocs)) {
-        continue;
-      }
-      const buf = await fs.readFile(abs);
-      const docType = docTypeForUnpackedFile(relFromDocs);
-      const payload = isProbablyTextBuffer(buf)
-        ? { path: relFromDocs, content: buf.toString('utf-8') }
-        : { path: relFromDocs, contentBase64: buf.toString('base64') };
-      try {
-        await this.projectsService.createDoc(
-          goal.projectId,
-          payload,
-          currentUser,
-        );
-      } catch (e) {
-        if (e instanceof ConflictException) {
-          await this.projectsService.updateDoc(
-            goal.projectId,
-            payload,
-            currentUser,
-          );
-        } else {
-          throw e;
-        }
-      }
-      await this.goalRepository.insertSourceDoc({
-        goalId,
-        projectDocPath: relFromDocs,
-        docType,
-        sortOrder: sortOrder++,
-      });
-      writtenPaths.push(relFromDocs);
-    }
-
-    if (writtenPaths.length === 0) {
-      await fs.rm(extractAbsPath, { recursive: true, force: true });
-      throw new BadRequestException(
-        '压缩包解压后没有可登记的有效文件（空包、仅目录、或仅有系统元数据如 __MACOSX）。请更换压缩包后重试；原 zip 已保留。',
-      );
-    }
-
-    await this.projectsService.removeDoc(
-      goal.projectId,
-      normalizedZipPath,
-      currentUser,
-    );
-    const zipRow = sourceDocs.find(
-      (d) => d.projectDocPath === normalizedZipPath,
-    );
-    if (zipRow) {
-      await this.goalRepository.removeSourceDoc(zipRow.id, goalId);
-    }
-
-    return { extractedFileCount: writtenPaths.length, paths: writtenPaths };
-  }
-
-  /**
-   * 检查 docs/goals/{goalId}/input 下是否存在任意文件（含子目录），用于 PRD 提示与 DB 行数对齐。
-   */
-  private async goalInputDirHasAnyFile(
-    projectId: string,
-    goalId: string,
-    currentUser: JwtPayloadType,
-  ): Promise<boolean> {
-    const { repositoryRoot } =
-      await this.projectsService.ensureProjectRepositoryReady(
-        projectId,
-        currentUser,
-        { syncRemote: false },
-      );
-    const inputAbs = path.join(
-      repositoryRoot,
-      'docs',
-      goalInputDirRelativePath(goalId),
-    );
-    const stat = await fs.stat(inputAbs).catch(() => null);
-    if (!stat?.isDirectory()) {
-      return false;
-    }
-    return this.dirHasAnyFileUnder(inputAbs, 0);
-  }
-
-  private readonly goalInputDirWalkMaxDepth = 12;
-
-  private async dirHasAnyFileUnder(
-    dirAbs: string,
-    depth: number,
-  ): Promise<boolean> {
-    if (depth > this.goalInputDirWalkMaxDepth) {
-      return false;
-    }
-    try {
-      const entries = await fs.readdir(dirAbs, { withFileTypes: true });
-      for (const e of entries) {
-        const p = path.join(dirAbs, e.name);
-        if (e.isDirectory()) {
-          if (await this.dirHasAnyFileUnder(p, depth + 1)) {
-            return true;
-          }
-        } else if (e.isFile()) {
-          return true;
-        }
-      }
-    } catch {
-      return false;
-    }
-    return false;
-  }
-
-  private async collectFilesUnderExtractDir(dir: string): Promise<string[]> {
-    const out: string[] = [];
-    const walk = async (dirPath: string, depth: number): Promise<void> => {
-      if (depth > GOAL_UNPACK_MAX_DEPTH + 1) {
-        throw new BadRequestException(
-          `解压目录过深（超过 ${GOAL_UNPACK_MAX_DEPTH} 层）`,
-        );
-      }
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      for (const e of entries) {
-        const p = path.join(dirPath, e.name);
-        if (e.isDirectory()) {
-          await walk(p, depth + 1);
-        } else if (e.isFile()) {
-          out.push(p);
-        }
-      }
-    };
-    await walk(dir, 0);
-    return out;
+    return this.goalSourceDocsService.unpackInputZip(goal, dto, currentUser);
   }
 
   async generatePrd(
@@ -942,7 +789,11 @@ export class GoalsService {
     const sourceDocs = await this.goalRepository.listSourceDocs(goalId);
     const hasSourceDocs =
       sourceDocs.length > 0 ||
-      (await this.goalInputDirHasAnyFile(goal.projectId, goalId, currentUser));
+      (await this.goalSourceDocsService.goalInputDirHasAnyFile(
+        goal.projectId,
+        goalId,
+        currentUser,
+      ));
 
     const agentCli = resolveGoalAgentCliForGeneration(dto, goal);
     assertGoalAgentCliForGeneration(agentCli);
@@ -959,12 +810,13 @@ export class GoalsService {
     let markdown = '';
 
     for (let attempt = 1; attempt <= PRD_MAX_ATTEMPTS; attempt++) {
-      const result = await this.projectsService.executeProjectAgentPrompt(
-        goal.projectId,
-        prompt,
-        currentUser,
-        agentCli,
-      );
+      const result =
+        await this.projectKnowledgeService.executeProjectAgentPrompt(
+          goal.projectId,
+          prompt,
+          currentUser,
+          agentCli,
+        );
       if (!result.success) {
         lastErr = result.stderr || 'agent failed';
         this.logger.warn(`PRD agent attempt ${attempt} failed: ${lastErr}`);
@@ -989,14 +841,14 @@ export class GoalsService {
     this.goalsMetrics.incrementPrdGeneration(true);
 
     try {
-      await this.projectsService.createDoc(
+      await this.projectDocsService.createDoc(
         goal.projectId,
         { path: rel, content: markdown },
         currentUser,
       );
     } catch (e) {
       if (e instanceof ConflictException) {
-        await this.projectsService.updateDoc(
+        await this.projectDocsService.updateDoc(
           goal.projectId,
           { path: rel, content: markdown },
           currentUser,
@@ -1044,7 +896,7 @@ export class GoalsService {
 
     let prdContent = '';
     try {
-      const doc = await this.projectsService.readDoc(
+      const doc = await this.projectDocsService.readDoc(
         goal.projectId,
         goal.prdDocPath,
         currentUser,
@@ -1069,12 +921,13 @@ export class GoalsService {
     let rawItems: NormalizedPlanItemFromAgent[] = [];
 
     for (let attempt = 1; attempt <= PLAN_MAX_ATTEMPTS; attempt++) {
-      const result = await this.projectsService.executeProjectAgentPrompt(
-        goal.projectId,
-        prompt,
-        currentUser,
-        agentCli,
-      );
+      const result =
+        await this.projectKnowledgeService.executeProjectAgentPrompt(
+          goal.projectId,
+          prompt,
+          currentUser,
+          agentCli,
+        );
       if (!result.success) {
         lastErr = result.stderr || 'agent failed';
         continue;
@@ -1206,14 +1059,14 @@ export class GoalsService {
 
     const planRel = goalTaskPlanRelativePath(goalId);
     try {
-      await this.projectsService.createDoc(
+      await this.projectDocsService.createDoc(
         goal.projectId,
         { path: planRel, content: markdown },
         currentUser,
       );
     } catch (e) {
       if (e instanceof ConflictException) {
-        await this.projectsService.updateDoc(
+        await this.projectDocsService.updateDoc(
           goal.projectId,
           { path: planRel, content: markdown },
           currentUser,
@@ -1451,7 +1304,7 @@ export class GoalsService {
         : '';
       const prompt = `${item.suggestedPrompt ?? goal.summary ?? ''}${prdHint}${ac}`;
 
-      const created = await this.tasksService.create(
+      const created = await this.taskProvisioningService.create(
         {
           projectId: goal.projectId,
           goalId,

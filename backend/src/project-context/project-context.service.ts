@@ -4,7 +4,7 @@ import path from 'path';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { Project } from '../projects/domain/project';
 import { ProjectContextDto } from '../projects/dto/project-context.dto';
-import { ProjectsService } from '../projects/projects.service';
+import { ProjectAccessService } from '../projects/project-access.service';
 
 @Injectable()
 export class ProjectContextService {
@@ -12,13 +12,13 @@ export class ProjectContextService {
   private readonly maxPreviewLength = 1600;
   private readonly maxFileSizeBytes = 256 * 1024;
 
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(private readonly projectAccessService: ProjectAccessService) {}
 
   async readContext(
     projectId: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<ProjectContextDto> {
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectAccessService.assertCanAccessProject(
       projectId,
       currentUser,
     );

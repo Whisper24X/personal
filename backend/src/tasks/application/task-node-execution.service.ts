@@ -6,17 +6,17 @@ import {
 } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { AgentCliAdapterRegistry } from '../../agent-execution/agent-cli/agent-cli-adapter.registry';
+import { RunnerAgentExecutionService } from '../../agent-execution/runner-agent-execution.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
-import { AgentCliAdapterRegistry } from '../agent-cli/agent-cli-adapter.registry';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
-import { RunnerAgentExecutionService } from '../runner-agent-execution.service';
 import { TaskGitService } from '../task-git.service';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskConfigResolverService } from './task-config-resolver.service';
@@ -48,6 +48,7 @@ export class TaskNodeExecutionService {
     private readonly taskStatusService: TaskStatusService,
     private readonly taskRuntimeOrchestrator: TaskRuntimeOrchestratorService,
     private readonly containerOrchestration: ContainerOrchestrationService,
+    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry,
     @Optional()
     private readonly containerExecutionConfig?: ContainerExecutionConfigService,
     @Inject(TaskGitService)
@@ -62,7 +63,6 @@ export class TaskNodeExecutionService {
         }),
       resolveHeadCommitShaForTask: () => Promise.resolve(null),
     },
-    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
     @Optional()
     @Inject(NotificationsService)
     private readonly notificationsService: Pick<

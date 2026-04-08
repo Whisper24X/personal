@@ -202,7 +202,7 @@ The Gemini config modal enforces these rules:
 
 The current implementation lives in:
 
-- `backend/src/tasks/agent-runner.service.ts`
+- `backend/src/agent-execution/runner-agent-execution.service.ts`
 - `backend/src/tasks/agent-runner.service.spec.ts`
 - `frontend/src/components/business/settings/modals/AgentToolConfigModal.vue`
 - `frontend/src/components/business/settings/__tests__/AgentToolConfigModal.spec.ts`

@@ -47,7 +47,10 @@ describe('GoalsService.create', () => {
     const service = new GoalsService(
       goalRepository as never,
       projectsService as never,
+      {} as never,
+      {} as never,
       gitService as never,
+      {} as never,
       {} as never,
       {} as never,
       goalsMetrics as never,

@@ -1,12 +1,10 @@
 import {
   ForbiddenException,
-  Inject,
   Injectable,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
-import { ProjectsService } from '../../projects/projects.service';
+import { ProjectAccessService } from '../../projects/project-access.service';
 import { Task } from '../domain/task';
 import { TaskLog } from '../domain/task-log';
 import { FindAllTasksDto } from '../dto/find-all-tasks.dto';
@@ -23,9 +21,9 @@ import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { IPaginationOptions } from '../../utils/types/pagination-options';
 import { TaskAccessService } from './task-access.service';
 import { TaskOutputService } from './task-output.service';
-import { GoalsService } from '../../goals/goals.service';
 import { GoalRepository } from '../../goals/infrastructure/persistence/goal.repository';
 import { createSlowApiDiagnostics } from '../../observability/slow-api-diagnostics';
+import { TaskGoalService } from './task-goal.service';
 
 @Injectable()
 export class TaskQueryService {
@@ -33,13 +31,12 @@ export class TaskQueryService {
     private readonly taskRepository: TaskRepository,
     private readonly taskNodeRepository: TaskNodeRepository,
     private readonly taskLogRepository: TaskLogRepository,
-    private readonly projectsService: ProjectsService,
+    private readonly projectAccessService: ProjectAccessService,
     private readonly taskLogEventsService: TaskLogEventsService,
     private readonly taskRuntimeService: TaskRuntimeService,
     private readonly taskAccessService: TaskAccessService,
     private readonly taskOutputService: TaskOutputService,
-    @Inject(forwardRef(() => GoalsService))
-    private readonly goalsService: GoalsService,
+    private readonly taskGoalService: TaskGoalService,
     private readonly goalRepository: GoalRepository,
   ) {}
 
@@ -56,7 +53,7 @@ export class TaskQueryService {
     };
 
     if (query.projectId) {
-      await this.projectsService.assertProjectCapability(
+      await this.projectAccessService.assertProjectCapability(
         query.projectId,
         currentUser,
         'project.task.read',
@@ -76,7 +73,7 @@ export class TaskQueryService {
     projectId: string,
     currentUser: JwtPayloadType,
   ): Promise<TaskStatusCountsDto> {
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       projectId,
       currentUser,
       'project.task.read',
@@ -105,7 +102,7 @@ export class TaskQueryService {
       return null;
     }
 
-    await this.projectsService.assertProjectCapability(
+    await this.projectAccessService.assertProjectCapability(
       task.projectId,
       currentUser,
       'project.task.read',
@@ -150,7 +147,7 @@ export class TaskQueryService {
         'goalSummary',
         () =>
           task.goalId
-            ? this.goalsService.getGoalSummaryForTask(task.goalId, currentUser)
+            ? this.taskGoalService.getGoalSummary(task.goalId, currentUser)
             : null,
         (result) => ({
           hasGoalSummary: Boolean(result),

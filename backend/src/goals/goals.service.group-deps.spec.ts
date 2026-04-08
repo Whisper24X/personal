@@ -54,9 +54,12 @@ describe('GoalsService group dependsOnItemIds', () => {
     const service = new GoalsService(
       goalRepository as never,
       projectsService as never,
+      {} as never,
+      {} as never,
       gitService as never,
       taskRepository as never,
       tasksService as never,
+      {} as never,
       goalsMetrics,
     );
 
@@ -208,8 +211,11 @@ describe('GoalsService group dependsOnItemIds', () => {
     const service = new GoalsService(
       goalRepository as never,
       projectsService as never,
+      {} as never,
+      {} as never,
       gitService as never,
       taskRepository as never,
+      {} as never,
       {} as never,
       {} as GoalsMetricsService,
     );
@@ -328,9 +334,12 @@ describe('GoalsService group dependsOnItemIds', () => {
     const service = new GoalsService(
       goalRepository as never,
       projectsService as never,
+      {} as never,
+      {} as never,
       gitService as never,
       taskRepository as never,
       tasksService as never,
+      {} as never,
       goalsMetrics,
     );
 

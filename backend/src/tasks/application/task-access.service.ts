@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
-import { ProjectsService } from '../../projects/projects.service';
+import { ProjectAccessService } from '../../projects/project-access.service';
 import { Project } from '../../projects/domain/project';
 import { ProjectRepository } from '../../projects/infrastructure/persistence/project.repository';
 import { SlowApiDiagnosticsSession } from '../../observability/slow-api-diagnostics';
@@ -16,7 +16,7 @@ export class TaskAccessService {
   constructor(
     private readonly taskRepository: TaskRepository,
     private readonly projectRepository: ProjectRepository,
-    private readonly projectsService: ProjectsService,
+    private readonly projectAccessService: ProjectAccessService,
   ) {}
 
   async assertCanAccessTask(
@@ -140,7 +140,7 @@ export class TaskAccessService {
       return diagnostics.measure(
         'projectCapability',
         () =>
-          this.projectsService.assertProjectCapability(
+          this.projectAccessService.assertProjectCapability(
             task.projectId,
             currentUser,
             capability,
@@ -153,7 +153,7 @@ export class TaskAccessService {
       );
     }
 
-    return this.projectsService.assertProjectCapability(
+    return this.projectAccessService.assertProjectCapability(
       task.projectId,
       currentUser,
       capability,
