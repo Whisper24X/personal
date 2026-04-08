@@ -2,6 +2,37 @@ import { firstValueFrom } from 'rxjs';
 import { TasksController } from './tasks.controller';
 
 describe('TasksController', () => {
+  it('should delegate environment termination to tasks service', async () => {
+    const tasksService = {
+      terminateEnvironment: jest.fn().mockResolvedValue({
+        status: 'stopped',
+      }),
+    };
+    const controller = new TasksController(
+      tasksService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await controller.terminateEnvironment(
+      {
+        user: {
+          sub: 'user-1',
+        },
+      },
+      '3e790cce-84fe-4aad-a4cf-cf0a2cb090f7',
+    );
+
+    expect(tasksService.terminateEnvironment).toHaveBeenCalledWith(
+      '3e790cce-84fe-4aad-a4cf-cf0a2cb090f7',
+      {
+        sub: 'user-1',
+      },
+    );
+  });
+
   it('should pass through afterId query when opening stream', async () => {
     const tasksService = {
       openLogStream: jest.fn().mockResolvedValue({

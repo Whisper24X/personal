@@ -69,7 +69,7 @@ describe('GoalsService.create', () => {
 
     const createdBranch = gitService.createBranch.mock.calls[0]?.[1];
 
-    expect(createdBranch).toMatch(/^feature\/goal-260331-1152-[a-z0-9]{4}$/);
+    expect(createdBranch).toMatch(/^feature\/goal-2603311152-[a-z0-9]{4}$/);
     expect(gitService.createBranch).toHaveBeenCalledWith(
       'project-1',
       createdBranch,

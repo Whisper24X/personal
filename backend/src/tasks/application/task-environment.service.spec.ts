@@ -63,6 +63,9 @@ const createService = () => {
   const taskLogRepository = {
     findLatestByTaskId: jest.fn().mockResolvedValue([]),
   };
+  const taskNodeRepository = {
+    findInProgressByTaskId: jest.fn().mockResolvedValue(null),
+  };
   const taskRepository = {
     findById: jest.fn().mockResolvedValue(task),
   };
@@ -78,6 +81,7 @@ const createService = () => {
     ensureContainer: jest.fn().mockResolvedValue({
       containerId: 'container-1',
     }),
+    removeContainerForTask: jest.fn().mockResolvedValue(undefined),
   };
 
   const service = new TaskEnvironmentService(
@@ -85,6 +89,7 @@ const createService = () => {
     taskRuntimeOrchestrator as never,
     taskLogService as never,
     taskLogRepository as never,
+    taskNodeRepository as never,
     taskRepository as never,
     projectExecutionSlotRepository as never,
     containerExecutionConfig as never,
@@ -99,6 +104,7 @@ const createService = () => {
     taskRuntimeOrchestrator,
     taskLogService,
     taskLogRepository,
+    taskNodeRepository,
     taskRepository,
     projectExecutionSlotRepository,
     containerExecutionConfig,
@@ -171,5 +177,137 @@ describe('TaskEnvironmentService', () => {
     });
     expect(result.status).toBe(TaskEnvironmentStatus.ready);
     expect(result.stage).toBe(TaskEnvironmentStage.ready);
+  });
+
+  it('should terminate environment by removing the task container and return stopped status', async () => {
+    const {
+      service,
+      task,
+      containerOrchestration,
+      taskLogService,
+      taskLogRepository,
+    } = createService();
+    const currentUser = createCurrentUser();
+
+    taskLogRepository.findLatestByTaskId.mockResolvedValue([
+      {
+        id: 'log-stop',
+        taskId: task.id,
+        taskNodeId: null,
+        level: 'info',
+        message: '执行环境已释放',
+        payload: {
+          scope: 'task_environment',
+          environmentStatus: TaskEnvironmentStatus.stopped,
+          environmentStage: TaskEnvironmentStage.stopped,
+          environmentMessage: '执行环境已释放',
+          failedStage: null,
+        },
+        createdAt: new Date('2026-04-08T00:05:00.000Z'),
+      },
+      {
+        id: 'log-ready',
+        taskId: task.id,
+        taskNodeId: null,
+        level: 'info',
+        message: '执行环境已就绪',
+        payload: {
+          scope: 'task_environment',
+          environmentStatus: TaskEnvironmentStatus.ready,
+          environmentStage: TaskEnvironmentStage.ready,
+          environmentMessage: '执行环境已就绪',
+          failedStage: null,
+        },
+        createdAt: new Date('2026-04-08T00:04:00.000Z'),
+      },
+    ]);
+
+    const result = await service.terminateEnvironment(
+      task.id,
+      currentUser as never,
+    );
+
+    expect(containerOrchestration.removeContainerForTask).toHaveBeenCalledWith(
+      task.id,
+      task.projectId,
+    );
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: null,
+        level: 'info',
+        message: '执行环境已释放',
+      }),
+    );
+    expect(result.status).toBe(TaskEnvironmentStatus.stopped);
+    expect(result.stage).toBe(TaskEnvironmentStage.stopped);
+    expect(result.message).toBe('执行环境已释放');
+  });
+
+  it('should allow environment termination when task status is in_progress but no node is running', async () => {
+    const {
+      service,
+      task,
+      taskAccessService,
+      containerOrchestration,
+      taskLogRepository,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const runningReviewTask = {
+      ...task,
+      status: TaskStatus.inProgress,
+    };
+
+    taskAccessService.assertCanAccessTaskProject.mockResolvedValue({
+      task: runningReviewTask,
+      project: createProject(),
+    });
+    taskLogRepository.findLatestByTaskId.mockResolvedValue([
+      {
+        id: 'log-stop',
+        taskId: task.id,
+        taskNodeId: null,
+        level: 'info',
+        message: '执行环境已释放',
+        payload: {
+          scope: 'task_environment',
+          environmentStatus: TaskEnvironmentStatus.stopped,
+          environmentStage: TaskEnvironmentStage.stopped,
+          environmentMessage: '执行环境已释放',
+          failedStage: null,
+        },
+        createdAt: new Date('2026-04-08T00:05:00.000Z'),
+      },
+    ]);
+
+    const result = await service.terminateEnvironment(
+      task.id,
+      currentUser as never,
+    );
+
+    expect(containerOrchestration.removeContainerForTask).toHaveBeenCalledWith(
+      task.id,
+      task.projectId,
+    );
+    expect(result.status).toBe(TaskEnvironmentStatus.stopped);
+  });
+
+  it('should reject environment termination when the task is running', async () => {
+    const { service, task, taskNodeRepository, containerOrchestration } =
+      createService();
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue({
+      id: 'node-1',
+      status: TaskStatus.inProgress,
+    });
+
+    await expect(
+      service.terminateEnvironment(task.id, currentUser as never),
+    ).rejects.toThrow('任务执行中，无法终止执行环境');
+
+    expect(
+      containerOrchestration.removeContainerForTask,
+    ).not.toHaveBeenCalled();
   });
 });

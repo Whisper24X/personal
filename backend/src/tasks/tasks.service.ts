@@ -138,6 +138,16 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return this.taskEnvironmentService.startEnvironment(taskId, currentUser);
   }
 
+  async terminateEnvironment(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskEnvironmentDto> {
+    return this.taskEnvironmentService.terminateEnvironment(
+      taskId,
+      currentUser,
+    );
+  }
+
   async repeat(
     taskId: Task['id'],
     currentUser: JwtPayloadType,

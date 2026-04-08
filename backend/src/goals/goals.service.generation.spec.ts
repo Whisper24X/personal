@@ -34,7 +34,7 @@ const createGoal = (overrides: Partial<Goal> = {}): Goal => ({
   agentCliConfigId: 'cfg-1',
   createdBy: 'user-1',
   gitBaseBranch: 'main',
-  gitBranch: 'feature/goal-260408-1145-abcd',
+  gitBranch: 'feature/goal-2604081145-abcd',
   createdAt: new Date('2026-04-08T00:00:00.000Z'),
   updatedAt: new Date('2026-04-08T00:00:00.000Z'),
   deletedAt: null,

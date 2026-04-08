@@ -39,6 +39,22 @@ vi.mock('@/hooks/useSidebarRecentTasks', () => ({
         createdAt: '2026-03-27T09:00:00.000Z',
         updatedAt: '2026-03-27T10:00:00.000Z',
       },
+      {
+        id: 'task-3',
+        title: '等待人工确认方案',
+        status: 'in_review',
+        projectId: 'p1',
+        createdAt: '2026-03-27T11:00:00.000Z',
+        updatedAt: '2026-03-27T12:00:00.000Z',
+      },
+      {
+        id: 'task-4',
+        title: '归档登录页配色优化',
+        status: 'done',
+        projectId: 'p1',
+        createdAt: '2026-03-27T13:00:00.000Z',
+        updatedAt: '2026-03-27T14:00:00.000Z',
+      },
     ]),
     loading: ref(false),
     refresh: vi.fn(),
@@ -179,5 +195,53 @@ describe('Sidebar menu scope', () => {
     expect(activeLink?.attributes('class')).toContain('bg-sidebar-accent')
     expect(activeLink?.attributes('class')).toContain('text-sidebar-accent-foreground')
     expect(activeLink?.attributes('class')).toContain('shadow-sm')
+  })
+
+  it('renders status dots and only animates in-progress tasks', () => {
+    routeState.name = 'home'
+    routeState.params = {}
+
+    const wrapper = mountWithProvider({
+      currentBusinessLineName: 'Retail',
+      selectedProjectId: 'p1',
+      projectItems: [
+        {
+          id: 'p1',
+          name: 'AINative Workspace',
+        },
+      ],
+      hasSelectedProject: true,
+      sidebarCoreTasksKnowledge: {
+        tasks: { id: 'tasks', label: '新建任务', to: '/tasks' },
+        knowledge: { id: 'knowledge', label: '知识库', to: '/knowledge-base' },
+      },
+      projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),
+      workbenchNavTo: { path: '/dashboard', query: { projectId: 'p1' } },
+      isWorkbenchNavActive: () => false,
+      isNavActive: () => false,
+      isBusinessLineManageActive: false,
+      isSettingsActive: false,
+    })
+
+    const todoDot = wrapper.get('[data-task-id="task-1"] .sidebar-task-status-dot')
+    const inProgressDot = wrapper.get('[data-task-id="task-2"] .sidebar-task-status-dot')
+    const inReviewDot = wrapper.get('[data-task-id="task-3"] .sidebar-task-status-dot')
+    const doneDot = wrapper.get('[data-task-id="task-4"] .sidebar-task-status-dot')
+
+    expect(todoDot.attributes('data-status')).toBe('todo')
+    expect(todoDot.classes()).toContain('text-muted-foreground/45')
+    expect(todoDot.classes()).not.toContain('sidebar-task-status-dot-running')
+
+    expect(inProgressDot.attributes('data-status')).toBe('in_progress')
+    expect(inProgressDot.classes()).toContain('text-sky-500')
+    expect(inProgressDot.classes()).toContain('sidebar-task-status-dot-running')
+
+    expect(inReviewDot.attributes('data-status')).toBe('in_review')
+    expect(inReviewDot.classes()).toContain('text-amber-500')
+    expect(inReviewDot.classes()).not.toContain('sidebar-task-status-dot-running')
+
+    expect(doneDot.attributes('data-status')).toBe('done')
+    expect(doneDot.classes()).toContain('text-emerald-500')
+    expect(doneDot.classes()).not.toContain('sidebar-task-status-dot-running')
   })
 })

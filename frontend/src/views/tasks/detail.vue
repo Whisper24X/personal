@@ -399,6 +399,23 @@ const canResetSelectedWorkflowNode = computed(() => {
   )
 })
 
+const canTerminateEnvironment = computed(() => {
+  const currentTask = task.value
+
+  if (
+    !currentTask ||
+    currentTask.status === 'done' ||
+    !hasButtonAccess('executeTask') ||
+    actionLoading.value ||
+    isCliRunning.value ||
+    !isEnvironmentReady.value
+  ) {
+    return false
+  }
+
+  return true
+})
+
 const replyDisabled = computed(() => {
   return !task.value || actionLoading.value || isCliRunning.value || task.value.status === 'done'
 })
@@ -1239,6 +1256,26 @@ const resetSelectedWorkflowNode = async () => {
   }
 }
 
+const terminateEnvironment = async () => {
+  if (!taskId.value || !canTerminateEnvironment.value) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    clearPendingStreamLogs()
+    environment.value = await tasksApi.terminateEnvironment(taskId.value)
+    bumpRightPanelRefresh([])
+    message.success('执行环境已释放')
+  } catch (error) {
+    message.error(toErrorMessage(error, '终止执行环境失败'))
+    await refreshEnvironment()
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 const approveNode = async (node: TaskNode) => {
   if (!taskId.value || !canManageReview.value) {
     return
@@ -1558,12 +1595,14 @@ function startDrag(e: MouseEvent) {
               :can-execute="canExecute"
               :can-complete-task="canCompleteTask"
               :can-reset="canResetSelectedWorkflowNode"
+              :can-terminate="canTerminateEnvironment"
               :can-remove="canRemove"
               :right-panel-visible="isRightPanelVisible"
               @start-environment="startEnvironment"
               @execute="executeTask"
               @complete-task="completeTask"
               @reset="resetSelectedWorkflowNode"
+              @terminate="terminateEnvironment"
               @refresh="loadInitialTaskData"
               @remove="deleteOpen = true"
               @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"

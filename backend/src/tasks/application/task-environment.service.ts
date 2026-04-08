@@ -18,6 +18,7 @@ import {
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskLogRepository } from '../infrastructure/persistence/task-log.repository';
+import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskAccessService } from './task-access.service';
 import { TaskLogService } from './task-log.service';
@@ -67,6 +68,7 @@ export class TaskEnvironmentService {
     private readonly taskRuntimeOrchestrator: TaskRuntimeOrchestratorService,
     private readonly taskLogService: TaskLogService,
     private readonly taskLogRepository: TaskLogRepository,
+    private readonly taskNodeRepository: TaskNodeRepository,
     private readonly taskRepository: TaskRepository,
     private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
     private readonly containerExecutionConfig: ContainerExecutionConfigService,
@@ -180,6 +182,41 @@ export class TaskEnvironmentService {
     }
   }
 
+  async terminateEnvironment(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskEnvironmentDto> {
+    const { task, project } =
+      await this.taskAccessService.assertCanAccessTaskProject(
+        taskId,
+        currentUser,
+      );
+
+    if (task.status === TaskStatus.done) {
+      throw new ConflictException('已完成任务不能终止执行环境');
+    }
+
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
+    if (runningNode) {
+      throw new ConflictException('任务执行中，无法终止执行环境');
+    }
+
+    await this.containerOrchestration.removeContainerForTask(
+      task.id,
+      task.projectId,
+    );
+    await this.appendEnvironmentEvent(task.id, TaskLogLevel.info, {
+      status: TaskEnvironmentStatus.stopped,
+      stage: TaskEnvironmentStage.stopped,
+      message: '执行环境已释放',
+    });
+
+    const refreshedTask = (await this.taskRepository.findById(task.id)) ?? task;
+    return this.buildEnvironmentSnapshot(refreshedTask, project);
+  }
+
   async assertEnvironmentReady(task: Task): Promise<void> {
     const project = await this.taskAccessService.getProjectByIdOrThrow(
       task.projectId,
@@ -245,6 +282,25 @@ export class TaskEnvironmentService {
         preview: this.buildPreview({
           environmentStatus: TaskEnvironmentStatus.starting,
           previewUrl: container.accessMetadata?.previewUrl ?? null,
+          previewEnabled,
+        }),
+      });
+    }
+
+    if (
+      latestEnvironmentEvent?.status === TaskEnvironmentStatus.stopped &&
+      (!latestReadyAt || latestEnvironmentEvent.createdAt >= latestReadyAt)
+    ) {
+      return this.buildDto({
+        status: TaskEnvironmentStatus.stopped,
+        stage: TaskEnvironmentStage.stopped,
+        message: latestEnvironmentEvent.message ?? '执行环境已释放',
+        updatedAt: latestEnvironmentEvent.createdAt,
+        runtime: {
+          gitWorktree: task.gitWorktree ?? null,
+        },
+        preview: this.buildPreview({
+          environmentStatus: TaskEnvironmentStatus.stopped,
           previewEnabled,
         }),
       });

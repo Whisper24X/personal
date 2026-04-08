@@ -984,7 +984,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskRuntimeService = {
       ensureRuntime: jest.fn().mockResolvedValue({
-        gitBranch: 'feature/20260325-172655',
+        gitBranch: 'feature/2603251726-abcd',
         gitBaseBranch: 'main',
         gitWorktree: 'wk-task-1',
         worktreePath: '/tmp/worktrees/wk-task-1',
@@ -1098,7 +1098,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskRuntimeService = {
       ensureRuntime: jest.fn().mockResolvedValue({
-        gitBranch: 'feature/20260325-174910',
+        gitBranch: 'feature/2603251749-abcd',
         gitBaseBranch: 'main',
         gitWorktree: 'wk-task-1',
         worktreePath: '/tmp/worktrees/wk-task-1',

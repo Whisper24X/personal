@@ -5,8 +5,12 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { randomInt, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import {
+  buildGoalGitBranchName,
+  buildPlanItemGitBranchName,
+} from '../git/branch-name.util';
 import { ProjectDocsService } from '../projects/project-docs.service';
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service';
 import { ProjectsService } from '../projects/projects.service';
@@ -58,36 +62,6 @@ import { GoalsMetricsService } from './goals-metrics.service';
 
 const PRD_MAX_ATTEMPTS = 3;
 const PLAN_MAX_ATTEMPTS = 3;
-
-/** 需求分支：feature/goal-<YYMMDD>-<HHMM>-<base36 随机 4 位> */
-function buildGoalGitBranchName(): string {
-  const now = new Date();
-  const y = now.getFullYear().toString().slice(-2);
-  const mo = `${now.getMonth() + 1}`.padStart(2, '0');
-  const d = `${now.getDate()}`.padStart(2, '0');
-  const datePrefix = `${y}${mo}${d}`;
-  const hh = `${now.getHours()}`.padStart(2, '0');
-  const mm = `${now.getMinutes()}`.padStart(2, '0');
-  const timePart = `${hh}${mm}`;
-  const suffix = randomInt(0, 36 ** 4)
-    .toString(36)
-    .padStart(4, '0');
-  return `feature/goal-${datePrefix}-${timePart}-${suffix}`.slice(0, 255);
-}
-
-/** 功能组分支：需求分支名 + `-g<顺序>`（顺序从 1 起），总长不超过 255。 */
-function buildPlanItemGitBranchName(
-  goalGitBranch: string,
-  itemOrder: number,
-): string {
-  const tail = `-g${itemOrder + 1}`;
-  const base = goalGitBranch.trim();
-  const maxLen = 255;
-  if (base.length + tail.length <= maxLen) {
-    return `${base}${tail}`;
-  }
-  return `${base.slice(0, Math.max(0, maxLen - tail.length))}${tail}`;
-}
 
 function resolveGoalAgentCliOptions(dto: {
   agentCliId?: string;

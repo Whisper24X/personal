@@ -16,6 +16,7 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     environment: vi.fn(),
     execute: vi.fn(),
     startEnvironment: vi.fn(),
+    terminateEnvironment: vi.fn(),
     reply: vi.fn(),
     cancel: vi.fn(),
     cleanupWorktree: vi.fn(),
@@ -136,6 +137,26 @@ beforeEach(() => {
     preview: {
       status: 'ready',
       url: 'https://preview.example.com/p/task-1/',
+    },
+    steps: [
+      { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+      { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+      { key: 'container_starting', label: '启动执行容器', status: 'done' },
+      { key: 'ready', label: '执行环境就绪', status: 'done' },
+    ],
+  } satisfies TaskEnvironment)
+  tasksApi.terminateEnvironment.mockResolvedValue({
+    status: 'stopped',
+    stage: 'stopped',
+    stageLabel: '执行环境已释放',
+    message: '执行环境已释放',
+    updatedAt: '2026-02-27T10:00:02.000Z',
+    runtime: {
+      gitWorktree: 'wk-task-1',
+    },
+    preview: {
+      status: 'unavailable',
+      url: null,
     },
     steps: [
       { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
@@ -1630,7 +1651,7 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).toContain('Codex')
   })
 
-  it('shows 重置 only in the more actions menu when workflow node is pending approval', async () => {
+  it('shows 重置 and 终止 in the more actions menu when workflow node is pending approval', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -1689,12 +1710,12 @@ describe('TaskDetailView toasts', () => {
       executionContextBar
         .findAll('button')
         .map((button) => button.text().trim())
-        .filter((text) => text === '重置' || text === '删除'),
-    ).toEqual(['重置', '删除'])
+        .filter((text) => text === '重置' || text === '终止' || text === '删除'),
+    ).toEqual(['重置', '终止', '删除'])
     expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('已选中节点')
   })
 
-  it('hides 重置 in the more actions menu after task is completed', async () => {
+  it('hides 重置 and 终止 in the more actions menu after task is completed', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -1748,8 +1769,64 @@ describe('TaskDetailView toasts', () => {
       executionContextBar
         .findAll('button')
         .map((button) => button.text().trim())
-        .filter((text) => text === '重置' || text === '删除'),
+        .filter((text) => text === '重置' || text === '终止' || text === '删除'),
     ).toEqual(['删除'])
+  })
+
+  it('shows 终止 for conversation tasks and switches back to environment gate after termination', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'conversation',
+        title: 'Conversation task',
+        status: 'todo',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [],
+    } satisfies TaskDetail)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const executionContextBar = wrapper.findComponent({ name: 'TaskExecutionContextBar' })
+    await executionContextBar.get('button[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+
+    const terminateButton = executionContextBar
+      .findAll('button')
+      .find((button) => button.text().trim() === '终止')
+    expect(terminateButton).toBeTruthy()
+
+    await terminateButton?.trigger('click')
+    await flushPromises()
+
+    expect(tasksApi.terminateEnvironment).toHaveBeenCalledWith('task-1')
+    expect(wrapper.findComponent({ name: 'TaskEnvironmentGate' }).exists()).toBe(true)
+    expect(wrapper.text()).toContain('环境状态')
+    expect(wrapper.text()).toContain('任务：Conversation task')
+    expect(wrapper.text()).toContain('重新启动环境')
   })
 
   it('resets the selected workflow node via reset-node API', async () => {

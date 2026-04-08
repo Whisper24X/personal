@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 import { BookOpen, Building2, LayoutDashboard, ListTodo, Target, Settings2 } from 'lucide-vue-next'
+import type { Task } from '@/types/api/tasks'
 import type { ProjectItem } from '@/hooks/core/useLayout'
 import {
   formatTaskShortTime,
@@ -81,6 +82,21 @@ const activeRecentTaskId = computed(() => {
 
 const isRecentTaskActive = (taskId: string) => {
   return activeRecentTaskId.value === taskId
+}
+
+const recentTaskStatusDotClassMap: Record<Task['status'], string> = {
+  todo: 'text-muted-foreground/45',
+  in_progress: 'text-sky-500',
+  in_review: 'text-amber-500',
+  done: 'text-emerald-500',
+}
+
+const recentTaskStatusDotClass = (status: Task['status']) => {
+  return recentTaskStatusDotClassMap[status] ?? recentTaskStatusDotClassMap.todo
+}
+
+const isRecentTaskBlinking = (status: Task['status']) => {
+  return status === 'in_progress'
 }
 </script>
 
@@ -230,6 +246,7 @@ const isRecentTaskActive = (taskId: string) => {
                   params: { id: task.id },
                   query: { projectId: task.projectId },
                 }"
+                :data-task-id="task.id"
                 class="block max-w-full rounded-md px-1.5 py-1.5 text-left transition"
                 :class="
                   isRecentTaskActive(task.id)
@@ -239,26 +256,39 @@ const isRecentTaskActive = (taskId: string) => {
                 :aria-current="isRecentTaskActive(task.id) ? 'page' : undefined"
                 @click="setOpenMobile(false)"
               >
-                <p
-                  class="line-clamp-2 break-words text-[11px] leading-snug"
-                  :class="
-                    isRecentTaskActive(task.id)
-                      ? 'font-medium text-sidebar-accent-foreground'
-                      : 'font-medium text-sidebar-foreground'
-                  "
-                >
-                  {{ task.title }}
-                </p>
-                <p
-                  class="mt-0.5 break-words text-[10px]"
-                  :class="
-                    isRecentTaskActive(task.id)
-                      ? 'text-sidebar-accent-foreground'
-                      : 'text-muted-foreground'
-                  "
-                >
-                  {{ taskStatusLabel(task.status) }} · {{ formatTaskShortTime(task.updatedAt ?? task.createdAt) }}
-                </p>
+                <div class="flex items-start gap-2">
+                  <span
+                    aria-hidden="true"
+                    class="sidebar-task-status-dot mt-1.5 size-2 shrink-0 rounded-full bg-current"
+                    :class="[
+                      recentTaskStatusDotClass(task.status),
+                      isRecentTaskBlinking(task.status) && 'sidebar-task-status-dot-running',
+                    ]"
+                    :data-status="task.status"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p
+                      class="line-clamp-2 break-words text-[11px] leading-snug"
+                      :class="
+                        isRecentTaskActive(task.id)
+                          ? 'font-medium text-sidebar-accent-foreground'
+                          : 'font-medium text-sidebar-foreground'
+                      "
+                    >
+                      {{ task.title }}
+                    </p>
+                    <p
+                      class="mt-0.5 break-words text-[10px]"
+                      :class="
+                        isRecentTaskActive(task.id)
+                          ? 'text-sidebar-accent-foreground'
+                          : 'text-muted-foreground'
+                      "
+                    >
+                      {{ taskStatusLabel(task.status) }} · {{ formatTaskShortTime(task.updatedAt ?? task.createdAt) }}
+                    </p>
+                  </div>
+                </div>
               </RouterLink>
             </li>
           </ul>
@@ -302,3 +332,31 @@ const isRecentTaskActive = (taskId: string) => {
     <SidebarRail />
   </Sidebar>
 </template>
+
+<style scoped>
+.sidebar-task-status-dot-running {
+  animation: sidebar-task-status-pulse 2.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes sidebar-task-status-pulse {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgb(14 165 233 / 0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+    box-shadow: 0 0 0 4px rgb(14 165 233 / 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-task-status-dot-running {
+    animation: none;
+  }
+}
+</style>

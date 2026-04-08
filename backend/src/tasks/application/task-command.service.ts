@@ -4,9 +4,15 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { randomInt } from 'crypto';
 import path from 'path';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
+import {
+  buildGeneratedBranchToken,
+  buildTaskGitBranchName,
+  buildTaskGitWorktreeName,
+  extractTaskNameIdFromGitBranch,
+  extractTaskNameIdFromGitWorktree,
+} from '../../git/branch-name.util';
 import { Project } from '../../projects/domain/project';
 import { ProjectAccessService } from '../../projects/project-access.service';
 import { WorkflowTemplatesService } from '../../workflow-templates/workflow-templates.service';
@@ -608,55 +614,23 @@ export class TaskCommandService {
   }
 
   private buildTaskNameId(): string {
-    const now = new Date();
-    const datePrefix = this.formatTaskNameDate(now);
-    const timePart = this.formatTaskNameMinute(now);
-    const salt = randomInt(0, 36 ** 4)
-      .toString(36)
-      .padStart(4, '0');
-
-    return `${datePrefix}-${timePart}-${salt}`;
-  }
-
-  private formatTaskNameDate(date: Date): string {
-    const year = date.getFullYear().toString().slice(-2);
-    const month = `${date.getMonth() + 1}`.padStart(2, '0');
-    const day = `${date.getDate()}`.padStart(2, '0');
-
-    return `${year}${month}${day}`;
-  }
-
-  private formatTaskNameMinute(date: Date): string {
-    const hours = `${date.getHours()}`.padStart(2, '0');
-    const minutes = `${date.getMinutes()}`.padStart(2, '0');
-
-    return `${hours}${minutes}`;
+    return buildGeneratedBranchToken();
   }
 
   private buildDefaultGitBranch(taskNameId: string): string {
-    return `feature/${taskNameId}`;
+    return buildTaskGitBranchName(taskNameId);
   }
 
   private buildDefaultGitWorktree(taskNameId: string): string {
-    return `wk-${taskNameId}`;
+    return buildTaskGitWorktreeName(taskNameId);
   }
 
   private extractTaskNameIdFromGitBranch(gitBranch: string): string | null {
-    const match =
-      /^feature\/((?:\d{6}-\d{4}-[a-z0-9]{4})|(?:\d{8}-\d{6,}))$/i.exec(
-        gitBranch.trim(),
-      );
-
-    return match?.[1] ?? null;
+    return extractTaskNameIdFromGitBranch(gitBranch);
   }
 
   private extractTaskNameIdFromGitWorktree(gitWorktree: string): string | null {
-    const worktreeName = path.basename(gitWorktree.trim());
-    const match = /^wk-((?:\d{6}-\d{4}-[a-z0-9]{4})|(?:\d{8}-\d{6,}))$/i.exec(
-      worktreeName,
-    );
-
-    return match?.[1] ?? null;
+    return extractTaskNameIdFromGitWorktree(gitWorktree);
   }
 
   private resolveCreateGitBranch({

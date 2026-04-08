@@ -83,6 +83,10 @@ export const tasksApi = {
     return apiHttp.post<TaskEnvironment>(`/tasks/${taskId}/environment/start`)
   },
 
+  terminateEnvironment(taskId: string) {
+    return apiHttp.post<TaskEnvironment>(`/tasks/${taskId}/environment/terminate`)
+  },
+
   repeatNode(taskId: string, nodeId: string) {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/repeat-node`, { nodeId })
   },

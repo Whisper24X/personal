@@ -170,6 +170,17 @@ export class TasksController {
     return this.tasksService.startEnvironment(id, request.user);
   }
 
+  @Post(':id/environment/terminate')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskEnvironmentDto })
+  @HttpCode(HttpStatus.OK)
+  terminateEnvironment(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.tasksService.terminateEnvironment(id, request.user);
+  }
+
   @Patch(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskDetailDto })

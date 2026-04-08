@@ -106,6 +106,21 @@ const createTasksService = () => {
       },
       steps: [],
     }),
+    terminateEnvironment: jest.fn().mockResolvedValue({
+      status: TaskEnvironmentStatus.stopped,
+      stage: TaskEnvironmentStage.stopped,
+      stageLabel: '执行环境已释放',
+      message: '执行环境已释放',
+      updatedAt: new Date(),
+      runtime: {
+        gitWorktree: 'wk-20260319-1',
+      },
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
+      steps: [],
+    }),
   };
 
   const service = new TasksService(
@@ -214,6 +229,7 @@ describe('TasksService', () => {
     );
     await service.execute('task-1', currentUser as never);
     await service.startEnvironment('task-1', currentUser as never);
+    await service.terminateEnvironment('task-1', currentUser as never);
     await service.repeat('task-1', currentUser as never);
     await service.repeatNode('task-1', 'node-1', currentUser as never);
     await service.retry(
@@ -243,6 +259,10 @@ describe('TasksService', () => {
       currentUser,
     );
     expect(environmentService.startEnvironment).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
+    expect(environmentService.terminateEnvironment).toHaveBeenCalledWith(
       'task-1',
       currentUser,
     );
