@@ -192,13 +192,13 @@ onBeforeUnmount(() => {
     <div class="code-scroll min-h-0 flex-1 overflow-y-scroll overflow-x-hidden bg-muted/20 text-foreground">
       <div class="sticky top-0 z-10 grid h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 bg-background/95 px-4 text-[11px] text-muted-foreground backdrop-blur">
         <div class="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
-          <span class="shrink-0 whitespace-nowrap rounded-full border border-border bg-muted/40 px-2.5 py-1">
+          <span class="shrink-0 whitespace-nowrap border border-border bg-muted/40 px-2.5 py-1">
             {{ languageLabel }}
           </span>
           <span class="shrink-0 whitespace-nowrap">{{ props.lines.length }} 行</span>
           <span
             v-if="!shouldHighlight"
-            class="shrink-0 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-300"
+            class="shrink-0 whitespace-nowrap border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-300"
           >
             大文件已关闭高亮
           </span>
@@ -207,7 +207,7 @@ onBeforeUnmount(() => {
         <div class="flex items-center gap-2 whitespace-nowrap">
           <button
             v-if="props.selectedPath"
-            class="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            class="border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
             type="button"
             @click="copyPath"
           >
@@ -215,14 +215,14 @@ onBeforeUnmount(() => {
           </button>
           <button
             v-if="!shouldHighlight"
-            class="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            class="border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
             type="button"
             @click="enableHighlight"
           >
             启用高亮
           </button>
           <button
-            class="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            class="border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
             type="button"
             @click="copyCode"
           >

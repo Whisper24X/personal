@@ -1,6 +1,8 @@
 import { ConflictException, Injectable, Optional } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
+import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
+import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { RunnerOrchestrationService } from '../../containers/runner-orchestration.service';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
@@ -66,6 +68,8 @@ export class TaskEnvironmentService {
     private readonly taskLogService: TaskLogService,
     private readonly taskLogRepository: TaskLogRepository,
     private readonly taskRepository: TaskRepository,
+    private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
+    private readonly containerExecutionConfig: ContainerExecutionConfigService,
     private readonly containerOrchestration: ContainerOrchestrationService,
     @Optional()
     private readonly runnerOrchestration?: RunnerOrchestrationService,
@@ -88,12 +92,16 @@ export class TaskEnvironmentService {
     taskId: Task['id'],
     currentUser: JwtPayloadType,
   ): Promise<TaskEnvironmentDto> {
-    const { task } = await this.taskAccessService.assertCanAccessTaskProject(
-      taskId,
-      currentUser,
-    );
+    const { task, project } =
+      await this.taskAccessService.assertCanAccessTaskProject(
+        taskId,
+        currentUser,
+      );
 
-    const currentEnvironment = await this.getEnvironment(taskId, currentUser);
+    const currentEnvironment = await this.buildEnvironmentSnapshot(
+      task,
+      project,
+    );
     if (currentEnvironment.status === TaskEnvironmentStatus.ready) {
       return currentEnvironment;
     }
@@ -116,6 +124,22 @@ export class TaskEnvironmentService {
         stage: TaskEnvironmentStage.slotClaiming,
         message: '正在为当前任务分配执行资源',
       });
+      const maxContainersPerProject =
+        this.containerExecutionConfig.getMaxContainersPerProject();
+
+      const slotClaimResult =
+        await this.projectExecutionSlotRepository.claimSlotWithinLimit(
+          prepared.project.id,
+          prepared.task.id,
+          this.containerExecutionConfig.getSlotTtlMs(),
+          maxContainersPerProject,
+        );
+
+      if (slotClaimResult === 'limit_reached') {
+        throw new ConflictException(
+          `当前项目已达到容器启动上限（${maxContainersPerProject}）`,
+        );
+      }
 
       failedStage = TaskEnvironmentStage.containerStarting;
       await this.appendEnvironmentEvent(task.id, TaskLogLevel.info, {
@@ -128,7 +152,7 @@ export class TaskEnvironmentService {
         task: prepared.task,
         project: prepared.project,
         worktreePath: prepared.task.gitWorktree ?? '',
-        trackProjectSlot: false,
+        trackProjectSlot: true,
       });
 
       failedStage = TaskEnvironmentStage.ready;

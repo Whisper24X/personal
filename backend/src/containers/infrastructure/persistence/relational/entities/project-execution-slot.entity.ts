@@ -3,9 +3,10 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 
 @Entity({
   name: 'project_execution_slots',
-  comment: '项目级任务容器执行槽（每项目最多一条活跃记录）',
+  comment: '项目级任务容器执行槽（每任务最多一条活跃记录，项目可并发多条）',
 })
-@Unique('UQ_project_execution_slots_project', ['projectId'])
+@Unique('UQ_project_execution_slots_task', ['taskId'])
+@Index('IDX_project_execution_slots_project', ['projectId'])
 @Index('IDX_project_execution_slots_expires', ['expiresAt'])
 @Index('IDX_project_execution_slots_task', ['taskId'])
 export class ProjectExecutionSlotEntity extends EntityRelationalHelper {

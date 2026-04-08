@@ -24,6 +24,13 @@ export type ProjectContainerRuntimeConfig = {
 export class ContainerExecutionConfigService {
   constructor(private readonly configService: ConfigService) {}
 
+  getMaxContainersPerProject(): number {
+    return this.readPositiveNumberFromEnv(
+      'AINATIVE_PROJECT_MAX_CONTAINERS_PER_PROJECT',
+      1,
+    );
+  }
+
   getIsolationScope(): 'task' | 'workflow_run' {
     const scope = this.configService
       .get<string>('AINATIVE_TASK_ISOLATION_SCOPE', { infer: true })

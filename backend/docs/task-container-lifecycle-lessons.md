@@ -38,7 +38,7 @@
 
 - 默认 **`AINATIVE_TASK_ISOLATION_SCOPE` 为按任务**：一个 `task.id` 对应一个容器，名称形如 **`ainative-task-<taskId>`**（非法字符会做 sanitize）。
 - 若设为 **`workflow_run`** 且能从任务配置解析出 workflow run id，则名称前缀为 **`ainative-run-<id>`**，在同一 workflow run 下多任务可复用同一容器（以代码解析为准）。
-- Docker 模式下，**有效隔离范围在配置上按 task 维度管理**，并与 **每项目至多一个活跃任务容器租约**（`project_execution_slots`）一起约束并发。
+- Docker 模式下，**有效隔离范围在配置上按 task 维度管理**，并与 **项目级容器租约上限**（`project_execution_slots`）一起约束并发；默认每项目 `1` 个活跃任务容器，可通过 `AINATIVE_PROJECT_MAX_CONTAINERS_PER_PROJECT` 调整。
 
 ---
 
@@ -52,6 +52,7 @@
 | `AINATIVE_TASK_SANDBOX_PROFILE` | `runner-only`（默认）、`preview-web`、`full-dev-sandbox`，见下一节。 |
 | `AINATIVE_RUNNER_START_TIMEOUT_MS` | 等待容器就绪的最长时间；轻量画像与带 entrypoint 的画像默认值不同（见 `ContainerExecutionConfigService`）。 |
 | `AINATIVE_RUNNER_READINESS_URL` | 非 `runner-only` 时探测就绪的 URL，默认 `http://127.0.0.1:8080/health`。 |
+| `AINATIVE_PROJECT_MAX_CONTAINERS_PER_PROJECT` | 单个项目允许同时持有的任务容器数量上限；默认 `1`，手动启动超限会直接报错，调度器则跳过等待下一轮。 |
 | `AINATIVE_SLOT_HEARTBEAT_MS` / `AINATIVE_SLOT_TTL_MS` | 槽位心跳间隔与租约 TTL，用于过期与清理。 |
 
 本地临时排障时，需优先确认 Docker daemon、runner 镜像与 bind mount 路径都可用；当前实现不再回退到宿主执行。

@@ -15,42 +15,87 @@ export class ProjectExecutionSlotRepository {
     private readonly repo: Repository<ProjectExecutionSlotEntity>,
   ) {}
 
-  async tryClaimSlot(
+  async claimSlotWithinLimit(
     projectId: string,
     taskId: string,
     ttlMs: number,
-  ): Promise<boolean> {
+    maxSlots: number,
+  ): Promise<'claimed' | 'existing' | 'limit_reached'> {
+    const now = new Date();
     const expiresAt = new Date(Date.now() + ttlMs);
-    const slot = this.repo.create({
-      projectId,
-      taskId,
-      claimedAt: new Date(),
-      expiresAt,
+
+    return this.repo.manager.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `project-execution-slots:${projectId}`,
+      ]);
+
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from(ProjectExecutionSlotEntity)
+        .where('"projectId" = :projectId', { projectId })
+        .andWhere('"expiresAt" < :now', { now })
+        .execute();
+
+      const existingTaskSlot = await manager.findOne(
+        ProjectExecutionSlotEntity,
+        {
+          where: { taskId },
+        },
+      );
+      if (existingTaskSlot) {
+        return 'existing' as const;
+      }
+
+      const activeSlotCount = await manager
+        .createQueryBuilder(ProjectExecutionSlotEntity, 'slot')
+        .where('slot.projectId = :projectId', { projectId })
+        .andWhere('slot.expiresAt >= :now', { now })
+        .getCount();
+      if (activeSlotCount >= maxSlots) {
+        return 'limit_reached' as const;
+      }
+
+      await manager.save(
+        manager.create(ProjectExecutionSlotEntity, {
+          projectId,
+          taskId,
+          claimedAt: now,
+          expiresAt,
+        }),
+      );
+
+      return 'claimed' as const;
     });
-    try {
-      await this.repo.save(slot);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
-  async updateContainerId(
+  async countActiveSlotsByProjectId(
     projectId: string,
+    now = new Date(),
+  ): Promise<number> {
+    return this.repo
+      .createQueryBuilder('slot')
+      .where('slot.projectId = :projectId', { projectId })
+      .andWhere('slot.expiresAt >= :now', { now })
+      .getCount();
+  }
+
+  async updateContainerIdByTaskId(
+    taskId: string,
     containerId: string,
   ): Promise<void> {
-    await this.repo.update({ projectId }, { containerId });
+    await this.repo.update({ taskId }, { containerId });
   }
 
-  async updateContainerRuntime(
-    projectId: string,
+  async updateContainerRuntimeByTaskId(
+    taskId: string,
     params: {
       containerId: string;
       accessMetadata?: SlotAccessMetadata | null;
     },
   ): Promise<void> {
     await this.repo.update(
-      { projectId },
+      { taskId },
       {
         containerId: params.containerId,
         accessMetadata: params.accessMetadata ?? null,
@@ -58,22 +103,17 @@ export class ProjectExecutionSlotRepository {
     );
   }
 
-  async releaseSlot(projectId: string): Promise<void> {
-    await this.repo.delete({ projectId });
+  async releaseSlotByTaskId(taskId: string): Promise<void> {
+    await this.repo.delete({ taskId });
   }
 
-  async renewSlot(projectId: string, ttlMs: number): Promise<void> {
+  async renewSlotByTaskId(taskId: string, ttlMs: number): Promise<void> {
     const expiresAt = new Date(Date.now() + ttlMs);
-    await this.repo.update(
-      { projectId },
-      { expiresAt, heartbeatAt: new Date() },
-    );
+    await this.repo.update({ taskId }, { expiresAt, heartbeatAt: new Date() });
   }
 
-  async findByProjectId(
-    projectId: string,
-  ): Promise<ProjectExecutionSlot | null> {
-    const entity = await this.repo.findOne({ where: { projectId } });
+  async findByTaskId(taskId: string): Promise<ProjectExecutionSlot | null> {
+    const entity = await this.repo.findOne({ where: { taskId } });
     return entity ? ProjectExecutionSlotMapper.toDomain(entity) : null;
   }
 

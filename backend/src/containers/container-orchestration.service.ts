@@ -101,9 +101,7 @@ export class ContainerOrchestrationService
         this.platformMatches(runnerPlatform, existing.platform)
       ) {
         if (trackProjectSlot) {
-          const existingSlot = await this.slotRepository.findByProjectId(
-            task.projectId,
-          );
+          const existingSlot = await this.slotRepository.findByTaskId(task.id);
           const derivedAccessMetadata = this.buildAccessMetadata({
             project,
             runtimeExposure,
@@ -117,7 +115,7 @@ export class ContainerOrchestrationService
             derivedAccessMetadata ??
             (previewConfig ? (existingSlot?.accessMetadata ?? null) : null);
           if (existingAccessMetadata) {
-            await this.slotRepository.updateContainerRuntime(task.projectId, {
+            await this.slotRepository.updateContainerRuntimeByTaskId(task.id, {
               containerId: existing.id,
               accessMetadata: existingAccessMetadata,
             });
@@ -136,8 +134,8 @@ export class ContainerOrchestrationService
               })}`,
             );
           } else {
-            await this.slotRepository.updateContainerId(
-              task.projectId,
+            await this.slotRepository.updateContainerIdByTaskId(
+              task.id,
               existing.id,
             );
             if (previewConfig) {
@@ -153,7 +151,7 @@ export class ContainerOrchestrationService
               );
             }
           }
-          this.ensureSlotHeartbeat(task.projectId);
+          this.ensureSlotHeartbeat(task.id);
         }
         this.logger.log(
           `reuse_runner_container ${JSON.stringify({
@@ -228,17 +226,17 @@ export class ContainerOrchestrationService
       );
       if (trackProjectSlot) {
         if (accessMetadata) {
-          await this.slotRepository.updateContainerRuntime(task.projectId, {
+          await this.slotRepository.updateContainerRuntimeByTaskId(task.id, {
             containerId,
             accessMetadata,
           });
         } else {
-          await this.slotRepository.updateContainerId(
-            task.projectId,
+          await this.slotRepository.updateContainerIdByTaskId(
+            task.id,
             containerId,
           );
         }
-        this.ensureSlotHeartbeat(task.projectId);
+        this.ensureSlotHeartbeat(task.id);
       }
       this.logger.log(
         `runner_container_ready ${JSON.stringify({
@@ -256,7 +254,9 @@ export class ContainerOrchestrationService
         error instanceof Error
           ? error.message
           : 'Failed to start runner container';
-      await this.releaseSlotAndStopHeartbeat(task.projectId);
+      if (trackProjectSlot) {
+        await this.releaseSlotAndStopHeartbeat(task.id);
+      }
       this.logger.error(
         `runner_container_start_failed ${JSON.stringify({
           taskId: task.id,
@@ -288,7 +288,16 @@ export class ContainerOrchestrationService
       this.config.resolveContainerName(params.task),
     );
     if (!inspection) {
-      return null;
+      const slot = await this.slotRepository.findByTaskId(params.task.id);
+      if (!slot?.containerId) {
+        return null;
+      }
+
+      return {
+        containerId: slot.containerId,
+        running: false,
+        accessMetadata: slot.accessMetadata ?? null,
+      };
     }
 
     const previewConfig = this.resolvePreviewConfig(params.project);
@@ -325,7 +334,7 @@ export class ContainerOrchestrationService
           action: 'release_slot_only',
         })}`,
       );
-      await this.releaseSlotAndStopHeartbeat(projectId);
+      await this.releaseSlotAndStopHeartbeat(taskId);
       return;
     }
 
@@ -338,7 +347,7 @@ export class ContainerOrchestrationService
       })}`,
     );
     await this.isolatedRunner.remove(containerName);
-    await this.releaseSlotAndStopHeartbeat(projectId);
+    await this.releaseSlotAndStopHeartbeat(taskId);
     this.logger.log(
       `remove_runner_container_done ${JSON.stringify({
         taskId,
@@ -393,8 +402,8 @@ export class ContainerOrchestrationService
         const containerName = this.config.resolveContainerName(task);
         await this.isolatedRunner.remove(containerName);
       }
-      await this.slotRepository.releaseSlot(slot.projectId);
-      this.stopSlotHeartbeat(slot.projectId);
+      await this.slotRepository.releaseSlotByTaskId(slot.taskId);
+      this.stopSlotHeartbeat(slot.taskId);
       await onRecovered?.({ taskId: slot.taskId, projectId: slot.projectId });
     }
   }
@@ -411,11 +420,11 @@ export class ContainerOrchestrationService
             this.config.resolveContainerName(task),
           );
         }
-        await this.releaseSlotAndStopHeartbeat(slot.projectId);
+        await this.releaseSlotAndStopHeartbeat(slot.taskId);
         continue;
       }
 
-      this.ensureSlotHeartbeat(slot.projectId);
+      this.ensureSlotHeartbeat(slot.taskId);
       this.logger.log(
         `resume_runner_slot_heartbeat ${JSON.stringify({
           projectId: slot.projectId,
@@ -427,38 +436,38 @@ export class ContainerOrchestrationService
     }
   }
 
-  private ensureSlotHeartbeat(projectId: string): void {
+  private ensureSlotHeartbeat(taskId: string): void {
     if (this.destroyed) {
       return;
     }
-    if (this.slotHeartbeatTimers.has(projectId)) {
+    if (this.slotHeartbeatTimers.has(taskId)) {
       return;
     }
 
     const intervalMs = this.config.getSlotHeartbeatMs();
     const ttlMs = this.config.getSlotTtlMs();
     const timer = setInterval(() => {
-      void this.slotRepository.renewSlot(projectId, ttlMs).catch((err) => {
+      void this.slotRepository.renewSlotByTaskId(taskId, ttlMs).catch((err) => {
         this.logger.warn(
-          `Slot heartbeat failed for project ${projectId}: ${err instanceof Error ? err.message : err}`,
+          `Slot heartbeat failed for task ${taskId}: ${err instanceof Error ? err.message : err}`,
         );
       });
     }, intervalMs);
     timer.unref?.();
-    this.slotHeartbeatTimers.set(projectId, timer);
+    this.slotHeartbeatTimers.set(taskId, timer);
   }
 
-  private stopSlotHeartbeat(projectId: string): void {
-    const timer = this.slotHeartbeatTimers.get(projectId);
+  private stopSlotHeartbeat(taskId: string): void {
+    const timer = this.slotHeartbeatTimers.get(taskId);
     if (timer) {
       clearInterval(timer);
-      this.slotHeartbeatTimers.delete(projectId);
+      this.slotHeartbeatTimers.delete(taskId);
     }
   }
 
-  private async releaseSlotAndStopHeartbeat(projectId: string): Promise<void> {
-    this.stopSlotHeartbeat(projectId);
-    await this.slotRepository.releaseSlot(projectId);
+  private async releaseSlotAndStopHeartbeat(taskId: string): Promise<void> {
+    this.stopSlotHeartbeat(taskId);
+    await this.slotRepository.releaseSlotByTaskId(taskId);
   }
 
   private async startRunnerWithRetries(params: {

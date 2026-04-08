@@ -83,8 +83,8 @@ describe('ContainerOrchestrationService', () => {
           heartbeatAt: null,
         },
       ]),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn().mockResolvedValue(createTask(TaskStatus.inReview)),
@@ -101,8 +101,11 @@ describe('ContainerOrchestrationService', () => {
     await service.resumeActiveSlotsOnStartup();
     await jest.advanceTimersByTimeAsync(1000);
 
-    expect(slotRepository.renewSlot).toHaveBeenCalledWith('project-1', 5000);
-    expect(slotRepository.releaseSlot).not.toHaveBeenCalled();
+    expect(slotRepository.renewSlotByTaskId).toHaveBeenCalledWith(
+      'task-1',
+      5000,
+    );
+    expect(slotRepository.releaseSlotByTaskId).not.toHaveBeenCalled();
     expect(isolatedRunner.remove).not.toHaveBeenCalled();
 
     service.onModuleDestroy();
@@ -134,8 +137,8 @@ describe('ContainerOrchestrationService', () => {
           heartbeatAt: null,
         },
       ]),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn().mockResolvedValue(createTask(TaskStatus.done)),
@@ -153,8 +156,62 @@ describe('ContainerOrchestrationService', () => {
     await jest.advanceTimersByTimeAsync(1000);
 
     expect(isolatedRunner.remove).toHaveBeenCalledWith('ainative-task-task-1');
-    expect(slotRepository.releaseSlot).toHaveBeenCalledWith('project-1');
-    expect(slotRepository.renewSlot).not.toHaveBeenCalled();
+    expect(slotRepository.releaseSlotByTaskId).toHaveBeenCalledWith('task-1');
+    expect(slotRepository.renewSlotByTaskId).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to slot metadata when the container is not inspectable', async () => {
+    const config = {
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue(null),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn(),
+    };
+    const slotRepository = {
+      findByTaskId: jest.fn().mockResolvedValue({
+        taskId: 'task-1',
+        containerId: 'container-1',
+        accessMetadata: {
+          hostIp: '127.0.0.1',
+          hostPort: 8080,
+          containerPort: 8080,
+          previewUrl: 'http://127.0.0.1:8080',
+          networkMode: 'host',
+        },
+      }),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+    );
+
+    const result = await service.inspectTaskContainer({
+      task: createTask(TaskStatus.inProgress) as never,
+      project: createProject() as never,
+    });
+
+    expect(slotRepository.findByTaskId).toHaveBeenCalledWith('task-1');
+    expect(result).toEqual({
+      containerId: 'container-1',
+      running: false,
+      accessMetadata: {
+        hostIp: '127.0.0.1',
+        hostPort: 8080,
+        containerPort: 8080,
+        previewUrl: 'http://127.0.0.1:8080',
+        networkMode: 'host',
+      },
+    });
   });
 
   it('should apply project-level container runtime overrides when starting containers', async () => {
@@ -257,10 +314,10 @@ describe('ContainerOrchestrationService', () => {
         ]),
     };
     const slotRepository = {
-      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-      updateContainerId: jest.fn().mockResolvedValue(undefined),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -323,8 +380,8 @@ describe('ContainerOrchestrationService', () => {
         ],
       }),
     );
-    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
-      'project-1',
+    expect(slotRepository.updateContainerRuntimeByTaskId).toHaveBeenCalledWith(
+      'task-1',
       expect.objectContaining({
         containerId: 'container-1',
         accessMetadata: expect.objectContaining({
@@ -397,10 +454,10 @@ describe('ContainerOrchestrationService', () => {
       resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
     };
     const slotRepository = {
-      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-      updateContainerId: jest.fn().mockResolvedValue(undefined),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -472,10 +529,10 @@ describe('ContainerOrchestrationService', () => {
       resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
     };
     const slotRepository = {
-      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-      updateContainerId: jest.fn().mockResolvedValue(undefined),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -502,8 +559,8 @@ describe('ContainerOrchestrationService', () => {
         image: 'ainative/runner:fresh',
       }),
     );
-    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
-      'project-1',
+    expect(slotRepository.updateContainerRuntimeByTaskId).toHaveBeenCalledWith(
+      'task-1',
       expect.objectContaining({
         containerId: 'container-new',
         accessMetadata: expect.objectContaining({
@@ -559,11 +616,11 @@ describe('ContainerOrchestrationService', () => {
       resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
     };
     const slotRepository = {
-      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-      updateContainerId: jest.fn().mockResolvedValue(undefined),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
-      findByProjectId: jest.fn().mockResolvedValue(null),
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      findByTaskId: jest.fn().mockResolvedValue(null),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -587,8 +644,8 @@ describe('ContainerOrchestrationService', () => {
     });
 
     expect(result).toEqual({ containerId: 'container-new' });
-    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
-      'project-1',
+    expect(slotRepository.updateContainerRuntimeByTaskId).toHaveBeenCalledWith(
+      'task-1',
       {
         containerId: 'container-new',
         accessMetadata: {
@@ -644,15 +701,15 @@ describe('ContainerOrchestrationService', () => {
       networkMode: 'bridge',
     };
     const slotRepository = {
-      findByProjectId: jest.fn().mockResolvedValue({
+      findByTaskId: jest.fn().mockResolvedValue({
         projectId: 'project-1',
         taskId: 'task-1',
         accessMetadata,
       }),
-      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-      updateContainerId: jest.fn().mockResolvedValue(undefined),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -673,15 +730,15 @@ describe('ContainerOrchestrationService', () => {
     });
 
     expect(result).toEqual({ containerId: 'container-1' });
-    expect(slotRepository.findByProjectId).toHaveBeenCalledWith('project-1');
-    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
-      'project-1',
+    expect(slotRepository.findByTaskId).toHaveBeenCalledWith('task-1');
+    expect(slotRepository.updateContainerRuntimeByTaskId).toHaveBeenCalledWith(
+      'task-1',
       {
         containerId: 'container-1',
         accessMetadata,
       },
     );
-    expect(slotRepository.updateContainerId).not.toHaveBeenCalled();
+    expect(slotRepository.updateContainerIdByTaskId).not.toHaveBeenCalled();
   });
 
   it('should recover bridge preview metadata from inspected published ports when reused metadata is missing', async () => {
@@ -725,15 +782,15 @@ describe('ContainerOrchestrationService', () => {
       resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
     };
     const slotRepository = {
-      findByProjectId: jest.fn().mockResolvedValue({
+      findByTaskId: jest.fn().mockResolvedValue({
         projectId: 'project-1',
         taskId: 'task-1',
         accessMetadata: null,
       }),
-      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-      updateContainerId: jest.fn().mockResolvedValue(undefined),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -753,8 +810,8 @@ describe('ContainerOrchestrationService', () => {
     });
 
     expect(result).toEqual({ containerId: 'container-1' });
-    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
-      'project-1',
+    expect(slotRepository.updateContainerRuntimeByTaskId).toHaveBeenCalledWith(
+      'task-1',
       {
         containerId: 'container-1',
         accessMetadata: {
@@ -766,7 +823,7 @@ describe('ContainerOrchestrationService', () => {
         },
       },
     );
-    expect(slotRepository.updateContainerId).not.toHaveBeenCalled();
+    expect(slotRepository.updateContainerIdByTaskId).not.toHaveBeenCalled();
   });
 
   it('should derive host preview metadata when reusing a running host container', async () => {
@@ -804,15 +861,15 @@ describe('ContainerOrchestrationService', () => {
       resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
     };
     const slotRepository = {
-      findByProjectId: jest.fn().mockResolvedValue({
+      findByTaskId: jest.fn().mockResolvedValue({
         projectId: 'project-1',
         taskId: 'task-1',
         accessMetadata: null,
       }),
-      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-      updateContainerId: jest.fn().mockResolvedValue(undefined),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -836,8 +893,8 @@ describe('ContainerOrchestrationService', () => {
     });
 
     expect(result).toEqual({ containerId: 'container-1' });
-    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
-      'project-1',
+    expect(slotRepository.updateContainerRuntimeByTaskId).toHaveBeenCalledWith(
+      'task-1',
       {
         containerId: 'container-1',
         accessMetadata: {
@@ -849,7 +906,7 @@ describe('ContainerOrchestrationService', () => {
         },
       },
     );
-    expect(slotRepository.updateContainerId).not.toHaveBeenCalled();
+    expect(slotRepository.updateContainerIdByTaskId).not.toHaveBeenCalled();
     expect(loggerWarn).not.toHaveBeenCalledWith(
       expect.stringContaining('reuse_runner_container_metadata_missing '),
     );
@@ -890,15 +947,15 @@ describe('ContainerOrchestrationService', () => {
       resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
     };
     const slotRepository = {
-      findByProjectId: jest.fn().mockResolvedValue({
+      findByTaskId: jest.fn().mockResolvedValue({
         projectId: 'project-1',
         taskId: 'task-1',
         accessMetadata: null,
       }),
-      updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
-      updateContainerId: jest.fn().mockResolvedValue(undefined),
-      renewSlot: jest.fn().mockResolvedValue(undefined),
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -922,9 +979,11 @@ describe('ContainerOrchestrationService', () => {
     });
 
     expect(result).toEqual({ containerId: 'container-1' });
-    expect(slotRepository.updateContainerRuntime).not.toHaveBeenCalled();
-    expect(slotRepository.updateContainerId).toHaveBeenCalledWith(
-      'project-1',
+    expect(
+      slotRepository.updateContainerRuntimeByTaskId,
+    ).not.toHaveBeenCalled();
+    expect(slotRepository.updateContainerIdByTaskId).toHaveBeenCalledWith(
+      'task-1',
       'container-1',
     );
     expect(loggerWarn).toHaveBeenCalledWith(
@@ -944,7 +1003,7 @@ describe('ContainerOrchestrationService', () => {
       resolveRunnerImage: jest.fn(),
     };
     const slotRepository = {
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn().mockResolvedValue(createTask(TaskStatus.inProgress)),
@@ -965,7 +1024,7 @@ describe('ContainerOrchestrationService', () => {
     await service.removeContainerForTask('task-1', 'project-1');
 
     expect(isolatedRunner.remove).toHaveBeenCalledWith('ainative-task-task-1');
-    expect(slotRepository.releaseSlot).toHaveBeenCalledWith('project-1');
+    expect(slotRepository.releaseSlotByTaskId).toHaveBeenCalledWith('task-1');
     expect(loggerLog).toHaveBeenCalledWith(
       expect.stringContaining('remove_runner_container '),
     );
@@ -985,7 +1044,7 @@ describe('ContainerOrchestrationService', () => {
       resolveRunnerImage: jest.fn(),
     };
     const slotRepository = {
-      releaseSlot: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn().mockResolvedValue(null),
@@ -1005,7 +1064,7 @@ describe('ContainerOrchestrationService', () => {
     await service.removeContainerForTask('task-1', 'project-1');
 
     expect(isolatedRunner.remove).not.toHaveBeenCalled();
-    expect(slotRepository.releaseSlot).toHaveBeenCalledWith('project-1');
+    expect(slotRepository.releaseSlotByTaskId).toHaveBeenCalledWith('task-1');
     expect(loggerLog).toHaveBeenCalledWith(
       expect.stringContaining('remove_runner_container_task_missing '),
     );

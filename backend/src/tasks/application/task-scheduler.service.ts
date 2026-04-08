@@ -164,6 +164,8 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
           allProjects.map((project) => [project.id, project] as const),
         );
         const globalMaxConcurrency = this.resolveGlobalConcurrency(allProjects);
+        const maxContainersPerProject =
+          this.containerExecutionConfig.getMaxContainersPerProject();
         const mutableProjectRunning = {
           ...runningByProject,
         } as Record<string, number>;
@@ -188,25 +190,17 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
           }
 
           let claimedNewProjectSlot = false;
-          const existingSlot =
-            await this.projectExecutionSlotRepository.findByProjectId(
+          const slotClaimResult =
+            await this.projectExecutionSlotRepository.claimSlotWithinLimit(
               task.projectId,
+              task.id,
+              this.containerExecutionConfig.getSlotTtlMs(),
+              maxContainersPerProject,
             );
-          if (existingSlot && existingSlot.taskId !== task.id) {
+          if (slotClaimResult === 'limit_reached') {
             continue;
           }
-          if (!existingSlot) {
-            const claimed =
-              await this.projectExecutionSlotRepository.tryClaimSlot(
-                task.projectId,
-                task.id,
-                this.containerExecutionConfig.getSlotTtlMs(),
-              );
-            if (!claimed) {
-              continue;
-            }
-            claimedNewProjectSlot = true;
-          }
+          claimedNewProjectSlot = slotClaimResult === 'claimed';
 
           const claimedNode = await this.taskNodeRepository.claimFirstTodoNode(
             task.id,
@@ -215,8 +209,8 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
           );
           if (!claimedNode) {
             if (claimedNewProjectSlot) {
-              await this.projectExecutionSlotRepository.releaseSlot(
-                task.projectId,
+              await this.projectExecutionSlotRepository.releaseSlotByTaskId(
+                task.id,
               );
             }
             continue;

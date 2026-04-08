@@ -28,6 +28,7 @@ describe('ContainerExecutionConfigService', () => {
   it('should give runner-only profile the shared preview runtime defaults', () => {
     const service = createService({});
 
+    expect(service.getMaxContainersPerProject()).toBe(1);
     expect(service.getSandboxProfile()).toBe('runner-only');
     expect(service.usesSandboxEntrypoint()).toBe(true);
     expect(service.getRunnerNetworkMode()).toBe('bridge');
@@ -41,6 +42,22 @@ describe('ContainerExecutionConfigService', () => {
       '/workspace/frontend/node_modules',
       '/workspace/logs',
     ]);
+  });
+
+  it('should read max containers per project from env when configured', () => {
+    const service = createService({
+      AINATIVE_PROJECT_MAX_CONTAINERS_PER_PROJECT: '3',
+    });
+
+    expect(service.getMaxContainersPerProject()).toBe(3);
+  });
+
+  it('should fall back to the default max containers per project for invalid values', () => {
+    const service = createService({
+      AINATIVE_PROJECT_MAX_CONTAINERS_PER_PROJECT: '0',
+    });
+
+    expect(service.getMaxContainersPerProject()).toBe(1);
   });
 
   it('should use sandbox defaults for preview-web profile', () => {

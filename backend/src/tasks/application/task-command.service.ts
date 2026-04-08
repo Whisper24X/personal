@@ -454,9 +454,10 @@ export class TaskCommandService {
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
       task.id,
     );
-    const existingSlot =
-      await this.projectExecutionSlotRepository.findByProjectId(task.projectId);
-    const slotOwnedByTask = existingSlot?.taskId === task.id;
+    const existingSlot = await this.projectExecutionSlotRepository.findByTaskId(
+      task.id,
+    );
+    const slotOwnedByTask = Boolean(existingSlot);
 
     const shouldAttemptRuntimeCleanup = Boolean(
       runningNode ||

@@ -125,7 +125,7 @@ const createService = () => {
     removeContainerForTask: jest.fn().mockResolvedValue(undefined),
   };
   const projectExecutionSlotRepository = {
-    findByProjectId: jest.fn().mockResolvedValue(null),
+    findByTaskId: jest.fn().mockResolvedValue(null),
   };
   const taskWorkspaceWatchService = {
     syncTaskWatch: jest.fn().mockResolvedValue(undefined),
@@ -466,7 +466,7 @@ describe('TaskCommandService.remove', () => {
     ).toBeLessThan(taskRepository.remove.mock.invocationCallOrder[0]);
   });
 
-  it('should remove the runner when the project slot is still owned by the task', async () => {
+  it('should remove the runner when the task slot still exists', async () => {
     const {
       service,
       taskRepository,
@@ -481,7 +481,7 @@ describe('TaskCommandService.remove', () => {
 
     taskAccessService.getTaskOrThrow.mockResolvedValue(task);
     taskAccessService.getProjectByIdOrThrow.mockResolvedValue(project);
-    projectExecutionSlotRepository.findByProjectId.mockResolvedValue({
+    projectExecutionSlotRepository.findByTaskId.mockResolvedValue({
       projectId: task.projectId,
       taskId: task.id,
       expiresAt: new Date('2026-03-20T00:30:00.000Z'),
