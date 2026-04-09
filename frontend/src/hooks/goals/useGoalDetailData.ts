@@ -227,12 +227,12 @@ export function useGoalDetailData() {
       dedupeKey: 'goal-generate-prd',
     })
     ensureGoalGeneration(id).generatingPrd = true
+    tab.value = 'prd'
     try {
       await goalsApi.generatePrd(id, {
         overwrite: true,
         ...goalGenerationAgentPayload(),
       })
-      tab.value = 'prd'
       message.success('PRD 已生成')
       await load({ silent: true })
     } catch (e) {
@@ -263,13 +263,13 @@ export function useGoalDetailData() {
       dedupeKey: 'goal-generate-plan',
     })
     ensureGoalGeneration(id).generatingPlan = true
+    tab.value = 'plan'
     try {
       await goalsApi.generatePlan(id, {
         granularity: 'standard',
         overwrite: true,
         ...goalGenerationAgentPayload(),
       })
-      tab.value = 'plan'
       message.success('任务计划已生成')
       await load({ silent: true })
     } catch (e) {
