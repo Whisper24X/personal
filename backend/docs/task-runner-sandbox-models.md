@@ -38,7 +38,7 @@ This is appropriate for **human dev environments** or **preview stacks**, not as
 - **`preview-web`** and **`full-dev-sandbox`** now switch the runner to the image entrypoint instead of appending `sleep infinity`. The image entrypoint starts **`supervisord` + `nginx`** and waits for `http://127.0.0.1:8080/health` before the runner is considered ready.
 - When the mounted worktree matches the classic `sandbox/` layout (`ainative-backend` + `ainative-shadow` + `ainative-app`), the runner reuses the checked-in [`sandbox/nginx.conf`](../../sandbox/nginx.conf) and [`sandbox/supervisord.conf`](../../sandbox/supervisord.conf).
 - When the mounted worktree is the current mono-repo layout (`backend` + `frontend`), the runner generates a narrower supervisord/nginx config at startup and launches the services it can actually find instead of crash-looping on missing directories.
-- Sandbox profiles additionally mount anonymous container-only volumes for `backend/node_modules`, `frontend/node_modules`, and `logs`, so `npm ci` inside the runner does not overwrite host-side dependencies.
+- Sandbox profiles additionally mount managed named volumes for `backend/node_modules`, `frontend/node_modules`, and `logs`, so `npm ci` inside the runner does not overwrite host-side dependencies while keeping cleanup and debugging deterministic.
 - **`full-dev-sandbox`** still applies the heavier default **memory / pids** limits from `ContainerExecutionConfigService`.
 
 ---

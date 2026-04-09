@@ -39,7 +39,7 @@ describe('ContainerExecutionConfigService', () => {
     expect(service.getRunnerStartTimeoutMs()).toBe(30_000);
     expect(service.getRunnerCpuLimit()).toBeUndefined();
     expect(service.resourceLimitsForProfile()).toEqual({});
-    expect(service.getRunnerAnonymousVolumeMounts('/workspace')).toEqual([
+    expect(service.getRunnerManagedVolumeTargets('/workspace')).toEqual([
       '/workspace/backend/node_modules',
       '/workspace/frontend/node_modules',
       '/workspace/logs',
@@ -75,7 +75,7 @@ describe('ContainerExecutionConfigService', () => {
       'http://127.0.0.1:8080/health',
     );
     expect(service.getRunnerStartTimeoutMs()).toBe(300_000);
-    expect(service.getRunnerAnonymousVolumeMounts('/workspace')).toEqual([
+    expect(service.getRunnerManagedVolumeTargets('/workspace')).toEqual([
       '/workspace/backend/node_modules',
       '/workspace/frontend/node_modules',
       '/workspace/logs',

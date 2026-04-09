@@ -7,6 +7,8 @@ import { spawn } from 'node:child_process'
 
 const DEFAULT_IMAGE = process.env.AINATIVE_RUNNER_IMAGE?.trim() || 'ainative/runner:latest'
 const DEFAULT_CONFIG_FILE = 'ainative.runner.json'
+const RUNNER_MANAGED_VOLUME_LABEL = 'ainative.runner-managed'
+const RUNNER_MANAGED_VOLUME_CONTAINER_LABEL = 'ainative.container-name'
 
 const main = async () => {
   const argv = process.argv.slice(2)
@@ -120,7 +122,7 @@ const normalizeRunnerConfig = (value, repoRoot) => {
         }
       })
       .filter(Boolean),
-    anonymousNodeModules: services
+    managedVolumeMounts: services
       .map((service) => {
         const serviceRecord = toObjectRecord(service)
         const workdir = readString(serviceRecord?.workdir)
@@ -129,7 +131,16 @@ const normalizeRunnerConfig = (value, repoRoot) => {
           return null
         }
 
-        return `/workspace/${trimLeadingSlash(workdir)}/node_modules`
+        const target = `/workspace/${trimLeadingSlash(workdir)}/node_modules`
+        return {
+          name: buildManagedVolumeName(containerName, target),
+          target,
+          labels: {
+            [RUNNER_MANAGED_VOLUME_LABEL]: 'true',
+            [RUNNER_MANAGED_VOLUME_CONTAINER_LABEL]: containerName,
+            'ainative.mount-target': target,
+          },
+        }
       })
       .filter(Boolean),
   }
@@ -157,8 +168,10 @@ const runUp = async (config, args) => {
       return
     }
 
-    await dockerRun(['rm', '-f', config.containerName])
+    await runDown(config)
   }
+
+  await ensureManagedVolumes(config.managedVolumeMounts)
 
   const argsList = [
     'run',
@@ -187,8 +200,8 @@ const runUp = async (config, args) => {
   for (const volume of config.sharedVolumes) {
     argsList.push('-v', `${volume.name}:${volume.target}`)
   }
-  for (const target of config.anonymousNodeModules) {
-    argsList.push('-v', target)
+  for (const volume of config.managedVolumeMounts) {
+    argsList.push('-v', `${volume.name}:${volume.target}`)
   }
 
   const env = {
@@ -200,13 +213,19 @@ const runUp = async (config, args) => {
   }
 
   argsList.push(image, '/usr/local/bin/ainative-runner-entrypoint')
-  await dockerRun(argsList)
-  await waitForReadiness(config, hostPort)
-  printStatus(config, hostPort)
+  try {
+    await dockerRun(argsList)
+    await waitForReadiness(config, hostPort)
+    printStatus(config, hostPort)
+  } catch (error) {
+    await runDown(config)
+    throw error
+  }
 }
 
 const runDown = async (config) => {
   await dockerRun(['rm', '-f', config.containerName], { allowFailure: true })
+  await removeManagedVolumes(config)
 }
 
 const runStatus = async (config) => {
@@ -251,6 +270,41 @@ const runShell = async (config) => {
   await dockerRun(['exec', '-it', config.containerName, 'bash'], {
     inherit: true,
   })
+}
+
+const ensureManagedVolumes = async (mounts) => {
+  for (const mount of mounts) {
+    const args = ['volume', 'create']
+    for (const [key, value] of Object.entries(mount.labels || {})) {
+      args.push('--label', `${key}=${value}`)
+    }
+    args.push(mount.name)
+    await dockerCapture(args, { quiet: true })
+  }
+}
+
+const removeManagedVolumes = async (config) => {
+  const output = await dockerCapture([
+    'volume',
+    'ls',
+    '--quiet',
+    '--filter',
+    `label=${RUNNER_MANAGED_VOLUME_LABEL}=true`,
+    '--filter',
+    `label=${RUNNER_MANAGED_VOLUME_CONTAINER_LABEL}=${config.containerName}`,
+  ], { allowFailure: true, quiet: true })
+
+  const names = output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  for (const name of names) {
+    await dockerRun(['volume', 'rm', '-f', name], {
+      allowFailure: true,
+      quiet: true,
+    })
+  }
 }
 
 const waitForReadiness = async (config, hostPort) => {
@@ -425,6 +479,15 @@ const toStringRecord = (value) => {
 
 const trimLeadingSlash = (value) => value.replace(/^\/+/, '')
 const sanitizeName = (value) => String(value).replace(/[^a-zA-Z0-9_.-]/g, '-')
+const buildManagedVolumeName = (containerName, target) => {
+  const suffix =
+    trimLeadingSlash(target)
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => sanitizeName(segment.toLowerCase()))
+      .join('-') || 'workspace'
+  return `${containerName}-${suffix}`
+}
 const appendPreviewPath = (baseUrl, previewPath) => {
   const normalizedPath = readString(previewPath)
   if (!normalizedPath || normalizedPath === '/') {

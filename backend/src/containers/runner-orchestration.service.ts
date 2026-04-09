@@ -124,7 +124,7 @@ export class RunnerOrchestrationService {
     return targetPath;
   }
 
-  buildAnonymousVolumeMounts(
+  buildManagedVolumeTargets(
     workspaceMount: string,
     project?: Project | null,
   ): string[] {

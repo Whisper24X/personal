@@ -35,7 +35,7 @@ Nest started **inside** `docker-compose` already mounts `docker.sock` into the b
 ## Configuration quick reference
 
 - `AINATIVE_TASK_SANDBOX_PROFILE=runner-only|preview-web|full-dev-sandbox` — `runner-only` keeps the lightweight `sleep infinity` runner for `docker exec`; `preview-web` and `full-dev-sandbox` boot the image entrypoint, which starts `supervisord` + `nginx` and waits for `/health` before `ensureContainer()` returns.
-- Sandbox profiles keep the worktree bind mount at `AINATIVE_RUNNER_WORKSPACE` and add container-local anonymous volumes for `backend/node_modules`, `frontend/node_modules`, and `logs` so Linux dependencies do not leak back onto the host worktree.
+- Sandbox profiles keep the worktree bind mount at `AINATIVE_RUNNER_WORKSPACE` and add container-local managed named volumes for `backend/node_modules`, `frontend/node_modules`, and `logs` so Linux dependencies do not leak back onto the host worktree.
 - Task execution uses **effective** task-scoped isolation (container name `ainative-task-*`, one runner per `task.id`).
 - `project_execution_slots` enforces **at most one active task container lease per project**, complementing in-memory concurrency counters.
 

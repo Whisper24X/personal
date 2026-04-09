@@ -3,8 +3,13 @@ import { IsolatedRunnerContainerService } from './isolated-runner-container.serv
 describe('IsolatedRunnerContainerService', () => {
   it('should pass docker platform and resource flags when starting a runner container', async () => {
     const service = new IsolatedRunnerContainerService();
-    const execDockerCapture = jest.fn().mockResolvedValue('container-1\n');
+    const execDockerCapture = jest
+      .fn()
+      .mockResolvedValueOnce('ainative-task-task-1-workspace-logs\n')
+      .mockResolvedValueOnce('container-1\n');
+    const execDocker = jest.fn().mockResolvedValue(undefined);
     (service as any).execDockerCapture = execDockerCapture;
+    (service as any).execDocker = execDocker;
     (service as any).inspectById = jest.fn().mockResolvedValue({
       id: 'container-1',
       status: 'running',
@@ -26,7 +31,7 @@ describe('IsolatedRunnerContainerService', () => {
         memoryMb: 4096,
         pidsLimit: 512,
       },
-      namedVolumeMounts: [
+      sharedVolumeMounts: [
         {
           name: 'ainative-go-mod-cache',
           target: '/go/pkg/mod',
@@ -36,10 +41,31 @@ describe('IsolatedRunnerContainerService', () => {
           target: '/root/.cache/go-build',
         },
       ],
+      managedVolumeMounts: [
+        {
+          name: 'ainative-task-task-1-workspace-logs',
+          target: '/workspace/logs',
+          labels: {
+            'ainative.runner-managed': 'true',
+            'ainative.container-name': 'ainative-task-task-1',
+          },
+        },
+      ],
       startTimeoutMs: 1000,
       networkMode: 'bridge',
     });
 
+    expect(execDockerCapture).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        'volume',
+        'create',
+        '--label',
+        'ainative.runner-managed=true',
+        '--label',
+        'ainative.container-name=ainative-task-task-1',
+        'ainative-task-task-1-workspace-logs',
+      ]),
+    );
     expect(execDockerCapture).toHaveBeenCalledWith(
       expect.arrayContaining([
         '--platform',
@@ -52,8 +78,44 @@ describe('IsolatedRunnerContainerService', () => {
         '512',
         'ainative-go-mod-cache:/go/pkg/mod',
         'ainative-go-build-cache:/root/.cache/go-build',
+        'ainative-task-task-1-workspace-logs:/workspace/logs',
       ]),
     );
+    expect(execDocker).not.toHaveBeenCalled();
+  });
+
+  it('should remove managed volumes after removing the container', async () => {
+    const service = new IsolatedRunnerContainerService();
+    const execDocker = jest.fn().mockResolvedValue(undefined);
+    const execDockerCapture = jest
+      .fn()
+      .mockResolvedValueOnce('ainative-task-task-1-workspace-logs\n');
+    (service as any).execDocker = execDocker;
+    (service as any).execDockerCapture = execDockerCapture;
+
+    await service.remove('ainative-task-task-1');
+
+    expect(execDocker).toHaveBeenNthCalledWith(1, [
+      'rm',
+      '-f',
+      '-v',
+      'ainative-task-task-1',
+    ]);
+    expect(execDockerCapture).toHaveBeenCalledWith([
+      'volume',
+      'ls',
+      '--quiet',
+      '--filter',
+      'label=ainative.runner-managed=true',
+      '--filter',
+      'label=ainative.container-name=ainative-task-task-1',
+    ]);
+    expect(execDocker).toHaveBeenNthCalledWith(2, [
+      'volume',
+      'rm',
+      '-f',
+      'ainative-task-task-1-workspace-logs',
+    ]);
   });
 
   it('should resolve the running container platform from the backing image', async () => {

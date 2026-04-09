@@ -71,7 +71,7 @@
 
 - 不使用单纯 `sleep infinity` 占位，而走镜像 **entrypoint**（如 `runner/entrypoint.sh`）：拉起 **supervisord、nginx**，并按 worktree 布局生成或选用 nginx/supervisord 配置（单仓 `backend`+`frontend` 与旧式 `ainative-backend` 等布局分支处理）。
 - **`ensure` 成功**以就绪 URL 返回成功为准（默认 `127.0.0.1:8080/health`）。
-- 可为 **`backend/node_modules`、`frontend/node_modules`、`logs`** 增加**匿名卷**，避免在容器里 `npm ci` 写回宿主 worktree。
+- 可为 **`backend/node_modules`、`frontend/node_modules`、`logs`** 增加**带标签的命名卷**，避免在容器里 `npm ci` 写回宿主 worktree，同时让清理和排障更可追踪。
 - **`full-dev-sandbox`** 通常施加更严的内存、pids 等 cgroup 类限制（由 `ContainerExecutionConfigService` 定义）。
 
 ---
