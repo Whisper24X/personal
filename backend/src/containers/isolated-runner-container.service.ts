@@ -4,6 +4,7 @@ import {
   RunnerNetworkMode,
   RunnerPlatform,
 } from './container-execution-config.service';
+import { RunnerNamedVolumeConfig } from './runner-orchestration.types';
 
 export type ContainerInspectResult = {
   id: string;
@@ -33,7 +34,9 @@ export class IsolatedRunnerContainerService {
     workspaceMount: string;
     command?: string[];
     env?: Record<string, string>;
+    cpuLimit?: number;
     resourceLimits?: { memoryMb?: number; pidsLimit?: number };
+    namedVolumeMounts?: RunnerNamedVolumeConfig[];
     anonymousVolumeMounts?: string[];
     readinessProbeUrl?: string | null;
     startTimeoutMs?: number;
@@ -52,7 +55,9 @@ export class IsolatedRunnerContainerService {
         worktreePath: params.worktreePath,
         workspaceMount: params.workspaceMount,
         command: params.command ?? ['sleep', 'infinity'],
+        namedVolumeMounts: params.namedVolumeMounts ?? [],
         anonymousVolumeMounts: params.anonymousVolumeMounts ?? [],
+        cpuLimit: params.cpuLimit ?? null,
         resourceLimits: params.resourceLimits ?? {},
         readinessProbeUrl: params.readinessProbeUrl ?? null,
         startTimeoutMs,
@@ -79,11 +84,18 @@ export class IsolatedRunnerContainerService {
       );
     }
 
+    if (params.cpuLimit) {
+      args.push('--cpus', String(params.cpuLimit));
+    }
     if (params.resourceLimits?.memoryMb) {
       args.push('--memory', `${params.resourceLimits.memoryMb}m`);
     }
     if (params.resourceLimits?.pidsLimit) {
       args.push('--pids-limit', String(params.resourceLimits.pidsLimit));
+    }
+
+    for (const volume of params.namedVolumeMounts ?? []) {
+      args.push('-v', `${volume.name}:${volume.target}`);
     }
 
     for (const mountPath of params.anonymousVolumeMounts ?? []) {

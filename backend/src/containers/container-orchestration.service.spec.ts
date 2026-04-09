@@ -160,7 +160,7 @@ describe('ContainerOrchestrationService', () => {
     expect(slotRepository.renewSlotByTaskId).not.toHaveBeenCalled();
   });
 
-  it('should fall back to slot metadata when the container is not inspectable', async () => {
+  it('should release stale slot state when the container is not inspectable', async () => {
     const config = {
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
     };
@@ -182,6 +182,7 @@ describe('ContainerOrchestrationService', () => {
           networkMode: 'host',
         },
       }),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
     };
     const taskRepository = {
       findById: jest.fn(),
@@ -201,17 +202,8 @@ describe('ContainerOrchestrationService', () => {
     });
 
     expect(slotRepository.findByTaskId).toHaveBeenCalledWith('task-1');
-    expect(result).toEqual({
-      containerId: 'container-1',
-      running: false,
-      accessMetadata: {
-        hostIp: '127.0.0.1',
-        hostPort: 8080,
-        containerPort: 8080,
-        previewUrl: 'http://127.0.0.1:8080',
-        networkMode: 'host',
-      },
-    });
+    expect(slotRepository.releaseSlotByTaskId).toHaveBeenCalledWith('task-1');
+    expect(result).toBeNull();
   });
 
   it('should apply project-level container runtime overrides when starting containers', async () => {
@@ -234,9 +226,10 @@ describe('ContainerOrchestrationService', () => {
         GITLAB_TOKEN: 'token-value',
       }),
       getRunnerEnv: jest.fn().mockReturnValue({ PORT: '4173' }),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(2),
       resourceLimitsForProfile: jest
         .fn()
-        .mockReturnValue({ memoryMb: 3072, pidsLimit: 300 }),
+        .mockReturnValue({ memoryMb: 4096, pidsLimit: 512 }),
       getRunnerReadinessProbeUrl: jest
         .fn()
         .mockReturnValue('http://127.0.0.1:8080/health'),
@@ -278,13 +271,24 @@ describe('ContainerOrchestrationService', () => {
         networkMode: 'bridge',
         listenPort: 4173,
         startTimeoutMs: 90000,
+        cpuLimit: 2,
         resourceLimits: {
-          memoryMb: 3072,
-          pidsLimit: 300,
+          memoryMb: 4096,
+          pidsLimit: 512,
         },
         env: {
           PORT: '4173',
         },
+        sharedVolumes: [
+          {
+            name: 'ainative-go-mod-cache',
+            target: '/go/pkg/mod',
+          },
+          {
+            name: 'ainative-go-build-cache',
+            target: '/root/.cache/go-build',
+          },
+        ],
       },
       orchestration: {
         services: [
@@ -338,12 +342,6 @@ describe('ContainerOrchestrationService', () => {
       task: createTask(TaskStatus.inProgress) as never,
       project: createProject({
         containerRuntime: {
-          sandboxProfile: 'preview-web',
-          startTimeoutMs: 90000,
-          resourceLimits: {
-            memoryMb: 3072,
-            pidsLimit: 300,
-          },
           env: {
             PORT: '4173',
           },
@@ -363,10 +361,21 @@ describe('ContainerOrchestrationService', () => {
           AINATIVE_RUNNER_LISTEN_PORT: '4173',
           AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
         },
-        resourceLimits: { memoryMb: 3072, pidsLimit: 300 },
+        cpuLimit: 2,
+        resourceLimits: { memoryMb: 4096, pidsLimit: 512 },
         networkMode: 'bridge',
         platform: 'linux/amd64',
         startTimeoutMs: 90000,
+        namedVolumeMounts: [
+          {
+            name: 'ainative-go-mod-cache',
+            target: '/go/pkg/mod',
+          },
+          {
+            name: 'ainative-go-build-cache',
+            target: '/root/.cache/go-build',
+          },
+        ],
         anonymousVolumeMounts: [
           '/workspace/logs',
           '/workspace/backend/node_modules',
@@ -414,6 +423,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
@@ -506,6 +516,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
@@ -593,6 +604,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
@@ -675,6 +687,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
@@ -757,6 +770,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
@@ -842,6 +856,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
@@ -928,6 +943,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
       resourceLimitsForProfile: jest.fn().mockReturnValue({}),
       getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),

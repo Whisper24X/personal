@@ -30,15 +30,15 @@ describe('RunnerOrchestrationService', () => {
 
   it('should synthesize preview-web orchestration defaults from the sandbox profile', () => {
     const service = createService({
+      AINATIVE_TASK_SANDBOX_PROFILE: 'preview-web',
       AINATIVE_RUNNER_EXPOSE_HOST_IP: '127.0.0.1',
+      AINATIVE_RUNNER_CPUS: '2',
+      AINATIVE_RUNNER_MEMORY_MB: '4096',
+      AINATIVE_RUNNER_PIDS_LIMIT: '512',
     });
 
     const configFile = service.buildProjectRunnerConfigFile(
-      createProject({
-        containerRuntime: {
-          sandboxProfile: 'preview-web',
-        },
-      }) as never,
+      createProject() as never,
     );
 
     expect(configFile).toMatchObject({
@@ -46,6 +46,21 @@ describe('RunnerOrchestrationService', () => {
       runtime: {
         networkMode: 'bridge',
         listenPort: 8080,
+        cpuLimit: 2,
+        resourceLimits: {
+          memoryMb: 4096,
+          pidsLimit: 512,
+        },
+        sharedVolumes: expect.arrayContaining([
+          {
+            name: 'ainative-go-mod-cache',
+            target: '/go/pkg/mod',
+          },
+          {
+            name: 'ainative-go-build-cache',
+            target: '/root/.cache/go-build',
+          },
+        ]),
       },
       orchestration: {
         services: expect.arrayContaining([
@@ -91,13 +106,13 @@ describe('RunnerOrchestrationService', () => {
 
   it('should prefer configured runner orchestration over profile defaults', () => {
     const service = createService({
+      AINATIVE_TASK_SANDBOX_PROFILE: 'preview-web',
       AINATIVE_RUNNER_EXPOSE_HOST_IP: '127.0.0.1',
     });
 
     const configFile = service.buildProjectRunnerConfigFile(
       createProject({
         containerRuntime: {
-          sandboxProfile: 'preview-web',
           runnerOrchestration: {
             services: [
               {
@@ -140,6 +155,51 @@ describe('RunnerOrchestrationService', () => {
       service: 'api',
       path: '/api/',
     });
+  });
+
+  it('should merge default shared volumes with configured shared volumes', () => {
+    const service = createService({
+      AINATIVE_TASK_SANDBOX_PROFILE: 'runner-only',
+    });
+
+    const configFile = service.buildProjectRunnerConfigFile(
+      createProject({
+        containerRuntime: {
+          runnerOrchestration: {
+            services: [
+              {
+                name: 'api',
+                workdir: 'services/api',
+                command: 'pnpm dev',
+              },
+            ],
+            sharedVolumes: [
+              {
+                name: 'ainative-pnpm-store',
+                target: '/pnpm/store',
+              },
+            ],
+          },
+        },
+      }) as never,
+    );
+
+    expect(configFile?.runtime.sharedVolumes).toEqual(
+      expect.arrayContaining([
+        {
+          name: 'ainative-go-mod-cache',
+          target: '/go/pkg/mod',
+        },
+        {
+          name: 'ainative-go-build-cache',
+          target: '/root/.cache/go-build',
+        },
+        {
+          name: 'ainative-pnpm-store',
+          target: '/pnpm/store',
+        },
+      ]),
+    );
   });
 
   it('should derive anonymous node_modules mounts from services with install commands', () => {

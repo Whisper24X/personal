@@ -293,11 +293,16 @@ export class ContainerOrchestrationService
         return null;
       }
 
-      return {
-        containerId: slot.containerId,
-        running: false,
-        accessMetadata: slot.accessMetadata ?? null,
-      };
+      this.logger.warn(
+        `stale_runner_slot_detected ${JSON.stringify({
+          taskId: params.task.id,
+          projectId: params.task.projectId,
+          containerId: slot.containerId,
+          action: 'release_slot',
+        })}`,
+      );
+      await this.releaseSlotAndStopHeartbeat(params.task.id);
+      return null;
     }
 
     const previewConfig = this.resolvePreviewConfig(params.project);
@@ -528,6 +533,7 @@ export class ContainerOrchestrationService
           command: this.config.usesSandboxEntrypoint(params.project)
             ? ['/usr/local/bin/ainative-runner-entrypoint']
             : ['sleep', 'infinity'],
+          namedVolumeMounts: runnerConfig?.runtime.sharedVolumes ?? [],
           anonymousVolumeMounts:
             this.runnerOrchestration?.buildAnonymousVolumeMounts(
               this.config.getRunnerWorkspace(),
@@ -538,6 +544,7 @@ export class ContainerOrchestrationService
               params.project,
             ),
           env: containerEnv,
+          cpuLimit: this.config.getRunnerCpuLimit(params.project),
           resourceLimits: this.config.resourceLimitsForProfile(params.project),
           readinessProbeUrl: this.config.getRunnerReadinessProbeUrl(
             params.project,

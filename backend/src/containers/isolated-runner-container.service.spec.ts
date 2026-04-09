@@ -1,7 +1,7 @@
 import { IsolatedRunnerContainerService } from './isolated-runner-container.service';
 
 describe('IsolatedRunnerContainerService', () => {
-  it('should pass docker platform when starting a runner container', async () => {
+  it('should pass docker platform and resource flags when starting a runner container', async () => {
     const service = new IsolatedRunnerContainerService();
     const execDockerCapture = jest.fn().mockResolvedValue('container-1\n');
     (service as any).execDockerCapture = execDockerCapture;
@@ -21,12 +21,38 @@ describe('IsolatedRunnerContainerService', () => {
       workspaceMount: '/workspace',
       command: ['/usr/local/bin/ainative-runner-entrypoint'],
       platform: 'linux/amd64',
+      cpuLimit: 2,
+      resourceLimits: {
+        memoryMb: 4096,
+        pidsLimit: 512,
+      },
+      namedVolumeMounts: [
+        {
+          name: 'ainative-go-mod-cache',
+          target: '/go/pkg/mod',
+        },
+        {
+          name: 'ainative-go-build-cache',
+          target: '/root/.cache/go-build',
+        },
+      ],
       startTimeoutMs: 1000,
       networkMode: 'bridge',
     });
 
     expect(execDockerCapture).toHaveBeenCalledWith(
-      expect.arrayContaining(['--platform', 'linux/amd64']),
+      expect.arrayContaining([
+        '--platform',
+        'linux/amd64',
+        '--cpus',
+        '2',
+        '--memory',
+        '4096m',
+        '--pids-limit',
+        '512',
+        'ainative-go-mod-cache:/go/pkg/mod',
+        'ainative-go-build-cache:/root/.cache/go-build',
+      ]),
     );
   });
 

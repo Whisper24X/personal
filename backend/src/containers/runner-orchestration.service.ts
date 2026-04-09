@@ -87,6 +87,9 @@ export class RunnerOrchestrationService {
         networkMode: this.containerConfig.getRunnerNetworkMode(project),
         listenPort: this.containerConfig.getRunnerExposeContainerPort(project),
         startTimeoutMs: this.containerConfig.getRunnerStartTimeoutMs(project),
+        ...(this.containerConfig.getRunnerCpuLimit(project)
+          ? { cpuLimit: this.containerConfig.getRunnerCpuLimit(project) }
+          : {}),
         resourceLimits: this.containerConfig.resourceLimitsForProfile(project),
         env: this.containerConfig.getRunnerEnv(project),
         ...(runtimeSharedVolumes.length
@@ -296,7 +299,19 @@ export class RunnerOrchestrationService {
   private buildDefaultSharedVolumes(
     profile: SandboxProfile,
   ): RunnerNamedVolumeConfig[] {
-    void profile;
+    if (profile === 'preview-web' || profile === 'runner-only') {
+      return [
+        {
+          name: 'ainative-go-mod-cache',
+          target: '/go/pkg/mod',
+        },
+        {
+          name: 'ainative-go-build-cache',
+          target: '/root/.cache/go-build',
+        },
+      ];
+    }
+
     return [];
   }
 
