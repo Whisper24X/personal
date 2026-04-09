@@ -63,12 +63,6 @@ export type RunnerOrchestrationConfig = {
 }
 
 export type ProjectContainerRuntimeConfig = {
-  sandboxProfile?: 'runner-only' | 'preview-web'
-  startTimeoutMs?: number
-  resourceLimits?: {
-    memoryMb?: number
-    pidsLimit?: number
-  }
   env?: Record<string, string>
   runnerOrchestration?: RunnerOrchestrationConfig
 }

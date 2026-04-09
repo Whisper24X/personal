@@ -224,11 +224,28 @@ const configForm = reactive({
 })
 
 const {
-  containerSandboxProfileOptions,
   syncFromContainerRuntime,
+  parseContainerEnvInput,
+  parseRunnerOrchestrationInput,
   validateContainerRuntime,
   buildProjectConfigJson: buildContainerRuntimeConfigJson,
 } = useProjectContainerRuntimeForm(configForm)
+
+const containerEnvSummary = computed(() => {
+  const parsedEnv = parseContainerEnvInput(configForm.containerEnv)
+  const count = Object.keys(parsedEnv.env).length
+
+  return count > 0 ? `${count} 项` : '跟随全局默认'
+})
+
+const containerServiceSummary = computed(() => {
+  const parsedRunnerOrchestration = parseRunnerOrchestrationInput(
+    configForm.containerRunnerOrchestration,
+  )
+  const services = parsedRunnerOrchestration.config?.services
+
+  return Array.isArray(services) ? `${services.length} 个服务` : '跟随全局默认'
+})
 
 const formatDate = (value?: string) => {
   if (!value) return '-'
@@ -2176,14 +2193,12 @@ onBeforeUnmount(() => {
               <dd class="mt-1 text-foreground">{{ configForm.maxConcurrency || '-' }}</dd>
             </div>
             <div>
-              <dt class="text-muted-foreground">隔离容器 Profile</dt>
-              <dd class="mt-1 text-foreground">{{ configForm.containerSandboxProfile || '跟随全局' }}</dd>
+              <dt class="text-muted-foreground">容器环境变量</dt>
+              <dd class="mt-1 text-foreground">{{ containerEnvSummary }}</dd>
             </div>
             <div>
-              <dt class="text-muted-foreground">启动超时</dt>
-              <dd class="mt-1 text-foreground">
-                {{ configForm.containerStartTimeoutMs || '-' }} ms
-              </dd>
+              <dt class="text-muted-foreground">服务编排</dt>
+              <dd class="mt-1 text-foreground">{{ containerServiceSummary }}</dd>
             </div>
           </dl>
         </div>
@@ -2790,52 +2805,9 @@ onBeforeUnmount(() => {
             <div class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
               <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
               <p class="mt-1 text-[11px] text-muted-foreground">
-                预览地址由系统统一分配；项目只声明服务编排和主预览入口，保存后仅覆盖当前项目的运行时参数。
+                运行参数统一跟随后端全局配置；项目只声明额外环境变量、服务编排和主预览入口。
               </p>
             </div>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">Sandbox Profile</span>
-              <AppSelect
-                v-model="configForm.containerSandboxProfile"
-                aria-label="Sandbox Profile"
-                :options="containerSandboxProfileOptions"
-                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">启动超时（毫秒）</span>
-              <input
-                v-model="configForm.containerStartTimeoutMs"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                min="1000"
-                placeholder="跟随全局默认"
-                type="number"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">内存上限 MB（可选）</span>
-              <input
-                v-model="configForm.containerMemoryMb"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                min="0"
-                placeholder="例如 2048"
-                type="number"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">PIDs 上限（可选）</span>
-              <input
-                v-model="configForm.containerPidsLimit"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                min="0"
-                placeholder="例如 256"
-                type="number"
-              />
-            </label>
 
             <label class="space-y-1 md:col-span-2">
               <span class="text-xs font-semibold text-muted-foreground">
@@ -2853,7 +2825,7 @@ onBeforeUnmount(() => {
                 高级配置：手工覆写服务编排与预览入口
               </summary>
               <p class="mt-2 text-[11px] text-muted-foreground">
-                常规项目只需要调整 `services / routes / preview`；宿主 IP 和暴露端口由系统内部处理，不再由项目配置声明。
+                常规项目只需要调整 `services / routes / preview`；资源限制、启动超时和镜像画像由系统全局配置统一控制。
               </p>
 
               <div class="mt-3 grid gap-4 md:grid-cols-2">

@@ -11,12 +11,8 @@ describe('useProjectContainerRuntimeForm', () => {
 
     containerRuntimeForm.syncFromContainerRuntime()
 
-    expect(form.containerSandboxProfile).toBe('runner-only')
-    expect(form.containerStartTimeoutMs).toBe('30000')
-    expect(form.containerMemoryMb).toBe('0')
-    expect(form.containerPidsLimit).toBe('0')
-    expect(form.containerEnv).toBe('# 无额外环境变量')
-    expect(form.containerRunnerOrchestration).toContain('"services"')
+    expect(form.containerEnv).toBe('')
+    expect(form.containerRunnerOrchestration).toBe('')
 
     const configJson = containerRuntimeForm.buildProjectConfigJson({
       existing: true,
@@ -27,7 +23,7 @@ describe('useProjectContainerRuntimeForm', () => {
     })
   })
 
-  it('applies preview-web defaults when only the sandbox profile is overridden', () => {
+  it('removes legacy project runtime fields when there are no supported overrides left', () => {
     const form = createProjectContainerRuntimeFormState()
     const containerRuntimeForm = useProjectContainerRuntimeForm(form)
 
@@ -35,24 +31,15 @@ describe('useProjectContainerRuntimeForm', () => {
       sandboxProfile: 'preview-web',
     })
 
-    expect(form.containerSandboxProfile).toBe('preview-web')
-    expect(form.containerStartTimeoutMs).toBe('300000')
-    expect(form.containerMemoryMb).toBe('2048')
-    expect(form.containerPidsLimit).toBe('256')
-    expect(form.containerRunnerOrchestration).toContain('"ainative-backend"')
-    expect(form.containerRunnerOrchestration).toContain('"ainative-shadow"')
-    expect(form.containerRunnerOrchestration).toContain('"ainative-app"')
-    expect(form.containerRunnerOrchestration).toContain('"preview"')
-
     const configJson = containerRuntimeForm.buildProjectConfigJson({
-      existing: true,
-    })
-
-    expect(configJson).toEqual({
       existing: true,
       containerRuntime: {
         sandboxProfile: 'preview-web',
       },
+    })
+
+    expect(configJson).toEqual({
+      existing: true,
     })
   })
 
@@ -61,7 +48,9 @@ describe('useProjectContainerRuntimeForm', () => {
     const containerRuntimeForm = useProjectContainerRuntimeForm(form)
 
     containerRuntimeForm.syncFromContainerRuntime({
-      sandboxProfile: 'preview-web',
+      env: {
+        PORT: '4173',
+      },
       runnerOrchestration: {
         services: [
           {
@@ -73,6 +62,7 @@ describe('useProjectContainerRuntimeForm', () => {
       },
     })
 
+    expect(form.containerEnv).toBe('PORT=4173')
     expect(form.containerRunnerOrchestration).toContain('"services"')
 
     const configJson = containerRuntimeForm.buildProjectConfigJson({
@@ -82,7 +72,9 @@ describe('useProjectContainerRuntimeForm', () => {
     expect(configJson).toEqual({
       existing: true,
       containerRuntime: {
-        sandboxProfile: 'preview-web',
+        env: {
+          PORT: '4173',
+        },
         runnerOrchestration: {
           services: [
             {

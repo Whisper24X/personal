@@ -96,7 +96,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     && if [ -z "$GITLAB_TOKEN" ]; then echo "GITLAB_TOKEN build arg is required" >&2; exit 1; fi \
     && export GIT_CONFIG_GLOBAL=/tmp/.gitconfig \
     && git config --global url."https://${GITLAB_USERNAME}:${GITLAB_TOKEN}@gitlab.yc345.tv/".insteadOf "https://gitlab.yc345.tv/" \
-    && go install github.com/air-verse/air@v1.61.7 \
+    && go install github.com/air-verse/air@latest \
     && go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93 \
     && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 \
     && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0 \

@@ -244,6 +244,35 @@ describe('TaskEnvironmentService', () => {
     expect(result.message).toBe('执行环境已释放');
   });
 
+  it('should resolve to stopped after a previously ready environment loses its container', async () => {
+    const { service, task, taskLogRepository } = createService();
+    const currentUser = createCurrentUser();
+
+    taskLogRepository.findLatestByTaskId.mockResolvedValue([
+      {
+        id: 'log-ready',
+        taskId: 'task-1',
+        taskNodeId: null,
+        level: 'info',
+        message: '执行环境已就绪',
+        payload: {
+          scope: 'task_environment',
+          environmentStatus: TaskEnvironmentStatus.ready,
+          environmentStage: TaskEnvironmentStage.ready,
+          environmentMessage: '执行环境已就绪',
+          failedStage: null,
+        },
+        createdAt: new Date('2026-04-08T00:04:00.000Z'),
+      },
+    ]);
+
+    const result = await service.getEnvironment(task.id, currentUser as never);
+
+    expect(result.status).toBe(TaskEnvironmentStatus.stopped);
+    expect(result.stage).toBe(TaskEnvironmentStage.stopped);
+    expect(result.message).toBe('执行环境已释放');
+  });
+
   it('should allow environment termination when task status is in_progress but no node is running', async () => {
     const {
       service,

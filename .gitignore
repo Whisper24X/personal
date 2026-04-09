@@ -2,9 +2,6 @@
 /dist
 /node_modules
 /tmp
-/.env
-/.env.local
-/.env.*.local
 # Logs
 logs
 *.log

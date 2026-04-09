@@ -55,6 +55,23 @@ beforeEach(() => {
 })
 
 describe('LoginView toasts', () => {
+  it('does not render decorative auth chips in header', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(LoginView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('后台工作台')
+    expect(wrapper.text()).not.toContain('安全登录')
+    expect(wrapper.text()).not.toContain('任务协同')
+    expect(wrapper.text()).not.toContain('环境启动')
+    expect(wrapper.text()).not.toContain('交付追踪')
+  })
+
   it('shows error toast when login fails', async () => {
     loginMock.mockRejectedValue(new Error('登录失败-测试'))
 

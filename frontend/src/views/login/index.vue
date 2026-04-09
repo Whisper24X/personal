@@ -140,21 +140,12 @@ const onRegisterSubmit = async () => {
         <div class="auth-grid grid w-full grid-cols-1 justify-center">
           <section class="auth-panel">
             <header class="auth-header">
-              <div class="auth-badge-row">
-                <span class="auth-badge auth-badge-primary">后台工作台</span>
-                <span class="auth-badge">安全登录</span>
-              </div>
               <div class="auth-logo-badge">AI</div>
               <p class="auth-kicker">AI Native Workspace</p>
               <h1 class="auth-title">{{ mode === 'login' ? '欢迎回来' : '创建新账号' }}</h1>
               <p class="auth-subtitle">
                 {{ mode === 'login' ? '登录后继续你的项目、任务与自动化流程。' : '注册后自动登录，立即开始使用 AI Native 平台。' }}
               </p>
-              <div class="auth-highlight-row" aria-hidden="true">
-                <span class="auth-highlight-chip">任务协同</span>
-                <span class="auth-highlight-chip">环境启动</span>
-                <span class="auth-highlight-chip">交付追踪</span>
-              </div>
             </header>
 
             <div class="auth-mode-switch" role="tablist" aria-label="登录注册切换">
@@ -456,35 +447,6 @@ const onRegisterSubmit = async () => {
   gap: 0.58rem;
 }
 
-.auth-badge-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.auth-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 9999px;
-  border: 1px solid color-mix(in oklab, var(--border) 78%, white 22%);
-  background: color-mix(in oklab, white 72%, var(--background));
-  padding: 0.34rem 0.72rem;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));
-}
-
-.auth-badge-primary {
-  border-color: color-mix(in oklab, var(--auth-accent) 22%, white 78%);
-  background: linear-gradient(
-    135deg,
-    color-mix(in oklab, var(--auth-accent) 14%, white 86%) 0%,
-    color-mix(in oklab, var(--auth-secondary) 10%, white 90%) 100%
-  );
-  color: color-mix(in oklab, var(--auth-accent) 72%, var(--foreground));
-}
-
 .auth-logo-badge {
   display: grid;
   height: 3.2rem;
@@ -529,25 +491,6 @@ const onRegisterSubmit = async () => {
   font-size: 0.92rem;
   line-height: 1.7;
   color: color-mix(in oklab, var(--foreground) 46%, var(--muted-foreground));
-}
-
-.auth-highlight-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-}
-
-.auth-highlight-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  border-radius: 9999px;
-  border: 1px solid color-mix(in oklab, var(--border) 75%, white 25%);
-  background: color-mix(in oklab, white 62%, var(--background));
-  padding: 0.38rem 0.78rem;
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
 }
 
 .auth-mode-switch {
@@ -811,12 +754,6 @@ html[data-theme-color='mono'] .login-view .auth-panel::after {
 html[data-theme-color='mono'] .login-view .auth-logo-badge {
   background: var(--primary);
   box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 58%, transparent);
-}
-
-html[data-theme-color='mono'] .login-view .auth-badge-primary,
-html[data-theme-color='mono'] .login-view .auth-highlight-chip {
-  background: color-mix(in oklab, var(--primary) 10%, var(--card));
-  color: var(--foreground);
 }
 
 html[data-theme-color='mono'] .login-view .auth-mode-button.is-active {

@@ -10,18 +10,14 @@
 
 ### 环境变量初始化
 
-首次使用前，先在仓库根目录准备根级环境变量文件：
+- 后端运行配置使用 `backend/.env.${NODE_ENV}`
+- runner 镜像构建配置使用 `runner/.env.build`
+
+如果需要本地构建 runner，并且镜像构建阶段要访问私有 GitLab 仓库，先准备：
 
 ```bash
-cp .env.example .env
+cp runner/.env.build.example runner/.env.build
 ```
-
-根目录 `/.env` 主要用于：
-
-- `docker-compose.yml` 的变量展开
-- `pnpm run docker:build:runner` 等根级脚本
-
-如需访问私有 GitLab 仓库，请将 `GITLAB_TOKEN` 改成你本地可用的值。
 
 ### 1. 开发环境（本地调试）
 
@@ -46,8 +42,8 @@ pnpm run dev:frontend  # 仅启动前端
 构建并启动所有服务：
 
 ```bash
-pnpm run docker        # 本地 build 后启动 Docker 全栈环境
-pnpm run docker:build  # 仅本地构建镜像
+NODE_ENV=development pnpm run docker:up:build
+NODE_ENV=development pnpm run docker:build  # 仅本地构建镜像
 ```
 
 启动后：
@@ -58,10 +54,10 @@ pnpm run docker:build  # 仅本地构建镜像
 其他 Docker 命令：
 
 ```bash
-pnpm run docker:down     # 停止容器
-pnpm run docker:logs     # 查看日志
-pnpm run docker:restart  # 重启容器
-pnpm run docker:clean    # 停止并清除数据卷
+NODE_ENV=development pnpm run docker:down     # 停止容器
+NODE_ENV=development pnpm run docker:logs     # 查看日志
+NODE_ENV=development pnpm run docker:restart  # 重启容器
+NODE_ENV=development pnpm run docker:clean    # 停止并清除数据卷
 ```
 
 ### 所有可用命令

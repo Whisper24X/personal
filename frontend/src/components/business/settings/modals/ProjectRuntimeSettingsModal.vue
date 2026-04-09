@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import AppSelect from '@/components/core/select'
 import {
   createProjectContainerRuntimeFormState,
   useProjectContainerRuntimeForm,
@@ -28,14 +27,8 @@ const emit = defineEmits<{
 const validationMessage = ref('')
 const containerRuntimeForm = reactive(createProjectContainerRuntimeFormState())
 
-const {
-  containerSandboxProfileOptions,
-  syncFromContainerRuntime,
-  validateContainerRuntime,
-  buildContainerRuntimeConfig,
-} = useProjectContainerRuntimeForm(containerRuntimeForm)
-
-const PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX = 140
+const { syncFromContainerRuntime, validateContainerRuntime, buildContainerRuntimeConfig } =
+  useProjectContainerRuntimeForm(containerRuntimeForm)
 
 const modalTitle = computed(() => {
   return '隔离容器设置'
@@ -72,11 +65,14 @@ watch(
   },
 )
 
-watch(() => [props.initialContainerRuntime, props.projectName], () => {
-  if (props.open) {
-    syncFormValues()
-  }
-})
+watch(
+  () => [props.initialContainerRuntime, props.projectName],
+  () => {
+    if (props.open) {
+      syncFormValues()
+    }
+  },
+)
 </script>
 
 <template>
@@ -129,66 +125,23 @@ watch(() => [props.initialContainerRuntime, props.projectName], () => {
           </button>
         </header>
 
-        <form class="grid max-h-[calc(95vh-56px)] gap-3 overflow-y-auto px-4 py-4 md:grid-cols-2" @submit.prevent="submit">
-          <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
-            <p class="text-xs font-semibold text-muted-foreground">当前项目</p>
-            <p class="mt-1 text-sm font-medium text-foreground">
-              {{ props.projectName || '未命名项目' }}
+        <form
+          class="grid max-h-[calc(95vh-56px)] gap-3 overflow-y-auto px-4 py-4 md:grid-cols-2"
+          @submit.prevent="submit"
+        >
+          <label class="block space-y-1 md:col-span-2">
+            <span class="text-xs font-semibold text-muted-foreground">
+              结构化服务编排配置（JSON）
+            </span>
+            <textarea
+              v-model="containerRuntimeForm.containerRunnerOrchestration"
+              class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              spellcheck="false"
+              placeholder='{&#10;  "services": [&#10;    {&#10;      "name": "ainative-app",&#10;      "workdir": "ainative-app",&#10;      "command": "npm run dev",&#10;      "port": 5173&#10;    }&#10;  ],&#10;  "preview": {&#10;    "service": "ainative-app",&#10;    "path": "/"&#10;  }&#10;}'
+            />
+            <p class="text-[11px] text-muted-foreground">
+              平台配置是唯一真源；保存后会导出仓库根目录 `ainative.runner.json` 作为本地启动备份。
             </p>
-            <p class="mt-1 break-all font-mono text-[11px] text-muted-foreground">
-              {{ props.projectGitUrl || '-' }}
-            </p>
-          </div>
-
-          <div class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
-            <p class="text-xs font-semibold text-muted-foreground">项目级隔离容器配置</p>
-            <p class="mt-1 text-[11px] text-muted-foreground">
-              预览地址由系统统一分配；项目只声明服务编排和主预览入口，保存后仅覆盖当前项目的运行时参数。
-            </p>
-          </div>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">Sandbox Profile</span>
-            <AppSelect
-              v-model="containerRuntimeForm.containerSandboxProfile"
-              aria-label="Sandbox Profile"
-              :options="containerSandboxProfileOptions"
-              :panel-z-index="PROJECT_RUNTIME_SELECT_PANEL_Z_INDEX"
-              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">启动超时（毫秒）</span>
-            <input
-              v-model="containerRuntimeForm.containerStartTimeoutMs"
-              type="number"
-              min="1000"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="例如 90000"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">内存上限 MB（可选）</span>
-            <input
-              v-model="containerRuntimeForm.containerMemoryMb"
-              type="number"
-              min="0"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="例如 2048"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">PIDs 上限（可选）</span>
-            <input
-              v-model="containerRuntimeForm.containerPidsLimit"
-              type="number"
-              min="0"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="例如 256"
-            />
           </label>
 
           <label class="block space-y-1 md:col-span-2">
@@ -201,32 +154,6 @@ watch(() => [props.initialContainerRuntime, props.projectName], () => {
               placeholder="PORT=8080&#10;NODE_ENV=development"
             />
           </label>
-
-          <details class="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
-            <summary class="cursor-pointer list-none text-xs font-semibold text-muted-foreground">
-              高级配置：手工覆写服务编排与预览入口
-            </summary>
-            <p class="mt-2 text-[11px] text-muted-foreground">
-              常规项目只需要调整 `services / routes / preview`；宿主 IP 和暴露端口由系统内部处理，不再由项目配置声明。
-            </p>
-
-            <div class="mt-3 grid gap-3 md:grid-cols-2">
-              <label class="block space-y-1 md:col-span-2">
-                <span class="text-xs font-semibold text-muted-foreground">
-                  结构化服务编排配置（JSON）
-                </span>
-                <textarea
-                  v-model="containerRuntimeForm.containerRunnerOrchestration"
-                  class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                  spellcheck="false"
-                  placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;ainative-app&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-app&quot;,&#10;      &quot;command&quot;: &quot;npm run dev&quot;,&#10;      &quot;port&quot;: 5173&#10;    }&#10;  ],&#10;  &quot;preview&quot;: {&#10;    &quot;service&quot;: &quot;ainative-app&quot;,&#10;    &quot;path&quot;: &quot;/&quot;&#10;  }&#10;}"
-                />
-                <p class="text-[11px] text-muted-foreground">
-                  平台配置是唯一真源；保存后会导出仓库根目录 `ainative.runner.json` 作为本地启动备份。
-                </p>
-              </label>
-            </div>
-          </details>
 
           <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">
             {{ validationMessage }}

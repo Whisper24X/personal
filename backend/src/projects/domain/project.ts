@@ -27,7 +27,7 @@ export class Project {
     nullable: true,
     required: false,
     description:
-      'Project execution configuration snapshot, including optional containerRuntime runnerOrchestration settings for isolated containers',
+      'Project execution configuration snapshot, including optional project-level containerRuntime env and runnerOrchestration settings for isolated containers',
   })
   configJson?: Record<string, unknown> | null;
 

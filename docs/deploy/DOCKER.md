@@ -12,17 +12,11 @@
 
 本地 Docker 运行统一使用 [docker-compose.yml](../../docker-compose.yml)。
 
-首次使用建议先初始化根目录环境变量文件：
-
-```bash
-cp .env.example .env
-```
-
 ```bash
 NODE_ENV=development pnpm run docker:up:build
 ```
 
-`NODE_ENV` 可以通过当前 shell 提供，也可以放到仓库根目录 `/.env`。Compose 会加载 `backend/.env.${NODE_ENV}`，并将该文件中的变量注入后端容器；如果没有这个环境变量，`docker compose` 会直接报错。
+`NODE_ENV` 需要通过当前 shell 提供。Compose 会加载 `backend/.env.${NODE_ENV}`，并将该文件中的变量注入后端容器；如果没有这个环境变量，`docker compose` 会直接报错。
 
 后端容器默认以 `backend/.env.${NODE_ENV}` 作为配置来源，不再由 compose 覆盖 `NODE_ENV`、`DATABASE_*` 等同名变量。请确保选中的 env 文件本身就是一份可直接运行的完整配置，并且其中的地址对容器可达：
 
@@ -68,10 +62,10 @@ NODE_ENV=test pnpm run docker:build
 ## 3. 常用运行命令
 
 ```bash
-pnpm run docker:down
-pnpm run docker:logs
-pnpm run docker:restart
-pnpm run docker:clean
+NODE_ENV=development pnpm run docker:down
+NODE_ENV=development pnpm run docker:logs
+NODE_ENV=development pnpm run docker:restart
+NODE_ENV=development pnpm run docker:clean
 ```
 
 说明：
@@ -88,20 +82,18 @@ pnpm run docker:clean
 - 构建 `ainative/runner:latest`
 - backend 运行时需要把 GitLab SSH remote 转成带 HTTP token 的私有仓库访问地址
 
-推荐把下面这些变量放到仓库根目录 `/.env`，这样 `docker compose` 和 `pnpm run docker:build:runner` 都能直接复用：
+如果需要本地构建 runner，并且镜像构建阶段要访问私有 GitLab 仓库，推荐把下面这些变量放到 `runner/.env.build`：
 
 ```dotenv
-NODE_ENV=development
 GITLAB_USERNAME=oauth2
 GITLAB_TOKEN=your_gitlab_token
-AINATIVE_RUNNER_PLATFORM=linux/amd64
 AINATIVE_RUNNER_BUILD_PLATFORM=linux/amd64
 ```
 
 推荐直接从模板复制：
 
 ```bash
-cp .env.example .env
+cp runner/.env.build.example runner/.env.build
 ```
 
 如果你不构建 runner，也不需要 backend 访问私有 GitLab HTTP 仓库，可以不设置 `GITLAB_TOKEN`。
@@ -110,6 +102,7 @@ cp .env.example .env
 
 - `GITLAB_USERNAME`
 - `GITLAB_TOKEN`
+- `AINATIVE_RUNNER_BUILD_PLATFORM`
 
 推荐约定：
 
@@ -120,9 +113,8 @@ cp .env.example .env
 ```bash
 export GITLAB_USERNAME=oauth2
 export GITLAB_TOKEN=your_gitlab_token
-export AINATIVE_RUNNER_PLATFORM=linux/amd64
 export AINATIVE_RUNNER_BUILD_PLATFORM=linux/amd64
-NODE_ENV=development pnpm run docker:build:runner
+pnpm run docker:build:runner
 ```
 
 ## 5. Runner 镜像构建
@@ -132,11 +124,11 @@ NODE_ENV=development pnpm run docker:build:runner
 当前仓库的内置预览应用包含 Taro H5 开发链路；在 `linux/arm64` runner 中，`@tarojs/binding-linux-arm64-gnu` 缺失会导致 `ainative-app` 无法启动。因此 runner 镜像与运行平台默认都建议使用 `linux/amd64`。
 
 ```bash
-# 如果仓库根目录已经有 .env，可直接执行
+# 如果 runner/.env.build 已存在，可直接执行
 pnpm run docker:build:runner
 ```
 
-默认镜像名是 `ainative/runner:latest`。如果构建成功，`ainative runner up` 和后端的 Docker 任务执行模式都会直接复用这张镜像。若当前 shell 和仓库根目录 `/.env` 都未提供真实的 `GITLAB_TOKEN`，runner 构建会直接报缺失。
+默认镜像名是 `ainative/runner:latest`。如果构建成功，`ainative runner up` 和后端的 Docker 任务执行模式都会直接复用这张镜像。若当前 shell 和 `runner/.env.build` 都未提供真实的 `GITLAB_TOKEN`，runner 构建会直接报缺失。
 
 `pnpm run docker:build:runner` 现在会默认执行等价于：
 
@@ -144,7 +136,16 @@ pnpm run docker:build:runner
 docker buildx build --load --platform linux/amd64 -f runner/Dockerfile.runner -t ainative/runner:latest .
 ```
 
-如果你确实要覆盖构建平台，可以设置 `AINATIVE_RUNNER_BUILD_PLATFORM`；runner 运行时平台则由 `AINATIVE_RUNNER_PLATFORM` 或项目级 `configJson.containerRuntime.platform` 决定。
+runner 构建平台默认跟随 `AINATIVE_RUNNER_BUILD_PLATFORM`；runner 运行时平台由 `backend/.env.${NODE_ENV}` 中的 `AINATIVE_RUNNER_RUNTIME_PLATFORM` 决定。若切换到新的架构，需要保证对应架构的 runner 镜像也已构建可用。
+
+执行容器规格也走后端全局环境变量：
+
+- `AINATIVE_RUNNER_CPUS`：映射到 `docker run --cpus`
+- `AINATIVE_RUNNER_MEMORY_MB`：映射到 `docker run --memory`
+- `AINATIVE_RUNNER_PIDS_LIMIT`：映射到 `docker run --pids-limit`
+
+这些变量应配置在 `backend/.env.${NODE_ENV}` 中，而不是 `runner/.env.build`。
+变量留空或设置为 `0` 时表示不限制；`backend/.env.development` 和 `backend/.env.local` 默认提供 `2C / 4G / 512 PIDs`。
 
 ## 6. 常见问题
 
@@ -153,7 +154,7 @@ docker buildx build --load --platform linux/amd64 -f runner/Dockerfile.runner -t
 优先检查：
 
 - 当前 shell 是否已设置 `GITLAB_USERNAME` 和 `GITLAB_TOKEN`
-- 仓库根目录 `/.env` 是否存在，且包含预期的 `GITLAB_USERNAME` / `GITLAB_TOKEN`
+- `runner/.env.build` 是否存在，且包含预期的 `GITLAB_USERNAME` / `GITLAB_TOKEN`
 - Personal Access Token 是否配合 `GITLAB_USERNAME=oauth2`
 - Deploy Token 是否使用了 GitLab 提供的专用用户名
 - Token 是否具备私有依赖仓库的读取权限

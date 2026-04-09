@@ -446,7 +446,9 @@ describe('BusinessLineManagementPanel', () => {
 
     runtimeSettingsModal.vm.$emit('submit', {
       containerRuntime: {
-        sandboxProfile: 'preview-web',
+        env: {
+          NODE_ENV: 'development',
+        },
       },
     })
     await flushPromises()
@@ -458,10 +460,15 @@ describe('BusinessLineManagementPanel', () => {
       defaultBranch: 'main',
       configJson: {
         containerRuntime: {
-          sandboxProfile: 'preview-web',
+          env: {
+            NODE_ENV: 'development',
+          },
         },
       },
     })
+    expect(
+      wrapper.findComponent({ name: 'ProjectRuntimeSettingsModal' }).props('open'),
+    ).toBe(false)
     expect(wrapper.emitted('request-refresh')).toBeTruthy()
   })
 

@@ -8,8 +8,9 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '..');
-const envFilePath = path.join(repoRoot, '.env');
+const runnerRoot = __dirname;
+const repoRoot = path.resolve(runnerRoot, '..');
+const envFilePath = path.join(runnerRoot, '.env.build');
 
 function parseDotEnv(contents) {
   const env = {};
@@ -47,7 +48,7 @@ function parseDotEnv(contents) {
   return env;
 }
 
-function loadRootEnv() {
+function loadRunnerBuildEnv() {
   if (!fs.existsSync(envFilePath)) {
     return {};
   }
@@ -55,38 +56,67 @@ function loadRootEnv() {
   return parseDotEnv(fs.readFileSync(envFilePath, 'utf8'));
 }
 
-const fileEnv = loadRootEnv();
+function readTrimmedEnv(env, keys) {
+  for (const key of keys) {
+    const value = env[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+}
+
+const fileEnv = loadRunnerBuildEnv();
 const mergedEnv = {
   ...fileEnv,
   ...process.env,
 };
-const gitlabUsername = (mergedEnv.GITLAB_USERNAME || '').trim() || 'oauth2';
-const gitlabToken = (mergedEnv.GITLAB_TOKEN || '').trim();
+const gitlabUsername =
+  readTrimmedEnv(mergedEnv, ['GITLAB_USERNAME']) || 'oauth2';
+const gitlabToken = readTrimmedEnv(mergedEnv, ['GITLAB_TOKEN']);
+const imageName =
+  readTrimmedEnv(mergedEnv, ['AINATIVE_RUNNER_IMAGE']) ||
+  'ainative/runner:latest';
+const buildPlatform =
+  readTrimmedEnv(mergedEnv, [
+    'AINATIVE_RUNNER_BUILD_PLATFORM',
+    'AINATIVE_RUNNER_PLATFORM',
+  ]) || 'linux/amd64';
 
-const placeholderValues = new Set(['replace_with_your_gitlab_token', 'your_gitlab_token']);
-const missingKeys = placeholderValues.has(gitlabToken) || !gitlabToken ? ['GITLAB_TOKEN'] : [];
+const placeholderValues = new Set([
+  'replace_with_your_gitlab_token',
+  'your_gitlab_token',
+]);
+const missingKeys =
+  placeholderValues.has(gitlabToken) || !gitlabToken ? ['GITLAB_TOKEN'] : [];
 
 if (missingKeys.length > 0) {
   console.error(
     [
       `Missing required env: ${missingKeys.join(', ')}`,
-      'Provide it either in the current shell or in repo root .env.',
+      'Provide it either in the current shell or in runner/.env.build.',
       'Example:',
       '  GITLAB_TOKEN=your_gitlab_token',
       'Optional:',
       '  GITLAB_USERNAME=oauth2',
+      '  AINATIVE_RUNNER_BUILD_PLATFORM=linux/amd64',
     ].join('\n'),
   );
   process.exit(1);
 }
 
-const imageName =
-  mergedEnv.AINATIVE_RUNNER_IMAGE?.trim() || 'ainative/runner:latest';
-const buildPlatform =
-  mergedEnv.AINATIVE_RUNNER_BUILD_PLATFORM?.trim() ||
-  mergedEnv.AINATIVE_RUNNER_PLATFORM?.trim() ||
-  'linux/amd64';
-const extraArgs = process.argv.slice(2);
+if (
+  !readTrimmedEnv(mergedEnv, ['AINATIVE_RUNNER_BUILD_PLATFORM']) &&
+  readTrimmedEnv(mergedEnv, ['AINATIVE_RUNNER_PLATFORM'])
+) {
+  console.warn(
+    'WARN: AINATIVE_RUNNER_PLATFORM is deprecated for image build. Use AINATIVE_RUNNER_BUILD_PLATFORM instead.',
+  );
+}
+
+const argv = process.argv.slice(2);
+const extraArgs = argv[0] === '--' ? argv.slice(1) : argv;
 const dockerArgs = [
   'buildx',
   'build',

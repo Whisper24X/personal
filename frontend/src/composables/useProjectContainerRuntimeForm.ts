@@ -1,221 +1,21 @@
-import { watch } from 'vue'
-import type {
-  ProjectContainerRuntimeConfig,
-  RunnerOrchestrationConfig,
-} from '@/types/api/projects'
-
-type SandboxProfile = NonNullable<ProjectContainerRuntimeConfig['sandboxProfile']>
+import type { ProjectContainerRuntimeConfig } from '@/types/api/projects'
 
 export type ProjectContainerRuntimeFormState = {
-  containerSandboxProfile: string
-  containerStartTimeoutMs: string
-  containerMemoryMb: string
-  containerPidsLimit: string
   containerEnv: string
   containerRunnerOrchestration: string
 }
 
-const DEFAULT_SANDBOX_PROFILE: SandboxProfile = 'runner-only'
-const DEFAULT_RUNNER_ONLY_START_TIMEOUT_MS = 30_000
-const DEFAULT_PREVIEW_WEB_START_TIMEOUT_MS = 300_000
-const DEFAULT_PREVIEW_WEB_MEMORY_MB = 2048
-const DEFAULT_PREVIEW_WEB_PIDS_LIMIT = 256
-const DEFAULT_EMPTY_ENV_COMMENT = '# 无额外环境变量'
-
-const DEFAULT_RUNNER_ONLY_ORCHESTRATION: RunnerOrchestrationConfig = {
-  services: [],
-  routes: [],
-}
-
-const DEFAULT_PREVIEW_WEB_ORCHESTRATION: RunnerOrchestrationConfig = {
-  services: [
-    {
-      name: 'ainative-backend',
-      workdir: 'ainative-backend',
-      command: "GOFLAGS='-p=1' air -c .air.toml",
-      port: 8000,
-      env: {
-        GO_ENV: 'development',
-      },
-      priority: 100,
-      startsecs: 5,
-      startretries: 3,
-    },
-    {
-      name: 'ainative-shadow',
-      workdir: 'ainative-shadow',
-      command: 'pnpm dev',
-      port: 5176,
-      env: {
-        CI: 'true',
-        BROWSER: 'none',
-        APP_PROJECT_NAME: 'shadow',
-        BASE_API_URL: '/api/yanxue',
-        VITE_BASE_URL: '/shadow/',
-        VITE_API_URL: '/api',
-        SANDBOX: 'true',
-      },
-      installCommand: 'pnpm install',
-      installCheckPath: 'node_modules/.bin/rsbuild',
-      priority: 110,
-      startsecs: 10,
-      startretries: 3,
-    },
-    {
-      name: 'ainative-app',
-      workdir: 'ainative-app',
-      command: 'npm run dev:h5:local',
-      port: 8200,
-      env: {
-        TARO_APP_API: '/api',
-        BROWSER: 'none',
-        CI: 'true',
-      },
-      installCommand: 'npm install',
-      installCheckPath: 'node_modules/.bin/taro',
-      priority: 120,
-      startsecs: 10,
-      startretries: 3,
-    },
-  ],
-  routes: [
-    {
-      path: '/app',
-      match: 'exact',
-      action: 'redirect',
-      redirectTo: '/app/',
-      redirectCode: 302,
-    },
-    {
-      path: '/shadow',
-      match: 'exact',
-      action: 'redirect',
-      redirectTo: '/shadow/',
-      redirectCode: 302,
-    },
-    {
-      path: '^/api/.*\\.(ts|js|mjs|vue|less|css|scss|map)$',
-      match: 'regex',
-      service: 'ainative-app',
-    },
-    {
-      path: '/api/',
-      match: 'prefix',
-      service: 'ainative-backend',
-      upstreamPath: '/',
-      websocket: true,
-    },
-    {
-      path: '/shadow/',
-      match: 'prefix',
-      service: 'ainative-shadow',
-      upstreamPath: '/',
-      websocket: true,
-    },
-    {
-      path: '/static/',
-      match: 'prefix',
-      service: 'ainative-shadow',
-    },
-    {
-      path: '/rsbuild-hmr',
-      match: 'prefix',
-      service: 'ainative-shadow',
-      websocket: true,
-    },
-    {
-      path: '/app/',
-      match: 'prefix',
-      service: 'ainative-app',
-      upstreamPath: '/',
-      websocket: true,
-    },
-    {
-      path: '/',
-      match: 'prefix',
-      service: 'ainative-app',
-      websocket: true,
-    },
-  ],
-  homepage: {
-    title: 'AINative Workspace',
-    description: '开发环境服务导航',
-    links: [
-      {
-        label: 'App',
-        path: '/app/',
-      },
-      {
-        label: 'Shadow',
-        path: '/shadow/',
-      },
-      {
-        label: 'Backend',
-        path: '/api/',
-      },
-    ],
-  },
-  preview: {
-    service: 'ainative-app',
-    path: '/',
-  },
-}
-
-const resolveSandboxProfile = (value: unknown): SandboxProfile => {
-  return value === 'preview-web' ? 'preview-web' : DEFAULT_SANDBOX_PROFILE
-}
-
-const resolveDefaultRunnerOrchestration = (
-  profile: SandboxProfile,
-): RunnerOrchestrationConfig => {
-  return profile === 'preview-web'
-    ? DEFAULT_PREVIEW_WEB_ORCHESTRATION
-    : DEFAULT_RUNNER_ONLY_ORCHESTRATION
-}
-
-const resolveDefaultStartTimeoutMs = (profile: SandboxProfile) => {
-  return profile === 'preview-web'
-    ? DEFAULT_PREVIEW_WEB_START_TIMEOUT_MS
-    : DEFAULT_RUNNER_ONLY_START_TIMEOUT_MS
-}
-
-const buildDefaultFormState = (
-  profile: SandboxProfile = DEFAULT_SANDBOX_PROFILE,
-): ProjectContainerRuntimeFormState => ({
-  containerSandboxProfile: profile,
-  containerStartTimeoutMs: String(resolveDefaultStartTimeoutMs(profile)),
-  containerMemoryMb:
-    profile === 'preview-web' ? String(DEFAULT_PREVIEW_WEB_MEMORY_MB) : '0',
-  containerPidsLimit:
-    profile === 'preview-web' ? String(DEFAULT_PREVIEW_WEB_PIDS_LIMIT) : '0',
-  containerEnv: DEFAULT_EMPTY_ENV_COMMENT,
-  containerRunnerOrchestration: `${JSON.stringify(
-    resolveDefaultRunnerOrchestration(profile),
-    null,
-    2,
-  )}\n`,
+const buildDefaultFormState = (): ProjectContainerRuntimeFormState => ({
+  containerEnv: '',
+  containerRunnerOrchestration: '',
 })
-
-const normalizeComparableJson = (value: unknown) => JSON.stringify(value)
 
 export const createProjectContainerRuntimeFormState = (): ProjectContainerRuntimeFormState =>
   buildDefaultFormState()
 
 export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeFormState) => {
-  let syncingFromContainerRuntime = false
-
-  const containerSandboxProfileOptions = [
-    { label: '跟随全局默认', value: '' },
-    { label: 'runner-only', value: 'runner-only' },
-    { label: 'preview-web', value: 'preview-web' },
-  ]
-
   const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
-  }
-
-  const toPositiveNumberText = (value: unknown) => {
-    return typeof value === 'number' && value > 0 ? String(value) : ''
   }
 
   const serializeContainerEnv = (value: unknown) => {
@@ -350,123 +150,21 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
 
   const syncFromContainerRuntime = (value?: unknown) => {
     const containerRuntime = isObjectRecord(value) ? value : {}
-    const profile = resolveSandboxProfile(containerRuntime.sandboxProfile)
-    const resourceLimits = isObjectRecord(containerRuntime.resourceLimits)
-      ? containerRuntime.resourceLimits
-      : {}
+    Object.assign(form, buildDefaultFormState())
 
-    syncingFromContainerRuntime = true
-    try {
-      Object.assign(form, buildDefaultFormState(profile))
+    if (isObjectRecord(containerRuntime.env) && Object.keys(containerRuntime.env).length > 0) {
+      form.containerEnv = serializeContainerEnv(containerRuntime.env)
+    }
 
-      if (
-        containerRuntime.sandboxProfile === 'runner-only' ||
-        containerRuntime.sandboxProfile === 'preview-web'
-      ) {
-        form.containerSandboxProfile = containerRuntime.sandboxProfile
-      }
-
-      if (typeof containerRuntime.startTimeoutMs === 'number') {
-        form.containerStartTimeoutMs = toPositiveNumberText(containerRuntime.startTimeoutMs)
-      }
-
-      if (typeof resourceLimits.memoryMb === 'number') {
-        form.containerMemoryMb = toPositiveNumberText(resourceLimits.memoryMb)
-      }
-
-      if (typeof resourceLimits.pidsLimit === 'number') {
-        form.containerPidsLimit = toPositiveNumberText(resourceLimits.pidsLimit)
-      }
-
-      if (isObjectRecord(containerRuntime.env) && Object.keys(containerRuntime.env).length > 0) {
-        form.containerEnv = serializeContainerEnv(containerRuntime.env)
-      }
-
-      if (isObjectRecord(containerRuntime.runnerOrchestration)) {
-        form.containerRunnerOrchestration = serializeRunnerOrchestration(
-          containerRuntime.runnerOrchestration,
-        )
-      }
-    } finally {
-      syncingFromContainerRuntime = false
+    if (isObjectRecord(containerRuntime.runnerOrchestration)) {
+      form.containerRunnerOrchestration = serializeRunnerOrchestration(
+        containerRuntime.runnerOrchestration,
+      )
     }
   }
 
-  watch(
-    () => form.containerSandboxProfile,
-    (nextValue, previousValue) => {
-      if (syncingFromContainerRuntime) {
-        return
-      }
-
-      const previousProfile = resolveSandboxProfile(previousValue)
-      const nextProfile = resolveSandboxProfile(nextValue)
-
-      if (previousProfile === nextProfile) {
-        return
-      }
-
-      const previousDefaults = buildDefaultFormState(previousProfile)
-      const nextDefaults = buildDefaultFormState(nextProfile)
-
-      if (form.containerStartTimeoutMs === previousDefaults.containerStartTimeoutMs) {
-        form.containerStartTimeoutMs = nextDefaults.containerStartTimeoutMs
-      }
-
-      if (form.containerMemoryMb === previousDefaults.containerMemoryMb) {
-        form.containerMemoryMb = nextDefaults.containerMemoryMb
-      }
-
-      if (form.containerPidsLimit === previousDefaults.containerPidsLimit) {
-        form.containerPidsLimit = nextDefaults.containerPidsLimit
-      }
-
-      if (
-        form.containerRunnerOrchestration.trim() ===
-        previousDefaults.containerRunnerOrchestration.trim()
-      ) {
-        form.containerRunnerOrchestration = nextDefaults.containerRunnerOrchestration
-      }
-    },
-  )
-
   const buildContainerRuntimeConfig = (): ProjectContainerRuntimeConfig | undefined => {
-    const selectedProfile =
-      form.containerSandboxProfile === 'preview-web'
-        ? 'preview-web'
-        : DEFAULT_SANDBOX_PROFILE
-    const defaultFormState = buildDefaultFormState(selectedProfile)
-    const defaultRunnerOrchestration =
-      resolveDefaultRunnerOrchestration(selectedProfile)
     const runtimeConfig: ProjectContainerRuntimeConfig = {}
-
-    if (
-      (form.containerSandboxProfile === 'runner-only' ||
-        form.containerSandboxProfile === 'preview-web') &&
-      form.containerSandboxProfile !== DEFAULT_SANDBOX_PROFILE
-    ) {
-      runtimeConfig.sandboxProfile = form.containerSandboxProfile
-    }
-
-    const startTimeoutMs = Math.floor(Number(form.containerStartTimeoutMs) || 0)
-    if (
-      startTimeoutMs > 0 &&
-      startTimeoutMs !== Number(defaultFormState.containerStartTimeoutMs)
-    ) {
-      runtimeConfig.startTimeoutMs = startTimeoutMs
-    }
-
-    const memoryMb = Math.floor(Number(form.containerMemoryMb) || 0)
-    const pidsLimit = Math.floor(Number(form.containerPidsLimit) || 0)
-    const defaultMemoryMb = Math.floor(Number(defaultFormState.containerMemoryMb) || 0)
-    const defaultPidsLimit = Math.floor(Number(defaultFormState.containerPidsLimit) || 0)
-
-    if (memoryMb !== defaultMemoryMb || pidsLimit !== defaultPidsLimit) {
-      runtimeConfig.resourceLimits = {
-        ...(memoryMb > 0 ? { memoryMb } : {}),
-        ...(pidsLimit > 0 ? { pidsLimit } : {}),
-      }
-    }
 
     const parsedEnv = parseContainerEnvInput(form.containerEnv)
     if (Object.keys(parsedEnv.env).length > 0) {
@@ -476,11 +174,7 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
     const parsedRunnerOrchestration = parseRunnerOrchestrationInput(
       form.containerRunnerOrchestration,
     )
-    if (
-      parsedRunnerOrchestration.config &&
-      normalizeComparableJson(parsedRunnerOrchestration.config) !==
-        normalizeComparableJson(defaultRunnerOrchestration)
-    ) {
+    if (parsedRunnerOrchestration.config) {
       runtimeConfig.runnerOrchestration = parsedRunnerOrchestration.config
     }
 
@@ -519,7 +213,6 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
   }
 
   return {
-    containerSandboxProfileOptions,
     syncFromContainerRuntime,
     parseContainerEnvInput,
     parseRunnerOrchestrationInput,

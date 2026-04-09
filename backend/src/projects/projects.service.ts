@@ -394,12 +394,27 @@ export class ProjectsService {
         : null;
 
     if (containerRuntime) {
-      delete containerRuntime.networkMode;
-      delete containerRuntime.exposeHostIp;
-      delete containerRuntime.exposeContainerPort;
+      const nextContainerRuntime: Record<string, unknown> = {};
 
-      if (Object.keys(containerRuntime).length > 0) {
-        nextConfigJson.containerRuntime = containerRuntime;
+      if (
+        containerRuntime.env &&
+        typeof containerRuntime.env === 'object' &&
+        !Array.isArray(containerRuntime.env)
+      ) {
+        nextContainerRuntime.env = containerRuntime.env;
+      }
+
+      if (
+        containerRuntime.runnerOrchestration &&
+        typeof containerRuntime.runnerOrchestration === 'object' &&
+        !Array.isArray(containerRuntime.runnerOrchestration)
+      ) {
+        nextContainerRuntime.runnerOrchestration =
+          containerRuntime.runnerOrchestration;
+      }
+
+      if (Object.keys(nextContainerRuntime).length > 0) {
+        nextConfigJson.containerRuntime = nextContainerRuntime;
       } else {
         delete nextConfigJson.containerRuntime;
       }

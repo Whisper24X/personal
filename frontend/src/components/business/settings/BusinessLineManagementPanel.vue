@@ -548,14 +548,12 @@ const summarizeProjectRuntimeConfig = (project: ProjectItem) => {
 
   const summary: string[] = []
 
-  if (containerRuntime?.sandboxProfile) {
-    summary.push(`Profile: ${containerRuntime.sandboxProfile}`)
-  }
-  if (containerRuntime?.resourceLimits?.memoryMb) {
-    summary.push(`内存: ${containerRuntime.resourceLimits.memoryMb}MB`)
-  }
-  if (containerRuntime?.resourceLimits?.pidsLimit) {
-    summary.push(`PIDs: ${containerRuntime.resourceLimits.pidsLimit}`)
+  const envCount =
+    containerRuntime?.env && typeof containerRuntime.env === 'object'
+      ? Object.keys(containerRuntime.env).length
+      : 0
+  if (envCount > 0) {
+    summary.push(`环境变量: ${envCount}`)
   }
   if (Array.isArray(containerRuntime?.runnerOrchestration?.services)) {
     summary.push(`服务: ${containerRuntime.runnerOrchestration.services.length}`)
@@ -2243,6 +2241,7 @@ const submitProjectRuntimeSettings = async (payload: {
     applyProjectRuntimeSettingsProject(updatedProject)
     replaceLineProject(updatedProject)
     emit('request-refresh')
+    projectRuntimeSettingsModalOpen.value = false
     message.success('保存隔离容器设置成功')
   } catch (error) {
     const errMsg = toErrorMessage(error, '保存隔离容器设置失败')

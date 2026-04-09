@@ -70,6 +70,7 @@ export type ProjectRunnerConfigFile = {
     networkMode: RunnerNetworkMode;
     listenPort: number;
     startTimeoutMs: number;
+    cpuLimit?: number;
     resourceLimits?: {
       memoryMb?: number;
       pidsLimit?: number;

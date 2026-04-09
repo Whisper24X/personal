@@ -435,7 +435,7 @@ describe('ProjectsService', () => {
     });
   });
 
-  it('should persist runtime config changes and drop legacy runner fields', async () => {
+  it('should persist only supported project-level container runtime fields', async () => {
     const { service, projectRepository } = createProjectsService();
     const serviceAny = service as any;
     const currentUser = createCurrentUser();
@@ -454,6 +454,24 @@ describe('ProjectsService', () => {
     const nextConfigJson = {
       containerRuntime: {
         sandboxProfile: 'preview-web',
+        startTimeoutMs: 90_000,
+        resourceLimits: {
+          memoryMb: 2048,
+          pidsLimit: 256,
+        },
+        platform: 'linux/arm64',
+        env: {
+          NODE_ENV: 'development',
+        },
+        runnerOrchestration: {
+          services: [
+            {
+              name: 'web',
+              workdir: 'web',
+              command: 'pnpm dev',
+            },
+          ],
+        },
         networkMode: 'bridge',
         exposeHostIp: '192.168.50.8',
         exposeContainerPort: 4173,
@@ -470,7 +488,18 @@ describe('ProjectsService', () => {
       ...currentProject,
       configJson: {
         containerRuntime: {
-          sandboxProfile: 'preview-web',
+          env: {
+            NODE_ENV: 'development',
+          },
+          runnerOrchestration: {
+            services: [
+              {
+                name: 'web',
+                workdir: 'web',
+                command: 'pnpm dev',
+              },
+            ],
+          },
         },
       },
     };

@@ -9,13 +9,6 @@ export type { RunnerNetworkMode } from './runner-orchestration.types';
 export type SandboxProfile = 'runner-only' | 'preview-web';
 export type RunnerPlatform = string;
 export type ProjectContainerRuntimeConfig = {
-  sandboxProfile?: SandboxProfile;
-  platform?: string;
-  startTimeoutMs?: number;
-  resourceLimits?: {
-    memoryMb?: number;
-    pidsLimit?: number;
-  };
   env?: Record<string, string>;
   runnerOrchestration?: Record<string, unknown>;
 };
@@ -60,23 +53,18 @@ export class ContainerExecutionConfigService {
   }
 
   getRunnerPlatform(project?: Project | null): string | null {
-    const projectConfig = this.readProjectContainerRuntimeConfig(project);
-    if (projectConfig?.platform) {
-      return projectConfig.platform;
-    }
+    void project;
 
     return this.resolveRunnerPlatform(
-      this.configService.get<string>('AINATIVE_RUNNER_PLATFORM', {
-        infer: true,
-      }),
+      this.readFirstTrimmedEnvValue([
+        'AINATIVE_RUNNER_RUNTIME_PLATFORM',
+        'AINATIVE_RUNNER_PLATFORM',
+      ]),
     );
   }
 
   getSandboxProfile(project?: Project | null): SandboxProfile {
-    const projectConfig = this.readProjectContainerRuntimeConfig(project);
-    if (projectConfig?.sandboxProfile) {
-      return projectConfig.sandboxProfile;
-    }
+    void project;
 
     const profile = this.configService
       .get<string>('AINATIVE_TASK_SANDBOX_PROFILE', { infer: true })
@@ -94,17 +82,20 @@ export class ContainerExecutionConfigService {
   }
 
   getRunnerStartTimeoutMs(project?: Project | null): number {
-    const projectConfig = this.readProjectContainerRuntimeConfig(project);
-    if (projectConfig?.startTimeoutMs) {
-      return projectConfig.startTimeoutMs;
-    }
+    void project;
 
     const defaultTimeoutMs =
-      this.getSandboxProfile(project) === 'runner-only' ? 30_000 : 300_000;
+      this.getSandboxProfile() === 'runner-only' ? 30_000 : 300_000;
     return this.readPositiveNumberFromEnv(
       'AINATIVE_RUNNER_START_TIMEOUT_MS',
       defaultTimeoutMs,
     );
+  }
+
+  getRunnerCpuLimit(project?: Project | null): number | undefined {
+    void project;
+
+    return this.readOptionalPositiveFloatFromEnv('AINATIVE_RUNNER_CPUS');
   }
 
   getRunnerReadinessProbeUrl(project?: Project | null): string | null {
@@ -231,14 +222,18 @@ export class ContainerExecutionConfigService {
     memoryMb?: number;
     pidsLimit?: number;
   } {
-    const profile = this.getSandboxProfile(project);
-    const projectConfig = this.readProjectContainerRuntimeConfig(project);
-    const defaultLimits =
-      profile === 'preview-web' ? { memoryMb: 2048, pidsLimit: 256 } : {};
+    void project;
+
+    const memoryMb = this.readOptionalPositiveIntFromEnv(
+      'AINATIVE_RUNNER_MEMORY_MB',
+    );
+    const pidsLimit = this.readOptionalPositiveIntFromEnv(
+      'AINATIVE_RUNNER_PIDS_LIMIT',
+    );
 
     return {
-      ...defaultLimits,
-      ...(projectConfig?.resourceLimits ?? {}),
+      ...(memoryMb ? { memoryMb } : {}),
+      ...(pidsLimit ? { pidsLimit } : {}),
     };
   }
 
@@ -299,45 +294,12 @@ export class ContainerExecutionConfigService {
       return null;
     }
 
-    const sandboxProfile = this.resolveSandboxProfile(rawConfig.sandboxProfile);
-    const platform = this.resolveRunnerPlatform(rawConfig.platform);
-    const startTimeoutMs = this.readPositiveNumberFromUnknown(
-      rawConfig.startTimeoutMs,
-    );
-    const resourceLimitsSource = this.toObjectRecord(rawConfig.resourceLimits);
     const env = this.resolveStringEnv(this.toObjectRecord(rawConfig.env));
     const runnerOrchestration = this.toObjectRecord(
       rawConfig.runnerOrchestration,
     );
 
     return {
-      ...(sandboxProfile ? { sandboxProfile } : {}),
-      ...(platform ? { platform } : {}),
-      ...(startTimeoutMs ? { startTimeoutMs } : {}),
-      ...(resourceLimitsSource
-        ? {
-            resourceLimits: {
-              ...(this.readPositiveNumberFromUnknown(
-                resourceLimitsSource.memoryMb,
-              )
-                ? {
-                    memoryMb: this.readPositiveNumberFromUnknown(
-                      resourceLimitsSource.memoryMb,
-                    ),
-                  }
-                : {}),
-              ...(this.readPositiveNumberFromUnknown(
-                resourceLimitsSource.pidsLimit,
-              )
-                ? {
-                    pidsLimit: this.readPositiveNumberFromUnknown(
-                      resourceLimitsSource.pidsLimit,
-                    ),
-                  }
-                : {}),
-            },
-          }
-        : {}),
       ...(Object.keys(env).length ? { env } : {}),
       ...(runnerOrchestration ? { runnerOrchestration } : {}),
     };
@@ -348,13 +310,6 @@ export class ContainerExecutionConfigService {
       return null;
     }
     return value as Record<string, unknown>;
-  }
-
-  private resolveSandboxProfile(value: unknown): SandboxProfile | null {
-    if (value === 'runner-only' || value === 'preview-web') {
-      return value;
-    }
-    return null;
   }
 
   private resolveRunnerPlatform(value: unknown): string | null {
@@ -393,17 +348,17 @@ export class ContainerExecutionConfigService {
     );
   }
 
-  private readPositiveNumberFromUnknown(value: unknown): number | undefined {
-    const parsed =
-      typeof value === 'number'
-        ? value
-        : typeof value === 'string'
-          ? Number(value)
-          : Number.NaN;
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return undefined;
+  private readFirstTrimmedEnvValue(keys: string[]): string | undefined {
+    for (const key of keys) {
+      const value = this.configService.get<string>(key, {
+        infer: true,
+      });
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
     }
-    return Math.floor(parsed);
+
+    return undefined;
   }
 
   private readPositiveNumberFromEnv(key: string, defaultValue: number): number {
@@ -416,5 +371,33 @@ export class ContainerExecutionConfigService {
       return defaultValue;
     }
     return Math.floor(parsed);
+  }
+
+  private readOptionalPositiveIntFromEnv(key: string): number | undefined {
+    const rawValue = this.configService.get<string>(key, { infer: true });
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return undefined;
+    }
+
+    return Math.floor(parsed);
+  }
+
+  private readOptionalPositiveFloatFromEnv(key: string): number | undefined {
+    const rawValue = this.configService.get<string>(key, { infer: true });
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return undefined;
+    }
+
+    return parsed;
   }
 }
