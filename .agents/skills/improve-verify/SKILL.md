@@ -5,7 +5,7 @@ description: 校验 issues 与代码质量；完成时归档 improveAnalyzeResul
 
 # VerifyImprovement - 验证改进效果
 
-在代码改进执行后，依据 `improveAnalyzeResult.md` 中的 JSON、执行阶段输出与代码质量，判定改进是否全部完成。
+在代码改进执行后，依据 `improveAnalyzeResult.md`（Markdown 结构化文档）中各 Issue 的状态、执行阶段输出与代码质量，判定改进是否全部完成。
 
 ## 输出规范（强制）
 
@@ -15,8 +15,8 @@ description: 校验 issues 与代码质量；完成时归档 improveAnalyzeResul
 
 | 项目         | 规范                                               |
 | ------------ | -------------------------------------------------- |
-| **输入文件** | `docs/{{gitBranch}}/improveAnalyzeResult.md`（issues 及 status） |
-| **输入文件** | `docs/{{gitBranch}}/improveExecuteResult.md`（执行结果）    |
+| **输入文件** | `docs/{{gitBranch}}/improveAnalyzeResult.md`（Markdown 结构化文档，含 `## Issues` 各条 issue 及 status） |
+| **输入文件** | `docs/{{gitBranch}}/improveExecuteResult.md`（执行结果，两行纯文本）    |
 | **结果文件** | `docs/{{gitBranch}}/improveVerifyResult.md`                 |
 | **文件格式** | **纯文本固定三行**（见下文「三行格式」）           |
 | **状态值**   | 第 1 行：`已完成` / `未完成` / `验证失败`（三选一） |
@@ -27,13 +27,14 @@ description: 校验 issues 与代码质量；完成时归档 improveAnalyzeResul
 
 **读取 `docs/{{gitBranch}}/improveAnalyzeResult.md`**：
 
-- 解析 JSON，检查 `issues` 中是否仍存在 `status === "pending"`
-- 统计已解决与待解决数量
-- 若文件不存在或 JSON 无效，输出 `验证失败`
+- 该文件为 Markdown 结构化文档，从 `## Issues` 下各 `### Issue N` 中提取每条 issue 的 `**status**` 值
+- 检查是否仍存在 `**status**: pending`
+- 统计已解决（`resolved`）与待解决（`pending`）数量
+- 若文件不存在或缺少 `## Summary` / `## Issues` 章节，输出 `验证失败`
 
 **读取 `docs/{{gitBranch}}/improveExecuteResult.md`**：
 
-- 获取执行阶段的状态和说明
+- 获取执行阶段的状态和说明（两行纯文本：第 1 行状态、第 2 行原因）
 - 若执行失败，记录失败原因
 
 **状态汇总**：
@@ -56,6 +57,7 @@ description: 校验 issues 与代码质量；完成时归档 improveAnalyzeResul
 | 占位符          | 搜索 `...`、`// ...`、`/* ... */`          | 高       |
 | 空函数体        | 检测 `function xxx() {}`                   | 高       |
 | 逻辑错误        | 检查修复代码的逻辑正确性                   | 高       |
+| **根因记录（与 systematic-debugging 对齐）** | 对 `**status**: resolved` 且 `**type**` 为 `bug`、`security` 或 `performance` 的 issue：在对应 `### Issue N` 小节中必须存在非空的 **`resolution_note`** 与 **`root_cause_summary`**（内容长度建议各 >= 10 字符，且非仅重复 `title`）；若缺失或明显为敷衍句，判定为**未完成**（要求回到 improve-execute 补全后再验） | 高       |
 
 **工具检查**（根据项目类型）：
 
@@ -70,15 +72,17 @@ description: 校验 issues 与代码质量；完成时归档 improveAnalyzeResul
 
 **"已完成"必须同时满足以下所有条件**：
 
-1. `improveAnalyzeResult.md` 中 `issues` 无 `pending`（全部 `resolved` 或列表为空且 result 已为无需改进）
+1. `improveAnalyzeResult.md` 中 `## Issues` 下无 `**status**: pending`（全部 `resolved`，或 Summary 中 result 为「无需改进」且无 Issue）
 2. 代码中无 TODO/FIXME/占位符/空实现
 3. 代码构建/lint 检查通过（或项目无相关配置）
+4. 对每条已 `resolved` 且 `**type**` ∈ { `bug`, `security`, `performance` } 的 issue，**`resolution_note` 与 `root_cause_summary` 均存在且有效**（见上表「根因记录」）
 
 **以下任一情况判定为"未完成"**：
 
-1. 仍存在 `status === "pending"` 的 issue
+1. 仍存在 `**status**: pending` 的 issue
 2. 修复的代码引入了新的 TODO/占位符
 3. 代码构建失败或 lint 检查不通过
+4. 已标记 `resolved` 的 bug/security/performance 类 issue 缺少 **`resolution_note`** 或 **`root_cause_summary`**，或内容明显仅为重复标题、无根因说明
 
 ### 4. 追加历史记录并删除状态文件（仅在全部完成时执行）
 
@@ -88,7 +92,7 @@ description: 校验 issues 与代码质量；完成时归档 improveAnalyzeResul
 
 在删除 `improveAnalyzeResult.md` 之前，将其完整内容追加到历史记录文档：
 
-1. 读取 `docs/{{gitBranch}}/improveAnalyzeResult.md` 的完整内容（原始文本）
+1. 读取 `docs/{{gitBranch}}/improveAnalyzeResult.md` 的完整内容（原始 Markdown 文本）
 2. 通过 shell 命令获取真实系统时间（**不得自行估算时间**）：
 
 ```bash
@@ -103,7 +107,7 @@ date '+%Y-%m-%d %H:%M:%S'
 
 ## YYYY-MM-DD HH:mm:ss
 
-[improveAnalyzeResult.md 的完整内容]
+[improveAnalyzeResult.md 的完整 Markdown 内容]
 
 ```
 
@@ -154,8 +158,16 @@ issues 总计 5、已解决 3、待处理 2（#2 列表加载超过 3 秒 medium
 
 ```
 未完成
-所有问题已在 JSON 中标记解决，但代码构建失败
+所有问题已标记解决，但代码构建失败
 issues 总计 3、已解决 3、待处理 0；代码质量：未通过；构建：失败 TypeScript 编译错误 2 处；lint：通过
+```
+
+### 示例 - 未完成（根因记录缺失，与 systematic-debugging 对齐）
+
+```
+未完成
+bug/security/performance 类 issue 已标记 resolved 但缺少 root_cause_summary 或 resolution_note
+issues 总计 2、已解决 2、待处理 0；根因记录：未通过（#1 security 缺 root_cause_summary）；构建：通过；lint：通过
 ```
 
 ### 示例 - 验证失败
@@ -177,3 +189,4 @@ docs/{{gitBranch}}/improveAnalyzeResult.md 不存在或无法解析
 7. **未完成时不要删除 improveAnalyzeResult.md**：保留文件，系统会再次执行改进循环
 8. **每次覆盖写入**：每次执行都覆盖 `improveVerifyResult.md`（不是追加）
 9. **代码质量标准**：参照 `code-evaluate-completion` 的检查规范，保持团队标准一致
+10. **根因门禁**：对 bug/security/performance 的 resolved 项必须能通过 `resolution_note` + `root_cause_summary` 审计，与 improve-execute、systematic-debugging 一致

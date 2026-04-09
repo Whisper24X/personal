@@ -1,6 +1,6 @@
 ---
 name: improve-review
-description: 基于 git diff 与 checklist 做 Code Review，结果写入 improveReviewResult.md（JSON）。
+description: 基于 git diff 与 checklist 做 Code Review，结果写入 improveReviewResult.md（Markdown 结构化文档）。
 ---
 
 # ImproveReview - 代码审查扫描
@@ -10,14 +10,23 @@ description: 基于 git diff 与 checklist 做 Code Review，结果写入 improv
 ## 输出规范（强制）
 
 > **重要**：结果必须写入文件，不是输出到终端。
+> **禁止**输出裸 JSON。必须使用下方 Markdown 结构化格式。
 
 **文档路径**：输出路径**必须**从节点 Prompt 获取（工作流 v2 ImproveCode）；示例：`docs/{{gitBranch}}/improveReviewResult.md`。
 
 | 项目         | 规范                                                     |
 | ------------ | -------------------------------------------------------- |
 | **结果文件** | prompt 指定（如 `docs/{{gitBranch}}/improveReviewResult.md`） |
-| **文件格式** | JSON 格式，包含 result、reason、issues 字段              |
+| **文件格式** | **Markdown 结构化文档**（`# 标题` + `## Summary` + `## Issues` + 分条 `### Issue N`） |
 | **优先级**   | P0/P1→high, P2→medium, P3→low（与 improve-analyze 兼容） |
+
+**Issue 必填字段**（在每条 `### Issue N` 下用 `- **字段名**: 值` 列出）：
+
+| 字段 | 必填 | 说明 |
+| ---- | ---- | ---- |
+| `id`、`title`、`priority`、`status`、`type`、`location` | 是 | `type` 含 `bug`、`security`、`performance`、`quality`、`solid` 等 |
+| `requires_deep_debug` | 否 | `true` 表示现象可能跨多层/多组件，improve-execute 必须完整走 systematic-debugging；不填视为 `false` |
+| `root_cause_summary`、`evidence`、`resolution_note` | 否 | 由 **improve-execute** 在解决后回写；review 阶段**不填** |
 
 ## 执行步骤
 
@@ -65,7 +74,7 @@ git diff
 
 ### 6. 输出结果
 
-将结果以 JSON 格式写入 prompt 指定路径（如 `docs/{{gitBranch}}/improveReviewResult.md`）。
+将结果以 **Markdown 结构化格式** 写入 prompt 指定路径（如 `docs/{{gitBranch}}/improveReviewResult.md`）。
 
 **确保 prompt 指定路径的父目录存在**（如 `docs/{{gitBranch}}/`），不存在则先创建。
 
@@ -73,48 +82,68 @@ git diff
 
 ### 示例 - 发现问题
 
-```json
-{
-  "result": "发现 3 个问题",
-  "reason": "Code Review 扫描：1 个 security(high)，1 个 solid(high)，1 个 quality(medium)",
-  "issues": [
-    {
-      "id": 1,
-      "title": "SQL 注入风险：用户输入直接拼接",
-      "priority": "high",
-      "status": "pending",
-      "type": "security",
-      "location": "src/api/user.ts:42"
-    },
-    {
-      "id": 2,
-      "title": "OrderService 违反 SRP，职责过多",
-      "priority": "high",
-      "status": "pending",
-      "type": "solid",
-      "location": "src/services/OrderService.ts"
-    },
-    { "id": 3, "title": "空 catch 块吞掉异常", "priority": "medium", "status": "pending", "type": "quality", "location": "src/utils/parser.ts:18" }
-  ]
-}
+```markdown
+# Improve Review Result
+
+## Summary
+
+- **result**: 发现 3 个问题
+- **reason**: Code Review 扫描：1 个 security(high)，1 个 solid(high)，1 个 quality(medium)
+
+## Issues
+
+### Issue 1
+
+- **id**: 1
+- **title**: SQL 注入风险：用户输入直接拼接
+- **priority**: high
+- **status**: pending
+- **type**: security
+- **location**: src/api/user.ts:42
+- **requires_deep_debug**: false
+
+### Issue 2
+
+- **id**: 2
+- **title**: OrderService 违反 SRP，职责过多
+- **priority**: high
+- **status**: pending
+- **type**: solid
+- **location**: src/services/OrderService.ts
+
+### Issue 3
+
+- **id**: 3
+- **title**: 空 catch 块吞掉异常
+- **priority**: medium
+- **status**: pending
+- **type**: quality
+- **location**: src/utils/parser.ts:18
 ```
 
 ### 示例 - 无问题
 
-```json
-{
-  "result": "无问题",
-  "reason": "Code Review 扫描完成，未发现需改进项",
-  "issues": []
-}
+```markdown
+# Improve Review Result
+
+## Summary
+
+- **result**: 无问题
+- **reason**: Code Review 扫描完成，未发现需改进项
+
+## Issues
+
+（无）
 ```
 
 ## 重要提醒
 
 1. **工作目录**：git diff 基于 `ainative-workspace` 目录，不超出该范围
 2. **必须写入文件**：结果必须写入 prompt 指定路径（如 `docs/{{gitBranch}}/improveReviewResult.md`）
-3. **JSON 格式严格**：确保输出合法 JSON，可被程序解析
-4. **不修改源代码**：此 Skill 仅扫描和输出，不执行修复
-5. **不询问用户**：完全自动执行，无需用户确认
-6. **每次覆盖写入**：每次执行覆盖 `improveReviewResult.md`
-7. **location 格式**：`path/to/file.ts` 或 `path/to/file.ts:line`（相对于 ainative-workspace），便于 improve-execute 定位
+3. **Markdown 结构严格**：必须包含 `# 标题`、`## Summary`、`## Issues`；每条 issue 必须有 `### Issue N` 三级标题与必填字段
+4. **禁止输出 JSON**：整文件不是 JSON；使用 `- **key**: value` 格式
+5. **不修改源代码**：此 Skill 仅扫描和输出，不执行修复
+6. **不询问用户**：完全自动执行，无需用户确认
+7. **每次覆盖写入**：每次执行覆盖 `improveReviewResult.md`
+8. **location 格式**：`path/to/file.ts` 或 `path/to/file.ts:line`（相对于 ainative-workspace），便于 improve-execute 定位
+9. **可选元数据**：跨 CI/多服务的缺陷可设 `requires_deep_debug: true`；`root_cause_summary` / `evidence` / `resolution_note` 由 improve-execute 在修复后补全，review 无需填写
