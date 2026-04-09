@@ -163,12 +163,21 @@ export class GitService {
       currentUser,
       { syncRemote: true },
       async ({ repositoryRoot }) => {
+        // Resolve the effective fromRef: prefer the local branch name; fall back to
+        // the remote-tracking ref (origin/<name>) so that branches which only exist
+        // on the remote (and have been fetched but not checked-out locally) can also
+        // be used as a base.
+        const resolvedFrom = await this.resolveFromRef(
+          repositoryRoot,
+          normalizedFrom,
+        );
+
         const branchResult = await this.runCommand([
           '-C',
           repositoryRoot,
           'branch',
           normalizedName,
-          normalizedFrom,
+          resolvedFrom,
         ]);
 
         if (!branchResult.success) {
@@ -183,6 +192,47 @@ export class GitService {
         };
       },
     );
+  }
+
+  /**
+   * Returns the most specific ref that exists in the repository for the given
+   * branch name.  Resolution order:
+   *   1. Local branch (refs/heads/<name>)  – used as-is
+   *   2. Remote-tracking ref (origin/<name>) – returned when only the remote
+   *      tracking branch exists after a fetch
+   *   3. Falls back to the original value so the subsequent `git branch` command
+   *      can produce its own diagnostic.
+   */
+  private async resolveFromRef(
+    repositoryRoot: string,
+    branchName: string,
+  ): Promise<string> {
+    const localCheck = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/heads/${branchName}`,
+    ]);
+
+    if (localCheck.success) {
+      return branchName;
+    }
+
+    const remoteRef = `origin/${branchName}`;
+    const remoteCheck = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/remotes/${remoteRef}`,
+    ]);
+
+    if (remoteCheck.success) {
+      return remoteRef;
+    }
+
+    return branchName;
   }
 
   /**
