@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import MarkdownPreview from '@/components/knowledge-base/MarkdownPreview.vue'
 import { Button } from '@/components/ui/button'
+import { Loader2 } from 'lucide-vue-next'
 
 defineOptions({
   name: 'GoalDetailPrdPanel',
 })
 
-const props = defineProps<{
-  prdDocPath?: string | null
-  prdPreviewLoading: boolean
-  prdEditorSaving: boolean
-  prdPreviewError: string
-  prdPreviewContent: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    generatingPrd?: boolean
+    prdDocPath?: string | null
+    prdPreviewLoading: boolean
+    prdEditorSaving: boolean
+    prdPreviewError: string
+    prdPreviewContent: string
+  }>(),
+  { generatingPrd: false },
+)
 
 const emit = defineEmits<{
   edit: []
@@ -21,7 +26,19 @@ const emit = defineEmits<{
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <p v-if="!props.prdDocPath" class="text-muted-foreground text-sm">尚未生成 PRD</p>
+    <div
+      v-if="props.generatingPrd"
+      class="flex min-h-[12rem] flex-1 flex-col items-center justify-center gap-4 py-8"
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2 class="text-muted-foreground size-9 shrink-0 animate-spin" aria-hidden="true" />
+      <div class="text-center">
+        <p class="text-foreground text-sm font-medium">正在生成 PRD…</p>
+        <p class="text-muted-foreground mt-1 max-w-sm text-xs">预计需要数十秒，请勿关闭或刷新页面</p>
+      </div>
+    </div>
+    <p v-else-if="!props.prdDocPath" class="text-muted-foreground text-sm">尚未生成 PRD</p>
     <template v-else>
       <div
         class="border-border/60 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-2"

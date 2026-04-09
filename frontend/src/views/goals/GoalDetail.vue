@@ -97,6 +97,7 @@ const {
 
       <GoalDetailPrdPanel
         v-if="tab === 'prd'"
+        :generating-prd="generatingPrd"
         :prd-doc-path="detail.goal.prdDocPath"
         :prd-preview-loading="prdPreviewLoading"
         :prd-editor-saving="prdEditorSaving"
@@ -107,6 +108,7 @@ const {
 
       <GoalDetailPlanPanel
         v-else-if="tab === 'plan'"
+        :generating-plan="generatingPlan"
         :detail="detail"
         :loading-workflow-templates="loadingWorkflowTemplates"
         :workflow-templates="workflowTemplates"
