@@ -22,6 +22,7 @@ const props = withDefaults(
     formatDate: (value?: string) => string
     artifactFilePath?: string | null
     artifactOpenNonce?: number
+    artifactNodeId?: string | null
   }>(),
   {
     projectId: '',
@@ -35,6 +36,7 @@ const props = withDefaults(
     environmentPreview: null,
     artifactFilePath: null,
     artifactOpenNonce: 0,
+    artifactNodeId: null,
   },
 )
 
@@ -59,6 +61,7 @@ const terminalEnabled = computed(() => props.environmentStatus === 'ready')
       :format-date="props.formatDate"
       :artifact-file-path="props.artifactFilePath ?? null"
       :artifact-open-nonce="props.artifactOpenNonce ?? 0"
+      :artifact-node-id="props.artifactNodeId ?? null"
     />
   </div>
 </template>

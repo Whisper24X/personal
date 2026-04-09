@@ -49,6 +49,8 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { ReplyTaskDto } from './dto/reply-task.dto';
 import { TaskMessageDto } from './dto/task-message.dto';
 import {
+  TaskArtifactPreviewDto,
+  TaskArtifactTreeDto,
   TaskWorkspaceFileDto,
   TaskWorkspaceFileQueryDto,
   TaskWorkspacePreviewDto,
@@ -397,7 +399,7 @@ export class TasksController {
 
   @Get(':id/git/artifacts/tree')
   @ApiParam({ name: 'id', type: String, required: true })
-  @ApiOkResponse({ type: TaskWorkspaceTreeDto })
+  @ApiOkResponse({ type: TaskArtifactTreeDto })
   @HttpCode(HttpStatus.OK)
   gitArtifactsTree(
     @Request() request,
@@ -428,7 +430,7 @@ export class TasksController {
 
   @Get(':id/git/artifacts/preview')
   @ApiParam({ name: 'id', type: String, required: true })
-  @ApiOkResponse({ type: TaskWorkspacePreviewDto })
+  @ApiOkResponse({ type: TaskArtifactPreviewDto })
   @HttpCode(HttpStatus.OK)
   gitArtifactPreview(
     @Request() request,

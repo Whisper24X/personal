@@ -24,9 +24,9 @@ import {
 } from './dto/task-git.dto';
 import { Task } from './domain/task';
 import {
+  TaskArtifactPreviewDto,
+  TaskArtifactTreeDto,
   TaskWorkspaceFileQueryDto,
-  TaskWorkspacePreviewDto,
-  TaskWorkspaceTreeDto,
   TaskWorkspaceTreeQueryDto,
 } from './dto/task-workspace.dto';
 import { TaskRuntimeService } from './task-runtime.service';
@@ -264,7 +264,7 @@ export class TaskGitService {
     taskId: string,
     query: TaskWorkspaceTreeQueryDto,
     currentUser: JwtPayloadType,
-  ): Promise<TaskWorkspaceTreeDto> {
+  ): Promise<TaskArtifactTreeDto> {
     return this.taskWorkspaceArtifactService.getArtifactTree(
       taskId,
       query,
@@ -276,7 +276,7 @@ export class TaskGitService {
     taskId: string,
     query: TaskWorkspaceFileQueryDto,
     currentUser: JwtPayloadType,
-  ): Promise<TaskWorkspacePreviewDto> {
+  ): Promise<TaskArtifactPreviewDto> {
     return this.taskWorkspaceArtifactService.getArtifactPreview(
       taskId,
       query,
@@ -774,7 +774,15 @@ export class TaskGitService {
     message: string,
   ): Promise<TaskGitCommitIfChangedResult> {
     const changedFiles =
-      await this.taskWorkspaceArtifactService.listArtifactFiles(worktreePath);
+      await this.taskWorkspaceArtifactService.listArtifactFiles({
+        worktreePath,
+        source: {
+          sourceType: 'workspace_unstaged_fallback',
+          nodeId: null,
+          beforeCommitSha: null,
+          afterCommitSha: null,
+        },
+      });
 
     if (!changedFiles.length) {
       return {

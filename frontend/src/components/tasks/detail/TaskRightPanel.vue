@@ -31,6 +31,7 @@ const props = withDefaults(
     artifactFilePath?: string | null
     /** 递增则切到「产物」Tab 并刷新预览 */
     artifactOpenNonce?: number
+    artifactNodeId?: string | null
   }>(),
   {
     projectId: '',
@@ -45,6 +46,7 @@ const props = withDefaults(
     preview: null,
     artifactFilePath: null,
     artifactOpenNonce: 0,
+    artifactNodeId: null,
   },
 )
 
@@ -181,6 +183,7 @@ watch(
         :artifact-refresh-paths="props.artifactRefreshPaths ?? []"
         :artifact-file-path="props.artifactFilePath ?? null"
         :artifact-open-nonce="props.artifactOpenNonce ?? 0"
+        :artifact-node-id="props.artifactNodeId ?? null"
       />
 
       <TaskPreviewPanel

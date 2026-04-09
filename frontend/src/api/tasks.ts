@@ -1,5 +1,7 @@
 import type {
   ApproveTaskPayload,
+  TaskArtifactPreview,
+  TaskArtifactTree,
   CreateTaskPayload,
   CreateTaskTerminalSessionPayload,
   ReplyTaskPayload,
@@ -150,9 +152,10 @@ export const tasksApi = {
     })
   },
 
-  gitArtifactsTree(taskId: string, params?: { path?: string }) {
-    return apiHttp.get<TaskWorkspaceTree>(`/tasks/${taskId}/git/artifacts/tree`, {
+  gitArtifactsTree(taskId: string, params?: { path?: string; nodeId?: string | null }) {
+    return apiHttp.get<TaskArtifactTree>(`/tasks/${taskId}/git/artifacts/tree`, {
       path: params?.path,
+      nodeId: params?.nodeId,
     })
   },
 
@@ -167,9 +170,9 @@ export const tasksApi = {
     return buildUrl(`/tasks/${taskId}/workspace/file/raw`, { path, token }).toString()
   },
 
-  getGitArtifactRawUrl(taskId: string, path: string) {
+  getGitArtifactRawUrl(taskId: string, path: string, nodeId?: string | null) {
     const token = localStorage.getItem(STORAGE_KEYS.authToken)
-    return buildUrl(`/tasks/${taskId}/git/artifacts/raw`, { path, token }).toString()
+    return buildUrl(`/tasks/${taskId}/git/artifacts/raw`, { path, nodeId, token }).toString()
   },
 
   workspacePreview(taskId: string, path: string) {
@@ -178,9 +181,10 @@ export const tasksApi = {
     })
   },
 
-  gitArtifactPreview(taskId: string, path: string) {
-    return apiHttp.get<TaskWorkspacePreview>(`/tasks/${taskId}/git/artifacts/preview`, {
+  gitArtifactPreview(taskId: string, path: string, nodeId?: string | null) {
+    return apiHttp.get<TaskArtifactPreview>(`/tasks/${taskId}/git/artifacts/preview`, {
       path,
+      nodeId,
     })
   },
 

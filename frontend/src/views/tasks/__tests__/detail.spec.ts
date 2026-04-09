@@ -24,6 +24,9 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     resetNode: vi.fn(),
     approve: vi.fn(),
     complete: vi.fn(),
+    gitArtifactsTree: vi.fn(),
+    gitArtifactPreview: vi.fn(),
+    getGitArtifactRawUrl: vi.fn(),
   },
   authApi: {
     access: vi.fn(),
@@ -145,6 +148,32 @@ beforeEach(() => {
       { key: 'ready', label: '执行环境就绪', status: 'done' },
     ],
   } satisfies TaskEnvironment)
+  tasksApi.gitArtifactsTree.mockResolvedValue({
+    cwd: '.',
+    entries: [],
+    files: [],
+    artifactSource: {
+      sourceType: 'unavailable',
+      nodeId: null,
+      beforeCommitSha: null,
+      afterCommitSha: null,
+    },
+  })
+  tasksApi.gitArtifactPreview.mockResolvedValue({
+    path: 'README.md',
+    previewType: 'text',
+    tooLarge: false,
+    size: 0,
+    mimeType: 'text/markdown',
+    text: '',
+    artifactSource: {
+      sourceType: 'unavailable',
+      nodeId: null,
+      beforeCommitSha: null,
+      afterCommitSha: null,
+    },
+  })
+  tasksApi.getGitArtifactRawUrl.mockReturnValue('/artifact-raw')
   tasksApi.terminateEnvironment.mockResolvedValue({
     status: 'stopped',
     stage: 'stopped',
@@ -1507,9 +1536,10 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.find('[data-testid="right-panel-section"]').exists()).toBe(true)
   })
 
-  it('auto-selects the first in-progress workflow node by node order', async () => {
+  it('auto-selects the last in-progress workflow node by node order', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
+    const rightPanelProps: Array<Record<string, unknown>> = []
 
     tasksApi.detailWithNodes.mockResolvedValueOnce({
       task: {
@@ -1525,6 +1555,15 @@ describe('TaskDetailView toasts', () => {
         updatedAt: '2026-02-27T10:00:00.000Z',
       },
       nodes: [
+        {
+          id: 'node-4',
+          taskId: 'task-1',
+          nodeOrder: 4,
+          name: 'Fourth node',
+          status: 'in_progress',
+          agentCliId: 'gemini-cli',
+          agentCliConfigId: 'cfg-4',
+        },
         {
           id: 'node-3',
           taskId: 'task-1',
@@ -1560,7 +1599,12 @@ describe('TaskDetailView toasts', () => {
         plugins: [pinia],
         stubs: {
           RightPanelSection: {
+            props: ['artifactNodeId'],
             template: '<div />',
+            setup(props: Record<string, unknown>) {
+              rightPanelProps.push({ ...props })
+              return {}
+            },
           },
           TaskDialogs: {
             template: '<div />',
@@ -1573,13 +1617,16 @@ describe('TaskDetailView toasts', () => {
 
     const selectedButton = wrapper
       .findAll('button')
-      .find((button) => button.text().includes('Second node'))
+      .find((button) => button.text().includes('Fourth node'))
 
     expect(selectedButton?.classes()).toContain('ring-2')
-    expect(wrapper.text()).toContain('Cursor Agent')
+    expect(wrapper.text()).toContain('Gemini CLI')
+    expect(rightPanelProps[rightPanelProps.length - 1]?.artifactNodeId).toBe(
+      'node-4',
+    )
   })
 
-  it('auto-selects the first in-review workflow node when no node is running', async () => {
+  it('auto-selects the last in-review workflow node when no node is running', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -1645,10 +1692,10 @@ describe('TaskDetailView toasts', () => {
 
     const selectedButton = wrapper
       .findAll('button')
-      .find((button) => button.text().includes('First review'))
+      .find((button) => button.text().includes('Second review'))
 
     expect(selectedButton?.classes()).toContain('ring-2')
-    expect(wrapper.text()).toContain('Codex')
+    expect(wrapper.text()).toContain('Cursor Agent')
   })
 
   it('shows 重置 and 终止 in the more actions menu when workflow node is pending approval', async () => {

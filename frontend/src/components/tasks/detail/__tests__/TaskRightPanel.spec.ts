@@ -101,6 +101,44 @@ describe('TaskRightPanel', () => {
     })
   })
 
+  it('passes artifact node context through to the artifacts panel', () => {
+    const artifactProps: Array<Record<string, unknown>> = []
+
+    mount(TaskRightPanel, {
+      props: {
+        taskId: 'task-1',
+        artifactNodeId: 'node-2',
+        formatDate: () => '',
+      },
+      global: {
+        stubs: {
+          TaskArtifactsPanel: defineComponent({
+            name: 'TaskDetailArtifactsPanelStub',
+            props: {
+              taskId: { type: String, required: true },
+              artifactNodeId: { type: String, default: null },
+            },
+            setup(props) {
+              artifactProps.push({ ...props })
+              return () => null
+            },
+          }),
+          TaskPreviewPanel: true,
+          TaskFilesPanel: true,
+          TaskGitPanel: true,
+          TaskTerminalPanel: true,
+          TaskLogsPanel: true,
+          TaskDeployPanel: true,
+        },
+      },
+    })
+
+    expect(artifactProps[artifactProps.length - 1]).toEqual({
+      taskId: 'task-1',
+      artifactNodeId: 'node-2',
+    })
+  })
+
   it('hides preview tab when runtime environment is not ready', () => {
     const wrapper = mount(TaskRightPanel, {
       props: {

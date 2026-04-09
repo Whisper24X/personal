@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { TaskWorkspaceArtifactService } from './application/task-workspace-artifact.service';
+import { TaskStatus } from './dto/task-status.enum';
 import { TaskGitService } from './task-git.service';
 
 const runGit = (args: string[], cwd: string): string => {
@@ -43,6 +44,9 @@ const createTaskGitServices = () => {
   const artifactService = new TaskWorkspaceArtifactService(
     {} as any,
     {} as any,
+    {
+      findByTaskId: jest.fn().mockResolvedValue([]),
+    } as any,
   );
   const service = new TaskGitService({} as any, {} as any, artifactService);
 
@@ -176,12 +180,18 @@ describe('TaskGitService', () => {
 
     const { artifactService } = createTaskGitServices();
     jest
-      .spyOn(artifactService as any, 'resolveTaskWorkspaceContext')
+      .spyOn(artifactService as any, 'resolveArtifactContext')
       .mockResolvedValue({
         task: {
-          gitBaseBranch: 'main',
+          mode: 'workflow',
         },
         worktreePath: repositoryPath,
+        source: {
+          sourceType: 'workspace_unstaged_fallback',
+          nodeId: 'node-1',
+          beforeCommitSha: null,
+          afterCommitSha: null,
+        },
       });
 
     const rootTree = await artifactService.getArtifactTree(
@@ -201,10 +211,41 @@ describe('TaskGitService', () => {
         { name: 'src', path: 'src', isDir: true },
         { name: 'docs.md', path: 'docs.md', isDir: false },
       ],
+      files: [
+        {
+          path: 'docs.md',
+          status: '??',
+          deleted: false,
+        },
+        {
+          path: 'src/nested/demo.ts',
+          status: 'A ',
+          deleted: false,
+        },
+      ],
+      artifactSource: {
+        sourceType: 'workspace_unstaged_fallback',
+        nodeId: 'node-1',
+        beforeCommitSha: null,
+        afterCommitSha: null,
+      },
     });
     expect(nestedTree).toEqual({
       cwd: 'src',
       entries: [{ name: 'nested', path: 'src/nested', isDir: true }],
+      files: [
+        {
+          path: 'src/nested/demo.ts',
+          status: 'A ',
+          deleted: false,
+        },
+      ],
+      artifactSource: {
+        sourceType: 'workspace_unstaged_fallback',
+        nodeId: 'node-1',
+        beforeCommitSha: null,
+        afterCommitSha: null,
+      },
     });
   });
 
@@ -219,12 +260,18 @@ describe('TaskGitService', () => {
 
     const { artifactService } = createTaskGitServices();
     jest
-      .spyOn(artifactService as any, 'resolveTaskWorkspaceContext')
+      .spyOn(artifactService as any, 'resolveArtifactContext')
       .mockResolvedValue({
         task: {
-          gitBaseBranch: 'main',
+          mode: 'workflow',
         },
         worktreePath: repositoryPath,
+        source: {
+          sourceType: 'workspace_unstaged_fallback',
+          nodeId: 'node-1',
+          beforeCommitSha: null,
+          afterCommitSha: null,
+        },
       });
 
     const preview = await artifactService.getArtifactPreview(
@@ -235,6 +282,9 @@ describe('TaskGitService', () => {
 
     expect(preview.previewType).toBe('text');
     expect(preview.text).toBe('# unstaged version\n');
+    expect(preview.artifactSource.sourceType).toBe(
+      'workspace_unstaged_fallback',
+    );
   });
 
   it('should fall back to staged index content when the worktree file is missing', async () => {
@@ -248,12 +298,18 @@ describe('TaskGitService', () => {
 
     const { artifactService } = createTaskGitServices();
     jest
-      .spyOn(artifactService as any, 'resolveTaskWorkspaceContext')
+      .spyOn(artifactService as any, 'resolveArtifactContext')
       .mockResolvedValue({
         task: {
-          gitBaseBranch: 'main',
+          mode: 'workflow',
         },
         worktreePath: repositoryPath,
+        source: {
+          sourceType: 'workspace_unstaged_fallback',
+          nodeId: 'node-1',
+          beforeCommitSha: null,
+          afterCommitSha: null,
+        },
       });
 
     const preview = await artifactService.getArtifactPreview(
@@ -264,6 +320,210 @@ describe('TaskGitService', () => {
 
     expect(preview.previewType).toBe('text');
     expect(preview.text).toBe('# staged version\n');
+  });
+
+  it('should list commit-range artifacts and preview the node snapshot content', async () => {
+    const repositoryPath = await initializeRepository();
+    createdDirectories.push(repositoryPath);
+
+    const readmePath = path.join(repositoryPath, 'README.md');
+    await fs.writeFile(readmePath, '# node one\n');
+    runGit(['add', 'README.md'], repositoryPath);
+    runGit(['commit', '-m', 'node one'], repositoryPath);
+    const beforeCommitSha = runGit(['rev-parse', 'HEAD~1'], repositoryPath);
+    const afterCommitSha = runGit(['rev-parse', 'HEAD'], repositoryPath);
+
+    await fs.writeFile(readmePath, '# node two\n');
+
+    const { artifactService } = createTaskGitServices();
+    jest
+      .spyOn(artifactService as any, 'resolveArtifactContext')
+      .mockResolvedValue({
+        task: {
+          mode: 'workflow',
+        },
+        worktreePath: repositoryPath,
+        source: {
+          sourceType: 'commit_range',
+          nodeId: 'node-1',
+          beforeCommitSha,
+          afterCommitSha,
+        },
+      });
+
+    const tree = await artifactService.getArtifactTree(
+      'task-1',
+      { path: '.' } as never,
+      {} as never,
+    );
+    const preview = await artifactService.getArtifactPreview(
+      'task-1',
+      { path: 'README.md' } as never,
+      {} as never,
+    );
+
+    expect(tree.files).toEqual([
+      {
+        path: 'README.md',
+        status: 'M',
+        deleted: false,
+      },
+    ]);
+    expect(tree.artifactSource).toEqual({
+      sourceType: 'commit_range',
+      nodeId: 'node-1',
+      beforeCommitSha,
+      afterCommitSha,
+    });
+    expect(preview.previewType).toBe('text');
+    expect(preview.text).toBe('# node one\n');
+    expect(preview.artifactSource.sourceType).toBe('commit_range');
+  });
+
+  it('should use workspace fallback for the current in-review node when commit range is unavailable', () => {
+    const { artifactService } = createTaskGitServices();
+
+    const source = (artifactService as any).resolveArtifactSource({
+      task: {
+        mode: 'workflow',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          status: TaskStatus.done,
+        },
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          status: TaskStatus.inReview,
+          beforeRunCommitSha: 'before-only',
+          afterRunCommitSha: null,
+        },
+      ],
+      targetNode: {
+        id: 'node-2',
+        taskId: 'task-1',
+        nodeOrder: 2,
+        status: TaskStatus.inReview,
+        beforeRunCommitSha: 'before-only',
+        afterRunCommitSha: null,
+      },
+    });
+
+    expect(source).toEqual({
+      sourceType: 'workspace_unstaged_fallback',
+      nodeId: 'node-2',
+      beforeCommitSha: 'before-only',
+      afterCommitSha: null,
+    });
+  });
+
+  it('should prefer workspace fallback for in-review nodes even when commit snapshots exist', () => {
+    const { artifactService } = createTaskGitServices();
+
+    const source = (artifactService as any).resolveArtifactSource({
+      task: {
+        mode: 'workflow',
+      },
+      nodes: [
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          status: TaskStatus.inReview,
+          beforeRunCommitSha: 'before-sha',
+          afterRunCommitSha: 'after-sha',
+        },
+      ],
+      targetNode: {
+        id: 'node-2',
+        taskId: 'task-1',
+        nodeOrder: 2,
+        status: TaskStatus.inReview,
+        beforeRunCommitSha: 'before-sha',
+        afterRunCommitSha: 'after-sha',
+      },
+    });
+
+    expect(source).toEqual({
+      sourceType: 'workspace_unstaged_fallback',
+      nodeId: 'node-2',
+      beforeCommitSha: 'before-sha',
+      afterCommitSha: 'after-sha',
+    });
+  });
+
+  it('should prefer workspace fallback for in-progress nodes even when commit snapshots exist', () => {
+    const { artifactService } = createTaskGitServices();
+
+    const source = (artifactService as any).resolveArtifactSource({
+      task: {
+        mode: 'workflow',
+      },
+      nodes: [
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          status: TaskStatus.inProgress,
+          beforeRunCommitSha: 'before-sha',
+          afterRunCommitSha: 'after-sha',
+        },
+      ],
+      targetNode: {
+        id: 'node-2',
+        taskId: 'task-1',
+        nodeOrder: 2,
+        status: TaskStatus.inProgress,
+        beforeRunCommitSha: 'before-sha',
+        afterRunCommitSha: 'after-sha',
+      },
+    });
+
+    expect(source).toEqual({
+      sourceType: 'workspace_unstaged_fallback',
+      nodeId: 'node-2',
+      beforeCommitSha: 'before-sha',
+      afterCommitSha: 'after-sha',
+    });
+  });
+
+  it('should use workspace fallback for todo nodes', () => {
+    const { artifactService } = createTaskGitServices();
+
+    const source = (artifactService as any).resolveArtifactSource({
+      task: {
+        mode: 'workflow',
+      },
+      nodes: [
+        {
+          id: 'node-3',
+          taskId: 'task-1',
+          nodeOrder: 3,
+          status: TaskStatus.todo,
+          beforeRunCommitSha: null,
+          afterRunCommitSha: null,
+        },
+      ],
+      targetNode: {
+        id: 'node-3',
+        taskId: 'task-1',
+        nodeOrder: 3,
+        status: TaskStatus.todo,
+        beforeRunCommitSha: null,
+        afterRunCommitSha: null,
+      },
+    });
+
+    expect(source).toEqual({
+      sourceType: 'workspace_unstaged_fallback',
+      nodeId: 'node-3',
+      beforeCommitSha: null,
+      afterCommitSha: null,
+    });
   });
 
   it('should skip commitIfChanged when there are no workspace changes', async () => {
