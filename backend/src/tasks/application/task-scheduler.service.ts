@@ -1,6 +1,8 @@
 import {
   Inject,
   Injectable,
+  Logger,
+  NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
   Optional,
@@ -10,6 +12,7 @@ import { DataSource } from 'typeorm';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Project } from '../../projects/domain/project';
 import { ProjectRepository } from '../../projects/infrastructure/persistence/project.repository';
+import { Task } from '../domain/task';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
@@ -30,6 +33,7 @@ import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 @Injectable()
 export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(TaskSchedulerService.name);
   private readonly workerId = `${process.pid}-${Math.random().toString(16).slice(2, 10)}`;
   private readonly schedulerIntervalMs = this.readPositiveNumberFromEnv(
     'AINATIVE_DISPATCH_INTERVAL_MS',
@@ -285,9 +289,28 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
             this.taskConfigResolver.readNodeLeaseUntil(latestNode);
           const workerId =
             this.taskConfigResolver.readRuntimeWorkerId(latestNode);
-          const task = await this.taskAccessService.getTaskByIdOrThrow(
-            latestNode.taskId,
-          );
+          let task: Task;
+
+          try {
+            task = await this.taskAccessService.getTaskByIdOrThrow(
+              latestNode.taskId,
+            );
+          } catch (error) {
+            if (!(error instanceof NotFoundException)) {
+              throw error;
+            }
+
+            await this.taskNodeRepository.update(node.id, {
+              status: TaskStatus.inReview,
+              finishedAt: new Date(),
+              runtimeJson: null,
+            });
+            this.logger.warn(
+              `Recovered orphaned expired node ${latestNode.id} for missing task ${latestNode.taskId}`,
+            );
+            continue;
+          }
+
           const agentClioutput =
             await this.taskOutputService.writeNodeOutputJsonl({
               task,
