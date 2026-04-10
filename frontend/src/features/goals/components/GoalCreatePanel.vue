@@ -60,7 +60,7 @@ const fileInputRef = toRef(vm, 'fileInputRef')
           </Transition>
         </header>
 
-        <vm.form
+        <form
           class="overflow-hidden rounded-3xl border border-border bg-card/90 shadow-[0_8px_30px_rgba(15,23,42,0.08)]"
           @submit.prevent="vm.submit"
         >
@@ -264,7 +264,7 @@ const fileInputRef = toRef(vm, 'fileInputRef')
               </div>
             </div>
           </div>
-        </vm.form>
+        </form>
       </template>
     </div>
   </div>
