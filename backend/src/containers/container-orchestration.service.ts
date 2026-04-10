@@ -10,7 +10,10 @@ import { Task } from '../tasks/domain/task';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
 import { ContainerExecutionConfigService } from './container-execution-config.service';
-import { IsolatedRunnerContainerService } from './isolated-runner-container.service';
+import {
+  IsolatedRunnerContainerService,
+  RunnerManagedVolumeMount,
+} from './isolated-runner-container.service';
 import { SlotAccessMetadata } from './domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { buildPreviewUrl } from './preview-url';
@@ -216,6 +219,7 @@ export class ContainerOrchestrationService
       }
       const { containerId, accessMetadata } = await this.startRunnerWithRetries(
         {
+          task,
           containerName,
           runnerImage,
           project,
@@ -476,6 +480,7 @@ export class ContainerOrchestrationService
   }
 
   private async startRunnerWithRetries(params: {
+    task: Task;
     containerName: string;
     runnerImage: string;
     project: Project;
@@ -513,6 +518,15 @@ export class ContainerOrchestrationService
           this.runnerOrchestration?.buildProjectRunnerConfigFile(
             params.project,
           ) ?? null;
+        const managedVolumeTargets =
+          this.runnerOrchestration?.buildManagedVolumeTargets(
+            this.config.getRunnerWorkspace(),
+            params.project,
+          ) ??
+          this.config.getRunnerManagedVolumeTargets(
+            this.config.getRunnerWorkspace(),
+            params.project,
+          );
         const containerEnv = {
           ...this.config.getRunnerBootstrapEnv(),
           ...this.config.getRunnerEnv(params.project),
@@ -533,16 +547,12 @@ export class ContainerOrchestrationService
           command: this.config.usesSandboxEntrypoint(params.project)
             ? ['/usr/local/bin/ainative-runner-entrypoint']
             : ['sleep', 'infinity'],
-          namedVolumeMounts: runnerConfig?.runtime.sharedVolumes ?? [],
-          anonymousVolumeMounts:
-            this.runnerOrchestration?.buildAnonymousVolumeMounts(
-              this.config.getRunnerWorkspace(),
-              params.project,
-            ) ??
-            this.config.getRunnerAnonymousVolumeMounts(
-              this.config.getRunnerWorkspace(),
-              params.project,
-            ),
+          sharedVolumeMounts: runnerConfig?.runtime.sharedVolumes ?? [],
+          managedVolumeMounts: this.buildManagedVolumeMounts({
+            task: params.task,
+            containerName: params.containerName,
+            targets: managedVolumeTargets,
+          }),
           env: containerEnv,
           cpuLimit: this.config.getRunnerCpuLimit(params.project),
           resourceLimits: this.config.resourceLimitsForProfile(params.project),
@@ -579,6 +589,46 @@ export class ContainerOrchestrationService
     throw lastError instanceof Error
       ? lastError
       : new Error('Failed to start runner container');
+  }
+
+  private buildManagedVolumeMounts(params: {
+    task: Task;
+    containerName: string;
+    targets: string[];
+  }): RunnerManagedVolumeMount[] {
+    return params.targets.map((target) => ({
+      name: this.buildManagedVolumeName(params.containerName, target),
+      target,
+      labels: {
+        'ainative.runner-managed': 'true',
+        'ainative.container-name': params.containerName,
+        'ainative.project-id': params.task.projectId,
+        'ainative.task-id': params.task.id,
+        'ainative.mount-target': target,
+      },
+    }));
+  }
+
+  private buildManagedVolumeName(
+    containerName: string,
+    target: string,
+  ): string {
+    const normalizedTarget =
+      target
+        .trim()
+        .replace(/^\/+/, '')
+        .split('/')
+        .filter(Boolean)
+        .map((segment) =>
+          segment
+            .toLowerCase()
+            .replace(/[^a-z0-9_.-]+/g, '-')
+            .replace(/^-+|-+$/g, ''),
+        )
+        .filter(Boolean)
+        .join('-') || 'workspace';
+
+    return `${containerName}-${normalizedTarget}`;
   }
 
   private resolveRuntimeExposure(

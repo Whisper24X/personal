@@ -202,10 +202,10 @@ describe('RunnerOrchestrationService', () => {
     );
   });
 
-  it('should derive anonymous node_modules mounts from services with install commands', () => {
+  it('should derive managed volume targets from services with install commands', () => {
     const service = createService();
 
-    const mounts = service.buildAnonymousVolumeMounts(
+    const mounts = service.buildManagedVolumeTargets(
       '/workspace',
       createProject({
         containerRuntime: {

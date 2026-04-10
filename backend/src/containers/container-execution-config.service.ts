@@ -110,7 +110,7 @@ export class ContainerExecutionConfigService {
     );
   }
 
-  getRunnerAnonymousVolumeMounts(
+  getRunnerManagedVolumeTargets(
     workspaceMount: string,
     project?: Project | null,
   ): string[] {

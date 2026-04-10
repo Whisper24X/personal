@@ -9,6 +9,14 @@ export class TaskWorkspaceTreeQueryDto {
   @IsOptional()
   @IsString()
   path?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Target workflow node id for artifact resolution',
+  })
+  @IsOptional()
+  @IsString()
+  nodeId?: string;
 }
 
 export class TaskWorkspaceFileQueryDto {
@@ -19,6 +27,14 @@ export class TaskWorkspaceFileQueryDto {
   @IsString()
   @IsNotEmpty()
   path: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Target workflow node id for artifact resolution',
+  })
+  @IsOptional()
+  @IsString()
+  nodeId?: string;
 }
 
 export class TaskWorkspaceEntryDto {
@@ -41,6 +57,42 @@ export class TaskWorkspaceTreeDto {
 
   @ApiProperty({ type: TaskWorkspaceEntryDto, isArray: true })
   entries: TaskWorkspaceEntryDto[];
+}
+
+export class TaskArtifactSourceDto {
+  @ApiProperty({
+    type: String,
+    enum: ['commit_range', 'workspace_unstaged_fallback', 'unavailable'],
+  })
+  sourceType: 'commit_range' | 'workspace_unstaged_fallback' | 'unavailable';
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  nodeId?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  beforeCommitSha?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  afterCommitSha?: string | null;
+}
+
+export class TaskArtifactFileDto {
+  @ApiProperty({ type: String })
+  path: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  status?: string | null;
+
+  @ApiProperty({ type: Boolean })
+  deleted: boolean;
+}
+
+export class TaskArtifactTreeDto extends TaskWorkspaceTreeDto {
+  @ApiProperty({ type: TaskArtifactFileDto, isArray: true })
+  files: TaskArtifactFileDto[];
+
+  @ApiProperty({ type: TaskArtifactSourceDto })
+  artifactSource: TaskArtifactSourceDto;
 }
 
 export class TaskWorkspaceFileDto {
@@ -94,4 +146,9 @@ export class TaskWorkspacePreviewDto {
     description: 'data:image/*;base64,...',
   })
   dataUrl?: string | null;
+}
+
+export class TaskArtifactPreviewDto extends TaskWorkspacePreviewDto {
+  @ApiProperty({ type: TaskArtifactSourceDto })
+  artifactSource: TaskArtifactSourceDto;
 }

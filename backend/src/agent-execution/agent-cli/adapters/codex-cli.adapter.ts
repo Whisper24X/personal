@@ -56,7 +56,9 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
     args: string[],
     options: AgentCliContinuationOptions,
   ): string[] {
-    const normalizedArgs = [...args];
+    // `codex exec resume` 的 CLI 与首次 `codex exec` 支持的 flag 不完全一致；当前发行版在 resume
+    // 路径上会拒绝 `--local-provider`（见 runner stderr: unexpected argument '--local-provider'）。
+    const normalizedArgs = this.stripCodexExecResumeIncompatibleArgs([...args]);
     const execIndex = normalizedArgs.indexOf('exec');
 
     if (execIndex === -1) {
@@ -74,6 +76,20 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
 
     nextArgs.splice(sessionInsertIndex, 0, options.sessionId);
     return nextArgs;
+  }
+
+  /** 供 `exec resume` 使用：移除 resume 子命令不接受的参数。 */
+  private stripCodexExecResumeIncompatibleArgs(args: string[]): string[] {
+    const out: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      const t = args[i];
+      if (t === '--local-provider' && i + 1 < args.length) {
+        i++;
+        continue;
+      }
+      out.push(t!);
+    }
+    return out;
   }
 
   buildPreExecutionOutputRecords(

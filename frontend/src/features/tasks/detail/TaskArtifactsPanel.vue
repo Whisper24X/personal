@@ -5,7 +5,7 @@ import FilePreviewCard from '@shared/components/file-browser/FilePreviewCard.vue
 import FileTree from '@shared/components/file-browser/FileTree.vue'
 import { createFileTreeNodes } from '@shared/components/file-browser/file-tree'
 import type { FileBrowserPreview } from '@shared/components/file-browser/types'
-import type { TaskGitChangedFile } from '@/types/api/tasks'
+import type { TaskArtifactFile, TaskArtifactSource } from '@/types/api/tasks'
 import { toErrorMessage } from '@api/shared/to-error-message'
 
 defineOptions({
@@ -22,22 +22,25 @@ const props = withDefaults(
     artifactFilePath?: string | null
     /** 递增时应用 artifactFilePath */
     artifactOpenNonce?: number
+    artifactNodeId?: string | null
   }>(),
   {
     refreshToken: 0,
     artifactRefreshPaths: () => [],
     artifactFilePath: null,
     artifactOpenNonce: 0,
+    artifactNodeId: null,
   },
 )
 
 const loading = ref(false)
 const errorMessage = ref('')
-const files = ref<TaskGitChangedFile[]>([])
+const files = ref<TaskArtifactFile[]>([])
 const selectedPath = ref<string | null>(null)
 const preview = ref<FileBrowserPreview | null>(null)
 const previewLoading = ref(false)
 const previewErrorMessage = ref('')
+const artifactSource = ref<TaskArtifactSource | null>(null)
 const refreshInFlight = ref(false)
 const pendingRefresh = ref(false)
 const emptyPaths = new Set<string>()
@@ -50,7 +53,7 @@ const FILE_NAME_FONT =
 let measureCanvas: HTMLCanvasElement | null = null
 let previewRequestId = 0
 let inFlightPreviewRequest: {
-  path: string
+  key: string
   promise: Promise<FileBrowserPreview>
 } | null = null
 
@@ -127,20 +130,23 @@ const resolveFileName = (filePath: string) => {
 }
 
 const fetchPreview = (path: string) => {
-  if (inFlightPreviewRequest?.path === path) {
+  const previewKey = `${props.artifactNodeId ?? 'default'}:${path}`
+  if (inFlightPreviewRequest?.key === previewKey) {
     return inFlightPreviewRequest.promise
   }
 
   const promise = (async () => {
-    const nextPreview = normalizePreviewType(await tasksApi.gitArtifactPreview(props.taskId, path))
+    const nextPreview = normalizePreviewType(
+      await tasksApi.gitArtifactPreview(props.taskId, path, props.artifactNodeId),
+    )
     if (['pdf', 'video', 'audio'].includes(nextPreview.previewType) && !nextPreview.tooLarge) {
-      nextPreview.dataUrl = tasksApi.getGitArtifactRawUrl(props.taskId, path)
+      nextPreview.dataUrl = tasksApi.getGitArtifactRawUrl(props.taskId, path, props.artifactNodeId)
     }
     return nextPreview
   })()
 
   inFlightPreviewRequest = {
-    path,
+    key: previewKey,
     promise,
   }
 
@@ -157,6 +163,14 @@ const loadPreview = async (path: string) => {
   const requestId = ++previewRequestId
   previewLoading.value = true
   previewErrorMessage.value = ''
+
+  const targetFile = files.value.find((file) => file.path === path) ?? null
+  if (targetFile?.deleted && artifactSource.value?.sourceType === 'commit_range') {
+    preview.value = null
+    previewLoading.value = false
+    previewErrorMessage.value = '该文件在节点结束快照中已删除，无法预览'
+    return
+  }
 
   try {
     const nextPreview = await fetchPreview(path)
@@ -181,17 +195,33 @@ const shouldReloadPreview = ({
   previousSelectedPath,
   nextSelectedPath,
   refreshPaths,
+  previousSourceType,
+  nextSourceType,
+  previousNodeId,
+  nextNodeId,
 }: {
   previousSelectedPath: string | null
   nextSelectedPath: string
   refreshPaths: string[] | null
+  previousSourceType: TaskArtifactSource['sourceType'] | null
+  nextSourceType: TaskArtifactSource['sourceType'] | null
+  previousNodeId: string | null
+  nextNodeId: string | null
 }) => {
   if (nextSelectedPath !== previousSelectedPath) {
     return true
   }
 
+  if (previousNodeId !== nextNodeId || previousSourceType !== nextSourceType) {
+    return true
+  }
+
   if (!preview.value) {
     return true
+  }
+
+  if (nextSourceType === 'commit_range') {
+    return false
   }
 
   if (refreshPaths === null) {
@@ -206,8 +236,13 @@ const performLoadFiles = async (refreshPaths: string[] | null) => {
   errorMessage.value = ''
 
   try {
-    const status = await tasksApi.gitStatus(props.taskId)
-    const nextFiles = status.files ?? []
+    const tree = await tasksApi.gitArtifactsTree(props.taskId, {
+      nodeId: props.artifactNodeId,
+    })
+    const nextFiles = tree.files ?? []
+    const previousSourceType = artifactSource.value?.sourceType ?? null
+    const previousNodeId = artifactSource.value?.nodeId ?? null
+    artifactSource.value = tree.artifactSource
     files.value = nextFiles
     const previousSelectedPath = selectedPath.value
 
@@ -223,7 +258,7 @@ const performLoadFiles = async (refreshPaths: string[] | null) => {
         ? preferred
         : selectedStillExists
           ? selectedPath.value
-          : (nextFiles[0]?.path ?? null)
+          : (nextFiles.find((file) => !file.deleted)?.path ?? nextFiles[0]?.path ?? null)
 
     selectedPath.value = nextSelectedPath
 
@@ -233,6 +268,10 @@ const performLoadFiles = async (refreshPaths: string[] | null) => {
           previousSelectedPath,
           nextSelectedPath,
           refreshPaths,
+          previousSourceType,
+          nextSourceType: tree.artifactSource.sourceType,
+          previousNodeId,
+          nextNodeId: tree.artifactSource.nodeId ?? null,
         })
       ) {
         await loadPreview(nextSelectedPath)
@@ -243,6 +282,7 @@ const performLoadFiles = async (refreshPaths: string[] | null) => {
     }
   } catch (error) {
     files.value = []
+    artifactSource.value = null
     selectedPath.value = null
     preview.value = null
     errorMessage.value = toErrorMessage(error, '加载产物列表失败')
@@ -283,7 +323,7 @@ const handleSelectFile = async (node: { path: string; isDir: boolean }) => {
 }
 
 watch(
-  [() => props.taskId, () => props.refreshToken],
+  [() => props.taskId, () => props.refreshToken, () => props.artifactNodeId],
   async () => {
     await loadFiles()
   },

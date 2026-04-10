@@ -198,6 +198,26 @@ export type TaskWorkspaceTree = {
   entries: TaskWorkspaceEntry[]
 }
 
+export type TaskArtifactSource = {
+  sourceType: 'commit_range' | 'workspace_unstaged_fallback' | 'unavailable'
+  nodeId?: string | null
+  beforeCommitSha?: string | null
+  afterCommitSha?: string | null
+}
+
+export type TaskArtifactFile = {
+  path: string
+  status?: string | null
+  deleted: boolean
+}
+
+export type TaskArtifactTree = {
+  cwd: string
+  entries: TaskWorkspaceEntry[]
+  files: TaskArtifactFile[]
+  artifactSource: TaskArtifactSource
+}
+
 export type TaskWorkspaceFile = {
   path: string
   name: string
@@ -216,6 +236,10 @@ export type TaskWorkspacePreview = {
   mimeType?: string | null
   text?: string | null
   dataUrl?: string | null
+}
+
+export type TaskArtifactPreview = TaskWorkspacePreview & {
+  artifactSource: TaskArtifactSource
 }
 
 export type TaskGitChangedFile = {

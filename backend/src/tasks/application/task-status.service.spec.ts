@@ -20,7 +20,7 @@ const createService = () => {
     removeContainerForTask: jest.fn().mockResolvedValue(undefined),
   };
   const goalsService = {
-    syncPlanSubTaskStatusFromLinkedTask: jest.fn().mockResolvedValue(undefined),
+    syncPlanSubTaskStatusFromTask: jest.fn().mockResolvedValue(undefined),
   };
 
   const service = new TaskStatusService(
@@ -160,9 +160,10 @@ describe('TaskStatusService', () => {
     expect(
       containerOrchestration.removeContainerForTask,
     ).not.toHaveBeenCalled();
-    expect(
-      goalsService.syncPlanSubTaskStatusFromLinkedTask,
-    ).toHaveBeenCalledWith('task-1', TaskStatus.inReview);
+    expect(goalsService.syncPlanSubTaskStatusFromTask).toHaveBeenCalledWith(
+      'task-1',
+      TaskStatus.inReview,
+    );
     expect(taskLogService.appendLog).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: 'task-1',
@@ -218,9 +219,10 @@ describe('TaskStatusService', () => {
       status: TaskStatus.done,
       finishedAt: expect.any(Date),
     });
-    expect(
-      goalsService.syncPlanSubTaskStatusFromLinkedTask,
-    ).toHaveBeenCalledWith('task-1', TaskStatus.done);
+    expect(goalsService.syncPlanSubTaskStatusFromTask).toHaveBeenCalledWith(
+      'task-1',
+      TaskStatus.done,
+    );
     expect(taskLogService.appendLog).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: 'task-1',

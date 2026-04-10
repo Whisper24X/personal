@@ -9,12 +9,15 @@ import path from 'path';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
+import { TaskNode } from '../domain/task-node';
+import { TaskStatus } from '../dto/task-status.enum';
 import {
+  TaskArtifactPreviewDto,
+  TaskArtifactTreeDto,
   TaskWorkspaceFileQueryDto,
-  TaskWorkspacePreviewDto,
-  TaskWorkspaceTreeDto,
   TaskWorkspaceTreeQueryDto,
 } from '../dto/task-workspace.dto';
+import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskAccessService } from './task-access.service';
 import { TaskRuntimeService } from '../task-runtime.service';
 
@@ -32,6 +35,30 @@ type GitBinaryExecutionResult = {
   exitCode: number | null;
 };
 
+type ArtifactSourceType =
+  | 'commit_range'
+  | 'workspace_unstaged_fallback'
+  | 'unavailable';
+
+type ArtifactSource = {
+  sourceType: ArtifactSourceType;
+  nodeId: string | null;
+  beforeCommitSha: string | null;
+  afterCommitSha: string | null;
+};
+
+type ArtifactFile = {
+  path: string;
+  status: string | null;
+  deleted: boolean;
+};
+
+type ResolvedArtifactContext = {
+  task: Task;
+  worktreePath: string;
+  source: ArtifactSource;
+};
+
 @Injectable()
 export class TaskWorkspaceArtifactService {
   private readonly defaultGitTimeoutMs = 90_000;
@@ -41,23 +68,30 @@ export class TaskWorkspaceArtifactService {
   constructor(
     private readonly taskAccessService: TaskAccessService,
     private readonly taskRuntimeService: TaskRuntimeService,
+    private readonly taskNodeRepository: TaskNodeRepository,
   ) {}
 
   async getArtifactTree(
     taskId: string,
     query: TaskWorkspaceTreeQueryDto,
     currentUser: JwtPayloadType,
-  ): Promise<TaskWorkspaceTreeDto> {
-    const { worktreePath } = await this.resolveTaskWorkspaceContext(
+  ): Promise<TaskArtifactTreeDto> {
+    const context = await this.resolveArtifactContext(
       taskId,
+      query.nodeId,
       currentUser,
     );
     const cwd = this.normalizeBrowserPath(query.path);
-    const changedFiles = await this.listArtifactFiles(worktreePath);
+    const files = await this.listArtifactFiles(context);
 
     return {
       cwd,
-      entries: this.buildArtifactEntries(changedFiles, cwd),
+      entries: this.buildArtifactEntries(
+        files.map((file) => file.path),
+        cwd,
+      ),
+      files: this.filterArtifactFilesByCwd(files, cwd),
+      artifactSource: context.source,
     };
   }
 
@@ -65,16 +99,14 @@ export class TaskWorkspaceArtifactService {
     taskId: string,
     query: TaskWorkspaceFileQueryDto,
     currentUser: JwtPayloadType,
-  ): Promise<TaskWorkspacePreviewDto> {
-    const { worktreePath } = await this.resolveTaskWorkspaceContext(
+  ): Promise<TaskArtifactPreviewDto> {
+    const context = await this.resolveArtifactContext(
       taskId,
+      query.nodeId,
       currentUser,
     );
     const relativePath = this.normalizeRelativePath(query.path);
-    const fileBuffer = await this.readArtifactBuffer(
-      worktreePath,
-      relativePath,
-    );
+    const fileBuffer = await this.readArtifactBuffer(context, relativePath);
 
     if (!fileBuffer) {
       throw new NotFoundException('Artifact not found');
@@ -89,6 +121,7 @@ export class TaskWorkspaceArtifactService {
         tooLarge: false,
         size: fileBuffer.length,
         mimeType,
+        artifactSource: context.source,
       };
     }
 
@@ -99,6 +132,7 @@ export class TaskWorkspaceArtifactService {
         tooLarge: false,
         size: fileBuffer.length,
         mimeType,
+        artifactSource: context.source,
       };
     }
 
@@ -109,6 +143,7 @@ export class TaskWorkspaceArtifactService {
         tooLarge: false,
         size: fileBuffer.length,
         mimeType,
+        artifactSource: context.source,
       };
     }
 
@@ -121,6 +156,7 @@ export class TaskWorkspaceArtifactService {
           size: fileBuffer.length,
           mimeType,
           dataUrl: null,
+          artifactSource: context.source,
         };
       }
 
@@ -131,6 +167,7 @@ export class TaskWorkspaceArtifactService {
         size: fileBuffer.length,
         mimeType,
         dataUrl: `data:${mimeType};base64,${fileBuffer.toString('base64')}`,
+        artifactSource: context.source,
       };
     }
 
@@ -141,6 +178,7 @@ export class TaskWorkspaceArtifactService {
         tooLarge: true,
         size: fileBuffer.length,
         mimeType,
+        artifactSource: context.source,
       };
     }
 
@@ -153,6 +191,7 @@ export class TaskWorkspaceArtifactService {
         tooLarge: false,
         size: fileBuffer.length,
         mimeType,
+        artifactSource: context.source,
       };
     }
 
@@ -163,6 +202,7 @@ export class TaskWorkspaceArtifactService {
       size: fileBuffer.length,
       mimeType,
       text: fileBuffer.toString('utf-8'),
+      artifactSource: context.source,
     };
   }
 
@@ -176,15 +216,13 @@ export class TaskWorkspaceArtifactService {
     size: number;
     content: Buffer;
   }> {
-    const { worktreePath } = await this.resolveTaskWorkspaceContext(
+    const context = await this.resolveArtifactContext(
       taskId,
+      query.nodeId,
       currentUser,
     );
     const relativePath = this.normalizeRelativePath(query.path);
-    const fileBuffer = await this.readArtifactBuffer(
-      worktreePath,
-      relativePath,
-    );
+    const fileBuffer = await this.readArtifactBuffer(context, relativePath);
 
     if (!fileBuffer) {
       throw new NotFoundException('Artifact not found');
@@ -198,24 +236,22 @@ export class TaskWorkspaceArtifactService {
     };
   }
 
-  async listArtifactFiles(worktreePath: string): Promise<string[]> {
-    const result = await this.runGitCommand(
-      worktreePath,
-      this.withGitUtf8Paths(['status', '--porcelain', '--untracked-files=all']),
-    );
-
-    if (!result.success) {
-      throw this.toGitException(
-        'Failed to read changed artifact files',
-        result,
-      );
+  async listArtifactFiles(
+    context: Pick<ResolvedArtifactContext, 'worktreePath' | 'source'>,
+  ): Promise<ArtifactFile[]> {
+    if (context.source.sourceType === 'commit_range') {
+      return this.listCommitRangeArtifactFiles({
+        worktreePath: context.worktreePath,
+        beforeCommitSha: context.source.beforeCommitSha,
+        afterCommitSha: context.source.afterCommitSha,
+      });
     }
 
-    const files = this.parseChangedFiles(result.stdout)
-      .map((file) => this.normalizeRelativePath(file.path))
-      .filter(Boolean);
+    if (context.source.sourceType === 'workspace_unstaged_fallback') {
+      return this.listWorkspaceArtifactFiles(context.worktreePath);
+    }
 
-    return Array.from(new Set(files));
+    return [];
   }
 
   private async resolveTaskWorkspaceContext(
@@ -231,6 +267,118 @@ export class TaskWorkspaceArtifactService {
     return {
       task,
       worktreePath: await this.resolveTaskWorkspacePath(task, project),
+    };
+  }
+
+  private async resolveArtifactContext(
+    taskId: string,
+    nodeId: string | undefined,
+    currentUser: JwtPayloadType,
+  ): Promise<ResolvedArtifactContext> {
+    const { task, worktreePath } = await this.resolveTaskWorkspaceContext(
+      taskId,
+      currentUser,
+    );
+    const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+    const targetNode = nodeId?.trim()
+      ? this.resolveTargetNodeById(nodes, task.id, nodeId)
+      : this.resolveDefaultArtifactNode(nodes);
+
+    return {
+      task,
+      worktreePath,
+      source: this.resolveArtifactSource({
+        task,
+        targetNode,
+      }),
+    };
+  }
+
+  private resolveTargetNodeById(
+    nodes: TaskNode[],
+    taskId: string,
+    nodeId: string,
+  ): TaskNode {
+    const targetNode = nodes.find((node) => node.id === nodeId) ?? null;
+
+    if (!targetNode || targetNode.taskId !== taskId) {
+      throw new NotFoundException('Task node not found');
+    }
+
+    return targetNode;
+  }
+
+  private resolveDefaultArtifactNode(nodes: TaskNode[]): TaskNode | null {
+    const sortedNodes = [...nodes].sort((left, right) => {
+      return left.nodeOrder - right.nodeOrder;
+    });
+
+    return (
+      this.findLastNodeByStatus(sortedNodes, TaskStatus.inProgress) ??
+      this.findLastNodeByStatus(sortedNodes, TaskStatus.inReview) ??
+      this.findLastNodeByStatus(sortedNodes, TaskStatus.todo) ??
+      this.findLastNodeByStatus(sortedNodes, TaskStatus.done) ??
+      null
+    );
+  }
+
+  private findLastNodeByStatus(
+    nodes: TaskNode[],
+    status: TaskStatus,
+  ): TaskNode | null {
+    for (let index = nodes.length - 1; index >= 0; index -= 1) {
+      if (nodes[index]?.status === status) {
+        return nodes[index] ?? null;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveArtifactSource({
+    task,
+    targetNode,
+  }: {
+    task: Task;
+    targetNode: TaskNode | null;
+  }): ArtifactSource {
+    const beforeCommitSha = targetNode?.beforeRunCommitSha?.trim() || null;
+    const afterCommitSha = targetNode?.afterRunCommitSha?.trim() || null;
+
+    if (beforeCommitSha && afterCommitSha) {
+      if (targetNode?.status === TaskStatus.done) {
+        return {
+          sourceType: 'commit_range',
+          nodeId: targetNode.id,
+          beforeCommitSha,
+          afterCommitSha,
+        };
+      }
+    }
+
+    if (!targetNode) {
+      return {
+        sourceType: 'workspace_unstaged_fallback',
+        nodeId: null,
+        beforeCommitSha: null,
+        afterCommitSha: null,
+      };
+    }
+
+    if (targetNode.status !== TaskStatus.done || task.mode === 'conversation') {
+      return {
+        sourceType: 'workspace_unstaged_fallback',
+        nodeId: targetNode.id,
+        beforeCommitSha,
+        afterCommitSha,
+      };
+    }
+
+    return {
+      sourceType: 'unavailable',
+      nodeId: targetNode.id,
+      beforeCommitSha,
+      afterCommitSha,
     };
   }
 
@@ -380,7 +528,7 @@ export class TaskWorkspaceArtifactService {
   private buildArtifactEntries(
     stagedFiles: string[],
     cwd: string,
-  ): TaskWorkspaceTreeDto['entries'] {
+  ): TaskArtifactTreeDto['entries'] {
     const entriesByPath = new Map<
       string,
       { name: string; path: string; isDir: boolean }
@@ -428,6 +576,102 @@ export class TaskWorkspaceArtifactService {
     });
   }
 
+  private filterArtifactFilesByCwd(
+    files: ArtifactFile[],
+    cwd: string,
+  ): ArtifactFile[] {
+    if (cwd === '.') {
+      return [...files];
+    }
+
+    const prefix = `${cwd}/`;
+    return files.filter((file) => {
+      return file.path === cwd || file.path.startsWith(prefix);
+    });
+  }
+
+  private async listWorkspaceArtifactFiles(
+    worktreePath: string,
+  ): Promise<ArtifactFile[]> {
+    const result = await this.runGitCommand(
+      worktreePath,
+      this.withGitUtf8Paths(['status', '--porcelain', '--untracked-files=all']),
+    );
+
+    if (!result.success) {
+      throw this.toGitException(
+        'Failed to read changed artifact files',
+        result,
+      );
+    }
+
+    const files = this.parseChangedFiles(result.stdout)
+      .map((file) => ({
+        path: this.normalizeRelativePath(file.path),
+        status: file.status,
+        deleted: file.status.includes('D'),
+      }))
+      .filter((file) => Boolean(file.path));
+
+    return this.deduplicateArtifactFiles(files);
+  }
+
+  private async listCommitRangeArtifactFiles({
+    worktreePath,
+    beforeCommitSha,
+    afterCommitSha,
+  }: {
+    worktreePath: string;
+    beforeCommitSha: string | null;
+    afterCommitSha: string | null;
+  }): Promise<ArtifactFile[]> {
+    if (!beforeCommitSha || !afterCommitSha) {
+      return [];
+    }
+
+    const result = await this.runGitCommand(
+      worktreePath,
+      this.withGitUtf8Paths([
+        'diff',
+        '--name-status',
+        beforeCommitSha,
+        afterCommitSha,
+      ]),
+    );
+
+    if (!result.success) {
+      throw this.toGitException(
+        'Failed to read commit-range artifact files',
+        result,
+      );
+    }
+
+    const files = this.parseDiffNameStatusFiles(result.stdout)
+      .map((file) => ({
+        path: this.normalizeRelativePath(file.path),
+        status: file.status,
+        deleted: file.status.startsWith('D'),
+      }))
+      .filter((file) => Boolean(file.path));
+
+    return this.deduplicateArtifactFiles(files);
+  }
+
+  private deduplicateArtifactFiles(files: ArtifactFile[]): ArtifactFile[] {
+    const filesByPath = new Map<string, ArtifactFile>();
+
+    for (const file of files) {
+      filesByPath.set(file.path, file);
+    }
+
+    return [...filesByPath.values()].sort((left, right) => {
+      return left.path.localeCompare(right.path, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    });
+  }
+
   private async readStagedArtifactBuffer(
     worktreePath: string,
     relativePath: string,
@@ -456,18 +700,63 @@ export class TaskWorkspaceArtifactService {
   }
 
   private async readArtifactBuffer(
-    worktreePath: string,
+    context: Pick<ResolvedArtifactContext, 'worktreePath' | 'source'>,
     relativePath: string,
   ): Promise<Buffer | null> {
-    const workspaceBuffer = await this.readWorkspaceArtifactBuffer(
-      worktreePath,
-      relativePath,
-    );
-    if (workspaceBuffer) {
-      return workspaceBuffer;
+    if (context.source.sourceType === 'commit_range') {
+      return this.readCommitArtifactBuffer(
+        context.worktreePath,
+        context.source.afterCommitSha,
+        relativePath,
+      );
     }
 
-    return this.readStagedArtifactBuffer(worktreePath, relativePath);
+    if (context.source.sourceType === 'workspace_unstaged_fallback') {
+      const workspaceBuffer = await this.readWorkspaceArtifactBuffer(
+        context.worktreePath,
+        relativePath,
+      );
+      if (workspaceBuffer) {
+        return workspaceBuffer;
+      }
+
+      return this.readStagedArtifactBuffer(context.worktreePath, relativePath);
+    }
+
+    return null;
+  }
+
+  private async readCommitArtifactBuffer(
+    worktreePath: string,
+    commitSha: string | null,
+    relativePath: string,
+  ): Promise<Buffer | null> {
+    if (!commitSha) {
+      return null;
+    }
+
+    const objectRef = `${commitSha}:${relativePath}`;
+    const existsResult = await this.runGitCommand(worktreePath, [
+      'cat-file',
+      '-e',
+      objectRef,
+    ]);
+    if (!existsResult.success) {
+      return null;
+    }
+
+    const contentResult = await this.runGitCommandBuffer(worktreePath, [
+      'show',
+      objectRef,
+    ]);
+    if (!contentResult.success) {
+      throw this.toGitException('Failed to read commit artifact content', {
+        ...contentResult,
+        stdout: contentResult.stdout.toString('utf-8'),
+      });
+    }
+
+    return contentResult.stdout;
   }
 
   private async readWorkspaceArtifactBuffer(
@@ -490,19 +779,41 @@ export class TaskWorkspaceArtifactService {
     return fs.readFile(fullPath);
   }
 
-  private parseChangedFiles(statusText: string): Array<{ path: string }> {
+  private parseChangedFiles(
+    statusText: string,
+  ): Array<{ path: string; status: string }> {
     return statusText
       .split('\n')
       .map((line) => line.trimEnd())
       .filter(Boolean)
       .map((line) => {
+        const status = line.slice(0, 2);
         const rawPath = line.slice(3).trim();
         const normalizedPath = rawPath.includes(' -> ')
           ? (rawPath.split(' -> ').pop() ?? rawPath)
           : rawPath;
 
         return {
+          status,
           path: this.decodeGitQuotedPath(normalizedPath),
+        };
+      });
+  }
+
+  private parseDiffNameStatusFiles(
+    diffText: string,
+  ): Array<{ path: string; status: string }> {
+    return diffText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [statusToken, ...pathParts] = line.split('\t');
+        const rawPath = pathParts[pathParts.length - 1] ?? '';
+
+        return {
+          path: this.decodeGitQuotedPath(rawPath),
+          status: statusToken || '?',
         };
       });
   }

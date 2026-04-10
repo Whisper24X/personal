@@ -166,6 +166,7 @@ const workflowCardRef = toRef(vm, 'workflowCardRef')
         :format-date="vm.formatDate"
         :artifact-file-path="vm.artifactFilePath"
         :artifact-open-nonce="vm.artifactOpenNonce"
+        :artifact-node-id="vm.selectedWorkflowNodeId"
       />
     </section>
 

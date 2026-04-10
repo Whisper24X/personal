@@ -45,7 +45,7 @@ describe('ContainerOrchestrationService', () => {
   ) => ({
     resolvePreviewConfig: jest.fn().mockReturnValue(previewConfig),
     buildProjectRunnerConfigFile: jest.fn().mockReturnValue(null),
-    buildAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+    buildManagedVolumeTargets: jest.fn().mockReturnValue([]),
   });
 
   beforeEach(() => {
@@ -219,7 +219,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
-      getRunnerAnonymousVolumeMounts: jest
+      getRunnerManagedVolumeTargets: jest
         .fn()
         .mockReturnValue(['/workspace/backend/node_modules']),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({
@@ -310,7 +310,7 @@ describe('ContainerOrchestrationService', () => {
         .fn()
         .mockReturnValue({ service: 'backend', path: '/' }),
       buildProjectRunnerConfigFile: jest.fn().mockReturnValue(runnerConfig),
-      buildAnonymousVolumeMounts: jest
+      buildManagedVolumeTargets: jest
         .fn()
         .mockReturnValue([
           '/workspace/logs',
@@ -366,7 +366,7 @@ describe('ContainerOrchestrationService', () => {
         networkMode: 'bridge',
         platform: 'linux/amd64',
         startTimeoutMs: 90000,
-        namedVolumeMounts: [
+        sharedVolumeMounts: [
           {
             name: 'ainative-go-mod-cache',
             target: '/go/pkg/mod',
@@ -376,9 +376,29 @@ describe('ContainerOrchestrationService', () => {
             target: '/root/.cache/go-build',
           },
         ],
-        anonymousVolumeMounts: [
-          '/workspace/logs',
-          '/workspace/backend/node_modules',
+        managedVolumeMounts: [
+          expect.objectContaining({
+            name: 'ainative-task-task-1-workspace-logs',
+            target: '/workspace/logs',
+            labels: expect.objectContaining({
+              'ainative.runner-managed': 'true',
+              'ainative.container-name': 'ainative-task-task-1',
+              'ainative.project-id': 'project-1',
+              'ainative.task-id': 'task-1',
+              'ainative.mount-target': '/workspace/logs',
+            }),
+          }),
+          expect.objectContaining({
+            name: 'ainative-task-task-1-workspace-backend-node_modules',
+            target: '/workspace/backend/node_modules',
+            labels: expect.objectContaining({
+              'ainative.runner-managed': 'true',
+              'ainative.container-name': 'ainative-task-task-1',
+              'ainative.project-id': 'project-1',
+              'ainative.task-id': 'task-1',
+              'ainative.mount-target': '/workspace/backend/node_modules',
+            }),
+          }),
         ],
         publishedPorts: [
           {
@@ -420,7 +440,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
-      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
@@ -513,7 +533,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
-      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
@@ -601,7 +621,7 @@ describe('ContainerOrchestrationService', () => {
         .mockReturnValue('https://preview.example.com/root/'),
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
-      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
@@ -684,7 +704,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
-      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
@@ -767,7 +787,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
-      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
@@ -853,7 +873,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
-      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
@@ -940,7 +960,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
       usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
-      getRunnerAnonymousVolumeMounts: jest.fn().mockReturnValue([]),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
       getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
       getRunnerEnv: jest.fn().mockReturnValue({}),
       getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),

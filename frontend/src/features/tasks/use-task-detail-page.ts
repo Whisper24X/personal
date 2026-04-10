@@ -1109,14 +1109,25 @@ const handleSelectWorkflowNode = (nodeId: string) => {
 }
 
 const resolveAutoSelectedWorkflowNodeId = (nodes: TaskNode[]) => {
-  const activeNode = nodes.find((node) => node.status === 'in_progress')
-  if (activeNode) {
-    return activeNode.id
+  const sortedByOrder = [...nodes].sort((left, right) => left.nodeOrder - right.nodeOrder)
+  const findLastNodeIdByStatus = (status: TaskNode['status']) => {
+    for (let index = sortedByOrder.length - 1; index >= 0; index -= 1) {
+      if (sortedByOrder[index]?.status === status) {
+        return sortedByOrder[index]?.id ?? null
+      }
+    }
+
+    return null
   }
 
-  const reviewNode = nodes.find((node) => node.status === 'in_review')
-  if (reviewNode) {
-    return reviewNode.id
+  const prioritizedNodeId =
+    findLastNodeIdByStatus('in_progress') ||
+    findLastNodeIdByStatus('in_review') ||
+    findLastNodeIdByStatus('todo') ||
+    findLastNodeIdByStatus('done')
+
+  if (prioritizedNodeId) {
+    return prioritizedNodeId
   }
 
   const selectedNodeStillExists = selectedWorkflowNodeId.value
@@ -1127,7 +1138,7 @@ const resolveAutoSelectedWorkflowNodeId = (nodes: TaskNode[]) => {
     return selectedWorkflowNodeId.value
   }
 
-  return nodes[0]?.id || null
+  return null
 }
 
 const syncWorkflowSelectionIfNeeded = async (force = false) => {
@@ -1322,7 +1333,8 @@ function startDrag(e: MouseEvent) {
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
 }
-  return reactive({
+
+return reactive({
     SSE_HEARTBEAT_TIMEOUT_MS,
     accessStore,
     actionLoading,
