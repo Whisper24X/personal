@@ -22,7 +22,7 @@ import type {
   UpdateProjectCustomRolePayload,
 } from '@/types/api/projects'
 import { apiHttp, buildUrl, postSseStream, type InfinityPaginationResponse, type SseCallbacks } from './http'
-import { STORAGE_KEYS } from '@/types/common/storage'
+import { STORAGE_KEYS } from '@shared/types/common/storage'
 
 export const projectsApi = {
   list(params?: { page?: number; limit?: number; businessLineId?: string; keyword?: string }) {

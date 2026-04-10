@@ -1,6 +1,6 @@
-import { http } from '@/utils/http'
-import { HttpError } from '@/utils/http/error'
-import { STORAGE_KEYS } from '@/types/common/storage'
+import { http } from '@api/shared'
+import { HttpError } from '@api/shared/error'
+import { STORAGE_KEYS } from '@shared/types/common/storage'
 
 const API_PREFIX = '/api/v1'
 
