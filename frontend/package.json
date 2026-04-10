@@ -17,7 +17,9 @@
     "lint:oxlint:check": "oxlint .",
     "lint:eslint": "eslint . --fix --cache",
     "lint:eslint:check": "eslint . --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli src/",
+    "deps:circular": "dpdm --no-warning --no-tree --tsconfig tsconfig.app.json \"src/**/*.ts\" \"src/**/*.vue\" --exit-code circular:0",
+    "deps:circular:strict": "dpdm --no-warning --no-tree --tsconfig tsconfig.app.json \"src/**/*.ts\" \"src/**/*.vue\" --exit-code circular:1"
   },
   "dependencies": {
     "@vueuse/core": "^14.2.1",
@@ -54,8 +56,11 @@
     "@vue/eslint-config-typescript": "^14.6.0",
     "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.8.1",
+    "dpdm": "^4.0.1",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-boundaries": "^6.0.2",
     "eslint-plugin-oxlint": "~1.42.0",
     "eslint-plugin-playwright": "^2.5.1",
     "eslint-plugin-vue": "~10.7.0",

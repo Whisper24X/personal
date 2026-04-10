@@ -6,9 +6,9 @@ import type {
   UpdateMePayload,
   UserInfo,
 } from '@/types/api/auth'
-import type { CurrentAccessResponse } from '@/types/common/access'
-import { STORAGE_KEYS } from '@/types/common/storage'
-import { storage } from '@/utils/storage'
+import type { CurrentAccessResponse } from '@shared/types/common/access'
+import { STORAGE_KEYS } from '@shared/types/common/storage'
+import { storage } from '@shared/utils/storage'
 import { apiHttp } from './http'
 
 export const authApi = {
