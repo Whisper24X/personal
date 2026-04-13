@@ -7,6 +7,7 @@ import type {
 export const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
   'Node execution started',
   'Agent node completed; pending approval',
+  'Agent node completed; pending artifact review',
   'Agent node completed successfully',
   'Task completed; worktree preserved',
   'Agent node execution failed',
@@ -17,6 +18,7 @@ export const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
 export const NODE_STATUS_CHANGE_LOG_MESSAGES = [
   'Node execution started',
   'Agent node completed; pending approval',
+  'Agent node completed; pending artifact review',
   'Agent node completed successfully',
   'Agent node execution failed',
   'Node approved and marked as done',

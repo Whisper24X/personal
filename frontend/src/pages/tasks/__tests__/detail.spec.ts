@@ -556,6 +556,105 @@ describe('TaskDetailView toasts', () => {
     vi.useRealTimers()
   })
 
+  it('refreshes detail when SSE reports pending artifact review', async () => {
+    vi.useFakeTimers()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes
+      .mockResolvedValueOnce({
+        task: {
+          id: 'task-1',
+          projectId: 'project-1',
+          mode: 'workflow',
+          title: 'Workflow task',
+          status: 'in_progress',
+          configJson: {
+            agentCliId: 'codex',
+          },
+          createdAt: '2026-02-27T10:00:00.000Z',
+          updatedAt: '2026-02-27T10:00:00.000Z',
+        },
+        nodes: [
+          {
+            id: 'node-1',
+            taskId: 'task-1',
+            nodeOrder: 1,
+            name: 'Artifact review node',
+            status: 'in_progress',
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        task: {
+          id: 'task-1',
+          projectId: 'project-1',
+          mode: 'workflow',
+          title: 'Workflow task',
+          status: 'in_review',
+          configJson: {
+            agentCliId: 'codex',
+          },
+          createdAt: '2026-02-27T10:00:00.000Z',
+          updatedAt: '2026-02-27T10:00:01.000Z',
+        },
+        nodes: [
+          {
+            id: 'node-1',
+            taskId: 'task-1',
+            nodeOrder: 1,
+            name: 'Artifact review node',
+            status: 'in_review',
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+          },
+        ],
+      })
+
+    openSseStream.mockImplementation(async (_url, _query, options) => {
+      options?.onEvent?.({
+        data: JSON.stringify({
+          id: 'log-1',
+          taskId: 'task-1',
+          taskNodeId: 'node-1',
+          level: 'info',
+          message: 'Agent node completed; pending artifact review',
+          payload: {
+            pendingArtifact: true,
+          },
+          createdAt: '2026-02-27T10:00:01.000Z',
+        }),
+      })
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(16)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    expect(tasksApi.detailWithNodes).toHaveBeenCalledTimes(2)
+    expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).exists()).toBe(true)
+
+    vi.useRealTimers()
+  })
+
   it('hides review card for conversation tasks even when task is in review', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
