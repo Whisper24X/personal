@@ -10,7 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
-import { TaskStatus } from '../../../../dto/task-status.enum';
+import { TaskNodeStatus } from '../../../../dto/task-node-status.enum';
 import { TaskEntity } from './task.entity';
 
 @Entity({
@@ -99,12 +99,12 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   @Index('IDX_task_nodes_status')
   @Column({
     type: 'enum',
-    enum: TaskStatus,
+    enum: TaskNodeStatus,
     enumName: 'task_node_status_enum',
-    default: TaskStatus.todo,
+    default: TaskNodeStatus.todo,
     comment: '节点状态',
   })
-  status: TaskStatus;
+  status: TaskNodeStatus;
 
   @Column({ type: 'timestamp', nullable: true, comment: '节点执行开始时间' })
   startedAt?: Date | null;

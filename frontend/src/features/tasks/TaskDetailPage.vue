@@ -79,7 +79,7 @@ const workflowCardRef = toRef(vm, 'workflowCardRef')
 
             <ReviewCard
               v-if="vm.showReviewCard"
-              :node="vm.currentReviewNode"
+              :node="vm.currentActionNode"
               :status-label-map="nodeStatusLabelMap"
               :can-manage-review="vm.canManageReview"
               @approve-node="vm.approveNode"
@@ -100,6 +100,7 @@ const workflowCardRef = toRef(vm, 'workflowCardRef')
               :action-loading="vm.actionLoading"
               :can-start-environment="vm.canStartEnvironment"
               :can-execute="vm.canExecute"
+              :can-retry-task="vm.canRetryTask"
               :can-complete-task="vm.canCompleteTask"
               :can-reset="vm.canResetSelectedWorkflowNode"
               :can-terminate="vm.canTerminateEnvironment"
@@ -107,6 +108,7 @@ const workflowCardRef = toRef(vm, 'workflowCardRef')
               :right-panel-visible="vm.isRightPanelVisible"
               @start-environment="vm.startEnvironment"
               @execute="vm.executeTask"
+              @retry="vm.retryTask"
               @complete-task="vm.completeTask"
               @reset="vm.resetSelectedWorkflowNode"
               @terminate="vm.terminateEnvironment"

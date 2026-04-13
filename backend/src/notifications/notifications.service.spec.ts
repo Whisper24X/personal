@@ -562,6 +562,70 @@ describe('NotificationsService', () => {
     );
   });
 
+  it('should send node failed notification with recovery wording', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest
+        .fn()
+        .mockResolvedValue(createSetting({ browserEnabled: true })),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn().mockResolvedValue(
+        createEvent({
+          eventType: 'task_node.failed',
+          title: '任务节点失败',
+          content:
+            '任务「我的重要任务」的节点「生成页面」执行失败，请重试或重置后继续。',
+          payload: {
+            status: 'failed',
+            nodeId: 'node-1',
+            nodeName: '生成页面',
+            nodeOrder: 2,
+          },
+        }),
+      ),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+      markAllReadByUserId: jest.fn(),
+      deleteReadByUserId: jest.fn(),
+      countUnreadByUserId: jest.fn(),
+    };
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
+    );
+
+    await service.notifyTaskNodeStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: '我的重要任务',
+      nodeId: 'node-1',
+      nodeName: '生成页面',
+      nodeOrder: 2,
+      status: 'failed',
+    });
+
+    expect(notificationEventRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'task_node.failed',
+        title: '任务节点失败',
+        content:
+          '任务「我的重要任务」的节点「生成页面」执行失败，请重试或重置后继续。',
+        payload: {
+          status: 'failed',
+          nodeId: 'node-1',
+          nodeName: '生成页面',
+          nodeOrder: 2,
+        },
+      }),
+    );
+  });
+
   it('should not create task notification when status is done', async () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn(),

@@ -6,6 +6,7 @@ import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskNodeExecutionService } from './task-node-execution.service';
@@ -49,7 +50,7 @@ const createTask = (overrides: Partial<Task> = {}): Task => ({
   ...overrides,
 });
 
-const createNode = (status: TaskStatus): TaskNode => ({
+const createNode = (status: TaskStatus | TaskNodeStatus): TaskNode => ({
   id: 'node-1',
   taskId: 'task-1',
   nodeOrder: 1,
@@ -69,13 +70,13 @@ const createNode = (status: TaskStatus): TaskNode => ({
     maxLoops: 1,
   },
   runtimeJson: null,
-  status,
+  status: status as TaskNodeStatus,
   startedAt:
-    status === TaskStatus.inProgress
+    status === TaskStatus.inProgress || status === TaskNodeStatus.inProgress
       ? new Date('2026-03-19T10:00:00.000Z')
       : new Date('2026-03-19T10:00:00.000Z'),
   finishedAt:
-    status === TaskStatus.inProgress
+    status === TaskStatus.inProgress || status === TaskNodeStatus.inProgress
       ? null
       : new Date('2026-03-19T10:05:00.000Z'),
   createdAt: new Date('2026-03-19T10:00:00.000Z'),
@@ -596,7 +597,7 @@ describe('TaskNodeExecutionService', () => {
     );
   });
 
-  it('should stop auto-advancing when completion auto-commit fails', async () => {
+  it('should mark node as failed when completion auto-commit fails', async () => {
     jest.useFakeTimers();
 
     const task = createTask();
@@ -703,7 +704,7 @@ describe('TaskNodeExecutionService', () => {
     expect(taskNodeRepository.update).toHaveBeenCalledWith(
       runningNode.id,
       expect.objectContaining({
-        status: TaskStatus.inReview,
+        status: TaskNodeStatus.failed,
         finishedAt: expect.any(Date),
         agentClioutput: '/tmp/node-1.jsonl',
         agentCliSessionId: null,
@@ -1182,7 +1183,7 @@ describe('TaskNodeExecutionService', () => {
     );
   });
 
-  it('should mark node as failure when marker status is 未找到', async () => {
+  it('should mark node as failed when marker status is 未找到', async () => {
     jest.useFakeTimers();
 
     const task = createTask();
@@ -1290,12 +1291,12 @@ describe('TaskNodeExecutionService', () => {
     expect(taskNodeRepository.update).toHaveBeenCalledWith(
       runningNode.id,
       expect.objectContaining({
-        status: TaskStatus.inReview,
+        status: TaskNodeStatus.failed,
       }),
     );
   });
 
-  it('should notify when node execution ends in in_review for workflow tasks', async () => {
+  it('should notify when node execution ends in failed for workflow tasks', async () => {
     jest.useFakeTimers();
 
     const task = createTask({
@@ -1417,7 +1418,7 @@ describe('TaskNodeExecutionService', () => {
       nodeId: 'node-1',
       nodeName: 'Agent node',
       nodeOrder: 1,
-      status: TaskStatus.inReview,
+      status: TaskNodeStatus.failed,
     });
   });
 
@@ -1547,7 +1548,7 @@ describe('TaskNodeExecutionService', () => {
     );
   });
 
-  it('should clear stale agent session id when runner requests session reset on failure', async () => {
+  it('should clear stale agent session id when runner requests session reset on node failure', async () => {
     jest.useFakeTimers();
 
     const task = createTask();
@@ -1648,7 +1649,7 @@ describe('TaskNodeExecutionService', () => {
     expect(taskNodeRepository.update).toHaveBeenCalledWith(
       runningNode.id,
       expect.objectContaining({
-        status: TaskStatus.inReview,
+        status: TaskNodeStatus.failed,
         agentCliSessionId: null,
       }),
     );

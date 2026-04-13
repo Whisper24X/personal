@@ -2061,6 +2061,122 @@ describe('TaskDetailView toasts', () => {
     })
   })
 
+  it('shows failed workflow node actions and retries the failed node', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const failedDetail: TaskDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        status: 'in_progress',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Completed node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          name: 'Failed node',
+          status: 'failed',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-2',
+        },
+        {
+          id: 'node-3',
+          taskId: 'task-1',
+          nodeOrder: 3,
+          name: 'Pending node',
+          status: 'todo',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-3',
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(failedDetail)
+    tasksApi.retry.mockResolvedValueOnce({
+      ...failedDetail,
+      task: {
+        ...failedDetail.task,
+        updatedAt: '2026-02-27T10:00:01.000Z',
+      },
+      nodes: failedDetail.nodes.map((node) =>
+        node.id === 'node-2'
+          ? {
+              ...node,
+              status: 'todo',
+            }
+          : { ...node },
+      ),
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('节点执行失败')
+    expect(wrapper.text()).toContain('请先重试或重置后再继续执行。')
+
+    const failedNodeButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Failed node'))
+    expect(failedNodeButton?.classes()).toContain('ring-2')
+
+    const replyTextarea = wrapper.get('textarea[aria-label="回复内容"]')
+    expect((replyTextarea.element as HTMLTextAreaElement).disabled).toBe(true)
+    expect(replyTextarea.attributes('placeholder')).toBe('节点执行失败，请先重试或重置...')
+
+    const buttonTexts = wrapper
+      .findAll('button')
+      .map((button) => button.text().trim())
+      .filter(Boolean)
+    expect(buttonTexts).toContain('重试')
+    expect(buttonTexts).not.toContain('开始')
+
+    const retryButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '重试')
+    expect(retryButton).toBeTruthy()
+    await retryButton?.trigger('click')
+    await flushPromises()
+
+    const messageStore = useMessageStore()
+    expect(messageStore.items[0]?.type).toBe('success')
+    expect(messageStore.items[0]?.text).toBe('失败节点已加入重试队列')
+    expect(tasksApi.retry).toHaveBeenCalledWith('task-1', {
+      nodeId: 'node-2',
+    })
+  })
+
   it('completes workflow task via complete API when in review and all nodes done', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

@@ -35,7 +35,16 @@ export const nodeStatusLabelMap: Record<TaskNode['status'], string> = {
   todo: '待执行',
   in_progress: '执行中',
   in_review: '待处理',
+  failed: '执行失败',
   done: '已完成',
+}
+
+export const nodeStatusClassMap: Record<TaskNode['status'], string> = {
+  todo: 'bg-muted text-muted-foreground',
+  in_progress: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  in_review: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  failed: 'bg-destructive/10 text-destructive',
+  done: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
 }
 
 export const modeLabelMap: Record<Task['mode'], string> = {

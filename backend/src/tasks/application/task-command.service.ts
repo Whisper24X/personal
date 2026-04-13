@@ -22,6 +22,7 @@ import { Task } from '../domain/task';
 import { CreateTaskDto } from '../dto/create-task.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
 import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { UpdateTaskDto } from '../dto/update-task.dto';
 import {
@@ -277,7 +278,7 @@ export class TaskCommandService {
         configJson: node.configJson,
         loopJson: node.loopJson,
         runtimeJson: null,
-        status: TaskStatus.todo,
+        status: TaskNodeStatus.todo,
         startedAt: null,
         finishedAt: null,
       })),
@@ -394,7 +395,7 @@ export class TaskCommandService {
       const nodes = await this.taskNodeRepository.findByTaskId(task.id);
       await Promise.all(
         nodes
-          .filter((node) => node.status !== TaskStatus.done)
+          .filter((node) => node.status !== TaskNodeStatus.done)
           .map((node) => {
             const nextNodeExecution =
               effectiveTask.mode === TaskMode.workflow
