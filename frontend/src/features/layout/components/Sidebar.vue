@@ -250,8 +250,8 @@ const isRecentTaskBlinking = (status: Task['status']) => {
                 class="block max-w-full rounded-md px-1.5 py-1.5 text-left transition"
                 :class="
                   isRecentTaskActive(task.id)
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
-                    : 'hover:bg-sidebar-accent/60'
+                    ? 'bg-primary/10 text-foreground dark:bg-primary/18'
+                    : 'hover:bg-primary/[0.06] dark:hover:bg-primary/12'
                 "
                 :aria-current="isRecentTaskActive(task.id) ? 'page' : undefined"
                 @click="setOpenMobile(false)"
@@ -271,20 +271,13 @@ const isRecentTaskBlinking = (status: Task['status']) => {
                       class="line-clamp-2 break-words text-[11px] leading-snug"
                       :class="
                         isRecentTaskActive(task.id)
-                          ? 'font-medium text-sidebar-accent-foreground'
+                          ? 'font-semibold text-foreground'
                           : 'font-medium text-sidebar-foreground'
                       "
                     >
                       {{ task.title }}
                     </p>
-                    <p
-                      class="mt-0.5 break-words text-[10px]"
-                      :class="
-                        isRecentTaskActive(task.id)
-                          ? 'text-sidebar-accent-foreground'
-                          : 'text-muted-foreground'
-                      "
-                    >
+                    <p class="mt-0.5 break-words text-[10px] text-muted-foreground">
                       {{ taskStatusLabel(task.status) }} · {{ formatTaskShortTime(task.updatedAt ?? task.createdAt) }}
                     </p>
                   </div>

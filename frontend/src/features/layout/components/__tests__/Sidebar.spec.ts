@@ -192,9 +192,8 @@ describe('Sidebar menu scope', () => {
       .find((link) => link.text().includes('修复回复按钮样式'))
 
     expect(activeLink?.attributes('aria-current')).toBe('page')
-    expect(activeLink?.attributes('class')).toContain('bg-sidebar-accent')
-    expect(activeLink?.attributes('class')).toContain('text-sidebar-accent-foreground')
-    expect(activeLink?.attributes('class')).toContain('shadow-sm')
+    expect(activeLink?.attributes('class')).toContain('bg-primary/10')
+    expect(activeLink?.attributes('class')).toContain('text-foreground')
   })
 
   it('renders status dots and only animates in-progress tasks', () => {

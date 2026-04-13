@@ -11,6 +11,8 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
+  /** 弹窗内表单首屏数据已就绪（与慢网速下的加载结束一致） */
+  (event: 'panelReady'): void
 }>()
 
 const dialogRef = ref<HTMLElement | null>(null)
@@ -86,7 +88,11 @@ onBeforeUnmount(() => {
           </svg>
         </button>
 
-        <TaskCreatePanel :project-id="props.projectId" @created="close" />
+        <TaskCreatePanel
+          :project-id="props.projectId"
+          @created="close"
+          @initial-ready="emit('panelReady')"
+        />
       </section>
     </div>
   </Teleport>

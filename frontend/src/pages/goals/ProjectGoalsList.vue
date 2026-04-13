@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { Loader2 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { goalsApi } from '@/api/goals'
 import { ConfirmActionModal } from '@features/business-lines'
@@ -38,6 +39,7 @@ const titleSearch = ref('')
 const deletingId = ref<string | null>(null)
 const deleteConfirmOpen = ref(false)
 const deletingGoalTarget = ref<Goal | null>(null)
+const navigatingToCreate = ref(false)
 
 const statusFilterOptions = computed<SelectOption[]>(() => [
   { label: '全部状态', value: '' },
@@ -76,8 +78,18 @@ function goDetail(g: Goal) {
   router.push({ name: 'goal-detail', params: { goalId: g.id } })
 }
 
-function goCreateGoal() {
-  router.push({ name: 'goal-create', query: { projectId: projectId.value } })
+async function goCreateGoal() {
+  if (navigatingToCreate.value) {
+    return
+  }
+  navigatingToCreate.value = true
+  try {
+    await router.push({ name: 'goal-create', query: { projectId: projectId.value } })
+  } catch {
+    /* 重复导航或路由中断 */
+  } finally {
+    navigatingToCreate.value = false
+  }
 }
 
 function onStatusFilterChange(v: string | number | boolean | null) {
@@ -156,8 +168,20 @@ async function confirmRemoveGoal() {
           trigger-class="w-auto max-w-full whitespace-nowrap rounded-md border border-border bg-background px-2.5 text-left text-sm"
           @update:model-value="onStatusFilterChange"
         />
-        <Button type="button" class="shrink-0 sm:ml-auto" @click="goCreateGoal">
-          新建需求
+        <Button
+          type="button"
+          class="inline-flex min-w-[7.5rem] shrink-0 sm:ml-auto shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-[0.98] motion-reduce:hover:translate-y-0 motion-reduce:active:scale-100"
+          :aria-busy="navigatingToCreate"
+          :aria-disabled="navigatingToCreate"
+          :class="navigatingToCreate && 'pointer-events-none cursor-wait'"
+          @click="goCreateGoal"
+        >
+          <Loader2
+            v-if="navigatingToCreate"
+            class="size-4 shrink-0 animate-spin [animation-duration:0.75s] motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+          {{ navigatingToCreate ? '打开中…' : '新建需求' }}
         </Button>
       </div>
 

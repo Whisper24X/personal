@@ -336,6 +336,10 @@ const loadPageData = async () => {
 }
 
 const submit = async () => {
+  if (submitting.value) {
+    return
+  }
+
   if (
     !hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) =>
       accessStore.hasCapability(capability),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { TaskEnvironmentStatus, TaskMode, TaskStatus } from '@/types/api/tasks'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@shared/ui/tooltip'
 
 defineOptions({
   name: 'TaskExecutionContextBar',
@@ -135,54 +136,69 @@ const environmentBadgeLabel = computed(() => {
           aria-hidden="true"
         />
 
-        <button
-          class="flex size-8 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          type="button"
-          aria-label="刷新"
-          @click="emit('refresh')"
-        >
-          <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-            <path
-              fill-rule="evenodd"
-              d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.364.363a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.112-.231Zm-1.624-8.3a.75.75 0 0 0-1.112-.231A5.5 5.5 0 0 0 3.576 5.36l.312.311H1.455a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V2.787a.75.75 0 0 0-1.5 0v2.033l-.364-.363A7 7 0 0 1 15.688 7.595a.75.75 0 0 0-2-4.471Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
-        <button
-          class="flex size-8 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          type="button"
-          :aria-label="props.rightPanelVisible ? '收起右侧面板' : '展开右侧面板'"
-          :title="props.rightPanelVisible ? '收起右侧面板' : '展开右侧面板'"
-          @click="emit('toggleRightPanel')"
-        >
-          <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-            <path
-              v-if="props.rightPanelVisible"
-              fill-rule="evenodd"
-              d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10zm0 5.25a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z"
-              clip-rule="evenodd"
-            />
-            <path
-              v-else
-              fill-rule="evenodd"
-              d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 5.25a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5A.75.75 0 012 10zm0 5.25a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              class="flex size-8 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              type="button"
+              aria-label="刷新对话区"
+              @click="emit('refresh')"
+            >
+              <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  fill-rule="evenodd"
+                  d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.364.363a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.112-.231Zm-1.624-8.3a.75.75 0 0 0-1.112-.231A5.5 5.5 0 0 0 3.576 5.36l.312.311H1.455a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V2.787a.75.75 0 0 0-1.5 0v2.033l-.364-.363A7 7 0 0 1 15.688 7.595a.75.75 0 0 0-2-4.471Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" :side-offset="0">刷新对话区</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              class="flex size-8 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              type="button"
+              :aria-label="props.rightPanelVisible ? '收起右侧面板' : '展开右侧面板'"
+              @click="emit('toggleRightPanel')"
+            >
+              <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  v-if="props.rightPanelVisible"
+                  fill-rule="evenodd"
+                  d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10zm0 5.25a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z"
+                  clip-rule="evenodd"
+                />
+                <path
+                  v-else
+                  fill-rule="evenodd"
+                  d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 5.25a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5A.75.75 0 012 10zm0 5.25a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" :side-offset="0">
+            {{ props.rightPanelVisible ? '收起右侧面板' : '展开右侧面板' }}
+          </TooltipContent>
+        </Tooltip>
         <div v-if="canShowMoreActions" ref="moreMenuRef" class="relative">
-          <button
-            class="flex size-8 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            type="button"
-            aria-label="更多操作"
-            title="更多操作"
-            @click="moreMenuOpen = !moreMenuOpen"
-          >
-            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M3 10a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM8.5 10a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM15.5 8.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
-            </svg>
-          </button>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <button
+                class="flex size-8 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                type="button"
+                aria-label="更多操作"
+                @click="moreMenuOpen = !moreMenuOpen"
+              >
+                <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M3 10a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM8.5 10a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM15.5 8.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
+                </svg>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" :side-offset="0">更多操作</TooltipContent>
+          </Tooltip>
 
           <Transition
             enter-active-class="transition duration-100 ease-out"
