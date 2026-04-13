@@ -10,11 +10,17 @@ import {
 import { Project } from './domain/project';
 import { ProjectDocsService } from './project-docs.service';
 import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
+import {
+  createNdjsonAssistantTextDeltaStream,
+  extractDisplayableAnswerFromAgentStdout,
+} from '../utils/stream-json-assistant-text';
 
 @Injectable()
 export class ProjectKnowledgeService {
   private readonly maxQueryContextChars = 24_000;
   private readonly maxQueryDocSnippetChars = 1_600;
+  /** Full document read for revise_current_doc mode (characters). */
+  private readonly maxReviseDocChars = 256 * 1024;
 
   constructor(
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
@@ -47,6 +53,21 @@ export class ProjectKnowledgeService {
     }
 
     const normalizedQuestion = payload.question.trim();
+    const mode = payload.mode ?? 'qa';
+
+    if (mode === 'revise_current_doc') {
+      return this.queryDocsReviseCurrent({
+        projectId,
+        docsRoot,
+        project,
+        repositoryRoot,
+        instruction: normalizedQuestion,
+        currentPath: payload.currentPath,
+        currentUser,
+        startAt,
+      });
+    }
+
     const maxContextDocs = Math.max(
       1,
       Math.min(payload.maxContextDocs ?? 6, 20),
@@ -86,7 +107,7 @@ export class ProjectKnowledgeService {
 
     const answer =
       agentResult.success && agentResult.stdout.trim()
-        ? agentResult.stdout.trim()
+        ? extractDisplayableAnswerFromAgentStdout(agentResult.stdout)
         : this.buildFallbackAnswer(citations, agentResult.stderr);
 
     return {
@@ -124,6 +145,23 @@ export class ProjectKnowledgeService {
     }
 
     const normalizedQuestion = payload.question.trim();
+    const mode = payload.mode ?? 'qa';
+
+    if (mode === 'revise_current_doc') {
+      await this.streamDocsQueryReviseCurrent({
+        projectId,
+        docsRoot,
+        project,
+        repositoryRoot,
+        instruction: normalizedQuestion,
+        currentPath: payload.currentPath,
+        currentUser,
+        startAt,
+        emit,
+      });
+      return;
+    }
+
     const maxContextDocs = Math.max(
       1,
       Math.min(payload.maxContextDocs ?? 6, 20),
@@ -156,6 +194,7 @@ export class ProjectKnowledgeService {
       question: normalizedQuestion,
       docs: candidateDocs,
     });
+    const deltaStream = createNdjsonAssistantTextDeltaStream();
     const agentResult = await this.executeKnowledgeAgent({
       project,
       repositoryRoot,
@@ -164,9 +203,16 @@ export class ProjectKnowledgeService {
         if (!chunk.trim()) {
           return;
         }
-        emit('chunk', { delta: chunk });
+        const delta = deltaStream.push(chunk);
+        if (delta) {
+          emit('chunk', { delta });
+        }
       },
     });
+    const tail = deltaStream.flush();
+    if (tail) {
+      emit('chunk', { delta: tail });
+    }
 
     if (!agentResult.success && !agentResult.stdout.trim()) {
       emit('chunk', {
@@ -179,6 +225,231 @@ export class ProjectKnowledgeService {
       durationMs: Date.now() - startAt,
       traceId: `docs-query-${projectId}-${Date.now()}`,
     });
+  }
+
+  private async queryDocsReviseCurrent({
+    projectId,
+    docsRoot,
+    project,
+    repositoryRoot,
+    instruction,
+    currentPath,
+    currentUser,
+    startAt,
+  }: {
+    projectId: Project['id'];
+    docsRoot: string;
+    project: Project;
+    repositoryRoot: string;
+    instruction: string;
+    currentPath?: string;
+    currentUser: JwtPayloadType;
+    startAt: number;
+  }): Promise<QueryProjectDocsResponseDto> {
+    const trimmedPath = currentPath?.trim();
+    if (!trimmedPath) {
+      return {
+        answer: '修订模式需要指定 currentPath（当前文档路径）。',
+        citations: [],
+        durationMs: Date.now() - startAt,
+      };
+    }
+
+    const loaded = await this.loadFullCurrentDocForRevision({
+      projectId,
+      docsRoot,
+      currentPath: trimmedPath,
+      currentUser,
+    });
+
+    if (!loaded.ok) {
+      return {
+        answer: loaded.message,
+        citations: [],
+        durationMs: Date.now() - startAt,
+      };
+    }
+
+    const citations = [
+      {
+        path: loaded.path,
+        snippet: this.buildCitationSnippet(loaded.content),
+      },
+    ];
+    const prompt = this.buildReviseCurrentDocPrompt({
+      instruction,
+      docPath: loaded.path,
+      markdownContent: loaded.content,
+    });
+    const agentResult = await this.executeKnowledgeAgent({
+      project,
+      repositoryRoot,
+      prompt,
+      onChunk: undefined,
+    });
+
+    const answer =
+      agentResult.success && agentResult.stdout.trim()
+        ? extractDisplayableAnswerFromAgentStdout(agentResult.stdout)
+        : this.buildFallbackAnswer(citations, agentResult.stderr);
+
+    return {
+      answer,
+      citations,
+      durationMs: Date.now() - startAt,
+      traceId: `docs-query-${projectId}-${Date.now()}`,
+    };
+  }
+
+  private async streamDocsQueryReviseCurrent({
+    projectId,
+    docsRoot,
+    project,
+    repositoryRoot,
+    instruction,
+    currentPath,
+    currentUser,
+    startAt,
+    emit,
+  }: {
+    projectId: Project['id'];
+    docsRoot: string;
+    project: Project;
+    repositoryRoot: string;
+    instruction: string;
+    currentPath?: string;
+    currentUser: JwtPayloadType;
+    startAt: number;
+    emit: (event: string, data: unknown) => void;
+  }): Promise<void> {
+    const trimmedPath = currentPath?.trim();
+    if (!trimmedPath) {
+      emit('error', {
+        message: '修订模式需要指定 currentPath（当前文档路径）。',
+      });
+      emit('done', { durationMs: Date.now() - startAt });
+      return;
+    }
+
+    const loaded = await this.loadFullCurrentDocForRevision({
+      projectId,
+      docsRoot,
+      currentPath: trimmedPath,
+      currentUser,
+    });
+
+    if (!loaded.ok) {
+      emit('error', { message: loaded.message });
+      emit('done', { durationMs: Date.now() - startAt });
+      return;
+    }
+
+    const citations = [
+      {
+        path: loaded.path,
+        snippet: this.buildCitationSnippet(loaded.content),
+      },
+    ];
+    const prompt = this.buildReviseCurrentDocPrompt({
+      instruction,
+      docPath: loaded.path,
+      markdownContent: loaded.content,
+    });
+    const deltaStream = createNdjsonAssistantTextDeltaStream();
+    const agentResult = await this.executeKnowledgeAgent({
+      project,
+      repositoryRoot,
+      prompt,
+      onChunk: (chunk) => {
+        if (!chunk.trim()) {
+          return;
+        }
+        const delta = deltaStream.push(chunk);
+        if (delta) {
+          emit('chunk', { delta });
+        }
+      },
+    });
+    const tail = deltaStream.flush();
+    if (tail) {
+      emit('chunk', { delta: tail });
+    }
+
+    if (!agentResult.success && !agentResult.stdout.trim()) {
+      emit('chunk', {
+        delta: this.buildFallbackAnswer(citations, agentResult.stderr),
+      });
+    }
+
+    emit('citations', { citations });
+    emit('done', {
+      durationMs: Date.now() - startAt,
+      traceId: `docs-query-${projectId}-${Date.now()}`,
+    });
+  }
+
+  private async loadFullCurrentDocForRevision({
+    projectId,
+    docsRoot,
+    currentPath,
+    currentUser,
+  }: {
+    projectId: string;
+    docsRoot: string;
+    currentPath: string;
+    currentUser: JwtPayloadType;
+  }): Promise<
+    { ok: true; path: string; content: string } | { ok: false; message: string }
+  > {
+    const normalizedPath =
+      this.projectDocsService.normalizeProjectDocPath(currentPath);
+    const docs = await this.projectDocsService.listDocs(projectId, currentUser);
+    if (!docs.some((doc) => doc.path === normalizedPath)) {
+      return { ok: false, message: '未找到指定路径的文档。' };
+    }
+
+    const absolutePath = this.projectDocsService.resolveProjectDocAbsolutePath(
+      docsRoot,
+      normalizedPath,
+    );
+    const rawContent = await fs.readFile(absolutePath, 'utf-8').catch(() => '');
+    if (!rawContent.trim()) {
+      return { ok: false, message: '文档为空，无法修订。' };
+    }
+    if (rawContent.length > this.maxReviseDocChars) {
+      return {
+        ok: false,
+        message: `文档过长（超过 ${this.maxReviseDocChars} 字符），请缩短后重试或分段修改。`,
+      };
+    }
+
+    return { ok: true, path: normalizedPath, content: rawContent };
+  }
+
+  private buildReviseCurrentDocPrompt({
+    instruction,
+    docPath,
+    markdownContent,
+  }: {
+    instruction: string;
+    docPath: string;
+    markdownContent: string;
+  }): string {
+    return [
+      '你是技术文档编辑。用户会给出对当前 Markdown 文档的修改意图。',
+      '请根据「用户指令」输出修订后的完整 Markdown 正文。',
+      '输出规则：',
+      '- 优先只输出文档正文，不要用 Markdown 代码围栏（```）包裹全文。',
+      '- 避免在正文前写长篇开场白；如必须说明，可简短写在正文末尾单独一行或小节。',
+      '',
+      `文档路径：${docPath}`,
+      '',
+      '--- 当前文档开始 ---',
+      markdownContent,
+      '--- 当前文档结束 ---',
+      '',
+      `用户指令：${instruction}`,
+    ].join('\n');
   }
 
   async executeProjectAgentPrompt(

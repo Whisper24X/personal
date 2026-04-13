@@ -4,6 +4,7 @@ import type {
   GoalPlanItem,
   GoalPlanSubTask,
   GoalSourceDoc,
+  PlanGranularity,
 } from '@/types/api/goals'
 import type { Task } from '@/types/api/tasks'
 import { apiHttp, type InfinityPaginationResponse } from './http'
@@ -97,7 +98,7 @@ export const goalsApi = {
   generatePlan(
     goalId: string,
     payload?: {
-      granularity?: string
+      granularity?: PlanGranularity
       overwrite?: boolean
       agentCliId?: string
       agentCliConfigId?: string

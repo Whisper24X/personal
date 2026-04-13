@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { goalStatusLabel } from '@shared/constants/goal-status-labels'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@shared/ui/sheet'
 import GoalPlanDependenciesDialog from '@features/goals/components/detail/GoalPlanDependenciesDialog.vue'
-import type { GoalDetail } from '@/types/api/goals'
+import type { GoalDetail, PlanGranularity } from '@/types/api/goals'
 
 /** 需求详情头部标题展示上限（字），与摘要分开可调 */
 const GOAL_DETAIL_TITLE_MAX_CHARS = 50
@@ -38,6 +46,12 @@ const props = defineProps<{
   planDepsMarkdown: string
 }>()
 
+const emit = defineEmits<{
+  back: []
+  generatePrd: []
+  generatePlan: [granularity: PlanGranularity]
+}>()
+
 const planDependenciesDialogOpen = ref(false)
 
 const titlePresentation = computed(() => {
@@ -55,11 +69,51 @@ const summaryPresentation = computed(() => {
   return { display, truncated, full: raw, hasContent: true as const }
 })
 
-const emit = defineEmits<{
-  back: []
-  generatePrd: []
-  generatePlan: []
-}>()
+/** 与后端 goal-plan-prompt granularityHint 语义对齐 */
+const PLAN_GRANULARITY_OPTIONS: {
+  value: PlanGranularity
+  title: string
+  hint: string
+}[] = [
+  {
+    value: 'coarse',
+    title: '粗',
+    hint: '粗粒度：顶层功能组数量与子任务总数尽量接近，倾向每组约一条子任务，整体划分更粗。',
+  },
+  {
+    value: 'conservative',
+    title: '保守',
+    hint: '拆解偏保守：顶层功能组较少，每组内子任务可略多以覆盖较大范围。',
+  },
+  {
+    value: 'standard',
+    title: '标准',
+    hint: '标准粒度：功能组数量与子任务密度平衡。',
+  },
+  {
+    value: 'fine',
+    title: '较细',
+    hint: '拆解偏细：顶层功能组偏多或每组内子任务更细（实现步骤更碎）。',
+  },
+]
+
+const planGenerateSheetOpen = ref(false)
+const selectedPlanGranularity = ref<PlanGranularity>('standard')
+
+watch(planGenerateSheetOpen, (open) => {
+  if (open) {
+    selectedPlanGranularity.value = 'standard'
+  }
+})
+
+function openPlanGenerateSheet() {
+  planGenerateSheetOpen.value = true
+}
+
+function confirmGeneratePlan() {
+  emit('generatePlan', selectedPlanGranularity.value)
+  planGenerateSheetOpen.value = false
+}
 </script>
 
 <template>
@@ -150,7 +204,7 @@ const emit = defineEmits<{
             variant="outline"
             size="default"
             :disabled="props.generatingPrd || props.generatingPlan"
-            @click="emit('generatePlan')"
+            @click="openPlanGenerateSheet"
           >
             {{ props.generatingPlan ? '任务计划生成中…' : '生成任务计划' }}
           </Button>
@@ -175,4 +229,58 @@ const emit = defineEmits<{
       </div>
     </div>
   </Card>
+
+  <Sheet :open="planGenerateSheetOpen" @update:open="planGenerateSheetOpen = $event">
+    <SheetContent side="right" class="flex w-full flex-col gap-0 sm:max-w-md">
+      <SheetHeader class="text-left">
+        <SheetTitle class="pr-8 text-base">生成任务计划</SheetTitle>
+        <SheetDescription>请选择拆解粒度，将影响功能组与子任务的划分疏密。</SheetDescription>
+      </SheetHeader>
+
+      <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-2">
+        <fieldset class="space-y-2">
+          <legend class="sr-only">拆解粒度</legend>
+          <label
+            v-for="opt in PLAN_GRANULARITY_OPTIONS"
+            :key="opt.value"
+            class="border-border hover:bg-muted/40 flex cursor-pointer gap-3 rounded-md border p-3 transition-colors"
+            :class="
+              selectedPlanGranularity === opt.value ? 'border-primary bg-muted/30' : ''
+            "
+          >
+            <input
+              v-model="selectedPlanGranularity"
+              type="radio"
+              class="text-primary mt-1 size-4 shrink-0"
+              :value="opt.value"
+            />
+            <span class="min-w-0">
+              <span class="font-medium">{{ opt.title }}</span>
+              <span class="text-muted-foreground mt-0.5 block text-xs leading-snug">{{
+                opt.hint
+              }}</span>
+            </span>
+          </label>
+        </fieldset>
+      </div>
+
+      <SheetFooter class="gap-2 sm:flex-row sm:justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          :disabled="props.generatingPlan"
+          @click="planGenerateSheetOpen = false"
+        >
+          取消
+        </Button>
+        <Button
+          type="button"
+          :disabled="props.generatingPrd || props.generatingPlan"
+          @click="confirmGeneratePlan"
+        >
+          开始生成
+        </Button>
+      </SheetFooter>
+    </SheetContent>
+  </Sheet>
 </template>

@@ -136,6 +136,19 @@ export class QueryProjectDocsDto {
   @Min(1)
   @Max(20)
   maxContextDocs?: number;
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    enum: ['qa', 'revise_current_doc'],
+    default: 'qa',
+    description:
+      'qa: snippet-based knowledge Q&A; revise_current_doc: full current file + revision prompt (requires currentPath)',
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['qa', 'revise_current_doc'])
+  mode?: 'qa' | 'revise_current_doc';
 }
 
 export class ProjectDocCitationDto {

@@ -16,6 +16,7 @@ describe('GoalsService.remove', () => {
       findById: jest.fn(),
       softRemove: jest.fn(),
       deleteSourceDocsAndPlanItemsByGoalId: jest.fn(),
+      listPlanItems: jest.fn().mockResolvedValue([]),
     };
     const projectsService = {
       assertProjectCapability: jest.fn(),
@@ -26,7 +27,7 @@ describe('GoalsService.remove', () => {
     const taskRepository = {
       findByGoalId: jest.fn(),
     };
-    const tasksService = {
+    const taskProvisioningService = {
       remove: jest.fn(),
     };
     const goalsMetrics = {} as GoalsMetricsService;
@@ -41,7 +42,7 @@ describe('GoalsService.remove', () => {
       {} as never,
       gitService as never,
       taskRepository as never,
-      tasksService as never,
+      taskProvisioningService as never,
       {} as never,
       goalsMetrics,
     );
@@ -52,18 +53,18 @@ describe('GoalsService.remove', () => {
       projectsService,
       projectDocsService,
       taskRepository,
-      tasksService,
+      taskProvisioningService,
       gitService,
     };
   };
 
-  it('should delete tasks, goal docs subtree, child rows, then soft-remove goal', async () => {
+  it('should delete plan rows before tasks, then docs subtree, then soft-remove goal', async () => {
     const {
       service,
       goalRepository,
       projectDocsService,
       taskRepository,
-      tasksService,
+      taskProvisioningService,
       gitService,
     } = createService();
 
@@ -89,16 +90,60 @@ describe('GoalsService.remove', () => {
       { id: 'task-a' },
       { id: 'task-b' },
     ] as never);
+    goalRepository.listPlanItems.mockResolvedValue([
+      {
+        id: 'item-1',
+        goalId: 'goal-1',
+        title: 'Group',
+        summary: null,
+        acceptanceCriteria: null,
+        suggestedPrompt: null,
+        dependsOnItemIds: [],
+        itemOrder: 0,
+        gitBranch: 'feature/plan-group-a',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as never);
 
     const user = createJwt();
     await service.remove('goal-1', user);
 
-    expect(tasksService.remove).toHaveBeenCalledTimes(2);
-    expect(tasksService.remove).toHaveBeenNthCalledWith(1, 'task-a', user);
-    expect(tasksService.remove).toHaveBeenNthCalledWith(2, 'task-b', user);
+    expect(
+      goalRepository.listPlanItems.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      goalRepository.deleteSourceDocsAndPlanItemsByGoalId.mock
+        .invocationCallOrder[0],
+    );
+    expect(
+      goalRepository.deleteSourceDocsAndPlanItemsByGoalId.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(taskProvisioningService.remove.mock.invocationCallOrder[0]);
+    expect(
+      goalRepository.deleteSourceDocsAndPlanItemsByGoalId,
+    ).toHaveBeenCalledWith('goal-1');
+    expect(taskProvisioningService.remove).toHaveBeenCalledTimes(2);
+    expect(taskProvisioningService.remove).toHaveBeenNthCalledWith(
+      1,
+      'task-a',
+      user,
+      { skipPlanConsistencyCheck: true },
+    );
+    expect(taskProvisioningService.remove).toHaveBeenNthCalledWith(
+      2,
+      'task-b',
+      user,
+      { skipPlanConsistencyCheck: true },
+    );
+    expect(gitService.deleteLocalBranch).toHaveBeenCalledTimes(2);
     expect(gitService.deleteLocalBranch).toHaveBeenCalledWith(
       'project-1',
       'feature/goal-x',
+      user,
+    );
+    expect(gitService.deleteLocalBranch).toHaveBeenCalledWith(
+      'project-1',
+      'feature/plan-group-a',
       user,
     );
     expect(projectDocsService.removeGoalDocsSubtree).toHaveBeenCalledWith(
@@ -106,9 +151,6 @@ describe('GoalsService.remove', () => {
       'goal-1',
       user,
     );
-    expect(
-      goalRepository.deleteSourceDocsAndPlanItemsByGoalId,
-    ).toHaveBeenCalledWith('goal-1');
     expect(goalRepository.softRemove).toHaveBeenCalledWith('goal-1');
   });
 
@@ -118,7 +160,7 @@ describe('GoalsService.remove', () => {
       goalRepository,
       projectDocsService,
       taskRepository,
-      tasksService,
+      taskProvisioningService,
       gitService,
     } = createService();
 
@@ -145,7 +187,10 @@ describe('GoalsService.remove', () => {
     const user = createJwt();
     await service.remove('goal-2', user);
 
-    expect(tasksService.remove).not.toHaveBeenCalled();
+    expect(
+      goalRepository.deleteSourceDocsAndPlanItemsByGoalId,
+    ).toHaveBeenCalledWith('goal-2');
+    expect(taskProvisioningService.remove).not.toHaveBeenCalled();
     expect(gitService.deleteLocalBranch).toHaveBeenCalledWith(
       'project-2',
       'feature/goal-y',
