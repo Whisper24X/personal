@@ -131,6 +131,12 @@ RUN npm config set registry https://registry.npmmirror.com \
 # AI Coding CLI 工具
 # ============================================================
 
+# openspec 规范驱动开发
+RUN npm install -g @fission-ai/openspec@latest
+
+# playwright 用于前端测试
+RUN npm i -g playwright
+
 # Claude Code / Codex / Gemini CLI（npm 全局安装）
 RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest
 
