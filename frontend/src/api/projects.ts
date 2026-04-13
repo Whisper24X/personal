@@ -21,7 +21,14 @@ import type {
   CreateProjectCustomRolePayload,
   UpdateProjectCustomRolePayload,
 } from '@/types/api/projects'
-import { apiHttp, buildUrl, postSseStream, type InfinityPaginationResponse, type SseCallbacks } from './http'
+import {
+  apiHttp,
+  buildUrl,
+  openSseStream,
+  postSseStream,
+  type InfinityPaginationResponse,
+  type SseCallbacks,
+} from './http'
 import { STORAGE_KEYS } from '@shared/types/common/storage'
 
 export const projectsApi = {
@@ -143,6 +150,29 @@ export const projectsApi = {
 
   queryDocs(projectId: string, payload: QueryProjectDocsPayload) {
     return apiHttp.post<QueryProjectDocsResponse>(`/projects/${projectId}/docs/query`, payload)
+  },
+
+  /**
+   * SSE: chunk / citations / error / done. Use `post` for long instructions or revise_current_doc.
+   */
+  queryDocsStream(
+    projectId: string,
+    payload: QueryProjectDocsPayload,
+    callbacks: SseCallbacks,
+    method: 'get' | 'post' = 'get',
+  ) {
+    const path = `/projects/${projectId}/docs/query/stream`
+    const body = {
+      question: payload.question,
+      scope: payload.scope,
+      currentPath: payload.currentPath,
+      maxContextDocs: payload.maxContextDocs,
+      mode: payload.mode,
+    }
+    if (method === 'post') {
+      return postSseStream(path, body, callbacks)
+    }
+    return openSseStream(path, body, callbacks)
   },
 
   getDeployInfo(projectId: string, taskId: string) {

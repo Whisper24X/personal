@@ -40,11 +40,15 @@ export type ProjectDocsPreview = {
 
 export type ProjectDocQueryScope = 'project' | 'current_doc'
 
+export type ProjectDocQueryMode = 'qa' | 'revise_current_doc'
+
 export type QueryProjectDocsPayload = {
   question: string
   scope?: ProjectDocQueryScope
   currentPath?: string
   maxContextDocs?: number
+  /** Default qa: snippet RAG Q&A; revise_current_doc: full file at currentPath + revision instruction */
+  mode?: ProjectDocQueryMode
 }
 
 export type ProjectDocCitation = {

@@ -10,6 +10,9 @@ export type GoalStatus =
   | 'done'
   | 'archived'
 
+/** 与后端 PlanGranularity 一致：任务计划 AI 拆解粒度 */
+export type PlanGranularity = 'coarse' | 'conservative' | 'standard' | 'fine'
+
 export type Goal = {
   id: string
   projectId: string

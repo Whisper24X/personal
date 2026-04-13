@@ -44,6 +44,11 @@ import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
 import { GoalRepository } from '../../goals/infrastructure/persistence/goal.repository';
 
+/** 仅用于整需求删除等内部编排；默认仍做计划一致性校验 */
+export type RemoveTaskOptions = {
+  skipPlanConsistencyCheck?: boolean;
+};
+
 @Injectable()
 export class TaskCommandService {
   private readonly logger = new Logger(TaskCommandService.name);
@@ -439,7 +444,11 @@ export class TaskCommandService {
     return this.taskQueryService.detailById(task.id, currentUser);
   }
 
-  async remove(taskId: Task['id'], currentUser: JwtPayloadType): Promise<void> {
+  async remove(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+    options?: RemoveTaskOptions,
+  ): Promise<void> {
     const task = await this.taskAccessService.getTaskOrThrow(
       taskId,
       currentUser,
@@ -447,10 +456,11 @@ export class TaskCommandService {
     );
 
     if (
-      await this.goalRepository.shouldBlockTaskDeletionForPlan(
+      !options?.skipPlanConsistencyCheck &&
+      (await this.goalRepository.shouldBlockTaskDeletionForPlan(
         task.id,
         task.status,
-      )
+      ))
     ) {
       throw new BadRequestException(
         '该任务与需求任务计划关联：若有后置子任务尚未物化，或本任务为无后置依赖项且尚未完成，删除会导致计划数据不一致或影响其他功能组。请先完成相关子任务创建或待本任务完成后再删除。',

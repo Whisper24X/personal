@@ -35,7 +35,9 @@ const emit = defineEmits<{
       <Loader2 class="text-muted-foreground size-9 shrink-0 animate-spin" aria-hidden="true" />
       <div class="text-center">
         <p class="text-foreground text-sm font-medium">正在生成 PRD…</p>
-        <p class="text-muted-foreground mt-1 max-w-sm text-xs">预计需要数十秒，请勿关闭或刷新页面</p>
+        <p class="text-muted-foreground mt-1 max-w-sm text-xs">
+          预计需要数十秒；刷新页面不会中断后台生成，本页会自动检测生成结果
+        </p>
       </div>
     </div>
     <p v-else-if="!props.prdDocPath" class="text-muted-foreground text-sm">尚未生成 PRD</p>

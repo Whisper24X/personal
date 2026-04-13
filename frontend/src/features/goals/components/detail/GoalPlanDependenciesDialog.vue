@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { DialogContentEmits, DialogRootEmits, DialogRootProps } from 'reka-ui'
 import type { HTMLAttributes } from 'vue'
-import { reactiveOmit } from '@vueuse/core'
-import { X } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { reactiveOmit, useResizeObserver } from '@vueuse/core'
+import { RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-vue-next'
 import {
   DialogClose,
   DialogContent,
@@ -14,6 +15,7 @@ import {
 } from 'reka-ui'
 import { MarkdownPreview } from '@features/knowledge-base'
 import { cn } from '@shared/lib/utils'
+import { Button } from '@shared/ui/button'
 
 interface GoalPlanDependenciesDialogProps extends DialogRootProps {
   contentClass?: HTMLAttributes['class']
@@ -32,6 +34,121 @@ const emit = defineEmits<DialogRootEmits & DialogContentEmits>()
 
 const rootProps = reactiveOmit(props, 'contentClass', 'planDepsHasCycle', 'planDepsGraphKey', 'planDepsMarkdown')
 const forwarded = useForwardPropsEmits(rootProps, emit)
+
+const ZOOM_MIN = 1
+const ZOOM_MAX = 3
+const ZOOM_STEP = 1.1
+
+const graphZoom = ref(1)
+
+const zoomPercentLabel = computed(() => `${Math.round(graphZoom.value * 100)}%`)
+
+const zoomOutDisabled = computed(() => graphZoom.value <= ZOOM_MIN + 1e-6)
+const zoomInDisabled = computed(() => graphZoom.value >= ZOOM_MAX - 1e-6)
+
+function zoomIn() {
+  graphZoom.value = Math.min(ZOOM_MAX, Number((graphZoom.value * ZOOM_STEP).toFixed(3)))
+}
+
+function zoomOut() {
+  graphZoom.value = Math.max(ZOOM_MIN, Number((graphZoom.value / ZOOM_STEP).toFixed(3)))
+}
+
+function resetZoom() {
+  graphZoom.value = 1
+}
+
+watch(
+  () => props.planDepsGraphKey,
+  () => {
+    graphZoom.value = 1
+  },
+)
+
+function onGraphWheel(ev: WheelEvent) {
+  if (!ev.ctrlKey && !ev.metaKey) {
+    return
+  }
+  ev.preventDefault()
+  if (ev.deltaY < 0) {
+    zoomIn()
+  } else {
+    zoomOut()
+  }
+}
+
+/** 滚动视口（含 p-2），用于得到可用内容宽度，避免缩放层与 100% 宽度循环依赖 */
+const scrollViewportRef = ref<HTMLElement | null>(null)
+const viewportContentWidth = ref(0)
+
+function syncViewportContentWidth() {
+  const el = scrollViewportRef.value
+  if (!el) {
+    return
+  }
+  const cs = getComputedStyle(el)
+  const padX =
+    parseFloat(cs.paddingLeft || '0') + parseFloat(cs.paddingRight || '0')
+  viewportContentWidth.value = Math.max(0, el.clientWidth - padX)
+}
+
+useResizeObserver(scrollViewportRef, () => {
+  syncViewportContentWidth()
+})
+
+const contentMeasureRef = ref<HTMLElement | null>(null)
+const naturalW = ref(0)
+const naturalH = ref(0)
+
+useResizeObserver(contentMeasureRef, (entries) => {
+  const entry = entries[0]
+  if (!entry) {
+    return
+  }
+  const { width, height } = entry.contentRect
+  naturalW.value = width
+  naturalH.value = height
+})
+
+const spacerStyle = computed(() => {
+  const z = graphZoom.value
+  const vw = viewportContentWidth.value
+  /** 首次测量前避免占位 1px 把内容压扁，导致 natural 尺寸错误 */
+  const baseW = naturalW.value > 0 ? naturalW.value : vw > 0 ? vw : 320
+  const baseH = naturalH.value > 0 ? naturalH.value : 80
+  return {
+    width: `${Math.max(1, baseW * z)}px`,
+    height: `${Math.max(1, baseH * z)}px`,
+  }
+})
+
+const scaledLayerStyle = computed(() => ({
+  transform: `scale(${graphZoom.value})`,
+  transformOrigin: '0 0',
+}))
+
+const measureWrapperStyle = computed(() => {
+  if (viewportContentWidth.value <= 0) {
+    return undefined
+  }
+  return {
+    minWidth: `${viewportContentWidth.value}px`,
+    width: 'max-content',
+  } as const
+})
+
+onMounted(() => {
+  void nextTick(() => syncViewportContentWidth())
+})
+
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      void nextTick(() => syncViewportContentWidth())
+    }
+  },
+)
 </script>
 
 <template>
@@ -82,10 +199,64 @@ const forwarded = useForwardPropsEmits(rootProps, emit)
           检测到计划项依赖存在环，请修正后再继续。
         </p>
 
-        <div
-          class="bg-muted/15 dark:bg-muted/25 from-muted/30 to-muted/5 max-h-[min(78vh,calc(85vh-9rem))] w-full min-h-0 overflow-auto rounded-lg border border-border/80 bg-gradient-to-b p-2 shadow-inner [&_.markdown-preview]:text-sm [&_.markdown-preview_.mermaid]:flex [&_.markdown-preview_.mermaid]:justify-center [&_.markdown-preview_.mermaid]:py-0 [&_.markdown-preview_.mermaid_svg]:max-w-full [&_.markdown-preview_.mermaid_svg]:h-auto"
-        >
-          <MarkdownPreview :key="props.planDepsGraphKey" :content="props.planDepsMarkdown" />
+        <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
+          <div
+            class="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs"
+          >
+            <span class="min-w-0">按住 Ctrl（或 ⌘）并滚动可缩放</span>
+            <div class="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                :disabled="zoomOutDisabled"
+                aria-label="缩小依赖图"
+                @click="zoomOut"
+              >
+                <ZoomOut class="size-4" />
+              </Button>
+              <span
+                class="text-foreground tabular-nums"
+                aria-live="polite"
+                :title="`当前缩放 ${zoomPercentLabel}`"
+              >
+                {{ zoomPercentLabel }}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                :disabled="zoomInDisabled"
+                aria-label="放大依赖图"
+                @click="zoomIn"
+              >
+                <ZoomIn class="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                aria-label="重置缩放为 100%"
+                @click="resetZoom"
+              >
+                <RotateCcw class="size-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div
+            ref="scrollViewportRef"
+            class="bg-muted/15 dark:bg-muted/25 from-muted/30 to-muted/5 max-h-[min(78vh,calc(85vh-9rem))] w-full min-h-0 flex-1 overflow-auto rounded-lg border border-border/80 bg-gradient-to-b p-2 shadow-inner [&_.markdown-preview]:text-sm [&_.markdown-preview_.mermaid]:flex [&_.markdown-preview_.mermaid]:justify-center [&_.markdown-preview_.mermaid]:py-0 [&_.markdown-preview_.mermaid_svg]:max-w-full [&_.markdown-preview_.mermaid_svg]:h-auto"
+            @wheel="onGraphWheel"
+          >
+            <div class="relative" :style="spacerStyle">
+              <div class="absolute top-0 left-0" :style="scaledLayerStyle">
+                <div ref="contentMeasureRef" :style="measureWrapperStyle">
+                  <MarkdownPreview :key="props.planDepsGraphKey" :content="props.planDepsMarkdown" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <DialogClose
