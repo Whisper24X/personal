@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { toRef } from 'vue'
+import { Loader2 } from 'lucide-vue-next'
 import AppSelect from '@shared/components/select'
 import {
   TASK_CREATE_SELECT_PANEL_PLACEMENT,
@@ -296,10 +297,18 @@ const fileInputRef = toRef(vm, 'fileInputRef')
               <button
                 type="submit"
                 class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition hover:bg-primary hover:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="vm.submitting || !vm.canCreateTask"
-                aria-label="创建任务"
+                :disabled="!vm.canCreateTask"
+                :class="vm.submitting && 'pointer-events-none cursor-wait'"
+                :aria-busy="vm.submitting"
+                :aria-label="vm.submitting ? '正在创建任务' : '创建任务'"
               >
+                <Loader2
+                  v-if="vm.submitting"
+                  class="size-[18px] shrink-0 animate-spin text-current [animation-duration:0.75s] motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
                 <svg
+                  v-else
                   xmlns="http://www.w3.org/2000/svg"
                   width="18"
                   height="18"
