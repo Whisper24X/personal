@@ -54,7 +54,8 @@ export class TaskNode {
     type: Object,
     required: false,
     nullable: true,
-    description: 'Node configuration JSON (e.g. requiresApproval)',
+    description:
+      'Node configuration JSON (e.g. requiresApproval, requiresArtifact)',
   })
   configJson?: TaskNodeConfig | null;
 

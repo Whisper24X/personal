@@ -1955,4 +1955,260 @@ describe('TaskNodeExecutionService', () => {
       task.id,
     );
   });
+
+  it('should move node to in_review when artifact is required but no artifact exists', async () => {
+    jest.useFakeTimers();
+
+    const task = createTask();
+    const project = createProject();
+    const runningNode = createNode(TaskStatus.inProgress);
+
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue(task),
+    };
+    const taskNodeRepository = {
+      findById: jest.fn().mockResolvedValue(runningNode),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeService = {
+      ensureRuntime: jest.fn().mockResolvedValue({
+        gitBranch: 'feature/task-1',
+        gitBaseBranch: 'main',
+        gitWorktree: 'wk-task-1',
+        worktreePath: '/tmp/worktrees/wk-task-1',
+      }),
+    };
+    const agentRunnerService = {
+      executeAgentNode: jest.fn().mockResolvedValue({
+        success: true,
+        interrupted: false,
+        exitCode: 0,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json'],
+        cwd: '/tmp/worktrees/wk-task-1',
+        durationMs: 250,
+        stdout: '',
+        stderr: '',
+        prompt: 'Run task',
+        sessionId: 'thread-1',
+      } satisfies AgentRunnerResult),
+      interruptExecution: jest.fn(),
+    };
+    const taskConfigResolver = {
+      normalizeOptionalString: jest.fn().mockReturnValue(null),
+      readNodeLoopConfig: jest.fn().mockReturnValue({
+        enabled: false,
+        loopCount: 0,
+        maxLoops: 1,
+      }),
+      readNodeRequiresApproval: jest.fn().mockReturnValue(false),
+      readNodeRequiresArtifact: jest.fn().mockReturnValue(true),
+      readNodeEarlyExitMarkerConfig: jest
+        .fn()
+        .mockReturnValue({ enabled: false, fileName: null }),
+    };
+    const taskOutputService = {
+      clearNodeOutputJsonl: jest.fn().mockResolvedValue(undefined),
+      appendNodeOutputJsonlRecords: jest.fn().mockResolvedValue(0),
+      extractJsonLinesFromContent: jest.fn().mockReturnValue([]),
+      appendNodeOutputJsonlLines: jest.fn().mockResolvedValue(0),
+      resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
+      writeNodeOutputJsonl: jest.fn().mockResolvedValue('/tmp/node-1.jsonl'),
+    };
+    const taskLogService = {
+      appendLog: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskStatusService = {
+      recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeOrchestrator = {
+      createRuntimeTaskSnapshot: jest.fn().mockImplementation(() => task),
+    };
+    const taskGitService = {
+      commitIfChangedForTask: jest.fn(),
+    };
+    const taskWorkspaceArtifactService = {
+      hasArtifactsForNode: jest.fn().mockResolvedValue(false),
+    };
+
+    const service = new TaskNodeExecutionService(
+      taskRepository as never,
+      taskNodeRepository as never,
+      taskRuntimeService as unknown as TaskRuntimeService,
+      agentRunnerService as never,
+      taskConfigResolver as never,
+      taskOutputService as never,
+      taskLogService as never,
+      taskStatusService as never,
+      taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
+      undefined as never,
+      taskGitService as never,
+      undefined as never,
+      taskWorkspaceArtifactService as never,
+    );
+
+    const executionPromise = service.runNode({
+      taskId: task.id,
+      nodeId: runningNode.id,
+      project,
+    });
+
+    await jest.advanceTimersByTimeAsync(150);
+    await executionPromise;
+
+    expect(
+      taskWorkspaceArtifactService.hasArtifactsForNode,
+    ).toHaveBeenCalledWith({
+      task,
+      node: runningNode,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      runningNode.id,
+      expect.objectContaining({
+        status: TaskStatus.inReview,
+      }),
+    );
+    expect(taskGitService.commitIfChangedForTask).not.toHaveBeenCalled();
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: runningNode.id,
+        message: 'Agent node completed; pending artifact review',
+        payload: expect.objectContaining({
+          pendingArtifact: true,
+        }),
+      }),
+    );
+  });
+
+  it('should finish node as done when artifact is required and artifacts exist', async () => {
+    jest.useFakeTimers();
+
+    const task = createTask();
+    const project = createProject();
+    const runningNode = createNode(TaskStatus.inProgress);
+
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue(task),
+    };
+    const taskNodeRepository = {
+      findById: jest.fn().mockResolvedValue(runningNode),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeService = {
+      ensureRuntime: jest.fn().mockResolvedValue({
+        gitBranch: 'feature/task-1',
+        gitBaseBranch: 'main',
+        gitWorktree: 'wk-task-1',
+        worktreePath: '/tmp/worktrees/wk-task-1',
+      }),
+    };
+    const agentRunnerService = {
+      executeAgentNode: jest.fn().mockResolvedValue({
+        success: true,
+        interrupted: false,
+        exitCode: 0,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json'],
+        cwd: '/tmp/worktrees/wk-task-1',
+        durationMs: 250,
+        stdout: '',
+        stderr: '',
+        prompt: 'Run task',
+        sessionId: 'thread-1',
+      } satisfies AgentRunnerResult),
+      interruptExecution: jest.fn(),
+    };
+    const taskConfigResolver = {
+      normalizeOptionalString: jest.fn().mockReturnValue(null),
+      readNodeLoopConfig: jest.fn().mockReturnValue({
+        enabled: false,
+        loopCount: 0,
+        maxLoops: 1,
+      }),
+      readNodeRequiresApproval: jest.fn().mockReturnValue(false),
+      readNodeRequiresArtifact: jest.fn().mockReturnValue(true),
+      readNodeEarlyExitMarkerConfig: jest
+        .fn()
+        .mockReturnValue({ enabled: false, fileName: null }),
+    };
+    const taskOutputService = {
+      clearNodeOutputJsonl: jest.fn().mockResolvedValue(undefined),
+      appendNodeOutputJsonlRecords: jest.fn().mockResolvedValue(0),
+      extractJsonLinesFromContent: jest.fn().mockReturnValue([]),
+      appendNodeOutputJsonlLines: jest.fn().mockResolvedValue(0),
+      resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
+      writeNodeOutputJsonl: jest.fn().mockResolvedValue('/tmp/node-1.jsonl'),
+    };
+    const taskLogService = {
+      appendLog: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskStatusService = {
+      recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeOrchestrator = {
+      createRuntimeTaskSnapshot: jest.fn().mockImplementation(() => task),
+    };
+    const taskGitService = {
+      commitIfChangedForTask: jest.fn().mockResolvedValue({
+        committed: true,
+        commitSha: 'commit-1',
+      }),
+      resolveHeadCommitShaForTask: jest.fn().mockResolvedValue('commit-before'),
+    };
+    const taskWorkspaceArtifactService = {
+      hasArtifactsForNode: jest.fn().mockResolvedValue(true),
+    };
+
+    const service = new TaskNodeExecutionService(
+      taskRepository as never,
+      taskNodeRepository as never,
+      taskRuntimeService as unknown as TaskRuntimeService,
+      agentRunnerService as never,
+      taskConfigResolver as never,
+      taskOutputService as never,
+      taskLogService as never,
+      taskStatusService as never,
+      taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
+      undefined as never,
+      taskGitService as never,
+      undefined as never,
+      taskWorkspaceArtifactService as never,
+    );
+
+    const executionPromise = service.runNode({
+      taskId: task.id,
+      nodeId: runningNode.id,
+      project,
+    });
+
+    await jest.advanceTimersByTimeAsync(150);
+    await executionPromise;
+
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      runningNode.id,
+      expect.objectContaining({
+        status: TaskStatus.done,
+        afterRunCommitSha: 'commit-1',
+      }),
+    );
+    expect(taskGitService.commitIfChangedForTask).toHaveBeenCalledTimes(1);
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: runningNode.id,
+        message: 'Agent node completed successfully',
+        payload: expect.objectContaining({
+          pendingArtifact: false,
+        }),
+      }),
+    );
+  });
 });

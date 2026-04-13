@@ -53,6 +53,7 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
         name: 'step-1',
         type: 'agent',
         requiresApproval: true,
+        requiresArtifact: false,
         input: createEmptyWorkflowNodeInput(),
       },
     ],
@@ -132,11 +133,16 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
       typeof rawInput.earlyExitMarkerFileName === 'string'
         ? rawInput.earlyExitMarkerFileName.trim()
         : ''
+    const loopEnabled =
+      typeof rawInput.loopEnabled === 'boolean'
+        ? rawInput.loopEnabled
+        : Boolean(earlyExitMarkerEnabled || (typeof rawInput.maxLoops === 'number' && rawInput.maxLoops > 1))
 
     return {
       prompt,
       agentCliId: normalizedCliToolId,
       agentCliConfigId: normalizedCliToolId ? rawAgentCliConfigId : '',
+      loopEnabled,
       earlyExitMarkerEnabled,
       earlyExitMarkerFileName,
     }
@@ -190,6 +196,7 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
     name: `step-${nodeOrder}`,
     type: 'agent',
     requiresApproval: true,
+    requiresArtifact: false,
     maxLoops: 1,
     input: resolveWorkflowNodeInput(createEmptyWorkflowNodeInput()),
   })
@@ -202,6 +209,7 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
         nodeOrder: index + 1,
         name: node.name.trim() || `step-${index + 1}`,
         requiresApproval: Boolean(node.requiresApproval),
+        requiresArtifact: Boolean(node.requiresArtifact),
         maxLoops: Math.max(Number(node.maxLoops) || 1, 1),
         input: normalizeWorkflowNodeInput(node.input),
       }))
@@ -226,8 +234,12 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
       }
     }
 
-    if (input.earlyExitMarkerEnabled && normalizedMarkerFileName) {
+    if (input.loopEnabled) {
+      payload.loopEnabled = true
       payload.earlyExitMarkerEnabled = true
+    }
+
+    if (input.loopEnabled && normalizedMarkerFileName) {
       payload.earlyExitMarkerFileName = normalizedMarkerFileName
     }
 
@@ -268,8 +280,8 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
         return `节点 #${index + 1} 的 Agent CLI 不可用，请重新选择`
       }
 
-      if (nodeInput.earlyExitMarkerEnabled && !nodeInput.earlyExitMarkerFileName.trim()) {
-        return `节点 #${index + 1} 已启用 marker 提前退出，请填写 marker 文件名`
+      if (nodeInput.loopEnabled && !nodeInput.earlyExitMarkerFileName.trim()) {
+        return `节点 #${index + 1} 已启用循环，请填写 Marker 文件名`
       }
     }
 
@@ -472,6 +484,7 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
         name: node.name || `step-${index + 1}`,
         type: node.type || 'agent',
         requiresApproval: Boolean(node.requiresApproval),
+        requiresArtifact: Boolean(node.requiresArtifact),
         maxLoops: (node.input as WorkflowTemplateNodeInput | undefined)?.maxLoops ?? 1,
         input: normalizeWorkflowNodeInput(node.input),
       })),

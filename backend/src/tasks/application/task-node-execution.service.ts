@@ -30,6 +30,7 @@ import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.serv
 import { TaskStatusService } from './task-status.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
+import { TaskWorkspaceArtifactService } from './task-workspace-artifact.service';
 
 @Injectable()
 export class TaskNodeExecutionService {
@@ -71,6 +72,12 @@ export class TaskNodeExecutionService {
     > = {
       notifyTaskNodeStatusChanged: () => Promise.resolve(null),
     },
+    @Optional()
+    @Inject(TaskWorkspaceArtifactService)
+    private readonly taskWorkspaceArtifactService?: Pick<
+      TaskWorkspaceArtifactService,
+      'hasArtifactsForNode'
+    >,
   ) {}
 
   async runNode({
@@ -408,6 +415,7 @@ export class TaskNodeExecutionService {
         agentClioutput,
         agentCliSessionId: executionResult.sessionId ?? null,
         clearAgentCliSessionId: executionResult.clearPreviousSessionId === true,
+        artifactWorktreePath: runtimeContext?.worktreePath ?? null,
         earlyExitDecision: await this.resolveEarlyExitDecision({
           taskId,
           nodeId,
@@ -424,7 +432,9 @@ export class TaskNodeExecutionService {
           ? 'Agent node loop completed; queued next loop'
           : loopResult.pendingApproval
             ? 'Agent node completed; pending approval'
-            : 'Agent node completed successfully',
+            : loopResult.pendingArtifact
+              ? 'Agent node completed; pending artifact review'
+              : 'Agent node completed successfully',
         payload: {
           status: loopResult.status,
           durationMs: executionResult.durationMs,
@@ -432,6 +442,7 @@ export class TaskNodeExecutionService {
           args: executionResult.args,
           loopJson: loopResult.loopJson,
           pendingApproval: loopResult.pendingApproval,
+          pendingArtifact: loopResult.pendingArtifact,
           earlyExitCompleted: loopResult.earlyExitCompleted,
           earlyExitReason: loopResult.earlyExitReason,
           earlyExitSourceFile: loopResult.earlyExitSourceFile,
@@ -748,6 +759,7 @@ export class TaskNodeExecutionService {
     agentClioutput,
     agentCliSessionId,
     clearAgentCliSessionId,
+    artifactWorktreePath,
     earlyExitDecision,
   }: {
     taskId: string;
@@ -757,6 +769,7 @@ export class TaskNodeExecutionService {
     agentClioutput: string;
     agentCliSessionId?: string | null;
     clearAgentCliSessionId?: boolean;
+    artifactWorktreePath?: string | null;
     earlyExitDecision?: {
       completed: boolean;
       reason: string | null;
@@ -767,6 +780,7 @@ export class TaskNodeExecutionService {
     loopJson: { enabled: boolean; loopCount: number; maxLoops: number };
     queuedNextLoop: boolean;
     pendingApproval: boolean;
+    pendingArtifact: boolean;
     earlyExitCompleted: boolean;
     earlyExitReason: string | null;
     earlyExitSourceFile: string | null;
@@ -785,9 +799,18 @@ export class TaskNodeExecutionService {
       queuedByLoopCount && !(earlyExitDecision?.completed ?? false);
     const pendingApproval =
       !queuedNextLoop && this.taskConfigResolver.readNodeRequiresApproval(node);
+    const pendingArtifact =
+      !queuedNextLoop &&
+      !pendingApproval &&
+      (this.taskConfigResolver.readNodeRequiresArtifact?.(node) ?? false) &&
+      !(await this.hasArtifactsForNode({
+        task,
+        node,
+        worktreePath: artifactWorktreePath ?? null,
+      }));
     const status = queuedNextLoop
       ? TaskStatus.todo
-      : pendingApproval
+      : pendingApproval || pendingArtifact
         ? TaskStatus.inReview
         : TaskStatus.done;
     let afterRunCommitSha = await this.resolveHeadCommitShaForTask(
@@ -795,7 +818,7 @@ export class TaskNodeExecutionService {
       project,
     );
 
-    if (!queuedNextLoop && !pendingApproval) {
+    if (!queuedNextLoop && !pendingApproval && !pendingArtifact) {
       const autoCommitResult = await commitNodeWorkspaceIfChanged({
         taskId,
         node,
@@ -833,10 +856,31 @@ export class TaskNodeExecutionService {
       loopJson: nextLoopJson,
       queuedNextLoop,
       pendingApproval,
+      pendingArtifact,
       earlyExitCompleted: earlyExitDecision?.completed ?? false,
       earlyExitReason: earlyExitDecision?.reason ?? null,
       earlyExitSourceFile: earlyExitDecision?.sourceFile ?? null,
     };
+  }
+
+  private async hasArtifactsForNode({
+    task,
+    node,
+    worktreePath,
+  }: {
+    task: Task;
+    node: TaskNode;
+    worktreePath: string | null;
+  }): Promise<boolean> {
+    if (!worktreePath || !this.taskWorkspaceArtifactService) {
+      return false;
+    }
+
+    return this.taskWorkspaceArtifactService.hasArtifactsForNode({
+      task,
+      node,
+      worktreePath,
+    });
   }
 
   private async resolveEarlyExitDecision({

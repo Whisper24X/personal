@@ -35,6 +35,15 @@ export class WorkflowTemplateNodeDto {
   requiresApproval?: boolean;
 
   @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Whether node execution requires at least one artifact before auto-advance',
+  })
+  @IsOptional()
+  @IsBoolean()
+  requiresArtifact?: boolean;
+
+  @ApiPropertyOptional({
     type: Object,
     description: 'Node input payload schema/data',
   })

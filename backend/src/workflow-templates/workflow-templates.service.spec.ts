@@ -15,6 +15,7 @@ const createWorkflowNode = (
     name: string;
     type: WorkflowNodeType;
     requiresApproval: boolean;
+    requiresArtifact: boolean;
   }> = {},
 ) => ({
   nodeOrder: overrides.nodeOrder ?? 1,
@@ -22,6 +23,9 @@ const createWorkflowNode = (
   type: overrides.type ?? WorkflowNodeType.agent,
   ...(overrides.requiresApproval !== undefined
     ? { requiresApproval: overrides.requiresApproval }
+    : {}),
+  ...(overrides.requiresArtifact !== undefined
+    ? { requiresArtifact: overrides.requiresArtifact }
     : {}),
 });
 
@@ -44,7 +48,10 @@ const createWorkflowTemplatesService = () => {
     assertProjectCapability: jest.fn().mockResolvedValue(project),
   };
   const businessLineRepository = {
-    findById: jest.fn(),
+    findById: jest.fn().mockResolvedValue({
+      id: 'business-line-1',
+      name: 'Retail',
+    }),
   };
   const businessLineMemberRepository = {
     findByBusinessLineIdAndUserId: jest.fn(),
@@ -192,6 +199,93 @@ describe('WorkflowTemplatesService', () => {
       'template-1',
       {
         nodesJson: [createWorkflowNode({ requiresApproval: true })],
+      },
+    );
+  });
+
+  it('should preserve requiresArtifact when creating and updating workflow template nodes', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+
+    workflowTemplateRepository.findByName.mockResolvedValue(null);
+    workflowTemplateRepository.create.mockResolvedValue({
+      id: 'template-1',
+      businessLineId: 'business-line-1',
+      projectId: null,
+    });
+    workflowTemplateRepository.findById
+      .mockResolvedValueOnce({
+        id: 'template-1',
+        name: 'Artifact template',
+        description: null,
+        scope: WorkflowTemplateScope.businessLine,
+        businessLineId: 'business-line-1',
+        projectId: null,
+        isActive: true,
+        nodesJson: [createWorkflowNode({ requiresArtifact: true })],
+        createdBy: currentUser.sub,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'template-1',
+        name: 'Artifact template',
+        description: null,
+        scope: WorkflowTemplateScope.businessLine,
+        businessLineId: 'business-line-1',
+        projectId: null,
+        isActive: true,
+        nodesJson: [createWorkflowNode({ requiresArtifact: true })],
+        createdBy: currentUser.sub,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      });
+    workflowTemplateRepository.update.mockResolvedValue({
+      id: 'template-1',
+      name: 'Artifact template',
+      description: null,
+      scope: WorkflowTemplateScope.businessLine,
+      businessLineId: 'business-line-1',
+      projectId: null,
+      isActive: true,
+      nodesJson: [createWorkflowNode({ requiresArtifact: true })],
+      createdBy: currentUser.sub,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
+
+    await service.create(
+      {
+        name: 'Artifact template',
+        scope: WorkflowTemplateScope.businessLine,
+        businessLineId: 'business-line-1',
+        nodes: [createWorkflowNode({ requiresArtifact: true })],
+      },
+      currentUser,
+    );
+
+    expect(workflowTemplateRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodesJson: [createWorkflowNode({ requiresArtifact: true })],
+      }),
+    );
+
+    await service.update(
+      'template-1',
+      {
+        nodes: [createWorkflowNode({ requiresArtifact: true })],
+      },
+      currentUser,
+    );
+
+    expect(workflowTemplateRepository.update).toHaveBeenCalledWith(
+      'template-1',
+      {
+        nodesJson: [createWorkflowNode({ requiresArtifact: true })],
       },
     );
   });

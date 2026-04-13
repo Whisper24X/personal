@@ -254,6 +254,23 @@ export class TaskWorkspaceArtifactService {
     return [];
   }
 
+  async hasArtifactsForNode(input: {
+    task: Task;
+    node: TaskNode | null;
+    worktreePath: string;
+  }): Promise<boolean> {
+    const source = this.resolveArtifactSource({
+      task: input.task,
+      targetNode: input.node,
+    });
+    const files = await this.listArtifactFiles({
+      worktreePath: input.worktreePath,
+      source,
+    });
+
+    return files.length > 0;
+  }
+
   private async resolveTaskWorkspaceContext(
     taskId: string,
     currentUser: JwtPayloadType,
