@@ -304,20 +304,6 @@ const canManageReview = computed(() => {
   return hasButtonAccess('executeTask')
 })
 
-const canRetryTask = computed(() => {
-  if (
-    !task.value ||
-    task.value.status === 'done' ||
-    !hasButtonAccess('executeTask') ||
-    actionLoading.value ||
-    isCliRunning.value
-  ) {
-    return false
-  }
-
-  return currentFailedNode.value !== null
-})
-
 const isCliRunning = computed(() => {
   return hasRunningNode.value
 })
@@ -412,7 +398,7 @@ const replyPlaceholder = computed(() => {
   }
 
   if (hasFailedNode.value) {
-    return '节点执行失败，请先重试或重置...'
+    return '节点执行失败，请先重置...'
   }
 
   if (isCliRunning.value) {
@@ -1012,24 +998,6 @@ const executeTask = async () => {
   }
 }
 
-const retryTask = async () => {
-  if (!taskId.value || !canRetryTask.value) {
-    return
-  }
-
-  actionLoading.value = true
-
-  try {
-    detail.value = await tasksApi.retry(taskId.value, (currentFailedNode.value ? { nodeId: currentFailedNode.value.id } : {}))
-    bumpRightPanelRefresh([])
-    message.success('失败节点已加入重试队列')
-  } catch (error) {
-    message.error(toErrorMessage(error, '重试失败节点失败'))
-  } finally {
-    actionLoading.value = false
-  }
-}
-
 const startEnvironment = async () => {
   if (!taskId.value || !canStartEnvironment.value) {
     return
@@ -1420,7 +1388,6 @@ return reactive({
     canInterruptExecution,
     canManageReview,
     canRemove,
-    canRetryTask,
     canResetSelectedWorkflowNode,
     canStartEnvironment,
     canTerminateEnvironment,
@@ -1501,7 +1468,6 @@ return reactive({
     rightPanelWorkspaceRefreshDebounceTimer,
     route,
     router,
-    retryTask,
     saveEdit,
     savingEdit,
     scheduleReconnect,

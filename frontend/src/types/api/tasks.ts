@@ -330,10 +330,6 @@ export type ReplyTaskPayload = {
   message: string
 }
 
-export type RetryTaskPayload = {
-  nodeId?: string
-}
-
 export type ResetNodePayload = {
   nodeId: string
 }

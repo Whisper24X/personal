@@ -20,7 +20,6 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     reply: vi.fn(),
     cancel: vi.fn(),
     cleanupWorktree: vi.fn(),
-    retry: vi.fn(),
     resetNode: vi.fn(),
     approve: vi.fn(),
     complete: vi.fn(),
@@ -2111,7 +2110,7 @@ describe('TaskDetailView toasts', () => {
     }
 
     tasksApi.detailWithNodes.mockResolvedValueOnce(failedDetail)
-    tasksApi.retry.mockResolvedValueOnce({
+    tasksApi.resetNode.mockResolvedValueOnce({
       ...failedDetail,
       task: {
         ...failedDetail.task,
@@ -2144,7 +2143,7 @@ describe('TaskDetailView toasts', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('节点执行失败')
-    expect(wrapper.text()).toContain('请先重试或重置后再继续执行。')
+    expect(wrapper.text()).toContain('请先重置后再继续执行。')
 
     const failedNodeButton = wrapper
       .findAll('button')
@@ -2153,26 +2152,26 @@ describe('TaskDetailView toasts', () => {
 
     const replyTextarea = wrapper.get('textarea[aria-label="回复内容"]')
     expect((replyTextarea.element as HTMLTextAreaElement).disabled).toBe(true)
-    expect(replyTextarea.attributes('placeholder')).toBe('节点执行失败，请先重试或重置...')
+    expect(replyTextarea.attributes('placeholder')).toBe('节点执行失败，请先重置...')
 
-    const buttonTexts = wrapper
-      .findAll('button')
-      .map((button) => button.text().trim())
-      .filter(Boolean)
-    expect(buttonTexts).toContain('重试')
+    const buttonTexts = wrapper.findAll('button').map((button) => button.text().trim()).filter(Boolean)
+    expect(buttonTexts).not.toContain('重试')
     expect(buttonTexts).not.toContain('开始')
 
-    const retryButton = wrapper
+    const moreActionsButton = wrapper.get('button[aria-label="更多操作"]')
+    await moreActionsButton.trigger('click')
+    await flushPromises()
+
+    const resetButton = wrapper
       .findAll('button')
-      .find((button) => button.text().trim() === '重试')
-    expect(retryButton).toBeTruthy()
-    await retryButton?.trigger('click')
+      .find((button) => button.text().trim() === '重置')
+    expect(resetButton).toBeTruthy()
+    await resetButton?.trigger('click')
     await flushPromises()
 
     const messageStore = useMessageStore()
-    expect(messageStore.items[0]?.type).toBe('success')
-    expect(messageStore.items[0]?.text).toBe('失败节点已加入重试队列')
-    expect(tasksApi.retry).toHaveBeenCalledWith('task-1', {
+    expect(messageStore.items).toHaveLength(0)
+    expect(tasksApi.resetNode).toHaveBeenCalledWith('task-1', {
       nodeId: 'node-2',
     })
   })

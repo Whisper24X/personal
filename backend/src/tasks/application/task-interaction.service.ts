@@ -11,7 +11,6 @@ import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { ApproveTaskDto } from '../dto/approve-task.dto';
 import { ReplyTaskDto } from '../dto/reply-task.dto';
-import { RetryTaskDto } from '../dto/retry-task.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskMessageRole } from '../dto/task-message.dto';
@@ -381,108 +380,6 @@ export class TaskInteractionService {
         requestedBy: currentUser.sub,
         requestedAt: new Date().toISOString(),
         nodeOrder: targetNode.nodeOrder,
-      },
-    });
-
-    await this.taskStatusService.recalculateTaskStatus(task.id);
-    await this.taskSchedulerService.triggerDispatch();
-
-    return this.taskQueryService.detailById(task.id, currentUser);
-  }
-
-  async retry(
-    taskId: Task['id'],
-    retryTaskDto: RetryTaskDto,
-    currentUser: JwtPayloadType,
-  ): Promise<TaskDetailDto> {
-    let task = await this.taskAccessService.getTaskOrThrow(
-      taskId,
-      currentUser,
-      'project.task.read',
-    );
-    const prepared = await this.taskRuntimeOrchestrator.prepareTaskRuntime(
-      task,
-      currentUser,
-    );
-    task = prepared.task;
-
-    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
-      task.id,
-    );
-
-    if (runningNode) {
-      throw new ConflictException('Task already has an in-progress node');
-    }
-
-    const requestedNode = retryTaskDto.nodeId
-      ? await this.taskNodeRepository.findById(retryTaskDto.nodeId)
-      : null;
-    let targetNode = this.isRetryCandidate(task.id, requestedNode)
-      ? requestedNode
-      : null;
-
-    if (!targetNode) {
-      targetNode =
-        (await this.taskNodeRepository.findFirstByTaskIdAndStatus({
-          taskId: task.id,
-          status: TaskNodeStatus.inReview,
-        })) ??
-        (await this.taskNodeRepository.findFirstByTaskIdAndStatus({
-          taskId: task.id,
-          status: TaskNodeStatus.failed,
-        }));
-    }
-
-    const recoveredFromStaleReviewState =
-      !this.isRetryCandidate(task.id, targetNode) &&
-      task.mode === TaskMode.conversation &&
-      task.status === TaskStatus.inReview;
-
-    if (recoveredFromStaleReviewState) {
-      targetNode = this.isTodoRetryRecoveryCandidate(task.id, requestedNode)
-        ? requestedNode
-        : await this.taskNodeRepository.findFirstByTaskIdAndStatus({
-            taskId: task.id,
-            status: TaskNodeStatus.todo,
-          });
-    }
-
-    if (!targetNode || targetNode.taskId !== task.id) {
-      throw new NotFoundException('Task node not found');
-    }
-
-    if (
-      targetNode.status !== TaskNodeStatus.inReview &&
-      targetNode.status !== TaskNodeStatus.failed &&
-      !(
-        recoveredFromStaleReviewState &&
-        targetNode.status === TaskNodeStatus.todo
-      )
-    ) {
-      throw new ConflictException(
-        'Only in_review or failed node can be retried',
-      );
-    }
-
-    await this.taskNodeRepository.update(targetNode.id, {
-      status: TaskNodeStatus.todo,
-      finishedAt: null,
-      agentClioutput: null,
-      runtimeJson: null,
-    });
-
-    task = await this.markTaskStartedIfNeeded(task);
-
-    await this.taskLogService.appendLog({
-      taskId: task.id,
-      taskNodeId: targetNode.id,
-      level: TaskLogLevel.info,
-      message: 'Node retry queued',
-      payload: {
-        requestedBy: currentUser.sub,
-        requestedAt: new Date().toISOString(),
-        nodeOrder: targetNode.nodeOrder,
-        recoveredFromStaleReviewState,
       },
     });
 
@@ -867,27 +764,6 @@ export class TaskInteractionService {
 
   private resolveNodeFinishedAtMs(node: TaskNode): number {
     return node.finishedAt instanceof Date ? node.finishedAt.getTime() : 0;
-  }
-
-  private isRetryCandidate(
-    taskId: Task['id'],
-    node: TaskNode | null,
-  ): node is TaskNode {
-    return (
-      !!node &&
-      node.taskId === taskId &&
-      (node.status === TaskNodeStatus.inReview ||
-        node.status === TaskNodeStatus.failed)
-    );
-  }
-
-  private isTodoRetryRecoveryCandidate(
-    taskId: Task['id'],
-    node: TaskNode | null,
-  ): node is TaskNode {
-    return (
-      !!node && node.taskId === taskId && node.status === TaskNodeStatus.todo
-    );
   }
 
   private async markTaskStartedIfNeeded(task: Task): Promise<Task> {

@@ -221,7 +221,7 @@ export class NotificationsService {
       statusLabel: isFailed ? '失败' : '待审核',
       title: isFailed ? '任务节点失败' : '任务节点待审核',
       content: isFailed
-        ? `任务「${displayTaskName}」的${nodeLabel}执行失败，请重试或重置后继续。`
+        ? `任务「${displayTaskName}」的${nodeLabel}执行失败，请重置后继续。`
         : `任务「${displayTaskName}」的${nodeLabel}已进入待审核状态，请确认后继续。`,
       payload: {
         status,

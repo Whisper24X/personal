@@ -576,7 +576,7 @@ describe('NotificationsService', () => {
           eventType: 'task_node.failed',
           title: '任务节点失败',
           content:
-            '任务「我的重要任务」的节点「生成页面」执行失败，请重试或重置后继续。',
+            '任务「我的重要任务」的节点「生成页面」执行失败，请重置后继续。',
           payload: {
             status: 'failed',
             nodeId: 'node-1',
@@ -615,7 +615,7 @@ describe('NotificationsService', () => {
         eventType: 'task_node.failed',
         title: '任务节点失败',
         content:
-          '任务「我的重要任务」的节点「生成页面」执行失败，请重试或重置后继续。',
+          '任务「我的重要任务」的节点「生成页面」执行失败，请重置后继续。',
         payload: {
           status: 'failed',
           nodeId: 'node-1',

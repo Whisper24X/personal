@@ -39,7 +39,6 @@ import { FindTaskStatsDto } from './dto/find-task-stats.dto';
 import { TaskStatusCountsDto } from './dto/task-status-counts.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { TaskDetailDto } from './dto/task-detail.dto';
-import { RetryTaskDto } from './dto/retry-task.dto';
 import { RepeatNodeDto } from './dto/repeat-node.dto';
 import { ResetNodeDto } from './dto/reset-node.dto';
 import { ApproveTaskDto } from './dto/approve-task.dto';
@@ -252,18 +251,6 @@ export class TasksController {
     @Body() repeatNodeDto: RepeatNodeDto,
   ) {
     return this.tasksService.repeatNode(id, repeatNodeDto.nodeId, request.user);
-  }
-
-  @Post(':id/retry')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiOkResponse({ type: TaskDetailDto })
-  @HttpCode(HttpStatus.OK)
-  retry(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() retryTaskDto: RetryTaskDto,
-  ) {
-    return this.tasksService.retry(id, retryTaskDto, request.user);
   }
 
   @Post(':id/reset-node')

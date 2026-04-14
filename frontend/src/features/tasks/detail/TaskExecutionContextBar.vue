@@ -21,7 +21,6 @@ const props = defineProps<{
   actionLoading: boolean
   canStartEnvironment?: boolean
   canExecute: boolean
-  canRetryTask: boolean
   canCompleteTask: boolean
   canReset: boolean
   canTerminate?: boolean
@@ -31,7 +30,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   execute: []
-  retry: []
   startEnvironment: []
   completeTask: []
   reset: []
@@ -59,7 +57,7 @@ onBeforeUnmount(() => {
 })
 
 const showPrimaryActions = computed(() => {
-  return Boolean(props.canStartEnvironment) || props.canExecute || props.canRetryTask || props.canCompleteTask
+  return Boolean(props.canStartEnvironment) || props.canExecute || props.canCompleteTask
 })
 
 const canShowMoreActions = computed(() => {
@@ -123,15 +121,6 @@ const environmentBadgeLabel = computed(() => {
             @click="emit('execute')"
           >
             开始
-          </button>
-          <button
-            v-if="props.canRetryTask"
-            class="inline-flex h-8 items-center rounded-md border border-destructive/40 bg-destructive/10 px-3 text-[11px] font-semibold text-destructive transition-colors hover:bg-destructive/15 disabled:cursor-not-allowed disabled:opacity-40"
-            :disabled="props.actionLoading"
-            type="button"
-            @click="emit('retry')"
-          >
-            重试
           </button>
           <button
             v-if="props.canCompleteTask"
