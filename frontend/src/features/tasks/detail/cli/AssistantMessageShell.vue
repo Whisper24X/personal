@@ -21,7 +21,7 @@ withDefaults(
       🤖
     </div>
     <div class="min-w-0 flex-1">
-      <div v-if="timeLabel" class="mb-1 text-[11px] text-muted-foreground">回复于 {{ timeLabel }}</div>
+      <div v-if="timeLabel" class="mb-1 text-[11px] text-muted-foreground">{{ timeLabel }}</div>
       <div
         v-if="wrapBody"
         class="rounded-lg border border-border/50 bg-muted/20 p-3.5 text-sm leading-relaxed text-foreground"
