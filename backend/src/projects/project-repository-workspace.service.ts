@@ -10,6 +10,13 @@ import { ConfigService } from '@nestjs/config';
 import path from 'path';
 import { RunnerOrchestrationService } from '../containers/runner-orchestration.service';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import {
+  buildGitNetworkHttpConfigArgs,
+  computeGitRetryBackoffMs,
+  isGitNetworkErrorRetriable,
+  mergeGitNetworkSpawnEnv,
+  mergeGitOutput,
+} from '../git/git-network-sync.util';
 import { resolveGitRemoteUrlWithHttpAuth } from '../git/git-remote-auth.util';
 import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { Project } from './domain/project';
@@ -23,6 +30,8 @@ export type EnsureProjectRepositoryOptions = {
 export class ProjectRepositoryWorkspaceService {
   private readonly logger = new Logger(ProjectRepositoryWorkspaceService.name);
   private readonly defaultGitTimeoutMs = 60_000;
+  private readonly defaultNetworkGitTimeoutMs = 900_000;
+  private readonly defaultNetworkGitMaxAttempts = 3;
   private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
   private readonly repositorySyncLocks = new Map<
     string,
@@ -218,21 +227,12 @@ export class ProjectRepositoryWorkspaceService {
         );
       }
 
-      const cloneResult = await this.runCommand('git', [
-        'clone',
-        '--origin',
-        'origin',
-        '--branch',
+      await this.cloneProjectRepositoryWithRetries({
+        project,
+        repositoryRoot,
         defaultBranch,
         resolvedGitUrl,
-        repositoryRoot,
-      ]);
-
-      if (!cloneResult.success) {
-        throw new Error(
-          cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
-        );
-      }
+      });
     } else if (shouldSyncRemote) {
       const setUrlResult = await this.runCommand('git', [
         '-C',
@@ -252,17 +252,200 @@ export class ProjectRepositoryWorkspaceService {
       return;
     }
 
-    const fetchResult = await this.runCommand('git', [
-      '-C',
+    await this.fetchProjectRepositoryWithRetries({
+      project,
       repositoryRoot,
-      'fetch',
-      '--all',
-      '--prune',
-    ]);
+    });
+  }
 
-    if (!fetchResult.success) {
-      throw new Error(fetchResult.stderr || 'git fetch failed');
+  private async cloneProjectRepositoryWithRetries({
+    project,
+    repositoryRoot,
+    defaultBranch,
+    resolvedGitUrl,
+  }: {
+    project: Project;
+    repositoryRoot: string;
+    defaultBranch: string;
+    resolvedGitUrl: string;
+  }): Promise<void> {
+    const networkTimeoutMs = this.resolveNetworkGitTimeoutMs();
+    const maxAttempts = this.resolveNetworkGitMaxAttempts();
+    const gitEnv = mergeGitNetworkSpawnEnv(process.env);
+    let lastErrorText = '';
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (attempt > 0) {
+        await this.sleep(computeGitRetryBackoffMs(attempt - 1));
+        await this.removePartialCloneDirectory(project, repositoryRoot);
+      }
+
+      const httpArgs = buildGitNetworkHttpConfigArgs({
+        useHttp11: attempt >= 1,
+      });
+
+      const cloneResult = await this.runCommand(
+        'git',
+        [
+          ...httpArgs,
+          'clone',
+          '--origin',
+          'origin',
+          '--branch',
+          defaultBranch,
+          resolvedGitUrl,
+          repositoryRoot,
+        ],
+        {
+          timeoutMs: networkTimeoutMs,
+          env: gitEnv,
+        },
+      );
+
+      if (cloneResult.success) {
+        return;
+      }
+
+      lastErrorText =
+        mergeGitOutput(cloneResult) ||
+        cloneResult.stderr ||
+        `git clone failed for ${project.gitUrl}`;
+
+      const retriable = isGitNetworkErrorRetriable(lastErrorText);
+
+      if (!retriable || attempt === maxAttempts - 1) {
+        throw new Error(lastErrorText);
+      }
+
+      this.logger.warn(
+        `git_clone_retry ${JSON.stringify({
+          projectId: project.id,
+          attempt: attempt + 1,
+          maxAttempts,
+          errorPreview: this.truncateError(lastErrorText),
+        })}`,
+      );
     }
+
+    throw new Error(lastErrorText || `git clone failed for ${project.gitUrl}`);
+  }
+
+  private async fetchProjectRepositoryWithRetries({
+    project,
+    repositoryRoot,
+  }: {
+    project: Project;
+    repositoryRoot: string;
+  }): Promise<void> {
+    const networkTimeoutMs = this.resolveNetworkGitTimeoutMs();
+    const maxAttempts = this.resolveNetworkGitMaxAttempts();
+    const gitEnv = mergeGitNetworkSpawnEnv(process.env);
+    let lastErrorText = '';
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (attempt > 0) {
+        await this.sleep(computeGitRetryBackoffMs(attempt - 1));
+      }
+
+      const httpArgs = buildGitNetworkHttpConfigArgs({
+        useHttp11: attempt >= 1,
+      });
+
+      const fetchResult = await this.runCommand(
+        'git',
+        [...httpArgs, '-C', repositoryRoot, 'fetch', '--all', '--prune'],
+        {
+          timeoutMs: networkTimeoutMs,
+          env: gitEnv,
+        },
+      );
+
+      if (fetchResult.success) {
+        return;
+      }
+
+      lastErrorText = mergeGitOutput(fetchResult) || fetchResult.stderr;
+
+      const retriable = isGitNetworkErrorRetriable(lastErrorText);
+
+      if (!retriable || attempt === maxAttempts - 1) {
+        throw new Error(lastErrorText || 'git fetch failed');
+      }
+
+      this.logger.warn(
+        `git_fetch_retry ${JSON.stringify({
+          projectId: project.id,
+          attempt: attempt + 1,
+          maxAttempts,
+          errorPreview: this.truncateError(lastErrorText),
+        })}`,
+      );
+    }
+
+    throw new Error(lastErrorText || 'git fetch failed');
+  }
+
+  private assertCanonicalRepositoryRoot(
+    project: Project,
+    repositoryRoot: string,
+  ): void {
+    const expected = this.resolveRepositoryRoot(project);
+
+    if (path.resolve(repositoryRoot) !== path.resolve(expected)) {
+      throw new Error(
+        'Internal error: repository path does not match project workspace path',
+      );
+    }
+  }
+
+  private async removePartialCloneDirectory(
+    project: Project,
+    repositoryRoot: string,
+  ): Promise<void> {
+    this.assertCanonicalRepositoryRoot(project, repositoryRoot);
+
+    try {
+      await fs.rm(repositoryRoot, { recursive: true, force: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Cannot remove incomplete clone directory: ${this.truncateError(message)}`,
+      );
+    }
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  private resolveNetworkGitTimeoutMs(): number {
+    const raw =
+      this.configService.get<string>('AINATIVE_GIT_NETWORK_TIMEOUT_MS', {
+        infer: true,
+      }) ?? process.env.AINATIVE_GIT_NETWORK_TIMEOUT_MS;
+    const parsed = Number.parseInt(String(raw ?? '').trim(), 10);
+
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+
+    return this.defaultNetworkGitTimeoutMs;
+  }
+
+  private resolveNetworkGitMaxAttempts(): number {
+    const raw =
+      this.configService.get<string>('AINATIVE_GIT_NETWORK_MAX_RETRIES', {
+        infer: true,
+      }) ?? process.env.AINATIVE_GIT_NETWORK_MAX_RETRIES;
+    const parsed = Number.parseInt(String(raw ?? '').trim(), 10);
+
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 10) {
+      return parsed;
+    }
+
+    return this.defaultNetworkGitMaxAttempts;
   }
 
   private formatGitSyncFailureMessage(error: unknown, gitUrl: string): string {
@@ -293,10 +476,17 @@ export class ProjectRepositoryWorkspaceService {
   private async runCommand(
     command: string,
     args: string[],
+    options?: {
+      timeoutMs?: number;
+      env?: NodeJS.ProcessEnv;
+    },
   ): Promise<{ success: boolean; stdout: string; stderr: string }> {
+    const timeoutMs = options?.timeoutMs ?? this.defaultGitTimeoutMs;
+    const env = options?.env ?? process.env;
+
     return new Promise((resolve) => {
       const childProcess = spawn(command, args, {
-        env: process.env,
+        env,
         stdio: 'pipe',
       });
 
@@ -313,7 +503,7 @@ export class ProjectRepositoryWorkspaceService {
 
       const timeoutRef = setTimeout(() => {
         childProcess.kill('SIGTERM');
-      }, this.defaultGitTimeoutMs);
+      }, timeoutMs);
 
       childProcess.on('error', (error) => {
         clearTimeout(timeoutRef);
