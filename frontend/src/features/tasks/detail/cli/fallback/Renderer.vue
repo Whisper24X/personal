@@ -3,19 +3,18 @@ import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseFallbackMessages } from './parser'
 import AssistantMessageShell from '../AssistantMessageShell.vue'
-import { formatTimestampForDialog } from '../utils'
+import { formatTime } from '../utils'
 
 defineOptions({ name: 'CliFallbackRenderer' })
 
 const props = defineProps<{
   messages: TaskMessage[]
-  formatDate?: (value?: string) => string
 }>()
 
 const entries = computed(() => parseFallbackMessages(props.messages))
 const shellTimeLabel = computed(() => {
   const first = entries.value[0]
-  return first ? formatTimestampForDialog(first.timestamp, props.formatDate) : ''
+  return first ? formatTime(first.timestamp) : ''
 })
 </script>
 

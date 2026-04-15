@@ -1,16 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { NormalizedEntry } from '../types'
-import { formatTimestampForDialog } from '../utils'
 
 defineOptions({ name: 'CliCodexUserMessage' })
 
-const props = defineProps<{
+defineProps<{
   entry: NormalizedEntry
-  formatDate?: (value?: string) => string
 }>()
-
-const sentAtLabel = computed(() => formatTimestampForDialog(props.entry.timestamp, props.formatDate))
 </script>
 
 <template>
@@ -21,9 +16,6 @@ const sentAtLabel = computed(() => formatTimestampForDialog(props.entry.timestam
       <p class="whitespace-pre-wrap break-words text-sm leading-6">
         {{ entry.content }}
       </p>
-      <div v-if="sentAtLabel" class="mt-1.5 text-right">
-        <span class="text-[10px] text-primary-foreground/70">发送于 {{ sentAtLabel }}</span>
-      </div>
     </div>
   </div>
 </template>
