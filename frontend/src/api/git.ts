@@ -59,4 +59,8 @@ export const gitApi = {
   pushBranch(projectId: string, branch: string) {
     return apiHttp.post<GitPushResult>('/git/push-branch', { projectId, branch })
   },
+
+  resetBranch(projectId: string, branch: string) {
+    return apiHttp.post<GitBranchActionResult>('/git/reset-branch', { projectId, branch })
+  },
 }

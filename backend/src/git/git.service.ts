@@ -146,6 +146,46 @@ export class GitService {
     };
   }
 
+  async resetBranch(
+    projectId: string,
+    branchName: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitBranchActionResultDto> {
+    const normalizedBranchName = branchName.trim();
+    if (!normalizedBranchName) {
+      throw new BadRequestException('分支名不能为空');
+    }
+
+    const { repositoryRoot } = await this.resolveProjectContext(
+      projectId,
+      currentUser,
+      { syncRemote: true },
+    );
+
+    const resetResult = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'reset',
+      '--hard',
+      `origin/${normalizedBranchName}`,
+    ]);
+
+    if (!resetResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(
+          `重置 ${normalizedBranchName} 分支失败`,
+          resetResult,
+        ),
+      );
+    }
+
+    return {
+      success: true,
+      branch: normalizedBranchName,
+      output: resetResult.stdout || 'HEAD is now at latest origin commit.',
+    };
+  }
+
   async createBranch(
     projectId: string,
     name: string,
