@@ -571,6 +571,26 @@ describe('TaskCommandService.remove', () => {
     expect(taskRepository.remove).not.toHaveBeenCalled();
   });
 
+  it('should not block deletion when skipPlanConsistencyCheck is set (goal cascade)', async () => {
+    const { service, taskRepository, taskAccessService, goalRepository } =
+      createService();
+    const task = createTask({ status: TaskStatus.todo });
+    const currentUser = createCurrentUser();
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(task);
+    taskAccessService.getProjectByIdOrThrow.mockResolvedValue(createProject());
+    goalRepository.shouldBlockTaskDeletionForPlan.mockResolvedValue(true);
+
+    await service.remove(task.id, currentUser as never, {
+      skipPlanConsistencyCheck: true,
+    });
+
+    expect(
+      goalRepository.shouldBlockTaskDeletionForPlan,
+    ).not.toHaveBeenCalled();
+    expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+  });
+
   it('should delete tasks without a stored worktree identifier', async () => {
     const {
       service,

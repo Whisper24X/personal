@@ -22,6 +22,7 @@ import { Task } from '../domain/task';
 import { CreateTaskDto } from '../dto/create-task.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
 import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { UpdateTaskDto } from '../dto/update-task.dto';
 import {
@@ -43,6 +44,11 @@ import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
 import { GoalRepository } from '../../goals/infrastructure/persistence/goal.repository';
+
+/** 仅用于整需求删除等内部编排；默认仍做计划一致性校验 */
+export type RemoveTaskOptions = {
+  skipPlanConsistencyCheck?: boolean;
+};
 
 @Injectable()
 export class TaskCommandService {
@@ -272,7 +278,7 @@ export class TaskCommandService {
         configJson: node.configJson,
         loopJson: node.loopJson,
         runtimeJson: null,
-        status: TaskStatus.todo,
+        status: TaskNodeStatus.todo,
         startedAt: null,
         finishedAt: null,
       })),
@@ -389,7 +395,7 @@ export class TaskCommandService {
       const nodes = await this.taskNodeRepository.findByTaskId(task.id);
       await Promise.all(
         nodes
-          .filter((node) => node.status !== TaskStatus.done)
+          .filter((node) => node.status !== TaskNodeStatus.done)
           .map((node) => {
             const nextNodeExecution =
               effectiveTask.mode === TaskMode.workflow
@@ -439,7 +445,11 @@ export class TaskCommandService {
     return this.taskQueryService.detailById(task.id, currentUser);
   }
 
-  async remove(taskId: Task['id'], currentUser: JwtPayloadType): Promise<void> {
+  async remove(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+    options?: RemoveTaskOptions,
+  ): Promise<void> {
     const task = await this.taskAccessService.getTaskOrThrow(
       taskId,
       currentUser,
@@ -447,10 +457,11 @@ export class TaskCommandService {
     );
 
     if (
-      await this.goalRepository.shouldBlockTaskDeletionForPlan(
+      !options?.skipPlanConsistencyCheck &&
+      (await this.goalRepository.shouldBlockTaskDeletionForPlan(
         task.id,
         task.status,
-      )
+      ))
     ) {
       throw new BadRequestException(
         '该任务与需求任务计划关联：若有后置子任务尚未物化，或本任务为无后置依赖项且尚未完成，删除会导致计划数据不一致或影响其他功能组。请先完成相关子任务创建或待本任务完成后再删除。',

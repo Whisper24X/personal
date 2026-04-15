@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { Loader2 } from 'lucide-vue-next'
 import { RouterLink, useRoute } from 'vue-router'
 import { useMessage } from '@app/composables/useMessage'
 import { projectsApi } from '@/api/projects'
@@ -31,6 +32,7 @@ const projects = ref<Project[]>([])
 const tasks = ref<Task[]>([])
 const selectedProjectId = ref('')
 const createTaskModalOpen = ref(false)
+const createTaskEntryLoading = ref(false)
 
 const filters = reactive({
   keyword: '',
@@ -208,8 +210,22 @@ const resetFilters = async () => {
 }
 
 const openCreateTaskModal = () => {
+  if (!selectedProjectId.value || createTaskModalOpen.value || createTaskEntryLoading.value) {
+    return
+  }
+  createTaskEntryLoading.value = true
   createTaskModalOpen.value = true
 }
+
+const onCreateTaskPanelReady = () => {
+  createTaskEntryLoading.value = false
+}
+
+watch(createTaskModalOpen, (open) => {
+  if (!open) {
+    createTaskEntryLoading.value = false
+  }
+})
 
 const taskDetailTo = (task: Task) => {
   const projectId = selectedProjectId.value || task.projectId
@@ -287,12 +303,20 @@ watch(
         </button>
 
         <button
-          class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          class="inline-flex h-10 min-w-[7.5rem] items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-md active:translate-y-0 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:bg-primary disabled:hover:shadow-sm disabled:active:scale-100 motion-reduce:hover:translate-y-0 motion-reduce:active:scale-100"
           type="button"
           :disabled="!selectedProjectId"
+          :aria-busy="createTaskEntryLoading"
+          :aria-disabled="Boolean(selectedProjectId) && createTaskEntryLoading"
+          :class="selectedProjectId && createTaskEntryLoading && 'pointer-events-none cursor-wait'"
           @click="openCreateTaskModal"
         >
-          新建任务
+          <Loader2
+            v-if="createTaskEntryLoading"
+            class="size-4 shrink-0 animate-spin [animation-duration:0.75s] motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+          {{ createTaskEntryLoading ? '加载中…' : '新建任务' }}
         </button>
       </div>
 
@@ -342,6 +366,7 @@ watch(
     <TaskCreateModal
       v-model:open="createTaskModalOpen"
       :project-id="selectedProjectId"
+      @panel-ready="onCreateTaskPanelReady"
     />
   </div>
 </template>

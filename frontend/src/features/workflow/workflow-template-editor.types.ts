@@ -5,6 +5,7 @@ export type WorkflowTemplateNodeInputForm = {
   prompt: string
   agentCliId: string
   agentCliConfigId: string
+  loopEnabled: boolean
   earlyExitMarkerEnabled: boolean
   earlyExitMarkerFileName: string
 }

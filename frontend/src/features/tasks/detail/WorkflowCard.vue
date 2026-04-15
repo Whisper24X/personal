@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick } from 'vue'
 import type { TaskNode } from '@/types/api/tasks'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@shared/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@shared/ui/tooltip'
 
 defineOptions({
   name: 'TaskDetailWorkflowCard',
@@ -36,7 +36,7 @@ const resolveLoopDisplay = (node: TaskNode) => {
   if (node.status === 'in_progress' || node.status === 'todo') {
     if (count < max) current = count + 1
   }
-  if (node.status === 'done' || node.status === 'in_review') {
+  if (node.status === 'done' || node.status === 'in_review' || node.status === 'failed') {
     current = Math.max(count, 1)
   }
   const earlyExit = (node.status === 'done' || node.status === 'in_review') && count > 0 && count < max
@@ -53,6 +53,9 @@ const nodeChipClass = (node: TaskNode) => {
   if (node.status === 'in_review') {
     return 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
   }
+  if (node.status === 'failed') {
+    return 'bg-destructive/10 text-destructive'
+  }
   return 'bg-muted/40 text-muted-foreground'
 }
 
@@ -65,6 +68,9 @@ const nodeDotClass = (node: TaskNode) => {
   }
   if (node.status === 'in_review') {
     return 'bg-amber-500'
+  }
+  if (node.status === 'failed') {
+    return 'bg-destructive'
   }
   return 'bg-muted-foreground/40'
 }
@@ -90,9 +96,10 @@ defineExpose({
       <span class="text-muted-foreground text-xs font-semibold">工作流</span>
     </div>
 
-    <div class="space-y-2 px-3 py-2">
-      <div class="-mx-1 overflow-x-auto overflow-y-visible px-1 py-1 scrollbar-hide">
-        <div class="flex min-w-max items-center gap-1 py-0.5 pr-2">
+    <TooltipProvider :delay-duration="0">
+      <div class="space-y-2 px-3 py-2">
+        <div class="-mx-1 overflow-x-auto overflow-y-visible px-1 py-1 scrollbar-hide">
+          <div class="flex min-w-max items-center gap-1 py-0.5 pr-2">
           <template v-for="(node, index) in props.nodes" :key="node.id">
             <div class="flex items-center gap-0.5">
               <button
@@ -133,11 +140,18 @@ defineExpose({
             <div
               v-if="index < props.nodes.length - 1"
               class="mx-0.5 h-px w-3"
-              :class="node.status === 'done' ? 'bg-emerald-500/40' : 'bg-muted-foreground/20'"
+              :class="
+                node.status === 'done'
+                  ? 'bg-emerald-500/40'
+                  : node.status === 'failed'
+                    ? 'bg-destructive/30'
+                    : 'bg-muted-foreground/20'
+              "
             />
           </template>
+          </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   </section>
 </template>

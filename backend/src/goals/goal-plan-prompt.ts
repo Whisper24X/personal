@@ -1,6 +1,8 @@
 import { PlanGranularity } from './dto/plan-granularity.enum';
 
 const granularityHint: Record<PlanGranularity, string> = {
+  [PlanGranularity.coarse]:
+    '粗粒度：顶层功能组数量与子任务总数尽量接近，倾向每组约一条子任务，整体划分更粗。',
   [PlanGranularity.conservative]:
     '拆解偏保守：顶层功能组较少，每组内子任务可略多以覆盖较大范围。',
   [PlanGranularity.standard]: '标准粒度：功能组数量与子任务密度平衡。',

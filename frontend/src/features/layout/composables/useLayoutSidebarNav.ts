@@ -223,10 +223,10 @@ export function useLayoutSidebarNav(options: {
 
   const menuItemClass = (to: string) => {
     if (isRouteActive(to)) {
-      return 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+      return 'bg-primary/10 font-semibold text-foreground dark:bg-primary/18'
     }
 
-    return 'text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+    return 'text-sidebar-foreground/75 hover:bg-primary/[0.06] hover:text-sidebar-foreground dark:hover:bg-primary/12'
   }
 
   const menuIconFor = (menuId: MenuItem['id']) => LAYOUT_MENU_ICON_PATHS[menuId]

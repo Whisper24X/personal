@@ -12,6 +12,7 @@ export const createEmptyWorkflowNodeInput = (): WorkflowTemplateNodeInputForm =>
   prompt: '',
   agentCliId: '',
   agentCliConfigId: '',
+  loopEnabled: false,
   earlyExitMarkerEnabled: false,
   earlyExitMarkerFileName: '',
 })

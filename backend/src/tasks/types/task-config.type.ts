@@ -31,6 +31,7 @@ export type TaskNodeInput = Record<string, unknown> & {
 
 export type TaskNodeConfig = Record<string, unknown> & {
   requiresApproval?: boolean | null;
+  requiresArtifact?: boolean | null;
 };
 
 export type TaskNodeRuntime = Record<string, unknown> & {

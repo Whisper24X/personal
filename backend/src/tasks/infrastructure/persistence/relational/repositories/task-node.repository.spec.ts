@@ -1,4 +1,4 @@
-import { TaskStatus } from '../../../../dto/task-status.enum';
+import { TaskNodeStatus } from '../../../../dto/task-node-status.enum';
 import { TaskNodeRelationalRepository } from './task-node.repository';
 
 const createQueryBuilder = () => {
@@ -53,7 +53,7 @@ describe('TaskNodeRelationalRepository', () => {
       configJson: null,
       loopJson: null,
       runtimeJson: null,
-      status: TaskStatus.inProgress,
+      status: TaskNodeStatus.inProgress,
       startedAt: new Date('2026-03-25T10:00:00.000Z'),
       finishedAt: null,
       createdAt: new Date('2026-03-25T09:00:00.000Z'),
@@ -96,10 +96,10 @@ describe('TaskNodeRelationalRepository', () => {
     expect(updateBuilder.setParameters).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: 'task-1',
-        todoStatus: TaskStatus.todo,
-        runningStatus: TaskStatus.inProgress,
-        reviewStatus: TaskStatus.inReview,
-        doneStatus: TaskStatus.done,
+        todoStatus: TaskNodeStatus.todo,
+        runningStatus: TaskNodeStatus.inProgress,
+        reviewStatus: TaskNodeStatus.inReview,
+        doneStatus: TaskNodeStatus.done,
         workerId: 'worker-1',
       }),
     );

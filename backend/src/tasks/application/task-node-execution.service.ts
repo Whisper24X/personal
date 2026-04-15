@@ -14,7 +14,7 @@ import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
-import { TaskStatus } from '../dto/task-status.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskGitService } from '../task-git.service';
@@ -30,6 +30,7 @@ import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.serv
 import { TaskStatusService } from './task-status.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
+import { TaskWorkspaceArtifactService } from './task-workspace-artifact.service';
 
 @Injectable()
 export class TaskNodeExecutionService {
@@ -71,6 +72,12 @@ export class TaskNodeExecutionService {
     > = {
       notifyTaskNodeStatusChanged: () => Promise.resolve(null),
     },
+    @Optional()
+    @Inject(TaskWorkspaceArtifactService)
+    private readonly taskWorkspaceArtifactService?: Pick<
+      TaskWorkspaceArtifactService,
+      'hasArtifactsForNode'
+    >,
   ) {}
 
   async runNode({
@@ -104,7 +111,7 @@ export class TaskNodeExecutionService {
       await this.delay(150);
 
       const pendingNode = await this.taskNodeRepository.findById(nodeId);
-      if (!pendingNode || pendingNode.status !== TaskStatus.inProgress) {
+      if (!pendingNode || pendingNode.status !== TaskNodeStatus.inProgress) {
         return;
       }
 
@@ -147,7 +154,7 @@ export class TaskNodeExecutionService {
       });
 
       const runningNode = await this.taskNodeRepository.findById(nodeId);
-      if (!runningNode || runningNode.status !== TaskStatus.inProgress) {
+      if (!runningNode || runningNode.status !== TaskNodeStatus.inProgress) {
         return;
       }
 
@@ -408,6 +415,7 @@ export class TaskNodeExecutionService {
         agentClioutput,
         agentCliSessionId: executionResult.sessionId ?? null,
         clearAgentCliSessionId: executionResult.clearPreviousSessionId === true,
+        artifactWorktreePath: runtimeContext?.worktreePath ?? null,
         earlyExitDecision: await this.resolveEarlyExitDecision({
           taskId,
           nodeId,
@@ -424,7 +432,9 @@ export class TaskNodeExecutionService {
           ? 'Agent node loop completed; queued next loop'
           : loopResult.pendingApproval
             ? 'Agent node completed; pending approval'
-            : 'Agent node completed successfully',
+            : loopResult.pendingArtifact
+              ? 'Agent node completed; pending artifact review'
+              : 'Agent node completed successfully',
         payload: {
           status: loopResult.status,
           durationMs: executionResult.durationMs,
@@ -432,6 +442,7 @@ export class TaskNodeExecutionService {
           args: executionResult.args,
           loopJson: loopResult.loopJson,
           pendingApproval: loopResult.pendingApproval,
+          pendingArtifact: loopResult.pendingArtifact,
           earlyExitCompleted: loopResult.earlyExitCompleted,
           earlyExitReason: loopResult.earlyExitReason,
           earlyExitSourceFile: loopResult.earlyExitSourceFile,
@@ -444,7 +455,7 @@ export class TaskNodeExecutionService {
     if (executionResult.interrupted) {
       const latestNode = await this.taskNodeRepository.findById(nodeId);
 
-      if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
+      if (!latestNode || latestNode.status !== TaskNodeStatus.inProgress) {
         await this.taskLogService.appendLog({
           taskId,
           taskNodeId: nodeId,
@@ -529,7 +540,7 @@ export class TaskNodeExecutionService {
       try {
         const latestNode = await this.taskNodeRepository.findById(nodeId);
 
-        if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
+        if (!latestNode || latestNode.status !== TaskNodeStatus.inProgress) {
           this.runnerAgentExecutionService.interruptExecution(nodeId);
           stopped = true;
           clearInterval(watcherTimer);
@@ -748,6 +759,7 @@ export class TaskNodeExecutionService {
     agentClioutput,
     agentCliSessionId,
     clearAgentCliSessionId,
+    artifactWorktreePath,
     earlyExitDecision,
   }: {
     taskId: string;
@@ -757,16 +769,18 @@ export class TaskNodeExecutionService {
     agentClioutput: string;
     agentCliSessionId?: string | null;
     clearAgentCliSessionId?: boolean;
+    artifactWorktreePath?: string | null;
     earlyExitDecision?: {
       completed: boolean;
       reason: string | null;
       sourceFile: string | null;
     };
   }): Promise<{
-    status: TaskStatus;
+    status: TaskNodeStatus;
     loopJson: { enabled: boolean; loopCount: number; maxLoops: number };
     queuedNextLoop: boolean;
     pendingApproval: boolean;
+    pendingArtifact: boolean;
     earlyExitCompleted: boolean;
     earlyExitReason: string | null;
     earlyExitSourceFile: string | null;
@@ -785,17 +799,26 @@ export class TaskNodeExecutionService {
       queuedByLoopCount && !(earlyExitDecision?.completed ?? false);
     const pendingApproval =
       !queuedNextLoop && this.taskConfigResolver.readNodeRequiresApproval(node);
+    const pendingArtifact =
+      !queuedNextLoop &&
+      !pendingApproval &&
+      (this.taskConfigResolver.readNodeRequiresArtifact?.(node) ?? false) &&
+      !(await this.hasArtifactsForNode({
+        task,
+        node,
+        worktreePath: artifactWorktreePath ?? null,
+      }));
     const status = queuedNextLoop
-      ? TaskStatus.todo
-      : pendingApproval
-        ? TaskStatus.inReview
-        : TaskStatus.done;
+      ? TaskNodeStatus.todo
+      : pendingApproval || pendingArtifact
+        ? TaskNodeStatus.inReview
+        : TaskNodeStatus.done;
     let afterRunCommitSha = await this.resolveHeadCommitShaForTask(
       task,
       project,
     );
 
-    if (!queuedNextLoop && !pendingApproval) {
+    if (!queuedNextLoop && !pendingApproval && !pendingArtifact) {
       const autoCommitResult = await commitNodeWorkspaceIfChanged({
         taskId,
         node,
@@ -824,8 +847,8 @@ export class TaskNodeExecutionService {
       afterRunCommitSha,
     });
 
-    if (status === TaskStatus.inReview) {
-      await this.notifyTaskNodeInReview(task, node);
+    if (status === TaskNodeStatus.inReview) {
+      await this.notifyTaskNodeStatus(task, node, TaskNodeStatus.inReview);
     }
 
     return {
@@ -833,10 +856,31 @@ export class TaskNodeExecutionService {
       loopJson: nextLoopJson,
       queuedNextLoop,
       pendingApproval,
+      pendingArtifact,
       earlyExitCompleted: earlyExitDecision?.completed ?? false,
       earlyExitReason: earlyExitDecision?.reason ?? null,
       earlyExitSourceFile: earlyExitDecision?.sourceFile ?? null,
     };
+  }
+
+  private async hasArtifactsForNode({
+    task,
+    node,
+    worktreePath,
+  }: {
+    task: Task;
+    node: TaskNode;
+    worktreePath: string | null;
+  }): Promise<boolean> {
+    if (!worktreePath || !this.taskWorkspaceArtifactService) {
+      return false;
+    }
+
+    return this.taskWorkspaceArtifactService.hasArtifactsForNode({
+      task,
+      node,
+      worktreePath,
+    });
   }
 
   private async resolveEarlyExitDecision({
@@ -1016,12 +1060,12 @@ export class TaskNodeExecutionService {
   }): Promise<void> {
     const latestNode = await this.taskNodeRepository.findById(nodeId);
 
-    if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
+    if (!latestNode || latestNode.status !== TaskNodeStatus.inProgress) {
       return;
     }
 
     await this.taskNodeRepository.update(nodeId, {
-      status: TaskStatus.inReview,
+      status: TaskNodeStatus.failed,
       finishedAt: new Date(),
       agentClioutput,
       agentCliSessionId: clearAgentCliSessionId
@@ -1032,7 +1076,7 @@ export class TaskNodeExecutionService {
         afterRunCommitSha ?? latestNode.afterRunCommitSha ?? null,
     });
 
-    await this.notifyTaskNodeInReview(task, latestNode);
+    await this.notifyTaskNodeStatus(task, latestNode, TaskNodeStatus.failed);
   }
 
   private async resolveHeadCommitShaForTask(
@@ -1047,9 +1091,10 @@ export class TaskNodeExecutionService {
     );
   }
 
-  private async notifyTaskNodeInReview(
+  private async notifyTaskNodeStatus(
     task: Task,
     node: Pick<TaskNode, 'id' | 'name' | 'nodeOrder'>,
+    status: TaskNodeStatus.inReview | TaskNodeStatus.failed,
   ): Promise<void> {
     if (!task.createdBy || task.mode !== TaskMode.workflow) {
       return;
@@ -1062,7 +1107,7 @@ export class TaskNodeExecutionService {
       nodeId: node.id,
       nodeName: node.name,
       nodeOrder: node.nodeOrder,
-      status: TaskStatus.inReview,
+      status,
     });
   }
 

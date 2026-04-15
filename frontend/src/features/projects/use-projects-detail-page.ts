@@ -152,10 +152,12 @@ const workflowCreateForm = ref<{
       name: 'step-1',
       type: 'agent',
       requiresApproval: false,
+      requiresArtifact: false,
       input: {
         prompt: '',
         agentCliId: '',
         agentCliConfigId: '',
+        loopEnabled: false,
         earlyExitMarkerEnabled: false,
         earlyExitMarkerFileName: '',
       },
@@ -458,6 +460,7 @@ const buildWorkflowNode = (nodeOrder: number): WorkflowTemplateNodeForm => ({
   name: `step-${nodeOrder}`,
   type: 'agent',
   requiresApproval: true,
+  requiresArtifact: false,
   maxLoops: 1,
   input: resolveWorkflowNodeInput(createEmptyWorkflowNodeInput()),
 })
@@ -509,6 +512,7 @@ const buildWorkflowFormNodesFromTemplate = (
       name: node.name || `step-${index + 1}`,
       type: node.type || 'agent',
       requiresApproval: Boolean(node.requiresApproval),
+      requiresArtifact: Boolean(node.requiresArtifact),
       maxLoops: (node.input as WorkflowTemplateNodeInput | undefined)?.maxLoops ?? 1,
       input: normalizeWorkflowNodeInput(node.input),
     })),
@@ -852,6 +856,7 @@ const cloneWorkflowNodesFromTemplate = (template: WorkflowTemplate): WorkflowTem
     name: node.name || `step-${index + 1}`,
     type: node.type || 'agent',
     requiresApproval: Boolean(node.requiresApproval),
+    requiresArtifact: Boolean(node.requiresArtifact),
     input: node.input ? { ...node.input } : undefined,
   }))
 }

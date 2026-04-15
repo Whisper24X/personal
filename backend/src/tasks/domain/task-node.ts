@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { TaskStatus } from '../dto/task-status.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import {
   TaskLoopConfig,
   TaskNodeConfig,
@@ -54,7 +54,8 @@ export class TaskNode {
     type: Object,
     required: false,
     nullable: true,
-    description: 'Node configuration JSON (e.g. requiresApproval)',
+    description:
+      'Node configuration JSON (e.g. requiresApproval, requiresArtifact)',
   })
   configJson?: TaskNodeConfig | null;
 
@@ -90,8 +91,8 @@ export class TaskNode {
   })
   afterRunCommitSha?: string | null;
 
-  @ApiProperty({ enum: TaskStatus, enumName: 'TaskStatus' })
-  status: TaskStatus;
+  @ApiProperty({ enum: TaskNodeStatus, enumName: 'TaskNodeStatus' })
+  status: TaskNodeStatus;
 
   @ApiProperty({ type: Date, required: false, nullable: true })
   startedAt?: Date | null;

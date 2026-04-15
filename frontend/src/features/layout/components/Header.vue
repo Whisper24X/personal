@@ -60,7 +60,8 @@ const headerToolIcon = (id: MenuItem['id']) => {
               :class="
                 cn(
                   'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-                  props.isNavActive(item.to) && 'bg-primary/10 text-primary',
+                  props.isNavActive(item.to) &&
+                    'bg-primary/10 font-medium text-primary dark:bg-primary/18',
                 )
               "
             >

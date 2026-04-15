@@ -9,6 +9,7 @@ import {
   readTypeOrmPoolSnapshot,
 } from '../../../../../observability/repository-diagnostics';
 import { Task } from '../../../../domain/task';
+import { TaskNodeStatus } from '../../../../dto/task-node-status.enum';
 import { TaskStatus } from '../../../../dto/task-status.enum';
 import { TaskRepository } from '../../task.repository';
 import { TaskEntity } from '../entities/task.entity';
@@ -262,7 +263,7 @@ export class TaskRelationalRepository implements TaskRepository {
         'node',
         `node."taskId" = task.id AND node.status = :status AND ((node."runtimeJson"->>'leaseUntil')::timestamptz) > :at`,
         {
-          status: TaskStatus.inProgress,
+          status: TaskNodeStatus.inProgress,
           at,
         },
       )
@@ -289,7 +290,7 @@ export class TaskRelationalRepository implements TaskRepository {
         'node',
         `node."taskId" = task.id AND node.status = :status AND ((node."runtimeJson"->>'leaseUntil')::timestamptz) > :at`,
         {
-          status: TaskStatus.inProgress,
+          status: TaskNodeStatus.inProgress,
           at,
         },
       )
@@ -321,7 +322,7 @@ export class TaskRelationalRepository implements TaskRepository {
         'node',
         `node."taskId" = task.id AND node.status = :status`,
         {
-          status: TaskStatus.inProgress,
+          status: TaskNodeStatus.inProgress,
         },
       )
       .where('task."deletedAt" IS NULL')
@@ -356,7 +357,7 @@ export class TaskRelationalRepository implements TaskRepository {
       })
       .andWhere(this.buildDispatchableTodoExistsCondition('task'), {
         todoStatus: TaskStatus.todo,
-        doneStatus: TaskStatus.done,
+        doneStatus: TaskNodeStatus.done,
       })
       .andWhere(
         `NOT EXISTS (
@@ -367,12 +368,12 @@ export class TaskRelationalRepository implements TaskRepository {
             AND ((running."runtimeJson"->>'leaseUntil')::timestamptz) > :at
         )`,
         {
-          runningStatus: TaskStatus.inProgress,
+          runningStatus: TaskNodeStatus.inProgress,
           at,
         },
       )
       .andWhere(this.buildNoInReviewNodesCondition('task'), {
-        reviewStatus: TaskStatus.inReview,
+        reviewStatus: TaskNodeStatus.inReview,
       })
       .groupBy('task."projectId"')
       .getRawMany<{ projectId: string; count: string }>();
@@ -392,7 +393,7 @@ export class TaskRelationalRepository implements TaskRepository {
         'node',
         `node."taskId" = task.id AND node.status = :status AND (node."runtimeJson"->>'leaseUntil') IS NOT NULL AND ((node."runtimeJson"->>'leaseUntil')::timestamptz) <= :at`,
         {
-          status: TaskStatus.inProgress,
+          status: TaskNodeStatus.inProgress,
           at,
         },
       )
@@ -411,7 +412,7 @@ export class TaskRelationalRepository implements TaskRepository {
       .where('task."deletedAt" IS NULL')
       .andWhere(this.buildDispatchableTodoExistsCondition('task'), {
         todoStatus: TaskStatus.todo,
-        doneStatus: TaskStatus.done,
+        doneStatus: TaskNodeStatus.done,
       })
       .andWhere(
         `NOT EXISTS (
@@ -422,12 +423,12 @@ export class TaskRelationalRepository implements TaskRepository {
             AND ((running."runtimeJson"->>'leaseUntil')::timestamptz) > :at
         )`,
         {
-          runningStatus: TaskStatus.inProgress,
+          runningStatus: TaskNodeStatus.inProgress,
           at,
         },
       )
       .andWhere(this.buildNoInReviewNodesCondition('task'), {
-        reviewStatus: TaskStatus.inReview,
+        reviewStatus: TaskNodeStatus.inReview,
       })
       .orderBy('task."createdAt"', 'ASC')
       .limit(1)
@@ -458,7 +459,7 @@ export class TaskRelationalRepository implements TaskRepository {
       })
       .andWhere(this.buildDispatchableTodoExistsCondition('task'), {
         todoStatus: TaskStatus.todo,
-        doneStatus: TaskStatus.done,
+        doneStatus: TaskNodeStatus.done,
       })
       .andWhere(
         `NOT EXISTS (
@@ -468,11 +469,11 @@ export class TaskRelationalRepository implements TaskRepository {
             AND running.status = :runningStatus
         )`,
         {
-          runningStatus: TaskStatus.inProgress,
+          runningStatus: TaskNodeStatus.inProgress,
         },
       )
       .andWhere(this.buildNoInReviewNodesCondition('task'), {
-        reviewStatus: TaskStatus.inReview,
+        reviewStatus: TaskNodeStatus.inReview,
       })
       .orderBy('task."createdAt"', 'ASC')
       .limit(limit)

@@ -17,6 +17,7 @@ export type WorkflowTemplateNode = {
   name: string
   type: WorkflowNodeType
   requiresApproval?: boolean
+  requiresArtifact?: boolean
   input?: WorkflowTemplateNodeInput
 }
 

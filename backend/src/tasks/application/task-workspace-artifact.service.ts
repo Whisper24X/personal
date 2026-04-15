@@ -10,7 +10,7 @@ import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
-import { TaskStatus } from '../dto/task-status.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import {
   TaskArtifactPreviewDto,
   TaskArtifactTreeDto,
@@ -254,6 +254,23 @@ export class TaskWorkspaceArtifactService {
     return [];
   }
 
+  async hasArtifactsForNode(input: {
+    task: Task;
+    node: TaskNode | null;
+    worktreePath: string;
+  }): Promise<boolean> {
+    const source = this.resolveArtifactSource({
+      task: input.task,
+      targetNode: input.node,
+    });
+    const files = await this.listArtifactFiles({
+      worktreePath: input.worktreePath,
+      source,
+    });
+
+    return files.length > 0;
+  }
+
   private async resolveTaskWorkspaceContext(
     taskId: string,
     currentUser: JwtPayloadType,
@@ -314,17 +331,18 @@ export class TaskWorkspaceArtifactService {
     });
 
     return (
-      this.findLastNodeByStatus(sortedNodes, TaskStatus.inProgress) ??
-      this.findLastNodeByStatus(sortedNodes, TaskStatus.inReview) ??
-      this.findLastNodeByStatus(sortedNodes, TaskStatus.todo) ??
-      this.findLastNodeByStatus(sortedNodes, TaskStatus.done) ??
+      this.findLastNodeByStatus(sortedNodes, TaskNodeStatus.inProgress) ??
+      this.findLastNodeByStatus(sortedNodes, TaskNodeStatus.failed) ??
+      this.findLastNodeByStatus(sortedNodes, TaskNodeStatus.inReview) ??
+      this.findLastNodeByStatus(sortedNodes, TaskNodeStatus.todo) ??
+      this.findLastNodeByStatus(sortedNodes, TaskNodeStatus.done) ??
       null
     );
   }
 
   private findLastNodeByStatus(
     nodes: TaskNode[],
-    status: TaskStatus,
+    status: TaskNodeStatus,
   ): TaskNode | null {
     for (let index = nodes.length - 1; index >= 0; index -= 1) {
       if (nodes[index]?.status === status) {
@@ -346,7 +364,7 @@ export class TaskWorkspaceArtifactService {
     const afterCommitSha = targetNode?.afterRunCommitSha?.trim() || null;
 
     if (beforeCommitSha && afterCommitSha) {
-      if (targetNode?.status === TaskStatus.done) {
+      if (targetNode?.status === TaskNodeStatus.done) {
         return {
           sourceType: 'commit_range',
           nodeId: targetNode.id,
@@ -365,7 +383,10 @@ export class TaskWorkspaceArtifactService {
       };
     }
 
-    if (targetNode.status !== TaskStatus.done || task.mode === 'conversation') {
+    if (
+      targetNode.status !== TaskNodeStatus.done ||
+      task.mode === 'conversation'
+    ) {
       return {
         sourceType: 'workspace_unstaged_fallback',
         nodeId: targetNode.id,

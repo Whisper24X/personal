@@ -176,29 +176,27 @@ const emit = defineEmits<{
                         type="checkbox"
                         class="h-4 w-4"
                       />
-                      需要审批
+                      审批
                     </label>
                     <label
                       class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
                     >
                       <input
-                        v-model="activeWorkflowCreateNode.input.earlyExitMarkerEnabled"
+                        v-model="activeWorkflowCreateNode.requiresArtifact"
                         type="checkbox"
                         class="h-4 w-4"
                       />
-                      marker 提前退出
+                      产物
                     </label>
                     <label
-                      class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
+                      class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
                     >
-                      <span class="shrink-0">最多循环</span>
                       <input
-                        v-model.number="activeWorkflowCreateNode.maxLoops"
-                        type="number"
-                        min="1"
-                        class="w-12 rounded border-0 bg-transparent px-1 text-center text-xs focus:ring-1 focus:ring-primary"
+                        v-model="activeWorkflowCreateNode.input.loopEnabled"
+                        type="checkbox"
+                        class="h-4 w-4"
                       />
-                      <span class="shrink-0">次</span>
+                      循环
                     </label>
                     <button
                       type="button"
@@ -232,18 +230,27 @@ const emit = defineEmits<{
                       placeholder="输入该节点的提示词，输入 / 可插入变量"
                     />
                   </label>
-                  <label
-                    v-if="activeWorkflowCreateNode.input.earlyExitMarkerEnabled"
-                    class="space-y-1 md:col-span-2"
-                  >
-                    <span class="text-[11px] text-muted-foreground">Marker 文件名</span>
-                    <input
-                      v-model="activeWorkflowCreateNode.input.earlyExitMarkerFileName"
-                      class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm"
-                      type="text"
-                      placeholder="例如：taskResult（会读取 docs/code/taskResult.md）"
-                    />
-                  </label>
+                  <template v-if="activeWorkflowCreateNode.input.loopEnabled">
+                    <label class="space-y-1">
+                      <span class="text-[11px] text-muted-foreground">循环次数限制</span>
+                      <input
+                        v-model.number="activeWorkflowCreateNode.maxLoops"
+                        type="number"
+                        min="1"
+                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm"
+                      />
+                    </label>
+
+                    <label class="space-y-1">
+                      <span class="text-[11px] text-muted-foreground">Marker 文件名</span>
+                      <input
+                        v-model="activeWorkflowCreateNode.input.earlyExitMarkerFileName"
+                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm"
+                        type="text"
+                        placeholder="例如：taskResult（会读取 docs/code/taskResult.md）"
+                      />
+                    </label>
+                  </template>
 
                   <label class="space-y-1">
                     <span class="text-[11px] text-muted-foreground">Agent CLI</span>

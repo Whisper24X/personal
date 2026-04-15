@@ -20,7 +20,6 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     reply: vi.fn(),
     cancel: vi.fn(),
     cleanupWorktree: vi.fn(),
-    retry: vi.fn(),
     resetNode: vi.fn(),
     approve: vi.fn(),
     complete: vi.fn(),
@@ -552,6 +551,105 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).toContain('节点待审批')
     expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('节点待审批')
+
+    vi.useRealTimers()
+  })
+
+  it('refreshes detail when SSE reports pending artifact review', async () => {
+    vi.useFakeTimers()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes
+      .mockResolvedValueOnce({
+        task: {
+          id: 'task-1',
+          projectId: 'project-1',
+          mode: 'workflow',
+          title: 'Workflow task',
+          status: 'in_progress',
+          configJson: {
+            agentCliId: 'codex',
+          },
+          createdAt: '2026-02-27T10:00:00.000Z',
+          updatedAt: '2026-02-27T10:00:00.000Z',
+        },
+        nodes: [
+          {
+            id: 'node-1',
+            taskId: 'task-1',
+            nodeOrder: 1,
+            name: 'Artifact review node',
+            status: 'in_progress',
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        task: {
+          id: 'task-1',
+          projectId: 'project-1',
+          mode: 'workflow',
+          title: 'Workflow task',
+          status: 'in_review',
+          configJson: {
+            agentCliId: 'codex',
+          },
+          createdAt: '2026-02-27T10:00:00.000Z',
+          updatedAt: '2026-02-27T10:00:01.000Z',
+        },
+        nodes: [
+          {
+            id: 'node-1',
+            taskId: 'task-1',
+            nodeOrder: 1,
+            name: 'Artifact review node',
+            status: 'in_review',
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+          },
+        ],
+      })
+
+    openSseStream.mockImplementation(async (_url, _query, options) => {
+      options?.onEvent?.({
+        data: JSON.stringify({
+          id: 'log-1',
+          taskId: 'task-1',
+          taskNodeId: 'node-1',
+          level: 'info',
+          message: 'Agent node completed; pending artifact review',
+          payload: {
+            pendingArtifact: true,
+          },
+          createdAt: '2026-02-27T10:00:01.000Z',
+        }),
+      })
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(16)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    expect(tasksApi.detailWithNodes).toHaveBeenCalledTimes(2)
+    expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).exists()).toBe(true)
 
     vi.useRealTimers()
   })
@@ -1946,6 +2044,122 @@ describe('TaskDetailView toasts', () => {
     await flushPromises()
 
     await wrapper.get('button[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+
+    const resetButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '重置')
+    expect(resetButton).toBeTruthy()
+    await resetButton?.trigger('click')
+    await flushPromises()
+
+    const messageStore = useMessageStore()
+    expect(messageStore.items).toHaveLength(0)
+    expect(tasksApi.resetNode).toHaveBeenCalledWith('task-1', {
+      nodeId: 'node-2',
+    })
+  })
+
+  it('shows failed workflow node actions and retries the failed node', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const failedDetail: TaskDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        status: 'in_progress',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Completed node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          name: 'Failed node',
+          status: 'failed',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-2',
+        },
+        {
+          id: 'node-3',
+          taskId: 'task-1',
+          nodeOrder: 3,
+          name: 'Pending node',
+          status: 'todo',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-3',
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(failedDetail)
+    tasksApi.resetNode.mockResolvedValueOnce({
+      ...failedDetail,
+      task: {
+        ...failedDetail.task,
+        updatedAt: '2026-02-27T10:00:01.000Z',
+      },
+      nodes: failedDetail.nodes.map((node) =>
+        node.id === 'node-2'
+          ? {
+              ...node,
+              status: 'todo',
+            }
+          : { ...node },
+      ),
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('节点执行失败')
+    expect(wrapper.text()).toContain('请先重置后再继续执行。')
+
+    const failedNodeButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Failed node'))
+    expect(failedNodeButton?.classes()).toContain('ring-2')
+
+    const replyTextarea = wrapper.get('textarea[aria-label="回复内容"]')
+    expect((replyTextarea.element as HTMLTextAreaElement).disabled).toBe(true)
+    expect(replyTextarea.attributes('placeholder')).toBe('节点执行失败，请先重置...')
+
+    const buttonTexts = wrapper.findAll('button').map((button) => button.text().trim()).filter(Boolean)
+    expect(buttonTexts).not.toContain('重试')
+    expect(buttonTexts).not.toContain('开始')
+
+    const moreActionsButton = wrapper.get('button[aria-label="更多操作"]')
+    await moreActionsButton.trigger('click')
     await flushPromises()
 
     const resetButton = wrapper
