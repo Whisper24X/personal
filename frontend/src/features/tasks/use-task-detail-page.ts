@@ -1157,11 +1157,21 @@ const resolveAutoSelectedWorkflowNodeId = (nodes: TaskNode[]) => {
     return null
   }
 
+  const findFirstNodeIdByStatus = (status: TaskNode['status']) => {
+    for (let index = 0; index < sortedByOrder.length; index += 1) {
+      if (sortedByOrder[index]?.status === status) {
+        return sortedByOrder[index]?.id ?? null
+      }
+    }
+
+    return null
+  }
+
   const prioritizedNodeId =
     findLastNodeIdByStatus('in_progress') ||
     findLastNodeIdByStatus('failed') ||
     findLastNodeIdByStatus('in_review') ||
-    findLastNodeIdByStatus('todo') ||
+    findFirstNodeIdByStatus('todo') ||
     findLastNodeIdByStatus('done')
 
   if (prioritizedNodeId) {
