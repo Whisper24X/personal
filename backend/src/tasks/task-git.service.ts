@@ -215,7 +215,7 @@ export class TaskGitService {
         return {
           path: this.decodeGitQuotedPath(rawPath),
           status: statusToken || '?',
-        };2
+        };
       });
 
     return {
