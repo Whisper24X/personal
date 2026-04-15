@@ -479,31 +479,119 @@ export class TaskGitService {
       taskId,
       currentUser,
     );
-    const baseBranch = await this.resolveBaseBranch(
+
+    const baseShort = this.resolveBaseShortName(payload.baseBranch, task);
+    const resolvedBaseRef = await this.resolveBaseBranch(
       worktreePath,
       task,
       payload.baseBranch,
     );
 
-    const result = await this.runGitCommand(worktreePath, [
-      'merge',
-      '--no-ff',
-      baseBranch,
+    const headRefResult = await this.runGitCommand(worktreePath, [
+      'rev-parse',
+      '--abbrev-ref',
+      'HEAD',
+    ]);
+    if (!headRefResult.success) {
+      throw this.toGitException('Failed to read current branch', headRefResult);
+    }
+
+    const currentBranch = this.normalizeBranchName(headRefResult.stdout);
+    if (!currentBranch) {
+      throw new BadRequestException(
+        'Cannot merge while in detached HEAD state',
+      );
+    }
+
+    if (currentBranch === baseShort) {
+      throw new BadRequestException(
+        'Already on the base branch; check out a feature branch to merge into the base',
+      );
+    }
+
+    const statusResult = await this.runGitCommand(
+      worktreePath,
+      this.withGitUtf8Paths(['status', '--porcelain', '--untracked-files=all']),
+    );
+    if (!statusResult.success) {
+      throw this.toGitException('Failed to read git status', statusResult);
+    }
+    if (statusResult.stdout.trim()) {
+      throw new BadRequestException(
+        'Working tree is not clean; commit or discard changes before merging',
+      );
+    }
+
+    const localBaseRef = await this.runGitCommand(worktreePath, [
+      'rev-parse',
+      '--verify',
+      `refs/heads/${baseShort}`,
     ]);
 
-    if (result.success) {
+    const checkoutBaseResult = localBaseRef.success
+      ? await this.runGitCommand(worktreePath, ['checkout', baseShort])
+      : await this.runGitCommand(worktreePath, [
+          'checkout',
+          '-B',
+          baseShort,
+          resolvedBaseRef,
+        ]);
+
+    if (!checkoutBaseResult.success) {
+      throw this.toGitException(
+        'Failed to checkout base branch',
+        checkoutBaseResult,
+      );
+    }
+
+    const mergeResult = await this.runGitCommand(worktreePath, [
+      'merge',
+      '--no-ff',
+      currentBranch,
+    ]);
+
+    if (!mergeResult.success) {
+      const conflicts = await this.readConflictFiles(worktreePath);
+      await this.runGitCommand(worktreePath, ['merge', '--abort']);
+      const checkoutBackAfterFailure = await this.runGitCommand(worktreePath, [
+        'checkout',
+        currentBranch,
+      ]);
+
+      const failureMessage = this.formatGitFailure('Merge failed', mergeResult);
+      if (!checkoutBackAfterFailure.success) {
+        return {
+          success: false,
+          message: `${failureMessage} Failed to return to ${currentBranch}: ${this.formatGitFailure('Checkout failed', checkoutBackAfterFailure)}`,
+          conflicts,
+        };
+      }
+
       return {
-        success: true,
-        message: result.stdout || `Merged ${baseBranch}`,
+        success: false,
+        message: failureMessage,
+        conflicts,
       };
     }
 
-    const conflicts = await this.readConflictFiles(worktreePath);
+    const checkoutBackResult = await this.runGitCommand(worktreePath, [
+      'checkout',
+      currentBranch,
+    ]);
+    if (!checkoutBackResult.success) {
+      throw this.toGitException(
+        `Merged into ${baseShort} but failed to switch back to ${currentBranch}`,
+        checkoutBackResult,
+      );
+    }
+
+    const detail = mergeResult.stdout.trim() || mergeResult.stderr.trim() || '';
 
     return {
-      success: false,
-      message: this.formatGitFailure('Merge failed', result),
-      conflicts,
+      success: true,
+      message:
+        `Merged "${currentBranch}" into local base "${baseShort}" and switched back. Remote base was not updated.` +
+        (detail ? ` ${detail}` : ''),
     };
   }
 
@@ -1109,6 +1197,21 @@ export class TaskGitService {
     }
 
     return Array.from(new Set(normalizedFiles));
+  }
+
+  private resolveBaseShortName(
+    requestedBaseBranch: string | undefined,
+    task: Task,
+  ): string {
+    const raw =
+      requestedBaseBranch?.trim() || task.gitBaseBranch?.trim() || 'main';
+
+    if (raw.startsWith('origin/')) {
+      const rest = raw.slice('origin/'.length).trim();
+      return rest || 'main';
+    }
+
+    return raw;
   }
 
   private async resolveBaseBranch(

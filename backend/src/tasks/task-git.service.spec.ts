@@ -687,4 +687,199 @@ describe('TaskGitService', () => {
       }
     }
   });
+
+  it('should merge current branch into base then switch back to feature', async () => {
+    const { service } = createTaskGitServices();
+
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        gitBaseBranch: 'main',
+      },
+      worktreePath: '/tmp/worktree',
+    });
+
+    const calls: string[][] = [];
+    jest
+      .spyOn(service as any, 'runGitCommand')
+      .mockImplementation((_cwd: string, args: string[]) => {
+        calls.push(args);
+
+        if (args[0] === 'rev-parse' && args[1] === '--verify') {
+          if (args[2] === 'origin/main') {
+            return Promise.resolve({
+              success: false,
+              stdout: '',
+              stderr: 'unknown revision',
+              exitCode: 1,
+            });
+          }
+          if (args[2] === 'refs/heads/main') {
+            return Promise.resolve({
+              success: true,
+              stdout: 'deadbeef',
+              stderr: '',
+              exitCode: 0,
+            });
+          }
+        }
+
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+          return Promise.resolve({
+            success: true,
+            stdout: 'feature/x',
+            stderr: '',
+            exitCode: 0,
+          });
+        }
+
+        if (args.includes('status') && args.includes('--porcelain')) {
+          return Promise.resolve({
+            success: true,
+            stdout: '',
+            stderr: '',
+            exitCode: 0,
+          });
+        }
+
+        if (args[0] === 'checkout') {
+          return Promise.resolve({
+            success: true,
+            stdout: '',
+            stderr: '',
+            exitCode: 0,
+          });
+        }
+
+        if (args[0] === 'merge') {
+          return Promise.resolve({
+            success: true,
+            stdout: '',
+            stderr: 'Merge made by recursive strategy.',
+            exitCode: 0,
+          });
+        }
+
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: `unexpected: ${args.join(' ')}`,
+          exitCode: 1,
+        });
+      });
+
+    const result = await service.merge(
+      'task-1',
+      { baseBranch: 'main' },
+      {} as never,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('feature/x');
+    expect(result.message).toContain('local base');
+    expect(calls).toContainEqual(['merge', '--no-ff', 'feature/x']);
+    const checkoutCalls = calls.filter((args) => args[0] === 'checkout');
+    expect(checkoutCalls[0]).toEqual(['checkout', 'main']);
+    expect(checkoutCalls[1]).toEqual(['checkout', 'feature/x']);
+  });
+
+  it('should reject merge when already on base branch', async () => {
+    const { service } = createTaskGitServices();
+
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        gitBaseBranch: 'main',
+      },
+      worktreePath: '/tmp/worktree',
+    });
+
+    jest
+      .spyOn(service as any, 'runGitCommand')
+      .mockImplementation((_cwd: string, args: string[]) => {
+        if (args[0] === 'rev-parse' && args[1] === '--verify') {
+          if (args[2] === 'origin/main') {
+            return Promise.resolve({
+              success: false,
+              stdout: '',
+              stderr: '',
+              exitCode: 1,
+            });
+          }
+        }
+
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+          return Promise.resolve({
+            success: true,
+            stdout: 'main',
+            stderr: '',
+            exitCode: 0,
+          });
+        }
+
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: `unexpected: ${args.join(' ')}`,
+          exitCode: 1,
+        });
+      });
+
+    await expect(
+      service.merge('task-1', { baseBranch: 'main' }, {} as never),
+    ).rejects.toThrow(/Already on the base branch/);
+  });
+
+  it('should reject merge when working tree is dirty', async () => {
+    const { service } = createTaskGitServices();
+
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        gitBaseBranch: 'main',
+      },
+      worktreePath: '/tmp/worktree',
+    });
+
+    jest
+      .spyOn(service as any, 'runGitCommand')
+      .mockImplementation((_cwd: string, args: string[]) => {
+        if (args[0] === 'rev-parse' && args[1] === '--verify') {
+          if (args[2] === 'origin/main') {
+            return Promise.resolve({
+              success: false,
+              stdout: '',
+              stderr: '',
+              exitCode: 1,
+            });
+          }
+        }
+
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+          return Promise.resolve({
+            success: true,
+            stdout: 'feature/x',
+            stderr: '',
+            exitCode: 0,
+          });
+        }
+
+        if (args.includes('status') && args.includes('--porcelain')) {
+          return Promise.resolve({
+            success: true,
+            stdout: ' M README.md\n',
+            stderr: '',
+            exitCode: 0,
+          });
+        }
+
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: `unexpected: ${args.join(' ')}`,
+          exitCode: 1,
+        });
+      });
+
+    await expect(
+      service.merge('task-1', { baseBranch: 'main' }, {} as never),
+    ).rejects.toThrow(/Working tree is not clean/);
+  });
 });
