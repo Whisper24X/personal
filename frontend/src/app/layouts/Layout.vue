@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide } from 'vue'
+import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import HeaderBar from '@features/layout/components/Header.vue'
 import SideNav from '@features/layout/components/Sidebar.vue'
@@ -9,6 +9,7 @@ import { useLayout } from '@features/layout/composables/useLayout'
 import { layoutWorkspaceKey } from '@features/layout/model/workspace.context'
 import { useUserStore } from '@app/stores/modules/user'
 import { useBrowserNotification } from '@app/composables/useBrowserNotification'
+import { gitApi } from '@/api/git'
 
 defineOptions({
   name: 'AppLayout',
@@ -60,6 +61,34 @@ const {
   hasAnyBusinessLine,
   layoutDataLoading,
 } = useLayout()
+
+const gitSyncInfo = ref<{ branch: string; ahead: number; behind: number } | null>(null)
+
+const refreshGitSyncInfo = async () => {
+  const projectId = selectedProjectId.value
+  if (!projectId) {
+    gitSyncInfo.value = null
+    return
+  }
+  try {
+    const data = await gitApi.branchesDetail(projectId)
+    const branch = data.branches.find(b => b.isCurrent)
+      ?? data.branches.find(b => b.name === 'main' || b.name === 'master')
+    if (branch && (branch.ahead > 0 || branch.behind > 0)) {
+      gitSyncInfo.value = { branch: branch.name, ahead: branch.ahead, behind: branch.behind }
+    } else {
+      gitSyncInfo.value = null
+    }
+  } catch {
+    // silent
+  }
+}
+
+watch(selectedProjectId, refreshGitSyncInfo, { immediate: true })
+
+const onGitSyncUpdated = () => void refreshGitSyncInfo()
+window.addEventListener('git-sync-updated', onGitSyncUpdated)
+onBeforeUnmount(() => window.removeEventListener('git-sync-updated', onGitSyncUpdated))
 
 provide(layoutWorkspaceKey, {
   hasAnyBusinessLine,
@@ -115,6 +144,7 @@ provide(layoutWorkspaceKey, {
           :is-nav-active="isNavActive"
           :user-avatar-initial="userAvatarInitial"
           :user-display-name="userDisplayName"
+          :git-sync-info="gitSyncInfo"
         />
 
         <div id="main-content" class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">

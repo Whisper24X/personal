@@ -223,6 +223,7 @@ const pushBranch = async (branchName: string) => {
     const result = await gitApi.pushBranch(projectId, branchName)
     message.success(`已推送分支 ${branchName}，推送了 ${result.pushedCommits} 个提交`)
     await loadBranches()
+    window.dispatchEvent(new Event('git-sync-updated'))
   } catch (error) {
     message.error(toErrorMessage(error, '推送分支失败'))
   } finally {
@@ -240,8 +241,26 @@ const pullBranch = async (branchName: string) => {
     await gitApi.pullBranch(projectId, branchName)
     message.success(`已拉取分支 ${branchName}`)
     await loadBranches()
+    window.dispatchEvent(new Event('git-sync-updated'))
   } catch (error) {
     message.error(toErrorMessage(error, '拉取分支失败'))
+  } finally {
+    operatingBranch.value = null
+  }
+}
+
+const resetBranch = async (branchName: string) => {
+  const projectId = activeProjectId.value
+  if (!projectId) return
+
+  operatingBranch.value = branchName
+  try {
+    await gitApi.resetBranch(projectId, branchName)
+    message.success(`已重置分支 ${branchName} 到远端最新`)
+    await loadBranches()
+    window.dispatchEvent(new Event('git-sync-updated'))
+  } catch (error) {
+    message.error(toErrorMessage(error, '重置分支失败'))
   } finally {
     operatingBranch.value = null
   }
@@ -344,6 +363,16 @@ watch(activeProjectId, () => {
                 @click="pullBranch(branch.name)"
               >
                 {{ operatingBranch === branch.name ? '拉取中...' : '拉取' }}
+              </button>
+              <button
+                v-if="canPullBranch(branch)"
+                type="button"
+                class="inline-flex h-8 items-center rounded-full border border-amber-200/70 bg-amber-50/70 px-3 text-xs font-semibold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-500/15"
+                :disabled="operatingBranch === branch.name"
+                title="强制重置到远端最新，丢弃本地差异"
+                @click="resetBranch(branch.name)"
+              >
+                {{ operatingBranch === branch.name ? '重置中...' : '重置' }}
               </button>
               <button
                 type="button"
