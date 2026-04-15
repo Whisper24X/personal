@@ -24,9 +24,9 @@ import {
 } from './dto/task-git.dto';
 import { Task } from './domain/task';
 import {
-  TaskArtifactPreviewDto,
-  TaskArtifactTreeDto,
   TaskWorkspaceFileQueryDto,
+  TaskWorkspacePreviewDto,
+  TaskWorkspaceTreeDto,
   TaskWorkspaceTreeQueryDto,
 } from './dto/task-workspace.dto';
 import { TaskRuntimeService } from './task-runtime.service';
@@ -264,7 +264,7 @@ export class TaskGitService {
     taskId: string,
     query: TaskWorkspaceTreeQueryDto,
     currentUser: JwtPayloadType,
-  ): Promise<TaskArtifactTreeDto> {
+  ): Promise<TaskWorkspaceTreeDto> {
     return this.taskWorkspaceArtifactService.getArtifactTree(
       taskId,
       query,
@@ -276,7 +276,7 @@ export class TaskGitService {
     taskId: string,
     query: TaskWorkspaceFileQueryDto,
     currentUser: JwtPayloadType,
-  ): Promise<TaskArtifactPreviewDto> {
+  ): Promise<TaskWorkspacePreviewDto> {
     return this.taskWorkspaceArtifactService.getArtifactPreview(
       taskId,
       query,
