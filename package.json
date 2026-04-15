@@ -16,7 +16,7 @@
     "type-check": "pnpm run type-check:frontend && pnpm run type-check:backend",
     "type-check:frontend": "pnpm --dir frontend run type-check",
     "type-check:backend": "pnpm --dir backend run type-check",
-    "quality-gate": "pnpm run lint && pnpm run type-check",
+    "quality-gate": "pnpm run lint && pnpm run type-check && pnpm --dir frontend run deps:circular:strict",
     "prepare": "husky",
     "docker:up": "docker compose --env-file /dev/null up -d",
     "docker:up:build": "docker compose --env-file /dev/null up -d --build",

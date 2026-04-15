@@ -32,7 +32,7 @@ import type {
   SuggestTaskTitleResponse,
 } from '@/types/api/tasks'
 import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
-import { STORAGE_KEYS } from '@/types/common/storage'
+import { STORAGE_KEYS } from '@shared/types/common/storage'
 
 export const tasksApi = {
   /** 项目任务按状态聚合（数据库 COUNT，用于仪表盘统计与完成率） */
