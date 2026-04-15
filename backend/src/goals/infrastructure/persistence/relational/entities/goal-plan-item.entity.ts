@@ -47,6 +47,14 @@ export class GoalPlanItemEntity extends EntityRelationalHelper {
   })
   gitBranch: string | null;
 
+  @Column({
+    name: 'group_merged_into_goal_at',
+    type: 'timestamptz',
+    nullable: true,
+    comment: '功能组分支已合并入需求分支的时间',
+  })
+  groupMergedIntoGoalAt: Date | null;
+
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 

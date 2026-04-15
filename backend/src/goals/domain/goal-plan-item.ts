@@ -34,6 +34,13 @@ export class GoalPlanItem {
   })
   gitBranch: string | null;
 
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description: '功能组分支已合并入需求分支的时间',
+  })
+  groupMergedIntoGoalAt: Date | null;
+
   @ApiProperty()
   createdAt: Date;
 
