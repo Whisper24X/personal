@@ -4,7 +4,13 @@ import type {
   GoalPlanSubTask,
 } from '@/types/api/goals'
 
-type PlanNodeClassName = 'planApproved' | 'planMaterialized' | 'planDraft' | 'planCancelled'
+type PlanNodeClassName =
+  | 'planApproved'
+  | 'planMaterialized'
+  | 'planTaskCompleted'
+  | 'planBranchMerged'
+  | 'planDraft'
+  | 'planCancelled'
 
 type PlanGraphNode = {
   id: string
@@ -16,8 +22,11 @@ type PlanGraphNode = {
 function planItemNodeClass(status: GoalPlanItemStatus): PlanNodeClassName {
   switch (status) {
     case 'task_created':
-    case 'completed':
       return 'planMaterialized'
+    case 'completed':
+      return 'planTaskCompleted'
+    case 'branch_merged':
+      return 'planBranchMerged'
     case 'approved':
       return 'planApproved'
     case 'cancelled':
@@ -134,6 +143,8 @@ function buildPlanDependencyMermaidCore(nodes: PlanGraphNode[]): string | null {
   lines.push(
     '  classDef planApproved fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f',
     '  classDef planMaterialized fill:#d1fae5,stroke:#059669,stroke-width:1.5px,color:#064e3b',
+    '  classDef planTaskCompleted fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e',
+    '  classDef planBranchMerged fill:#ccfbf1,stroke:#0d9488,stroke-width:2px,color:#134e4a',
     '  classDef planDraft fill:#f8fafc,stroke:#94a3b8,stroke-width:1.5px,color:#475569',
     '  classDef planCancelled fill:#f1f5f9,stroke:#94a3b8,stroke-width:1.5px,color:#64748b,stroke-dasharray: 4 3',
   )
@@ -141,6 +152,8 @@ function buildPlanDependencyMermaidCore(nodes: PlanGraphNode[]): string | null {
   const byClass: Record<PlanNodeClassName, string[]> = {
     planApproved: [],
     planMaterialized: [],
+    planTaskCompleted: [],
+    planBranchMerged: [],
     planDraft: [],
     planCancelled: [],
   }
@@ -258,6 +271,8 @@ export function buildPlanDependencyMermaidFromPlanItems(
   lines.push(
     '  classDef planApproved fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f',
     '  classDef planMaterialized fill:#d1fae5,stroke:#059669,stroke-width:1.5px,color:#064e3b',
+    '  classDef planTaskCompleted fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e',
+    '  classDef planBranchMerged fill:#ccfbf1,stroke:#0d9488,stroke-width:2px,color:#134e4a',
     '  classDef planDraft fill:#f8fafc,stroke:#94a3b8,stroke-width:1.5px,color:#475569',
     '  classDef planCancelled fill:#f1f5f9,stroke:#94a3b8,stroke-width:1.5px,color:#64748b,stroke-dasharray: 4 3',
   )
@@ -265,6 +280,8 @@ export function buildPlanDependencyMermaidFromPlanItems(
   const byClass: Record<PlanNodeClassName, string[]> = {
     planApproved: [],
     planMaterialized: [],
+    planTaskCompleted: [],
+    planBranchMerged: [],
     planDraft: [],
     planCancelled: [],
   }

@@ -34,6 +34,7 @@ import { PatchPlanSubTaskDto } from './dto/patch-plan-sub-task.dto';
 import { MaterializeTasksDto } from './dto/materialize-tasks.dto';
 import { ReplaceTaskDependenciesDto } from './dto/replace-task-dependencies.dto';
 import { GoalPlanItemPrLinkDto } from './dto/goal-plan-item-pr-link.dto';
+import { GitBranchMergeResultDto } from '../git/dto/git-branch-merge-result.dto';
 import { Goal } from './domain/goal';
 import { GoalPlanSubTask } from './domain/goal-plan-sub-task';
 import { GoalDetailDto } from './dto/goal-detail.dto';
@@ -145,6 +146,21 @@ export class GoalsController {
     @Param('itemId', ParseUUIDPipe) itemId: string,
   ) {
     return this.goalsService.getPlanItemPrLink(id, itemId, request.user);
+  }
+
+  @Post(':id/plan-items/:itemId/merge-into-goal')
+  @ApiOkResponse({ type: GitBranchMergeResultDto })
+  @HttpCode(HttpStatus.OK)
+  mergePlanItemIntoGoal(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+  ): Promise<GitBranchMergeResultDto> {
+    return this.goalsService.mergePlanItemBranchIntoGoal(
+      id,
+      itemId,
+      request.user,
+    );
   }
 
   @Patch(':id/plan-items/:itemId')

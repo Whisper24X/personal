@@ -78,6 +78,7 @@ export class GoalMapper {
       : [];
     p.itemOrder = raw.itemOrder;
     p.gitBranch = raw.gitBranch ?? null;
+    p.groupMergedIntoGoalAt = raw.groupMergedIntoGoalAt ?? null;
     p.createdAt = raw.createdAt;
     p.updatedAt = raw.updatedAt;
     return p;

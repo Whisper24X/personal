@@ -51,6 +51,7 @@ export type GoalPlanItemStatus =
   | 'approved'
   | 'task_created'
   | 'completed'
+  | 'branch_merged'
   | 'cancelled'
 
 /** 功能组（父级），不直接物化为 Task */
@@ -65,6 +66,8 @@ export type GoalPlanItem = {
   itemOrder: number
   /** 该功能组对应的 Git 分支（确认子任务创建前可为空） */
   gitBranch: string | null
+  /** 功能组分支已合并入需求分支的时间 */
+  groupMergedIntoGoalAt?: string | null
   createdAt: string
   updatedAt: string
   /** 详情接口嵌套的子任务 */

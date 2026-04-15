@@ -171,7 +171,7 @@ watch(
             <div>
               <DialogTitle class="text-base font-semibold">计划依赖图</DialogTitle>
               <p class="text-muted-foreground mt-0.5 text-sm leading-snug">
-                箭头方向表示「前置 → 后续」；同一前置完成后方可开始后续项。虚线框内为同一功能组下的子任务。子任务之间的实线来自 dependsOnSubTaskIds；跨功能组且仅配置在功能组上的依赖以虚线箭头标注「功能组依赖」。
+                箭头方向表示「前置 → 后续」；前置子任务须「分支已合并」后，后置方可确认/物化。虚线框内为同一功能组下的子任务。子任务之间的实线来自 dependsOnSubTaskIds；跨功能组且仅配置在功能组上的依赖以虚线箭头标注「功能组依赖」。
               </p>
             </div>
             <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
@@ -182,6 +182,14 @@ watch(
               <span class="inline-flex items-center gap-1.5">
                 <span class="size-2.5 shrink-0 rounded-sm border border-emerald-600 bg-emerald-100 dark:border-emerald-500 dark:bg-emerald-950/80" />
                 已创建任务
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <span class="size-2.5 shrink-0 rounded-sm border border-sky-600 bg-sky-100 dark:border-sky-500 dark:bg-sky-950/80" />
+                任务已完成
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <span class="size-2.5 shrink-0 rounded-sm border border-teal-600 bg-teal-100 dark:border-teal-500 dark:bg-teal-950/80" />
+                分支已合并
               </span>
               <span class="inline-flex items-center gap-1.5">
                 <span class="size-2.5 shrink-0 rounded-sm border border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/60" />

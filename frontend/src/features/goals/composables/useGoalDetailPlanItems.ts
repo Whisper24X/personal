@@ -10,6 +10,7 @@ import type {
 } from '@/types/api/goals'
 import { flattenGoalPlanSubTasks } from '@/types/api/goals'
 import type { WorkflowTemplate } from '@/types/api/workflow'
+import { mergeTaskBranchIntoBase } from '@features/tasks'
 import { topologicalMaterializeOrder } from '@features/goals/utils/goal-plan-materialize-order'
 import { toErrorMessage } from '@api/shared/to-error-message'
 
@@ -50,7 +51,8 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     draft: '待确认',
     approved: '已确认',
     task_created: '已创建任务',
-    completed: '已完成',
+    completed: '任务已完成',
+    branch_merged: '分支已合并',
     cancelled: '已取消',
   }
 
@@ -115,7 +117,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     return item.dependsOnSubTaskIds.map((depId) => byId.get(depId)?.title ?? depId)
   }
 
-  /** 功能组 dependsOnItemIds：前置组内全部子任务对应 Task 须已存在且均为 done（与后端一致） */
+  /** 功能组 dependsOnItemIds：前置组内全部子任务须已标记「分支已合并」（与后端一致） */
   function planItemGroupDependencyBlockedReason(item: GoalPlanSubTask): string | null {
     const detail = options.detail.value
     if (!detail) {
@@ -139,12 +141,8 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
         if (!st.taskId?.trim()) {
           return `请先为前置功能组「${predGroup.title}」的全部子任务创建任务后再继续`
         }
-        const task = detail.tasks.find((entry) => entry.id === st.taskId)
-        if (!task) {
-          return '前置任务数据缺失，请刷新后重试'
-        }
-        if (task.status !== 'done') {
-          return `请先完成前置功能组「${predGroup.title}」的全部子任务（「${st.title}」对应任务未完成）`
+        if (st.status !== 'branch_merged') {
+          return `请先将前置功能组「${predGroup.title}」的子任务「${st.title}」对应分支合并入需求分支，并在任务计划中标记为「分支已合并」后再继续`
         }
       }
     }
@@ -171,12 +169,11 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
       if (!predecessor) {
         continue
       }
-      const predMaterialized =
-        (predecessor.status === 'task_created' ||
-          predecessor.status === 'completed') &&
-        !!predecessor.taskId?.trim()
-      if (!predMaterialized) {
-        return `请先为前置子任务「${predecessor.title}」创建任务后再确认本项`
+      if (
+        predecessor.status !== 'branch_merged' ||
+        !predecessor.taskId?.trim()
+      ) {
+        return `请先将前置子任务「${predecessor.title}」对应分支合并入需求分支，并标记为「分支已合并」后再确认本项`
       }
     }
     return null
@@ -202,12 +199,8 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
       if (!predecessor.taskId?.trim()) {
         return `请先为前置子任务「${predecessor.title}」创建任务后再为本项创建任务`
       }
-      const task = detail.tasks.find((entry) => entry.id === predecessor.taskId)
-      if (!task) {
-        return '前置任务数据缺失，请刷新后重试'
-      }
-      if (task.status !== 'done') {
-        return `前置任务「${task.title}」未完成，请完成后再为本项创建任务`
+      if (predecessor.status !== 'branch_merged') {
+        return `请先将前置子任务「${predecessor.title}」对应分支合并入需求分支，并标记为「分支已合并」后再为本项创建任务`
       }
     }
     return null
@@ -378,25 +371,84 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     }
   }
 
-  const creatingPrGroupId = ref<string | null>(null)
+  const mergingPlanGroupId = ref<string | null>(null)
+  const markingBranchMergedId = ref<string | null>(null)
 
-  async function onCreateGroupPr(group: GoalPlanItem) {
-    creatingPrGroupId.value = group.id
+  async function markBranchMergedSubTask(item: GoalPlanSubTask) {
+    const goalId = options.goalId.value
+    const detail = options.detail.value
+    if (!goalId || !detail) {
+      return
+    }
+    if (item.status !== 'completed') {
+      return
+    }
+    const taskId = item.taskId?.trim()
+    if (!taskId) {
+      message.warning('未找到关联任务，无法合并')
+      return
+    }
+    const task = detail.tasks.find((t) => t.id === taskId)
+    if (!task) {
+      message.warning('未找到关联任务数据，请刷新后重试')
+      return
+    }
+    const baseBranch = task.gitBaseBranch?.trim() || 'main'
+
+    markingBranchMergedId.value = item.id
     try {
-      const res = await goalsApi.getPlanItemPrLink(
-        options.goalId.value,
-        group.id,
-      )
-      if (!res.url) {
-        message.warning('未能生成 PR 链接')
+      const mergeResult = await mergeTaskBranchIntoBase(taskId, baseBranch)
+      if (!mergeResult.success) {
+        const conflictExtra =
+          mergeResult.conflicts?.length && mergeResult.conflicts.length > 0
+            ? `（冲突：${mergeResult.conflicts.slice(0, 8).join('、')}${
+                mergeResult.conflicts.length > 8 ? '…' : ''
+              }）`
+            : ''
+        message.warning(`${mergeResult.message}${conflictExtra}`)
         return
       }
-      window.open(res.url, '_blank', 'noopener,noreferrer')
-      message.success('已打开 PR 链接')
+
+      const updated = await goalsApi.patchPlanSubTask(goalId, item.id, {
+        status: 'branch_merged',
+      })
+      mergeSubTaskInDetail(detail, updated)
+      if (selectedPlanSubTask.value?.id === updated.id) {
+        selectedPlanSubTask.value = updated
+      }
+      message.success('已合并并更新计划状态')
+      await options.load()
     } catch (e) {
-      message.error(toErrorMessage(e, '生成 PR 链接失败'))
+      message.error(toErrorMessage(e, '合并失败'))
     } finally {
-      creatingPrGroupId.value = null
+      markingBranchMergedId.value = null
+    }
+  }
+
+  async function mergePlanGroupIntoGoal(group: GoalPlanItem) {
+    const goalId = options.goalId.value
+    if (!goalId) {
+      return
+    }
+    mergingPlanGroupId.value = group.id
+    try {
+      const res = await goalsApi.mergePlanItemIntoGoal(goalId, group.id)
+      if (!res.success) {
+        const conflictExtra =
+          res.conflicts?.length && res.conflicts.length > 0
+            ? `（冲突：${res.conflicts.slice(0, 8).join('、')}${
+                res.conflicts.length > 8 ? '…' : ''
+              }）`
+            : ''
+        message.warning(`${res.message}${conflictExtra}`)
+        return
+      }
+      message.success('已合并功能组分支至需求分支')
+      await options.load()
+    } catch (e) {
+      message.error(toErrorMessage(e, '合并失败'))
+    } finally {
+      mergingPlanGroupId.value = null
     }
   }
 
@@ -404,9 +456,11 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     confirmPlanItemFromSheet,
     goTaskFromSheet,
     materializeSingleSubTask,
-    creatingPrGroupId,
+    mergingPlanGroupId,
+    markingBranchMergedId,
+    markBranchMergedSubTask,
     materializing,
-    onCreateGroupPr,
+    mergePlanGroupIntoGoal,
     onPlanItemSheetOpen,
     openPlanItemDetail,
     planItemApproveBlockedReason,

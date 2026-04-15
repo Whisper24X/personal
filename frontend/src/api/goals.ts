@@ -121,11 +121,13 @@ export const goalsApi = {
     )
   },
 
-  getPlanItemPrLink(goalId: string, planItemId: string) {
-    return apiHttp.post<{ url: string | null }>(
-      `/goals/${goalId}/plan-items/${planItemId}/pr-link`,
-      {},
-    )
+  /** 将功能组分支合并入需求分支（项目主仓库），并更新组级状态 */
+  mergePlanItemIntoGoal(goalId: string, planItemId: string) {
+    return apiHttp.post<{
+      success: boolean
+      message: string
+      conflicts?: string[]
+    }>(`/goals/${goalId}/plan-items/${planItemId}/merge-into-goal`, {})
   },
 
   patchPlanSubTask(
