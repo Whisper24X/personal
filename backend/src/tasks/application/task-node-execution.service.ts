@@ -14,7 +14,7 @@ import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
-import { TaskStatus } from '../dto/task-status.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskGitService } from '../task-git.service';
@@ -111,7 +111,7 @@ export class TaskNodeExecutionService {
       await this.delay(150);
 
       const pendingNode = await this.taskNodeRepository.findById(nodeId);
-      if (!pendingNode || pendingNode.status !== TaskStatus.inProgress) {
+      if (!pendingNode || pendingNode.status !== TaskNodeStatus.inProgress) {
         return;
       }
 
@@ -154,7 +154,7 @@ export class TaskNodeExecutionService {
       });
 
       const runningNode = await this.taskNodeRepository.findById(nodeId);
-      if (!runningNode || runningNode.status !== TaskStatus.inProgress) {
+      if (!runningNode || runningNode.status !== TaskNodeStatus.inProgress) {
         return;
       }
 
@@ -455,7 +455,7 @@ export class TaskNodeExecutionService {
     if (executionResult.interrupted) {
       const latestNode = await this.taskNodeRepository.findById(nodeId);
 
-      if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
+      if (!latestNode || latestNode.status !== TaskNodeStatus.inProgress) {
         await this.taskLogService.appendLog({
           taskId,
           taskNodeId: nodeId,
@@ -540,7 +540,7 @@ export class TaskNodeExecutionService {
       try {
         const latestNode = await this.taskNodeRepository.findById(nodeId);
 
-        if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
+        if (!latestNode || latestNode.status !== TaskNodeStatus.inProgress) {
           this.runnerAgentExecutionService.interruptExecution(nodeId);
           stopped = true;
           clearInterval(watcherTimer);
@@ -776,7 +776,7 @@ export class TaskNodeExecutionService {
       sourceFile: string | null;
     };
   }): Promise<{
-    status: TaskStatus;
+    status: TaskNodeStatus;
     loopJson: { enabled: boolean; loopCount: number; maxLoops: number };
     queuedNextLoop: boolean;
     pendingApproval: boolean;
@@ -809,10 +809,10 @@ export class TaskNodeExecutionService {
         worktreePath: artifactWorktreePath ?? null,
       }));
     const status = queuedNextLoop
-      ? TaskStatus.todo
+      ? TaskNodeStatus.todo
       : pendingApproval || pendingArtifact
-        ? TaskStatus.inReview
-        : TaskStatus.done;
+        ? TaskNodeStatus.inReview
+        : TaskNodeStatus.done;
     let afterRunCommitSha = await this.resolveHeadCommitShaForTask(
       task,
       project,
@@ -847,8 +847,8 @@ export class TaskNodeExecutionService {
       afterRunCommitSha,
     });
 
-    if (status === TaskStatus.inReview) {
-      await this.notifyTaskNodeInReview(task, node);
+    if (status === TaskNodeStatus.inReview) {
+      await this.notifyTaskNodeStatus(task, node, TaskNodeStatus.inReview);
     }
 
     return {
@@ -1060,12 +1060,12 @@ export class TaskNodeExecutionService {
   }): Promise<void> {
     const latestNode = await this.taskNodeRepository.findById(nodeId);
 
-    if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
+    if (!latestNode || latestNode.status !== TaskNodeStatus.inProgress) {
       return;
     }
 
     await this.taskNodeRepository.update(nodeId, {
-      status: TaskStatus.inReview,
+      status: TaskNodeStatus.failed,
       finishedAt: new Date(),
       agentClioutput,
       agentCliSessionId: clearAgentCliSessionId
@@ -1076,7 +1076,7 @@ export class TaskNodeExecutionService {
         afterRunCommitSha ?? latestNode.afterRunCommitSha ?? null,
     });
 
-    await this.notifyTaskNodeInReview(task, latestNode);
+    await this.notifyTaskNodeStatus(task, latestNode, TaskNodeStatus.failed);
   }
 
   private async resolveHeadCommitShaForTask(
@@ -1091,9 +1091,10 @@ export class TaskNodeExecutionService {
     );
   }
 
-  private async notifyTaskNodeInReview(
+  private async notifyTaskNodeStatus(
     task: Task,
     node: Pick<TaskNode, 'id' | 'name' | 'nodeOrder'>,
+    status: TaskNodeStatus.inReview | TaskNodeStatus.failed,
   ): Promise<void> {
     if (!task.createdBy || task.mode !== TaskMode.workflow) {
       return;
@@ -1106,7 +1107,7 @@ export class TaskNodeExecutionService {
       nodeId: node.id,
       nodeName: node.name,
       nodeOrder: node.nodeOrder,
-      status: TaskStatus.inReview,
+      status,
     });
   }
 

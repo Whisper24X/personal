@@ -8,7 +8,6 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { FindAllTasksDto } from './dto/find-all-tasks.dto';
 import { FindTaskLogsDto } from './dto/find-task-logs.dto';
 import { ReplyTaskDto } from './dto/reply-task.dto';
-import { RetryTaskDto } from './dto/retry-task.dto';
 import { TaskDetailDto } from './dto/task-detail.dto';
 import { TaskStatusCountsDto } from './dto/task-status-counts.dto';
 import { TaskMessageDto } from './dto/task-message.dto';
@@ -161,14 +160,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
     return this.taskInteractionService.repeatNode(taskId, nodeId, currentUser);
-  }
-
-  async retry(
-    taskId: Task['id'],
-    retryTaskDto: RetryTaskDto,
-    currentUser: JwtPayloadType,
-  ): Promise<TaskDetailDto> {
-    return this.taskInteractionService.retry(taskId, retryTaskDto, currentUser);
   }
 
   async resetNode(

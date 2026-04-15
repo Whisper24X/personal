@@ -218,8 +218,27 @@ const currentReviewNode = computed(() => {
   return sortedNodes.value.find((node) => node.status === 'in_review') ?? null
 })
 
+const currentFailedNode = computed(() => {
+  if (selectedWorkflowNode.value?.status === 'failed') {
+    return selectedWorkflowNode.value
+  }
+
+  return sortedNodes.value.find((node) => node.status === 'failed') ?? null
+})
+
+const currentActionNode = computed(() => {
+  if (
+    selectedWorkflowNode.value &&
+    (selectedWorkflowNode.value.status === 'in_review' || selectedWorkflowNode.value.status === 'failed')
+  ) {
+    return selectedWorkflowNode.value
+  }
+
+  return currentFailedNode.value ?? currentReviewNode.value
+})
+
 const showReviewCard = computed(() => {
-  return task.value?.mode === 'workflow' && currentReviewNode.value !== null
+  return task.value?.mode === 'workflow' && currentActionNode.value !== null
 })
 
 const hasRunningNode = computed(() => {
@@ -251,12 +270,16 @@ const hasInReviewNode = computed(() => {
   return sortedNodes.value.some((node) => node.status === 'in_review')
 })
 
+const hasFailedNode = computed(() => {
+  return sortedNodes.value.some((node) => node.status === 'failed')
+})
+
 const canExecute = computed(() => {
   if (!task.value || !hasButtonAccess('executeTask') || !isEnvironmentReady.value) {
     return false
   }
 
-  if (task.value.status === 'done' || hasRunningNode.value || hasInReviewNode.value) {
+  if (task.value.status === 'done' || hasRunningNode.value || hasInReviewNode.value || hasFailedNode.value) {
     return false
   }
 
@@ -337,6 +360,7 @@ const canResetSelectedWorkflowNode = computed(() => {
 
   return (
     selectedWorkflowNode.value.status === 'in_review' ||
+    selectedWorkflowNode.value.status === 'failed' ||
     selectedWorkflowNode.value.status === 'done'
   )
 })
@@ -359,12 +383,22 @@ const canTerminateEnvironment = computed(() => {
 })
 
 const replyDisabled = computed(() => {
-  return !task.value || actionLoading.value || isCliRunning.value || task.value.status === 'done'
+  return (
+    !task.value ||
+    actionLoading.value ||
+    isCliRunning.value ||
+    hasFailedNode.value ||
+    task.value.status === 'done'
+  )
 })
 
 const replyPlaceholder = computed(() => {
   if (task.value?.status === 'done') {
     return '任务已完成，无法继续回复...'
+  }
+
+  if (hasFailedNode.value) {
+    return '节点执行失败，请先重置...'
   }
 
   if (isCliRunning.value) {
@@ -410,7 +444,10 @@ const contextSubtitle = computed(() => {
   if (task.value.mode === 'workflow') {
     const n = sortedNodes.value.length
     const cur = sortedNodes.value.find(
-      (node) => node.status === 'in_progress' || node.status === 'in_review',
+      (node) =>
+        node.status === 'in_progress' ||
+        node.status === 'failed' ||
+        node.status === 'in_review',
     )
     const tail = cur?.name ? ` · 当前：${cur.name}` : ''
     return `共 ${n} 个节点${tail}`
@@ -1120,10 +1157,21 @@ const resolveAutoSelectedWorkflowNodeId = (nodes: TaskNode[]) => {
     return null
   }
 
+  const findFirstNodeIdByStatus = (status: TaskNode['status']) => {
+    for (let index = 0; index < sortedByOrder.length; index += 1) {
+      if (sortedByOrder[index]?.status === status) {
+        return sortedByOrder[index]?.id ?? null
+      }
+    }
+
+    return null
+  }
+
   const prioritizedNodeId =
     findLastNodeIdByStatus('in_progress') ||
+    findLastNodeIdByStatus('failed') ||
     findLastNodeIdByStatus('in_review') ||
-    findLastNodeIdByStatus('todo') ||
+    findFirstNodeIdByStatus('todo') ||
     findLastNodeIdByStatus('done')
 
   if (prioritizedNodeId) {
@@ -1362,6 +1410,8 @@ return reactive({
     connectStream,
     containerRef,
     contextSubtitle,
+    currentActionNode,
+    currentFailedNode,
     currentReviewNode,
     deleteOpen,
     detail,
@@ -1384,6 +1434,7 @@ return reactive({
     handleReply,
     handleSelectWorkflowNode,
     hasButtonAccess,
+    hasFailedNode,
     hasInReviewNode,
     hasRunningNode,
     hasTodoNode,

@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskSchedulerService } from './task-scheduler.service';
 
@@ -112,7 +113,7 @@ describe('TaskSchedulerService', () => {
     jest.restoreAllMocks();
   });
 
-  it('should mark orphaned expired nodes as in review when task lookup fails', async () => {
+  it('should mark orphaned expired nodes as failed when task lookup fails', async () => {
     const {
       service,
       taskNodeRepository,
@@ -169,7 +170,7 @@ describe('TaskSchedulerService', () => {
     ).resolves.toBeUndefined();
 
     expect(taskNodeRepository.update).toHaveBeenCalledWith('node-1', {
-      status: TaskStatus.inReview,
+      status: TaskNodeStatus.failed,
       finishedAt: expect.any(Date),
       runtimeJson: null,
     });

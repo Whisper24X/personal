@@ -79,7 +79,7 @@ const workflowCardRef = toRef(vm, 'workflowCardRef')
 
             <ReviewCard
               v-if="vm.showReviewCard"
-              :node="vm.currentReviewNode"
+              :node="vm.currentActionNode"
               :status-label-map="nodeStatusLabelMap"
               :can-manage-review="vm.canManageReview"
               @approve-node="vm.approveNode"

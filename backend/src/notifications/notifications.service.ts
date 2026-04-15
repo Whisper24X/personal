@@ -158,7 +158,7 @@ export class NotificationsService {
     taskTitle?: string;
     status: string;
   }): Promise<NotificationEvent | null> {
-    if (status !== 'in_review') {
+    if (status !== 'in_review' && status !== 'failed') {
       return null;
     }
 
@@ -198,7 +198,10 @@ export class NotificationsService {
     nodeOrder?: number | null;
     status: string;
   }): Promise<NotificationEvent | null> {
-    if (status !== 'in_review') {
+    const isReview = status === 'in_review';
+    const isFailed = status === 'failed';
+
+    if (!isReview && !isFailed) {
       return null;
     }
 
@@ -215,9 +218,11 @@ export class NotificationsService {
       taskId,
       eventType: `task_node.${status}`,
       status,
-      statusLabel: '待审核',
-      title: '任务节点待审核',
-      content: `任务「${displayTaskName}」的${nodeLabel}已进入待审核状态，请确认后继续。`,
+      statusLabel: isFailed ? '失败' : '待审核',
+      title: isFailed ? '任务节点失败' : '任务节点待审核',
+      content: isFailed
+        ? `任务「${displayTaskName}」的${nodeLabel}执行失败，请重置后继续。`
+        : `任务「${displayTaskName}」的${nodeLabel}已进入待审核状态，请确认后继续。`,
       payload: {
         status,
         nodeId,

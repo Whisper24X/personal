@@ -5,6 +5,7 @@ import { Project } from '../projects/domain/project';
 import { Task } from '../tasks/domain/task';
 import { TaskNode } from '../tasks/domain/task-node';
 import { TaskMode } from '../tasks/dto/task-mode.enum';
+import { TaskNodeStatus } from '../tasks/dto/task-node-status.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
 import { AgentExecutionConfigResolverService } from './agent-execution-config-resolver.service';
@@ -120,7 +121,7 @@ export class ControlPlaneAgentExecutionService {
       configJson: null,
       loopJson: null,
       runtimeJson: null,
-      status: TaskStatus.todo,
+      status: TaskNodeStatus.todo,
       startedAt: null,
       finishedAt: null,
       createdAt: now,

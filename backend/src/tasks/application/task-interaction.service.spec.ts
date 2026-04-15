@@ -1,5 +1,6 @@
 import { TaskInteractionService } from './task-interaction.service';
 import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { ConflictException } from '@nestjs/common';
 
@@ -35,7 +36,7 @@ const createNode = (overrides: Record<string, unknown> = {}) => ({
   configJson: null,
   loopJson: null,
   runtimeJson: null,
-  status: TaskStatus.done,
+  status: TaskNodeStatus.done,
   startedAt: new Date('2026-03-19T10:00:00.000Z'),
   finishedAt: new Date('2026-03-19T10:10:00.000Z'),
   createdAt: new Date('2026-03-19T10:00:00.000Z'),
@@ -247,10 +248,11 @@ describe('TaskInteractionService', () => {
     });
     const currentUser = createCurrentUser();
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
       createNode({
         id: 'node-todo',
-        status: TaskStatus.todo,
+        status: TaskNodeStatus.todo,
         nodeOrder: 1,
       }),
     );
@@ -372,6 +374,7 @@ describe('TaskInteractionService', () => {
     });
 
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
       todoNode,
     );
@@ -421,6 +424,40 @@ describe('TaskInteractionService', () => {
     expect(taskRuntimeOrchestrator.prepareTaskRuntime).not.toHaveBeenCalled();
     expect(taskNodeRepository.update).not.toHaveBeenCalled();
     expect(taskLogService.appendLog).not.toHaveBeenCalled();
+  });
+
+  it('should reject reply when task still has a failed node', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inProgress,
+    });
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      createNode({
+        id: 'node-failed',
+        status: TaskNodeStatus.failed,
+        nodeOrder: 2,
+      }),
+    );
+
+    await expect(
+      service.reply(
+        'task-1',
+        { message: 'Please continue' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('Task has failed node and cannot accept reply');
+
+    expect(taskLogService.appendLog).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).not.toHaveBeenCalled();
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
   });
 
   it('should cancel a running node without overwriting existing output jsonl', async () => {
@@ -513,7 +550,7 @@ describe('TaskInteractionService', () => {
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
       createNode({
         id: 'node-review',
-        status: TaskStatus.inReview,
+        status: TaskNodeStatus.inReview,
         nodeOrder: 2,
       }),
     );
@@ -521,6 +558,36 @@ describe('TaskInteractionService', () => {
     await expect(
       service.execute('task-1', currentUser as never),
     ).rejects.toThrow('Task has in_review node and cannot execute');
+
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should reject execute when task still has a failed node', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inProgress,
+      startedAt: new Date('2026-03-19T10:00:00.000Z'),
+    });
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findFirstByTaskIdAndStatus
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        createNode({
+          id: 'node-failed',
+          status: TaskNodeStatus.failed,
+          nodeOrder: 2,
+        }),
+      );
+
+    await expect(
+      service.execute('task-1', currentUser as never),
+    ).rejects.toThrow('Task has failed node and cannot execute');
 
     expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
     expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
@@ -576,114 +643,6 @@ describe('TaskInteractionService', () => {
         message: 'Node approval auto-committed staged changes',
         payload: expect.objectContaining({
           commitSha: 'abc123',
-        }),
-      }),
-    );
-    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
-      'task-1',
-    );
-    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
-  });
-
-  it('should fall back to the current in_review node when retry payload points to a missing node', async () => {
-    const {
-      service,
-      taskNodeRepository,
-      taskStatusService,
-      taskSchedulerService,
-    } = createService();
-    const currentUser = createCurrentUser();
-    const inReviewNode = createNode({
-      id: 'node-review',
-      status: TaskStatus.inReview,
-      nodeOrder: 2,
-    });
-
-    taskNodeRepository.findById.mockResolvedValue(null);
-    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValue(
-      inReviewNode,
-    );
-
-    await service.retry(
-      'task-1',
-      { nodeId: 'missing-node' } as never,
-      currentUser as never,
-    );
-
-    expect(taskNodeRepository.findById).toHaveBeenCalledWith('missing-node');
-    expect(taskNodeRepository.findFirstByTaskIdAndStatus).toHaveBeenCalledWith({
-      taskId: 'task-1',
-      status: TaskStatus.inReview,
-    });
-    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-review', {
-      status: TaskStatus.todo,
-      finishedAt: null,
-      agentClioutput: null,
-      runtimeJson: null,
-    });
-    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
-      'task-1',
-    );
-    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
-  });
-
-  it('should recover conversation retry when task remains in_review but the node is already todo', async () => {
-    const {
-      service,
-      taskAccessService,
-      taskRuntimeOrchestrator,
-      taskNodeRepository,
-      taskLogService,
-      taskStatusService,
-      taskSchedulerService,
-    } = createService();
-    const currentUser = createCurrentUser();
-    const conversationTask = createTask({
-      mode: TaskMode.conversation,
-      status: TaskStatus.inReview,
-      title: 'Conversation task',
-    });
-    const todoNode = createNode({
-      id: 'node-todo',
-      status: TaskStatus.todo,
-      nodeOrder: 1,
-    });
-
-    taskAccessService.getTaskOrThrow.mockResolvedValue(conversationTask);
-    taskRuntimeOrchestrator.prepareTaskRuntime.mockResolvedValue({
-      task: conversationTask,
-    });
-    taskNodeRepository.findFirstByTaskIdAndStatus
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(todoNode);
-
-    await service.retry('task-1', {} as never, currentUser as never);
-
-    expect(
-      taskNodeRepository.findFirstByTaskIdAndStatus,
-    ).toHaveBeenNthCalledWith(1, {
-      taskId: 'task-1',
-      status: TaskStatus.inReview,
-    });
-    expect(
-      taskNodeRepository.findFirstByTaskIdAndStatus,
-    ).toHaveBeenNthCalledWith(2, {
-      taskId: 'task-1',
-      status: TaskStatus.todo,
-    });
-    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-todo', {
-      status: TaskStatus.todo,
-      finishedAt: null,
-      agentClioutput: null,
-      runtimeJson: null,
-    });
-    expect(taskLogService.appendLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: 'task-1',
-        taskNodeId: 'node-todo',
-        message: 'Node retry queued',
-        payload: expect.objectContaining({
-          recoveredFromStaleReviewState: true,
         }),
       }),
     );
@@ -754,11 +713,11 @@ describe('TaskInteractionService', () => {
     taskNodeRepository.findByTaskId.mockResolvedValue([
       createNode({
         id: 'node-1',
-        status: TaskStatus.done,
+        status: TaskNodeStatus.done,
       }),
       createNode({
         id: 'node-2',
-        status: TaskStatus.done,
+        status: TaskNodeStatus.done,
       }),
     ]);
 

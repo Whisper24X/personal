@@ -1,3 +1,4 @@
+import { TaskNodeStatus } from '../../../../dto/task-node-status.enum';
 import { TaskStatus } from '../../../../dto/task-status.enum';
 import { TaskRelationalRepository } from './task.repository';
 
@@ -36,8 +37,12 @@ describe('TaskRelationalRepository', () => {
     const typeormRepository = {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     };
+    const dataSource = {};
 
-    const repository = new TaskRelationalRepository(typeormRepository as never);
+    const repository = new TaskRelationalRepository(
+      typeormRepository as never,
+      dataSource as never,
+    );
 
     const result = await repository.hasRunningTaskInProject('project-1', {
       excludeTaskId: 'task-1',
@@ -49,7 +54,7 @@ describe('TaskRelationalRepository', () => {
       'node',
       'node."taskId" = task.id AND node.status = :status',
       {
-        status: TaskStatus.inProgress,
+        status: TaskNodeStatus.inProgress,
       },
     );
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
@@ -67,8 +72,12 @@ describe('TaskRelationalRepository', () => {
     const typeormRepository = {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     };
+    const dataSource = {};
 
-    const repository = new TaskRelationalRepository(typeormRepository as never);
+    const repository = new TaskRelationalRepository(
+      typeormRepository as never,
+      dataSource as never,
+    );
 
     await repository.findTasksReadyForDispatch(10);
 
@@ -91,13 +100,13 @@ describe('TaskRelationalRepository', () => {
       expect.stringContaining('FROM task_nodes todo'),
       expect.objectContaining({
         todoStatus: TaskStatus.todo,
-        doneStatus: TaskStatus.done,
+        doneStatus: TaskNodeStatus.done,
       }),
     );
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
       expect.stringContaining('FROM task_nodes review'),
       expect.objectContaining({
-        reviewStatus: TaskStatus.inReview,
+        reviewStatus: TaskNodeStatus.inReview,
       }),
     );
   });
@@ -109,22 +118,26 @@ describe('TaskRelationalRepository', () => {
     const typeormRepository = {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     };
+    const dataSource = {};
 
-    const repository = new TaskRelationalRepository(typeormRepository as never);
+    const repository = new TaskRelationalRepository(
+      typeormRepository as never,
+      dataSource as never,
+    );
 
     await repository.countQueuedTasksByProjectIds(['project-1']);
 
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
       expect.stringContaining('FROM task_nodes review'),
       expect.objectContaining({
-        reviewStatus: TaskStatus.inReview,
+        reviewStatus: TaskNodeStatus.inReview,
       }),
     );
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
       expect.stringContaining('prior."nodeOrder" < todo."nodeOrder"'),
       expect.objectContaining({
         todoStatus: TaskStatus.todo,
-        doneStatus: TaskStatus.done,
+        doneStatus: TaskNodeStatus.done,
       }),
     );
   });

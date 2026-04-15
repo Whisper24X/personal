@@ -3,6 +3,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
@@ -53,13 +54,13 @@ export class TaskStatusService {
       return TaskStatus.todo;
     }
 
-    if (nodes.every((node) => node.status === TaskStatus.done)) {
+    if (nodes.every((node) => node.status === TaskNodeStatus.done)) {
       return currentStatus === TaskStatus.done
         ? TaskStatus.done
         : TaskStatus.inReview;
     }
 
-    if (nodes.every((node) => node.status === TaskStatus.todo)) {
+    if (nodes.every((node) => node.status === TaskNodeStatus.todo)) {
       return currentStatus === TaskStatus.todo
         ? TaskStatus.todo
         : TaskStatus.inProgress;
