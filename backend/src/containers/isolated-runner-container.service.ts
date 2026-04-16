@@ -52,6 +52,7 @@ export class IsolatedRunnerContainerService {
     platform?: RunnerPlatform | null;
     networkMode?: RunnerNetworkMode;
     publishedPorts?: PublishedPortMapping[];
+    repositoryGitPath?: string;
   }): Promise<{ containerId: string; publishedPorts: PublishedPortMapping[] }> {
     const startTimeoutMs = params.startTimeoutMs ?? 30_000;
     const networkMode = params.networkMode ?? 'host';
@@ -88,6 +89,9 @@ export class IsolatedRunnerContainerService {
       networkMode,
       '-v',
       `${params.worktreePath}:${params.workspaceMount}`,
+      ...(params.repositoryGitPath
+        ? ['-v', `${params.repositoryGitPath}:${params.repositoryGitPath}:ro`]
+        : []),
     ];
     for (const mapping of publishedPorts) {
       args.push(
