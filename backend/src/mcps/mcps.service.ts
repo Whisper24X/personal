@@ -22,10 +22,14 @@ import {
 import { ImportProjectLocalMcpsResultDto } from './dto/import-project-local-mcps-result.dto';
 import { ProjectLocalMcpConfigDto } from './dto/project-local-mcp-config.dto';
 import { RemoveProjectLocalMcpDto } from './dto/remove-project-local-mcp.dto';
+import { GitService } from '../git/git.service';
 
 @Injectable()
 export class McpsService {
-  constructor(private readonly projectAccessService: ProjectAccessService) {}
+  constructor(
+    private readonly projectAccessService: ProjectAccessService,
+    private readonly gitService: GitService,
+  ) {}
 
   async findAllWithPagination(
     query: FindAllMcpsDto,
@@ -189,6 +193,13 @@ export class McpsService {
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, `${JSON.stringify(payload, null, 2)}\n`);
 
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [targetPath],
+        'add mcp',
+      );
+
       return {
         importedCount,
         overwrittenCount,
@@ -226,6 +237,13 @@ export class McpsService {
       const nextContent = this.upsertTomlMcpServers(existingContent, updates);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, nextContent, 'utf-8');
+
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [targetPath],
+        'add mcp',
+      );
 
       return {
         importedCount,
@@ -287,6 +305,12 @@ export class McpsService {
         `${JSON.stringify(payload, null, 2)}\n`,
         'utf-8',
       );
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [sourcePath],
+        'remove mcp',
+      );
       return;
     }
 
@@ -300,6 +324,12 @@ export class McpsService {
 
       const nextContent = this.removeTomlMcpServer(existingContent, mcpName);
       await fs.writeFile(sourcePath, nextContent, 'utf-8');
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [sourcePath],
+        'remove mcp',
+      );
       return;
     }
 

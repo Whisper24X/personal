@@ -35,6 +35,7 @@ import {
   resolveAinativeDataRootDir,
   resolveWorkspaceRootDir,
 } from '../utils/workspace-paths';
+import { GitService } from '../git/git.service';
 
 const workspaceRootDir = resolveWorkspaceRootDir();
 
@@ -45,7 +46,10 @@ export class SkillsService {
   private static readonly SKILL_UPLOAD_EXTENSIONS = new Set(['.zip']);
   private static readonly SKILL_UPLOAD_COMMAND_TIMEOUT_MS = 15_000;
 
-  constructor(private readonly projectAccessService: ProjectAccessService) {}
+  constructor(
+    private readonly projectAccessService: ProjectAccessService,
+    private readonly gitService: GitService,
+  ) {}
 
   async findAllWithPagination(
     query: FindAllSkillsDto,
@@ -247,6 +251,13 @@ export class SkillsService {
       `[SkillsCopy] copy done skillName=${sourceSkill.name} provider=${targetRoot.provider}`,
     );
 
+    await this.gitService.commitProjectPathsIfDirty(
+      project.id,
+      currentUser,
+      [targetSkillPath],
+      'add skills',
+    );
+
     return {
       name: sourceSkill.name,
       description: sourceSkill.description ?? null,
@@ -380,6 +391,13 @@ export class SkillsService {
         },
       });
 
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [targetSkillPath],
+        'add skills',
+      );
+
       return {
         name: descriptorMetadata.name,
         description: descriptorMetadata.description,
@@ -439,6 +457,13 @@ export class SkillsService {
     }
 
     await fs.rm(directoryToRemove, { recursive: true, force: true });
+
+    await this.gitService.commitProjectPathsIfDirty(
+      project.id,
+      currentUser,
+      [directoryToRemove],
+      'remove skills',
+    );
   }
 
   private toAbsolutePath(targetPath: string): string {
