@@ -1278,6 +1278,282 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.findAll('button').some((button) => button.text().trim() === '完成')).toBe(false)
   })
 
+  it('shows inline confirmation before approving a review node that requires artifacts but has none', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const reviewDetail: TaskDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'workflow',
+        title: 'Artifact review task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Manual review node',
+          status: 'in_review',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+          configJson: {
+            requiresArtifact: true,
+          },
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(reviewDetail)
+    tasksApi.gitArtifactsTree.mockResolvedValueOnce({
+      cwd: '.',
+      entries: [],
+      files: [],
+      artifactSource: {
+        sourceType: 'unavailable',
+        nodeId: 'node-1',
+        beforeCommitSha: null,
+        afterCommitSha: null,
+      },
+    })
+    tasksApi.approve.mockResolvedValueOnce({
+      ...reviewDetail,
+      task: {
+        ...reviewDetail.task,
+        updatedAt: '2026-02-27T10:00:01.000Z',
+      },
+      nodes: [
+        {
+          ...reviewDetail.nodes[0],
+          status: 'done',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const approveButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '审批通过')
+
+    expect(approveButton).toBeTruthy()
+    await approveButton?.trigger('click')
+    await flushPromises()
+
+    expect(tasksApi.gitArtifactsTree).toHaveBeenCalledWith('task-1', {
+      nodeId: 'node-1',
+    })
+    expect(tasksApi.approve).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('该节点要求产物，但当前未检测到任何产物。确认仍要审批通过吗？')
+
+    const confirmButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '确认通过')
+
+    expect(confirmButton).toBeTruthy()
+    await confirmButton?.trigger('click')
+    await flushPromises()
+
+    expect(tasksApi.approve).toHaveBeenCalledWith('task-1', {
+      nodeId: 'node-1',
+    })
+  })
+
+  it('does not approve when inline artifact confirmation is canceled', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const reviewDetail: TaskDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'workflow',
+        title: 'Artifact review task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Manual review node',
+          status: 'in_review',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+          configJson: {
+            requiresArtifact: true,
+          },
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(reviewDetail)
+    tasksApi.gitArtifactsTree.mockResolvedValueOnce({
+      cwd: '.',
+      entries: [],
+      files: [],
+      artifactSource: {
+        sourceType: 'unavailable',
+        nodeId: 'node-1',
+        beforeCommitSha: null,
+        afterCommitSha: null,
+      },
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const approveButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '审批通过')
+
+    expect(approveButton).toBeTruthy()
+    await approveButton?.trigger('click')
+    await flushPromises()
+
+    const cancelButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '取消')
+
+    expect(cancelButton).toBeTruthy()
+    await cancelButton?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('该节点要求产物，但当前未检测到任何产物。确认仍要审批通过吗？')
+    expect(tasksApi.approve).not.toHaveBeenCalled()
+  })
+
+  it('approves directly when the review node requires artifacts and artifacts exist', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const reviewDetail: TaskDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'workflow',
+        title: 'Artifact review task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Manual review node',
+          status: 'in_review',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+          configJson: {
+            requiresArtifact: true,
+          },
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(reviewDetail)
+    tasksApi.gitArtifactsTree.mockResolvedValueOnce({
+      cwd: '.',
+      entries: [],
+      files: [
+        {
+          path: 'docs/review.md',
+          status: 'A',
+          deleted: false,
+        },
+      ],
+      artifactSource: {
+        sourceType: 'commit_range',
+        nodeId: 'node-1',
+        beforeCommitSha: 'before-sha',
+        afterCommitSha: 'after-sha',
+      },
+    })
+    tasksApi.approve.mockResolvedValueOnce({
+      ...reviewDetail,
+      task: {
+        ...reviewDetail.task,
+        updatedAt: '2026-02-27T10:00:01.000Z',
+      },
+      nodes: [
+        {
+          ...reviewDetail.nodes[0],
+          status: 'done',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const approveButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '审批通过')
+
+    expect(approveButton).toBeTruthy()
+    await approveButton?.trigger('click')
+    await flushPromises()
+
+    expect(tasksApi.gitArtifactsTree).toHaveBeenCalledWith('task-1', {
+      nodeId: 'node-1',
+    })
+    expect(tasksApi.approve).toHaveBeenCalledWith('task-1', {
+      nodeId: 'node-1',
+    })
+    expect(wrapper.text()).not.toContain('该节点要求产物，但当前未检测到任何产物。确认仍要审批通过吗？')
+  })
+
   it('renders agent cli chunk text from SSE payload', async () => {
     vi.useFakeTimers()
 

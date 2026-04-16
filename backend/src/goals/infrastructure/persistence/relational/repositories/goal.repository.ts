@@ -231,6 +231,7 @@ export class GoalRelationalRepository extends GoalRepository {
           dependsOnItemIds: item.dependsOnItemIds ?? [],
           itemOrder: item.itemOrder,
           gitBranch: item.gitBranch ?? null,
+          groupMergedIntoGoalAt: item.groupMergedIntoGoalAt ?? null,
           createdAt: item.createdAt ?? new Date(),
           updatedAt: item.updatedAt ?? new Date(),
         });
@@ -289,6 +290,9 @@ export class GoalRelationalRepository extends GoalRepository {
     }
     if (payload.gitBranch !== undefined) {
       patch.gitBranch = payload.gitBranch;
+    }
+    if (payload.groupMergedIntoGoalAt !== undefined) {
+      patch.groupMergedIntoGoalAt = payload.groupMergedIntoGoalAt;
     }
     await this.planItemRepo.update({ id: itemId, goalId }, patch);
     const next = await this.planItemRepo.findOne({
@@ -464,6 +468,7 @@ export class GoalRelationalRepository extends GoalRepository {
     taskId: string,
     taskStatus: TaskStatus,
   ): Promise<boolean> {
+    void taskStatus;
     const rows = await this.planSubTaskRepo.find({ where: { taskId } });
     if (rows.length === 0) {
       return false;
@@ -495,8 +500,8 @@ export class GoalRelationalRepository extends GoalRepository {
         return true;
       }
     }
-    // 功能组 dependsOnItemIds：未完成 Task 时，任后置组未物化子任务均拦截。
-    // 已完成时：若当前计划子任务为「叶子」（无直接非取消的子任务依赖），后置组仍有任未物化即拦截；
+    // 功能组 dependsOnItemIds：本计划子任务非 branch_merged 时，任后置组未物化子任务均拦截。
+    // 已 branch_merged 时：若当前为「叶子」无直接子任务依赖，后置组仍有任未物化即拦截；
     // 若非叶子，仅拦截「已确认待物化」，避免草稿占位长期卡死非叶子节点。
     for (const item of items) {
       if (item.id === parentGroupId) {
@@ -512,7 +517,7 @@ export class GoalRelationalRepository extends GoalRepository {
         }
         if (!h.taskId?.trim()) {
           if (
-            taskStatus === TaskStatus.done &&
+            st.status === GoalPlanItemStatus.branchMerged &&
             hasNonCancelledDependent &&
             h.status !== GoalPlanItemStatus.approved
           ) {
@@ -522,7 +527,10 @@ export class GoalRelationalRepository extends GoalRepository {
         }
       }
     }
-    if (!hasNonCancelledDependent && taskStatus !== TaskStatus.done) {
+    if (
+      !hasNonCancelledDependent &&
+      st.status !== GoalPlanItemStatus.branchMerged
+    ) {
       return true;
     }
     return false;
@@ -544,7 +552,10 @@ export class GoalRelationalRepository extends GoalRepository {
             },
           );
         }
-      } else if (row.status === GoalPlanItemStatus.completed) {
+      } else if (
+        row.status === GoalPlanItemStatus.completed ||
+        row.status === GoalPlanItemStatus.branchMerged
+      ) {
         await this.planSubTaskRepo.update(
           { id: row.id },
           {

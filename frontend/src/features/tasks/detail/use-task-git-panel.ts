@@ -4,6 +4,7 @@ import { buildFileTreeFromPaths } from '@shared/components/file-browser/file-tre
 import type { TaskGitBranchDiffFile, TaskGitChangedFile, TaskGitStatus } from '@/types/api/tasks'
 import { toErrorMessage } from '@api/shared/to-error-message'
 import { taskGitChangedFileKey } from './task-git-keys'
+import { mergeTaskBranchIntoBase } from './task-git-merge'
 
 export type TaskGitPanelProps = {
   taskId: string
@@ -462,7 +463,10 @@ const doMerge = async () => {
   conflictFiles.value = []
 
   try {
-    const response = await tasksApi.gitMerge(props.taskId, { baseBranch: baseBranchInput.value })
+    const response = await mergeTaskBranchIntoBase(
+      props.taskId,
+      baseBranchInput.value,
+    )
     setActionFeedback(
       response.message,
       !response.success && response.conflicts?.length

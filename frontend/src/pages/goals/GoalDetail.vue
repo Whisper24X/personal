@@ -27,8 +27,10 @@ const {
   loadingWorkflowTemplates,
   materializeSingleSubTask,
   materializing,
-  creatingPrGroupId,
-  onCreateGroupPr,
+  mergingPlanGroupId,
+  markingBranchMergedId,
+  markBranchMergedSubTask,
+  mergePlanGroupIntoGoal,
   onPlanItemSheetOpen,
   onPrdEditorOpen,
   openPlanItemDetail,
@@ -125,13 +127,15 @@ const {
         :detail="detail"
         :loading-workflow-templates="loadingWorkflowTemplates"
         :workflow-templates="workflowTemplates"
-        :creating-pr-group-id="creatingPrGroupId"
+        :merging-plan-group-id="mergingPlanGroupId"
         :materializing="materializing"
+        :marking-branch-merged-id="markingBranchMergedId"
         :plan-item-status-label="planItemStatusLabel"
         :plan-item-approve-blocked-reason="planItemApproveBlockedReason"
         @open-plan-item-detail="(sub, title) => openPlanItemDetail(sub, title)"
         @materialize-plan-item="materializeSingleSubTask"
-        @create-group-pr="onCreateGroupPr"
+        @merge-plan-group-into-goal="mergePlanGroupIntoGoal"
+        @mark-branch-merged="markBranchMergedSubTask"
       />
 
       <GoalPlanItemSheet

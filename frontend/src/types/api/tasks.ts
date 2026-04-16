@@ -43,6 +43,12 @@ export type TaskLoopConfig = {
   maxLoops: number
 }
 
+export type TaskNodeConfig = {
+  requiresApproval?: boolean | null
+  requiresArtifact?: boolean | null
+  [key: string]: unknown
+}
+
 export type TaskConfig = {
   workflowTemplateId?: string | null
   agentCliId?: string | null
@@ -88,6 +94,7 @@ export type TaskNode = {
   agentCliId?: string | null
   agentCliConfigId?: string | null
   agentClioutput?: string | null
+  configJson?: TaskNodeConfig | null
   loopJson?: TaskLoopConfig | null
   runtimeJson?: {
     workerId?: string | null
