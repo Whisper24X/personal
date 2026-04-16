@@ -21,6 +21,7 @@ export function createEmptyWorkflowNodeInput(): WorkflowTemplateNodeInputForm {
     prompt: '',
     agentCliId: '',
     agentCliConfigId: '',
+    loopEnabled: false,
     earlyExitMarkerEnabled: false,
     earlyExitMarkerFileName: '',
   }
@@ -48,6 +49,13 @@ export function normalizeWorkflowNodeInput(
       : typeof rawInput.agentToolConfigId === 'string'
         ? rawInput.agentToolConfigId
         : ''
+  const loopEnabled =
+    typeof rawInput.loopEnabled === 'boolean'
+      ? rawInput.loopEnabled
+      : Boolean(
+          rawInput.earlyExitMarkerEnabled ||
+            (typeof rawInput.maxLoops === 'number' && rawInput.maxLoops > 1),
+        )
   const earlyExitMarkerEnabled = Boolean(rawInput.earlyExitMarkerEnabled)
   const earlyExitMarkerFileName =
     typeof rawInput.earlyExitMarkerFileName === 'string' ? rawInput.earlyExitMarkerFileName : ''
@@ -56,6 +64,7 @@ export function normalizeWorkflowNodeInput(
     prompt,
     agentCliId,
     agentCliConfigId,
+    loopEnabled,
     earlyExitMarkerEnabled,
     earlyExitMarkerFileName,
   }
@@ -118,6 +127,7 @@ export function normalizeWorkflowNodes(nodes: WorkflowTemplateNodeForm[]) {
           ? `step-${index + 1}`
           : node.name.trim(),
       requiresApproval: Boolean(node.requiresApproval),
+      requiresArtifact: Boolean(node.requiresArtifact),
       maxLoops: Math.max(Number(node.maxLoops) || 1, 1),
       input: normalizeWorkflowNodeInput(node.input),
     }))
@@ -142,8 +152,12 @@ export function serializeWorkflowNodeInput(
     }
   }
 
-  if (input.earlyExitMarkerEnabled && normalizedMarkerFileName) {
+  if (input.loopEnabled) {
+    payload.loopEnabled = true
     payload.earlyExitMarkerEnabled = true
+  }
+
+  if (input.loopEnabled && normalizedMarkerFileName) {
     payload.earlyExitMarkerFileName = normalizedMarkerFileName
   }
 
@@ -194,8 +208,8 @@ export function validateWorkflowNodesPlain(
       return `节点 #${index + 1} 的 Agent CLI 不可用，请重新选择`
     }
 
-    if (nodeInput.earlyExitMarkerEnabled && !nodeInput.earlyExitMarkerFileName.trim()) {
-      return `节点 #${index + 1} 已启用 marker 提前退出，请填写 marker 文件名`
+    if (nodeInput.loopEnabled && !nodeInput.earlyExitMarkerFileName.trim()) {
+      return `节点 #${index + 1} 已启用循环，请填写 Marker 文件名`
     }
   }
 

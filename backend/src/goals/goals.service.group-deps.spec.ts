@@ -161,8 +161,8 @@ describe('GoalsService group dependsOnItemIds', () => {
     };
   };
 
-  it('should reject approve when predecessor group tasks are not done', async () => {
-    const { service, goalRepository } = setupPatch(TaskStatus.inProgress);
+  it('should reject approve when predecessor group subtasks are not branch_merged', async () => {
+    const { service, goalRepository } = setupPatch(TaskStatus.done);
     const user = createJwt();
 
     await expect(
@@ -177,9 +177,73 @@ describe('GoalsService group dependsOnItemIds', () => {
     expect(goalRepository.updatePlanSubTask).not.toHaveBeenCalled();
   });
 
-  it('should allow approve when predecessor group tasks are done', async () => {
-    const { service, goalRepository, approvedB } = setupPatch(TaskStatus.done);
+  it('should allow approve when predecessor group subtasks are branch_merged', async () => {
+    const { service, goalRepository, taskRepository, approvedB } = setupPatch(
+      TaskStatus.done,
+    );
     const user = createJwt();
+    goalRepository.listPlanItemsWithSubTasks.mockImplementation(() => {
+      const stA = {
+        id: 'st-a1',
+        goalPlanItemId: 'group-a',
+        title: 'a1',
+        summary: null,
+        acceptanceCriteria: null,
+        suggestedPrompt: null,
+        dependsOnSubTaskIds: [] as string[],
+        itemOrder: 0,
+        taskId: 'task-a1',
+        status: GoalPlanItemStatus.branchMerged,
+        workflowTemplateId: 'wf-1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const stB = {
+        id: 'st-b1',
+        goalPlanItemId: 'group-b',
+        title: 'b1',
+        summary: null,
+        acceptanceCriteria: null,
+        suggestedPrompt: null,
+        dependsOnSubTaskIds: [] as string[],
+        itemOrder: 0,
+        taskId: null,
+        status: GoalPlanItemStatus.draft,
+        workflowTemplateId: 'wf-1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      return [
+        {
+          id: 'group-a',
+          goalId: 'goal-1',
+          title: 'Group A',
+          summary: null,
+          acceptanceCriteria: null,
+          suggestedPrompt: null,
+          dependsOnItemIds: [] as string[],
+          itemOrder: 0,
+          gitBranch: 'gb-a',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          subTasks: [stA],
+        },
+        {
+          id: 'group-b',
+          goalId: 'goal-1',
+          title: 'Group B',
+          summary: null,
+          acceptanceCriteria: null,
+          suggestedPrompt: null,
+          dependsOnItemIds: ['group-a'],
+          itemOrder: 1,
+          gitBranch: 'gb-b',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          subTasks: [stB],
+        },
+      ];
+    });
 
     const next = await service.patchPlanSubTask(
       'goal-1',
@@ -190,6 +254,7 @@ describe('GoalsService group dependsOnItemIds', () => {
 
     expect(next).toEqual(approvedB);
     expect(goalRepository.updatePlanSubTask).toHaveBeenCalled();
+    expect(taskRepository.findById).not.toHaveBeenCalled();
   });
 
   it('should create plan item branch when parent gitBranch is still null', async () => {
@@ -299,6 +364,7 @@ describe('GoalsService group dependsOnItemIds', () => {
       'feature/goal-goal1branch-g2',
       'feature/goal-goal1branch',
       user,
+      { prepareRequirementBranchWorkingTree: true },
     );
     expect(goalRepository.updatePlanItem).toHaveBeenCalledWith(
       'goal-1',
@@ -309,7 +375,7 @@ describe('GoalsService group dependsOnItemIds', () => {
     );
   });
 
-  const setupMaterialize = (predTaskStatus: TaskStatus) => {
+  const setupMaterialize = (predSubStatus: GoalPlanItemStatus) => {
     const goalRepository = {
       findById: jest.fn(),
       listPlanItemsWithSubTasks: jest.fn(),
@@ -353,7 +419,7 @@ describe('GoalsService group dependsOnItemIds', () => {
       dependsOnSubTaskIds: [] as string[],
       itemOrder: 0,
       taskId: 'task-a1',
-      status: GoalPlanItemStatus.taskCreated,
+      status: predSubStatus,
       workflowTemplateId: 'wf-1',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -421,24 +487,17 @@ describe('GoalsService group dependsOnItemIds', () => {
     goalRepository.listPlanItemsWithSubTasks
       .mockResolvedValueOnce(groupsInitial)
       .mockResolvedValueOnce(groupsAfter);
-    taskRepository.findById.mockImplementation((id: string) => {
-      if (id === 'task-a1') {
-        return Promise.resolve({
-          id: 'task-a1',
-          title: 'Ta',
-          status: predTaskStatus,
-        });
-      }
-      return Promise.resolve(null);
-    });
+    taskRepository.findById.mockResolvedValue(null);
     tasksService.create.mockResolvedValue({ id: 'task-b-new' });
     goalRepository.updatePlanSubTask.mockResolvedValue(stBAfter);
 
     return { service, goalRepository, tasksService };
   };
 
-  it('should reject materialize when predecessor group tasks are not done', async () => {
-    const { service, tasksService } = setupMaterialize(TaskStatus.inProgress);
+  it('should reject materialize when predecessor group subtasks are not branch_merged', async () => {
+    const { service, tasksService } = setupMaterialize(
+      GoalPlanItemStatus.taskCreated,
+    );
     const user = createJwt();
 
     await expect(
@@ -448,9 +507,9 @@ describe('GoalsService group dependsOnItemIds', () => {
     expect(tasksService.create).not.toHaveBeenCalled();
   });
 
-  it('should create task when predecessor group tasks are done', async () => {
+  it('should create task when predecessor group subtasks are branch_merged', async () => {
     const { service, tasksService, goalRepository } = setupMaterialize(
-      TaskStatus.done,
+      GoalPlanItemStatus.branchMerged,
     );
     const user = createJwt();
 
@@ -470,5 +529,125 @@ describe('GoalsService group dependsOnItemIds', () => {
     expect(goalRepository.update).toHaveBeenCalledWith('goal-1', {
       status: GoalStatus.inProgress,
     });
+  });
+
+  it('should reject approve when predecessor group branch is not merged into goal (creating plan item branch)', async () => {
+    const goalRepository = {
+      findById: jest.fn(),
+      findPlanSubTask: jest.fn(),
+      findPlanItem: jest.fn(),
+      listPlanItemsWithSubTasks: jest.fn(),
+      updatePlanSubTask: jest.fn(),
+    };
+    const projectsService = { assertProjectCapability: jest.fn() };
+    const taskRepository = { findById: jest.fn() };
+    const gitService = { createBranch: jest.fn() };
+    const goalsMetrics = {} as GoalsMetricsService;
+    const service = new GoalsService(
+      goalRepository as never,
+      projectsService as never,
+      {} as never,
+      {} as never,
+      gitService as never,
+      taskRepository as never,
+      {} as never,
+      {} as never,
+      goalsMetrics,
+    );
+
+    const stA = {
+      id: 'st-a1',
+      goalPlanItemId: 'group-a',
+      title: 'a1',
+      summary: null,
+      acceptanceCriteria: null,
+      suggestedPrompt: null,
+      dependsOnSubTaskIds: [] as string[],
+      itemOrder: 0,
+      taskId: 'task-a1',
+      status: GoalPlanItemStatus.branchMerged,
+      workflowTemplateId: 'wf-1',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const stB = {
+      id: 'st-b1',
+      goalPlanItemId: 'group-b',
+      title: 'b1',
+      summary: null,
+      acceptanceCriteria: null,
+      suggestedPrompt: null,
+      dependsOnSubTaskIds: [] as string[],
+      itemOrder: 0,
+      taskId: null,
+      status: GoalPlanItemStatus.draft,
+      workflowTemplateId: 'wf-1',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const groups = [
+      {
+        id: 'group-a',
+        goalId: 'goal-1',
+        title: 'Group A',
+        summary: null,
+        acceptanceCriteria: null,
+        suggestedPrompt: null,
+        dependsOnItemIds: [] as string[],
+        itemOrder: 0,
+        gitBranch: 'gb-a',
+        groupMergedIntoGoalAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        subTasks: [stA],
+      },
+      {
+        id: 'group-b',
+        goalId: 'goal-1',
+        title: 'Group B',
+        summary: null,
+        acceptanceCriteria: null,
+        suggestedPrompt: null,
+        dependsOnItemIds: ['group-a'],
+        itemOrder: 1,
+        gitBranch: null,
+        groupMergedIntoGoalAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        subTasks: [stB],
+      },
+    ];
+
+    goalRepository.findById.mockResolvedValue(baseGoal);
+    goalRepository.findPlanSubTask.mockResolvedValue(stB);
+    goalRepository.findPlanItem.mockResolvedValue({
+      id: 'group-b',
+      goalId: 'goal-1',
+      title: 'Group B',
+      summary: null,
+      acceptanceCriteria: null,
+      suggestedPrompt: null,
+      dependsOnItemIds: ['group-a'],
+      itemOrder: 1,
+      gitBranch: null,
+      groupMergedIntoGoalAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    goalRepository.listPlanItemsWithSubTasks.mockResolvedValue(groups);
+
+    const user = createJwt();
+
+    await expect(
+      service.patchPlanSubTask(
+        'goal-1',
+        'st-b1',
+        { status: GoalPlanItemStatus.approved },
+        user,
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(gitService.createBranch).not.toHaveBeenCalled();
+    expect(goalRepository.updatePlanSubTask).not.toHaveBeenCalled();
   });
 });

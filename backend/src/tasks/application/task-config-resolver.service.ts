@@ -305,6 +305,17 @@ export class TaskConfigResolverService {
     );
   }
 
+  readNodeRequiresArtifact(node: TaskNode): boolean {
+    const config = this.toObjectRecord(node.configJson);
+    const input = this.toObjectRecord(node.input);
+
+    return (
+      this.normalizeBooleanLike(config.requiresArtifact) ??
+      this.normalizeBooleanLike(input.requiresArtifact) ??
+      false
+    );
+  }
+
   readNodeEarlyExitMarkerConfig(node: TaskNode): {
     enabled: boolean;
     fileName: string | null;
@@ -327,14 +338,19 @@ export class TaskConfigResolverService {
 
   buildTaskNodeConfig(templateNode: {
     requiresApproval?: boolean;
+    requiresArtifact?: boolean;
   }): TaskNodeConfig | null {
     const requiresApproval = templateNode.requiresApproval === true;
+    const requiresArtifact = templateNode.requiresArtifact === true;
 
-    if (!requiresApproval) {
+    if (!requiresApproval && !requiresArtifact) {
       return null;
     }
 
-    return { requiresApproval };
+    return {
+      ...(requiresApproval ? { requiresApproval } : {}),
+      ...(requiresArtifact ? { requiresArtifact } : {}),
+    };
   }
 
   readNodeRuntime(node: TaskNode): TaskNodeRuntime | null {

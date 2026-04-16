@@ -15,7 +15,7 @@ import { ProjectRepository } from '../../projects/infrastructure/persistence/pro
 import { Task } from '../domain/task';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
-import { TaskStatus } from '../dto/task-status.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskRuntimeService } from '../task-runtime.service';
@@ -278,7 +278,7 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
 
           if (
             !latestNode ||
-            latestNode.status !== TaskStatus.inProgress ||
+            latestNode.status !== TaskNodeStatus.inProgress ||
             !this.taskConfigResolver.readNodeLeaseUntil(latestNode) ||
             this.taskConfigResolver.readNodeLeaseUntil(latestNode)! > now
           ) {
@@ -301,7 +301,7 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
             }
 
             await this.taskNodeRepository.update(node.id, {
-              status: TaskStatus.inReview,
+              status: TaskNodeStatus.failed,
               finishedAt: new Date(),
               runtimeJson: null,
             });
@@ -326,7 +326,7 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
             });
 
           await this.taskNodeRepository.update(node.id, {
-            status: TaskStatus.inReview,
+            status: TaskNodeStatus.failed,
             finishedAt: new Date(),
             agentClioutput,
             runtimeJson: null,
@@ -340,7 +340,7 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
               nodeId: latestNode.id,
               nodeName: latestNode.name,
               nodeOrder: latestNode.nodeOrder,
-              status: TaskStatus.inReview,
+              status: TaskNodeStatus.failed,
             });
           }
 

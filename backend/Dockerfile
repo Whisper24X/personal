@@ -42,7 +42,7 @@ ENV TZ=Asia/Shanghai \
 RUN --mount=type=cache,id=backend-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=backend-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    bash curl git openssh-client netcat-openbsd zip unzip ca-certificates \
+    bash curl git openssh-client netcat-openbsd zip unzip ca-certificates make \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone

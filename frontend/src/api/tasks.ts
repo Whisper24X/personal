@@ -6,7 +6,6 @@ import type {
   CreateTaskTerminalSessionPayload,
   ReplyTaskPayload,
   ResetNodePayload,
-  RetryTaskPayload,
   Task,
   TaskDetail,
   TaskEnvironment,
@@ -99,10 +98,6 @@ export const tasksApi = {
 
   messages(taskId: string) {
     return apiHttp.get<TaskMessage[]>(`/tasks/${taskId}/messages`)
-  },
-
-  retry(taskId: string, payload: RetryTaskPayload) {
-    return apiHttp.post<TaskDetail>(`/tasks/${taskId}/retry`, payload)
   },
 
   resetNode(taskId: string, payload: ResetNodePayload) {

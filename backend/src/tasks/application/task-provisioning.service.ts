@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { Task } from '../domain/task';
 import { CreateTaskDto } from '../dto/create-task.dto';
-import { TaskCommandService } from './task-command.service';
+import { TaskCommandService, RemoveTaskOptions } from './task-command.service';
 
 @Injectable()
 export class TaskProvisioningService {
@@ -15,7 +15,11 @@ export class TaskProvisioningService {
     return this.taskCommandService.create(createTaskDto, currentUser);
   }
 
-  async remove(taskId: Task['id'], currentUser: JwtPayloadType): Promise<void> {
-    await this.taskCommandService.remove(taskId, currentUser);
+  async remove(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+    options?: RemoveTaskOptions,
+  ): Promise<void> {
+    await this.taskCommandService.remove(taskId, currentUser, options);
   }
 }

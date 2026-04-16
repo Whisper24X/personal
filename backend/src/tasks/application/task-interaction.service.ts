@@ -11,11 +11,11 @@ import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { ApproveTaskDto } from '../dto/approve-task.dto';
 import { ReplyTaskDto } from '../dto/reply-task.dto';
-import { RetryTaskDto } from '../dto/retry-task.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskMessageRole } from '../dto/task-message.dto';
 import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
@@ -94,6 +94,18 @@ export class TaskInteractionService {
       );
     }
 
+    const failedNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus(
+      {
+        taskId: task.id,
+        status: TaskNodeStatus.failed,
+      },
+    );
+    if (failedNode) {
+      throw new ConflictException(
+        'Task has failed node and cannot accept reply',
+      );
+    }
+
     const normalizedMessage = replyTaskDto.message.trim();
     if (!normalizedMessage) {
       throw new ConflictException('Reply message cannot be empty');
@@ -114,11 +126,11 @@ export class TaskInteractionService {
     const inReviewNode =
       await this.taskNodeRepository.findFirstByTaskIdAndStatus({
         taskId: task.id,
-        status: TaskStatus.inReview,
+        status: TaskNodeStatus.inReview,
       });
     if (inReviewNode) {
       await this.taskNodeRepository.update(inReviewNode.id, {
-        status: TaskStatus.todo,
+        status: TaskNodeStatus.todo,
         finishedAt: null,
         runtimeJson:
           this.taskConfigResolver.buildPendingReplyRuntimeJson(
@@ -140,7 +152,7 @@ export class TaskInteractionService {
       const todoNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus(
         {
           taskId: task.id,
-          status: TaskStatus.todo,
+          status: TaskNodeStatus.todo,
         },
       );
 
@@ -155,7 +167,7 @@ export class TaskInteractionService {
         const fallbackNodes =
           await this.taskNodeRepository.findByTaskIdAndStatus({
             taskId: task.id,
-            status: TaskStatus.done,
+            status: TaskNodeStatus.done,
           });
         const fallbackNode = this.selectReplyFallbackNode(fallbackNodes);
 
@@ -164,7 +176,7 @@ export class TaskInteractionService {
         }
 
         await this.taskNodeRepository.update(fallbackNode.id, {
-          status: TaskStatus.todo,
+          status: TaskNodeStatus.todo,
           finishedAt: null,
           runtimeJson:
             this.taskConfigResolver.buildPendingReplyRuntimeJson(
@@ -215,17 +227,28 @@ export class TaskInteractionService {
     const inReviewNode =
       await this.taskNodeRepository.findFirstByTaskIdAndStatus({
         taskId: task.id,
-        status: TaskStatus.inReview,
+        status: TaskNodeStatus.inReview,
       });
 
     if (inReviewNode) {
       throw new ConflictException('Task has in_review node and cannot execute');
     }
 
+    const failedNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus(
+      {
+        taskId: task.id,
+        status: TaskNodeStatus.failed,
+      },
+    );
+
+    if (failedNode) {
+      throw new ConflictException('Task has failed node and cannot execute');
+    }
+
     const nextTodoNode =
       await this.taskNodeRepository.findFirstByTaskIdAndStatus({
         taskId: task.id,
-        status: TaskStatus.todo,
+        status: TaskNodeStatus.todo,
       });
 
     if (!nextTodoNode) {
@@ -279,7 +302,7 @@ export class TaskInteractionService {
     }
 
     const nodes = await this.taskNodeRepository.findByTaskId(task.id);
-    const hasInReview = nodes.some((n) => n.status === TaskStatus.inReview);
+    const hasInReview = nodes.some((n) => n.status === TaskNodeStatus.inReview);
     if (task.status !== TaskStatus.done && !hasInReview) {
       throw new ConflictException(
         'Task can be repeated only when done or has in_review node',
@@ -291,10 +314,10 @@ export class TaskInteractionService {
       targetNode =
         (await this.taskNodeRepository.findFirstByTaskIdAndStatus({
           taskId: task.id,
-          status: TaskStatus.inReview,
+          status: TaskNodeStatus.inReview,
         })) ?? undefined;
     } else {
-      const doneNodes = nodes.filter((n) => n.status === TaskStatus.done);
+      const doneNodes = nodes.filter((n) => n.status === TaskNodeStatus.done);
       if (doneNodes.length === 0) {
         throw new ConflictException('No completed node to repeat');
       }
@@ -334,7 +357,7 @@ export class TaskInteractionService {
     }
 
     const nodes = await this.taskNodeRepository.findByTaskId(task.id);
-    const hasInReview = nodes.some((n) => n.status === TaskStatus.inReview);
+    const hasInReview = nodes.some((n) => n.status === TaskNodeStatus.inReview);
     if (task.status !== TaskStatus.done && !hasInReview) {
       throw new ConflictException(
         'Task can be repeated only when done or has in_review node',
@@ -342,7 +365,7 @@ export class TaskInteractionService {
     }
 
     await this.taskNodeRepository.update(targetNode.id, {
-      status: TaskStatus.todo,
+      status: TaskNodeStatus.todo,
       finishedAt: null,
       agentClioutput: null,
       runtimeJson: null,
@@ -357,97 +380,6 @@ export class TaskInteractionService {
         requestedBy: currentUser.sub,
         requestedAt: new Date().toISOString(),
         nodeOrder: targetNode.nodeOrder,
-      },
-    });
-
-    await this.taskStatusService.recalculateTaskStatus(task.id);
-    await this.taskSchedulerService.triggerDispatch();
-
-    return this.taskQueryService.detailById(task.id, currentUser);
-  }
-
-  async retry(
-    taskId: Task['id'],
-    retryTaskDto: RetryTaskDto,
-    currentUser: JwtPayloadType,
-  ): Promise<TaskDetailDto> {
-    let task = await this.taskAccessService.getTaskOrThrow(
-      taskId,
-      currentUser,
-      'project.task.read',
-    );
-    const prepared = await this.taskRuntimeOrchestrator.prepareTaskRuntime(
-      task,
-      currentUser,
-    );
-    task = prepared.task;
-
-    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
-      task.id,
-    );
-
-    if (runningNode) {
-      throw new ConflictException('Task already has an in-progress node');
-    }
-
-    const requestedNode = retryTaskDto.nodeId
-      ? await this.taskNodeRepository.findById(retryTaskDto.nodeId)
-      : null;
-    let targetNode = this.isInReviewRetryCandidate(task.id, requestedNode)
-      ? requestedNode
-      : null;
-
-    if (!targetNode) {
-      targetNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus({
-        taskId: task.id,
-        status: TaskStatus.inReview,
-      });
-    }
-
-    const recoveredFromStaleReviewState =
-      !this.isInReviewRetryCandidate(task.id, targetNode) &&
-      task.mode === TaskMode.conversation &&
-      task.status === TaskStatus.inReview;
-
-    if (recoveredFromStaleReviewState) {
-      targetNode = this.isTodoRetryRecoveryCandidate(task.id, requestedNode)
-        ? requestedNode
-        : await this.taskNodeRepository.findFirstByTaskIdAndStatus({
-            taskId: task.id,
-            status: TaskStatus.todo,
-          });
-    }
-
-    if (!targetNode || targetNode.taskId !== task.id) {
-      throw new NotFoundException('Task node not found');
-    }
-
-    if (
-      targetNode.status !== TaskStatus.inReview &&
-      !(recoveredFromStaleReviewState && targetNode.status === TaskStatus.todo)
-    ) {
-      throw new ConflictException('Only in_review node can be retried');
-    }
-
-    await this.taskNodeRepository.update(targetNode.id, {
-      status: TaskStatus.todo,
-      finishedAt: null,
-      agentClioutput: null,
-      runtimeJson: null,
-    });
-
-    task = await this.markTaskStartedIfNeeded(task);
-
-    await this.taskLogService.appendLog({
-      taskId: task.id,
-      taskNodeId: targetNode.id,
-      level: TaskLogLevel.info,
-      message: 'Node retry queued',
-      payload: {
-        requestedBy: currentUser.sub,
-        requestedAt: new Date().toISOString(),
-        nodeOrder: targetNode.nodeOrder,
-        recoveredFromStaleReviewState,
       },
     });
 
@@ -487,10 +419,13 @@ export class TaskInteractionService {
     }
 
     if (
-      targetNode.status !== TaskStatus.done &&
-      targetNode.status !== TaskStatus.inReview
+      targetNode.status !== TaskNodeStatus.done &&
+      targetNode.status !== TaskNodeStatus.inReview &&
+      targetNode.status !== TaskNodeStatus.failed
     ) {
-      throw new ConflictException('Only done or in_review node can be reset');
+      throw new ConflictException(
+        'Only done, in_review, or failed node can be reset',
+      );
     }
 
     const resetToCommitSha = targetNode.beforeRunCommitSha?.trim();
@@ -531,7 +466,7 @@ export class TaskInteractionService {
         );
 
         return this.taskNodeRepository.update(node.id, {
-          status: TaskStatus.todo,
+          status: TaskNodeStatus.todo,
           startedAt: null,
           finishedAt: null,
           agentClioutput: null,
@@ -592,7 +527,7 @@ export class TaskInteractionService {
       this.taskOutputService.resolveNodeOutputPath(task, runningNode);
 
     await this.taskNodeRepository.update(runningNode.id, {
-      status: TaskStatus.inReview,
+      status: TaskNodeStatus.inReview,
       finishedAt: cancelledAt,
       agentClioutput,
       runtimeJson: null,
@@ -638,7 +573,7 @@ export class TaskInteractionService {
       throw new NotFoundException('Task node not found');
     }
 
-    if (targetNode.status !== TaskStatus.inReview) {
+    if (targetNode.status !== TaskNodeStatus.inReview) {
       throw new ConflictException('Only in_review node can be approved');
     }
 
@@ -666,7 +601,7 @@ export class TaskInteractionService {
       (await this.taskGitService.resolveHeadCommitShaForTask(task, project));
 
     await this.taskNodeRepository.update(targetNode.id, {
-      status: TaskStatus.done,
+      status: TaskNodeStatus.done,
       finishedAt: targetNode.finishedAt ?? new Date(),
       runtimeJson: null,
       afterRunCommitSha,
@@ -712,7 +647,7 @@ export class TaskInteractionService {
     const nodes = await this.taskNodeRepository.findByTaskId(task.id);
     const allNodesDone =
       nodes.length > 0 &&
-      nodes.every((node) => node.status === TaskStatus.done);
+      nodes.every((node) => node.status === TaskNodeStatus.done);
 
     if (!allNodesDone) {
       throw new ConflictException(
@@ -793,7 +728,7 @@ export class TaskInteractionService {
       nodeId: node.id,
       nodeName: node.name,
       nodeOrder: node.nodeOrder,
-      status: TaskStatus.inReview,
+      status: TaskNodeStatus.inReview,
     });
   }
 
@@ -829,22 +764,6 @@ export class TaskInteractionService {
 
   private resolveNodeFinishedAtMs(node: TaskNode): number {
     return node.finishedAt instanceof Date ? node.finishedAt.getTime() : 0;
-  }
-
-  private isInReviewRetryCandidate(
-    taskId: Task['id'],
-    node: TaskNode | null,
-  ): node is TaskNode {
-    return (
-      !!node && node.taskId === taskId && node.status === TaskStatus.inReview
-    );
-  }
-
-  private isTodoRetryRecoveryCandidate(
-    taskId: Task['id'],
-    node: TaskNode | null,
-  ): node is TaskNode {
-    return !!node && node.taskId === taskId && node.status === TaskStatus.todo;
   }
 
   private async markTaskStartedIfNeeded(task: Task): Promise<Task> {

@@ -16,6 +16,7 @@ import { ProjectKnowledgeService } from '../projects/project-knowledge.service';
 import { ProjectsService } from '../projects/projects.service';
 import { buildPullRequestUrl } from '../git/pull-request-url.util';
 import { GitService } from '../git/git.service';
+import { GitBranchMergeResultDto } from '../git/dto/git-branch-merge-result.dto';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
 import { TaskMode } from '../tasks/dto/task-mode.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
@@ -59,6 +60,10 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { GoalDetailDto } from './dto/goal-detail.dto';
 import { GoalsMetricsService } from './goals-metrics.service';
+import {
+  parsePlanJsonFromAgentStdout,
+  parsePrdJsonFromAgentStdout,
+} from '../utils/stream-json-assistant-text';
 
 const PRD_MAX_ATTEMPTS = 3;
 const PLAN_MAX_ATTEMPTS = 3;
@@ -114,324 +119,21 @@ function assertGoalAgentCliForGeneration(
   }
 }
 
-/**
- * Cursor/Claude/Codex 等 CLI 使用 stream-json / NDJSON 时 stdout 不是单个 JSON。
- * 需先抽取 assistant / agent_message 正文，再解析其中的目标 JSON。
- */
-function findMatchingJsonObjectEnd(s: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-
-  for (let i = start; i < s.length; i++) {
-    const c = s[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (inString) {
-      if (c === '\\') {
-        escape = true;
-        continue;
-      }
-      if (c === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (c === '"') {
-      inString = true;
-      continue;
-    }
-    if (c === '{') {
-      depth++;
-    } else if (c === '}') {
-      depth--;
-      if (depth === 0) {
-        return i;
-      }
-    }
-  }
-  return -1;
-}
-
-function extractAssistantMessageText(
-  msg: Record<string, unknown>,
-): string | null {
-  const candidates = [
-    msg.text,
-    msg.content,
-    msg.message,
-    msg.output,
-    msg.result,
-  ];
-
-  for (const candidate of candidates) {
-    const text = extractTextContent(candidate);
-    if (text) {
-      return text;
-    }
-  }
-
-  return null;
-}
-
-function extractTextContent(value: unknown): string | null {
-  if (typeof value === 'string') {
-    return value.trim() || null;
-  }
-
-  if (Array.isArray(value)) {
-    const textParts = value
-      .map((item) => extractTextContent(item))
-      .filter((item): item is string => Boolean(item));
-    const joined = textParts.join('').trim();
-    return joined || null;
-  }
-
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    for (const key of ['text', 'content', 'message', 'output', 'result']) {
-      const text = extractTextContent(record[key]);
-      if (text) {
-        return text;
-      }
-    }
-  }
-
-  return null;
-}
-
-function isAssistantLikeRecord(record: Record<string, unknown>): boolean {
-  return ['type', 'event', 'method', 'kind', 'role', 'subtype'].some((key) => {
-    const value = record[key];
-    if (typeof value !== 'string') {
-      return false;
-    }
-    const normalized = value.trim().toLowerCase().replace(/\./g, '_');
-    return (
-      normalized === 'assistant' ||
-      normalized === 'assistant_message' ||
-      normalized === 'agent_message' ||
-      normalized === 'agent_message_delta' ||
-      normalized === 'model'
-    );
-  });
-}
-
-function extractAssistantTextFromRecord(
-  record: Record<string, unknown>,
-): string | null {
-  const queue: Array<Record<string, unknown>> = [record];
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) {
-      continue;
-    }
-
-    if (isAssistantLikeRecord(current)) {
-      const text = extractAssistantMessageText(current);
-      if (text) {
-        return text;
-      }
-    }
-
-    ['item', 'message', 'params', 'result', 'event'].forEach((key) => {
-      const nested = current[key];
-      if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-        queue.push(nested as Record<string, unknown>);
-      }
-    });
-  }
-
-  return null;
-}
-
-/** 拼接 stream-json 中 assistant / agent_message / result 里可能含目标 JSON 的片段 */
-function extractStreamJsonGoalChunks(stdout: string): string {
-  const parts: string[] = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    let obj: unknown;
-    try {
-      obj = JSON.parse(trimmed) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-    if (!obj || typeof obj !== 'object') {
-      continue;
-    }
-    const rec = obj as Record<string, unknown>;
-    const text = extractAssistantTextFromRecord(rec);
-    if (text) {
-      parts.push(text);
-      continue;
-    }
-    const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
-    if (type === 'result') {
-      const r = rec.result;
-      if (
-        typeof r === 'string' &&
-        (r.includes('{') || r.includes('markdown'))
-      ) {
-        parts.push(r);
-      }
-    }
-  }
-  return parts.join('\n');
-}
-
-function tryParsePrdJsonObject(
-  text: string,
-): { markdown: string; uncertainPoints?: unknown } | null {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = (fenced?.[1] ?? trimmed).trim();
-
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] !== '{') {
-      continue;
-    }
-    const end = findMatchingJsonObjectEnd(body, i);
-    if (end < 0) {
-      continue;
-    }
-    const slice = body.slice(i, end + 1);
-    try {
-      const parsed = JSON.parse(slice) as Record<string, unknown>;
-      if (typeof parsed.markdown === 'string' && parsed.markdown.trim()) {
-        return parsed as { markdown: string; uncertainPoints?: unknown };
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-function parsePrdJsonFromAgentStdout(stdout: string): {
-  markdown: string;
-} | null {
-  const trimmed = stdout.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const fromChunks = extractStreamJsonGoalChunks(trimmed);
-  if (fromChunks) {
-    const parsed = tryParsePrdJsonObject(fromChunks);
-    if (parsed) {
-      return { markdown: parsed.markdown };
-    }
-  }
-
-  const fromWhole = tryParsePrdJsonObject(trimmed);
-  if (fromWhole) {
-    return { markdown: fromWhole.markdown };
-  }
-
-  for (const line of trimmed.split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t) {
-      continue;
-    }
-    try {
-      const obj = JSON.parse(t) as Record<string, unknown>;
-      if (typeof obj.markdown === 'string' && obj.markdown.trim()) {
-        return { markdown: obj.markdown };
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
-}
-
-function tryParsePlanJsonObject(text: string): {
-  markdown: string;
-  items: unknown[];
-} | null {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = (fenced?.[1] ?? trimmed).trim();
-
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] !== '{') {
-      continue;
-    }
-    const end = findMatchingJsonObjectEnd(body, i);
-    if (end < 0) {
-      continue;
-    }
-    const slice = body.slice(i, end + 1);
-    try {
-      const parsed = JSON.parse(slice) as Record<string, unknown>;
-      if (
-        typeof parsed.markdown === 'string' &&
-        parsed.markdown.trim() &&
-        Array.isArray(parsed.items)
-      ) {
-        return { markdown: parsed.markdown, items: parsed.items };
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-function parsePlanJsonFromAgentStdout(stdout: string): {
-  markdown: string;
-  items: unknown[];
-} | null {
-  const trimmed = stdout.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const fromChunks = extractStreamJsonGoalChunks(trimmed);
-  if (fromChunks) {
-    const parsed = tryParsePlanJsonObject(fromChunks);
-    if (parsed) {
-      return parsed;
-    }
-  }
-
-  const fromWhole = tryParsePlanJsonObject(trimmed);
-  if (fromWhole) {
-    return fromWhole;
-  }
-
-  for (const line of trimmed.split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t) {
-      continue;
-    }
-    try {
-      const obj = JSON.parse(t) as Record<string, unknown>;
-      if (
-        typeof obj.markdown === 'string' &&
-        obj.markdown.trim() &&
-        Array.isArray(obj.items)
-      ) {
-        return { markdown: obj.markdown, items: obj.items };
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
-}
-
 @Injectable()
 export class GoalsService {
   private readonly logger = new Logger(GoalsService.name);
+
+  /** 同一 goal 上并发的 PRD 生成请求复用同一次执行（进程内） */
+  private readonly prdGenerationInFlight = new Map<
+    string,
+    Promise<{ goal: Goal; markdownLength: number }>
+  >();
+
+  /** 同一 goal 上并发的任务计划生成请求复用同一次执行（进程内） */
+  private readonly planGenerationInFlight = new Map<
+    string,
+    Promise<{ goal: Goal; itemCount: number; subTaskCount: number }>
+  >();
 
   constructor(
     private readonly goalRepository: GoalRepository,
@@ -462,12 +164,44 @@ export class GoalsService {
   }
 
   /**
-   * 功能组 dependsOnItemIds：本组子任务在确认/物化前，每个前置功能组内全部子任务对应 Task 须已存在且已完成。
+   * 功能组 dependsOnItemIds：本组子任务在确认/物化前，每个前置功能组内全部子任务须已物化且已标记「分支已合并」。
    */
-  private async assertPredecessorGroupsFulfilledForSubTask(
+  /**
+   * 创建本功能组 Git 分支前：每个有子任务的前置功能组须已将组分支合并入需求分支（避免从过时需求线派生）。
+   */
+  private assertPredecessorGroupsMergedIntoGoal(
     goalPlanItemId: string,
     groups: GoalPlanItem[],
-  ): Promise<void> {
+  ): void {
+    const groupById = new Map(groups.map((g) => [g.id, g]));
+    const parent = groupById.get(goalPlanItemId);
+    if (!parent) {
+      return;
+    }
+    for (const predId of parent.dependsOnItemIds ?? []) {
+      const predGroup = groupById.get(predId);
+      if (!predGroup) {
+        continue;
+      }
+      const subs = predGroup.subTasks ?? [];
+      const countable = subs.filter(
+        (s) => s.status !== GoalPlanItemStatus.cancelled,
+      );
+      if (countable.length === 0) {
+        continue;
+      }
+      if (!predGroup.groupMergedIntoGoalAt) {
+        throw new BadRequestException(
+          `请先将前置功能组「${predGroup.title}」的分支合并入需求分支后，再创建本功能组分支`,
+        );
+      }
+    }
+  }
+
+  private assertPredecessorGroupsFulfilledForSubTask(
+    goalPlanItemId: string,
+    groups: GoalPlanItem[],
+  ): void {
     const groupById = new Map(groups.map((g) => [g.id, g]));
     const parent = groupById.get(goalPlanItemId);
     if (!parent) {
@@ -490,15 +224,9 @@ export class GoalsService {
             `请先为前置功能组「${predGroup.title}」的全部子任务创建任务后再继续`,
           );
         }
-        const predTask = await this.taskRepository.findById(st.taskId);
-        if (!predTask) {
+        if (st.status !== GoalPlanItemStatus.branchMerged) {
           throw new BadRequestException(
-            `前置任务不存在，请刷新后重试（功能组「${predGroup.title}」·「${st.title}」）`,
-          );
-        }
-        if (predTask.status !== TaskStatus.done) {
-          throw new BadRequestException(
-            `请先完成前置功能组「${predGroup.title}」的全部子任务（「${st.title}」对应任务未完成）`,
+            `请先将前置功能组「${predGroup.title}」的子任务「${st.title}」对应分支合并入需求分支，并在任务计划中标记为「分支已合并」后再继续`,
           );
         }
       }
@@ -521,6 +249,10 @@ export class GoalsService {
     if (parent.gitBranch?.trim()) {
       return;
     }
+    const groupsWithSubs =
+      await this.goalRepository.listPlanItemsWithSubTasks(goalId);
+    this.assertPredecessorGroupsMergedIntoGoal(planItemId, groupsWithSubs);
+
     if (!goal.gitBranch?.trim()) {
       throw new BadRequestException('需求未配置 Git 分支，无法创建功能组分支');
     }
@@ -532,6 +264,7 @@ export class GoalsService {
         name,
         base,
         currentUser,
+        { prepareRequirementBranchWorkingTree: true },
       );
     } catch (e) {
       parent = await this.goalRepository.findPlanItem(goalId, planItemId);
@@ -695,16 +428,31 @@ export class GoalsService {
   async remove(id: string, currentUser: JwtPayloadType): Promise<void> {
     const goal = await this.assertGoalAccess(id, currentUser);
 
-    const tasks = await this.taskRepository.findByGoalId(id);
-    for (const task of tasks) {
-      await this.taskProvisioningService.remove(task.id, currentUser);
+    const planItems = await this.goalRepository.listPlanItems(id);
+    const localBranchesToDelete = new Set<string>();
+    const collectBranch = (name?: string | null): void => {
+      const trimmed = name?.trim();
+      if (trimmed) {
+        localBranchesToDelete.add(trimmed);
+      }
+    };
+    collectBranch(goal.gitBranch);
+    for (const item of planItems) {
+      collectBranch(item.gitBranch);
     }
 
-    const goalBranch = goal.gitBranch?.trim();
-    if (goalBranch) {
+    const tasks = await this.taskRepository.findByGoalId(id);
+    await this.goalRepository.deleteSourceDocsAndPlanItemsByGoalId(id);
+    for (const task of tasks) {
+      await this.taskProvisioningService.remove(task.id, currentUser, {
+        skipPlanConsistencyCheck: true,
+      });
+    }
+
+    for (const branch of localBranchesToDelete) {
       await this.gitService.deleteLocalBranch(
         goal.projectId,
-        goalBranch,
+        branch,
         currentUser,
       );
     }
@@ -715,7 +463,6 @@ export class GoalsService {
       currentUser,
     );
 
-    await this.goalRepository.deleteSourceDocsAndPlanItemsByGoalId(id);
     await this.goalRepository.softRemove(id);
   }
 
@@ -742,6 +489,22 @@ export class GoalsService {
   }
 
   async generatePrd(
+    goalId: string,
+    dto: GeneratePrdDto,
+    currentUser: JwtPayloadType,
+  ): Promise<{ goal: Goal; markdownLength: number }> {
+    const existing = this.prdGenerationInFlight.get(goalId);
+    if (existing) {
+      return existing;
+    }
+    const run = this.generatePrdImpl(goalId, dto, currentUser).finally(() => {
+      this.prdGenerationInFlight.delete(goalId);
+    });
+    this.prdGenerationInFlight.set(goalId, run);
+    return run;
+  }
+
+  private async generatePrdImpl(
     goalId: string,
     dto: GeneratePrdDto,
     currentUser: JwtPayloadType,
@@ -843,6 +606,22 @@ export class GoalsService {
   }
 
   async generatePlan(
+    goalId: string,
+    dto: GeneratePlanDto,
+    currentUser: JwtPayloadType,
+  ): Promise<{ goal: Goal; itemCount: number; subTaskCount: number }> {
+    const existing = this.planGenerationInFlight.get(goalId);
+    if (existing) {
+      return existing;
+    }
+    const run = this.generatePlanImpl(goalId, dto, currentUser).finally(() => {
+      this.planGenerationInFlight.delete(goalId);
+    });
+    this.planGenerationInFlight.set(goalId, run);
+    return run;
+  }
+
+  private async generatePlanImpl(
     goalId: string,
     dto: GeneratePlanDto,
     currentUser: JwtPayloadType,
@@ -1112,8 +891,26 @@ export class GoalsService {
 
     if (dto.status === GoalPlanItemStatus.completed) {
       throw new BadRequestException(
-        '计划子任务「已完成」状态由系统在关联任务完成时自动同步，不可手动设置',
+        '计划子任务「任务已完成」状态由系统在关联任务完成时自动同步，不可手动设置',
       );
+    }
+
+    if (dto.status === GoalPlanItemStatus.branchMerged) {
+      if (existing.status !== GoalPlanItemStatus.completed) {
+        throw new BadRequestException(
+          '仅当子任务为「任务已完成」时，可手动标记为「分支已合并」',
+        );
+      }
+      const linkedTaskId = existing.taskId?.trim();
+      if (!linkedTaskId) {
+        throw new BadRequestException('未找到关联任务，无法标记分支已合并');
+      }
+      const linkedTask = await this.taskRepository.findById(linkedTaskId);
+      if (!linkedTask || linkedTask.status !== TaskStatus.done) {
+        throw new BadRequestException(
+          '关联任务须为已完成状态后，方可标记分支已合并',
+        );
+      }
     }
 
     if (
@@ -1122,7 +919,7 @@ export class GoalsService {
     ) {
       const groupsWithSubs =
         await this.goalRepository.listPlanItemsWithSubTasks(goalId);
-      await this.assertPredecessorGroupsFulfilledForSubTask(
+      this.assertPredecessorGroupsFulfilledForSubTask(
         existing.goalPlanItemId,
         groupsWithSubs,
       );
@@ -1214,7 +1011,8 @@ export class GoalsService {
       }
       if (
         (item.status === GoalPlanItemStatus.taskCreated ||
-          item.status === GoalPlanItemStatus.completed) &&
+          item.status === GoalPlanItemStatus.completed ||
+          item.status === GoalPlanItemStatus.branchMerged) &&
         item.taskId
       ) {
         results.push({ planSubTaskId: subTaskId, taskId: item.taskId });
@@ -1242,7 +1040,7 @@ export class GoalsService {
         );
       }
 
-      await this.assertPredecessorGroupsFulfilledForSubTask(
+      this.assertPredecessorGroupsFulfilledForSubTask(
         item.goalPlanItemId,
         groups,
       );
@@ -1257,15 +1055,9 @@ export class GoalsService {
             `请先为前置子任务「${predItem.title}」创建任务后再为本项新建任务`,
           );
         }
-        const predTask = await this.taskRepository.findById(predItem.taskId);
-        if (!predTask) {
+        if (predItem.status !== GoalPlanItemStatus.branchMerged) {
           throw new BadRequestException(
-            `前置任务不存在，请刷新后重试（子任务「${predItem.title}」）`,
-          );
-        }
-        if (predTask.status !== TaskStatus.done) {
-          throw new BadRequestException(
-            `前置任务「${predTask.title}」未完成，请完成后再为本项新建任务`,
+            `请先将前置子任务「${predItem.title}」对应分支合并入需求分支，并标记为「分支已合并」后再为本项新建任务`,
           );
         }
       }
@@ -1347,6 +1139,68 @@ export class GoalsService {
   async listGoalTasks(goalId: string, currentUser: JwtPayloadType) {
     await this.assertGoalAccess(goalId, currentUser);
     return this.taskRepository.findByGoalId(goalId);
+  }
+
+  /**
+   * 在项目主仓库将功能组分支合并入需求分支，并记录 `groupMergedIntoGoalAt`。
+   */
+  async mergePlanItemBranchIntoGoal(
+    goalId: string,
+    planItemId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitBranchMergeResultDto> {
+    const goal = await this.assertGoalAccess(goalId, currentUser);
+    const groups = await this.goalRepository.listPlanItemsWithSubTasks(goalId);
+    const planItem = groups.find((g) => g.id === planItemId);
+    if (!planItem) {
+      throw new NotFoundException('未找到计划功能组');
+    }
+    if (planItem.groupMergedIntoGoalAt) {
+      throw new BadRequestException('该功能组分支已并入需求分支');
+    }
+    const baseBranch = goal.gitBranch?.trim();
+    const headBranch = planItem.gitBranch?.trim();
+    if (!baseBranch) {
+      throw new BadRequestException('需求尚未设置需求分支，无法合并');
+    }
+    if (!headBranch) {
+      throw new BadRequestException('功能组尚未创建 Git 分支，无法合并');
+    }
+
+    const countable = (planItem.subTasks ?? []).filter(
+      (s) => s.status !== GoalPlanItemStatus.cancelled,
+    );
+    if (countable.length === 0) {
+      throw new BadRequestException('功能组下没有有效子任务，无法合并');
+    }
+    const allMerged = countable.every(
+      (s) => s.status === GoalPlanItemStatus.branchMerged,
+    );
+    if (!allMerged) {
+      throw new BadRequestException(
+        '须将该功能组下全部子任务标记为「分支已合并」后，方可将功能组分支并入需求分支',
+      );
+    }
+
+    const result = await this.gitService.mergeBranchIntoBase(
+      goal.projectId,
+      baseBranch,
+      headBranch,
+      currentUser,
+    );
+
+    if (result.success) {
+      const updated = await this.goalRepository.updatePlanItem(
+        goalId,
+        planItemId,
+        { groupMergedIntoGoalAt: new Date() },
+      );
+      if (!updated) {
+        throw new NotFoundException('未找到计划功能组');
+      }
+    }
+
+    return result;
   }
 
   /**

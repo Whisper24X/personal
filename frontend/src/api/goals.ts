@@ -4,6 +4,7 @@ import type {
   GoalPlanItem,
   GoalPlanSubTask,
   GoalSourceDoc,
+  PlanGranularity,
 } from '@/types/api/goals'
 import type { Task } from '@/types/api/tasks'
 import { apiHttp, type InfinityPaginationResponse } from './http'
@@ -97,7 +98,7 @@ export const goalsApi = {
   generatePlan(
     goalId: string,
     payload?: {
-      granularity?: string
+      granularity?: PlanGranularity
       overwrite?: boolean
       agentCliId?: string
       agentCliConfigId?: string
@@ -120,11 +121,13 @@ export const goalsApi = {
     )
   },
 
-  getPlanItemPrLink(goalId: string, planItemId: string) {
-    return apiHttp.post<{ url: string | null }>(
-      `/goals/${goalId}/plan-items/${planItemId}/pr-link`,
-      {},
-    )
+  /** 将功能组分支合并入需求分支（项目主仓库），并更新组级状态 */
+  mergePlanItemIntoGoal(goalId: string, planItemId: string) {
+    return apiHttp.post<{
+      success: boolean
+      message: string
+      conflicts?: string[]
+    }>(`/goals/${goalId}/plan-items/${planItemId}/merge-into-goal`, {})
   },
 
   patchPlanSubTask(

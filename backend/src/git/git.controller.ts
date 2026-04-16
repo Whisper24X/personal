@@ -97,6 +97,20 @@ export class GitController {
     );
   }
 
+  @Post('reset-branch')
+  @ApiOkResponse({ type: GitBranchActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  resetBranch(
+    @Request() request,
+    @Body() payload: GitBranchOperationDto,
+  ): Promise<GitBranchActionResultDto> {
+    return this.gitService.resetBranch(
+      payload.projectId,
+      payload.branch,
+      request.user,
+    );
+  }
+
   @Post('create-branch')
   @ApiOkResponse({ type: GitCreateBranchResultDto })
   @HttpCode(HttpStatus.OK)

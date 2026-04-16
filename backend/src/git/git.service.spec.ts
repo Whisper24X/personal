@@ -214,7 +214,9 @@ describe('GitService', () => {
     const { service, projectsService } = createGitService();
 
     const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
-    runCommandSpy.mockResolvedValueOnce(createGitCommandResult(''));
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('abc1234')) // resolveFromRef: local main exists
+      .mockResolvedValueOnce(createGitCommandResult('')); // git branch goal/foo main
 
     const result = await service.createBranch(
       'project-1',
@@ -232,6 +234,153 @@ describe('GitService', () => {
       'goal/foo',
       'main',
     ]);
+  });
+
+  it('should checkout requirement branch and create plan branch from HEAD when prepareRequirementBranchWorkingTree and working tree clean', async () => {
+    const { service, projectsService } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse local feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // checkout feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // status porcelain empty
+      .mockResolvedValueOnce(createGitCommandResult('')); // branch goal/plan-x
+
+    const result = await service.createBranch(
+      'project-1',
+      'goal/plan-x',
+      'feature/base',
+      createCurrentUser(),
+      { prepareRequirementBranchWorkingTree: true },
+    );
+
+    expect(projectsService.runWithProjectRepositoryLock).toHaveBeenCalled();
+    expect(result).toEqual({ success: true, branch: 'goal/plan-x' });
+    expect(runCommandSpy).toHaveBeenNthCalledWith(1, [
+      '-C',
+      '/tmp/project-repo',
+      'rev-parse',
+      '--verify',
+      'refs/heads/feature/base',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(2, [
+      '-C',
+      '/tmp/project-repo',
+      'checkout',
+      'feature/base',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(3, [
+      '-C',
+      '/tmp/project-repo',
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(4, [
+      '-C',
+      '/tmp/project-repo',
+      'branch',
+      'goal/plan-x',
+    ]);
+  });
+
+  it('should auto-commit dirty requirement branch before creating plan branch when prepareRequirementBranchWorkingTree', async () => {
+    const { service } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(createGitCommandResult(' M tracked.txt\n'))
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(
+        createGitCommandResult('[feature/base abc1234] chore(goal): msg\n'),
+      )
+      .mockResolvedValueOnce(createGitCommandResult(''));
+
+    await service.createBranch(
+      'project-1',
+      'goal/plan-x',
+      'feature/base',
+      { sub: 'u1', username: 'alice', iat: 1, exp: 9 },
+      { prepareRequirementBranchWorkingTree: true },
+    );
+
+    expect(runCommandSpy).toHaveBeenNthCalledWith(4, [
+      '-C',
+      '/tmp/project-repo',
+      'add',
+      '-A',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(5, [
+      '-C',
+      '/tmp/project-repo',
+      '-c',
+      'user.name=alice',
+      '-c',
+      'user.email=alice@ainative.local',
+      'commit',
+      '-m',
+      'chore(goal): auto-commit before plan branch goal/plan-x',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(6, [
+      '-C',
+      '/tmp/project-repo',
+      'branch',
+      'goal/plan-x',
+    ]);
+  });
+
+  it('should throw BadRequestException with stage hint when checkout requirement branch fails', async () => {
+    const { service } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(
+        createGitCommandResult('', { success: false, stderr: 'fatal: Needed' }),
+      ) // rev-parse local
+      .mockResolvedValueOnce(
+        createGitCommandResult('', { success: false, stderr: 'fatal: Needed' }),
+      ); // rev-parse remote
+
+    await expect(
+      service.createBranch(
+        'project-1',
+        'goal/plan-x',
+        'feature/missing',
+        createCurrentUser(),
+        { prepareRequirementBranchWorkingTree: true },
+      ),
+    ).rejects.toThrow(/无法切换到需求分支：/);
+  });
+
+  it('should throw BadRequestException with stage hint when auto-commit fails', async () => {
+    const { service } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(createGitCommandResult(' M x\n'))
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(
+        createGitCommandResult('', {
+          success: false,
+          stderr: 'pre-commit hook failed',
+        }),
+      );
+
+    await expect(
+      service.createBranch(
+        'project-1',
+        'goal/plan-x',
+        'feature/base',
+        createCurrentUser(),
+        { prepareRequirementBranchWorkingTree: true },
+      ),
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/自动提交失败.*pre-commit hook failed/s),
+    });
   });
 
   it('should reject invalid new branch names', async () => {

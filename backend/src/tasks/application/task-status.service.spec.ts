@@ -1,4 +1,5 @@
 import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskStatusService } from './task-status.service';
 
@@ -48,12 +49,12 @@ const createDoneNode = (id: string) => ({
   taskId: 'task-1',
   nodeOrder: 1,
   name: `Node ${id}`,
-  status: TaskStatus.done,
+  status: TaskNodeStatus.done,
   loopJson: null,
 });
 
 const createNode = (
-  status: TaskStatus,
+  status: TaskStatus | TaskNodeStatus,
   overrides: Record<string, unknown> = {},
 ) => ({
   id: `node-${status}`,
@@ -96,6 +97,20 @@ describe('TaskStatusService', () => {
         [
           createNode(TaskStatus.done, { id: 'node-1', nodeOrder: 1 }),
           createNode(TaskStatus.inReview, { id: 'node-2', nodeOrder: 2 }),
+        ] as never,
+        TaskStatus.inProgress,
+      ),
+    ).toBe(TaskStatus.inProgress);
+  });
+
+  it('should keep task in progress when a node has failed', () => {
+    const { service } = createService();
+
+    expect(
+      service.calculateTaskStatus(
+        [
+          createNode(TaskNodeStatus.done, { id: 'node-1', nodeOrder: 1 }),
+          createNode(TaskNodeStatus.failed, { id: 'node-2', nodeOrder: 2 }),
         ] as never,
         TaskStatus.inProgress,
       ),

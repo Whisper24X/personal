@@ -1,4 +1,5 @@
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done'
+export type TaskNodeStatus = TaskStatus | 'failed'
 export type TaskEnvironmentStatus =
   | 'not_started'
   | 'starting'
@@ -96,7 +97,7 @@ export type TaskNode = {
   } | null
   beforeRunCommitSha?: string | null
   afterRunCommitSha?: string | null
-  status: TaskStatus
+  status: TaskNodeStatus
 }
 
 export type TaskGoalSummary = {
@@ -327,10 +328,6 @@ export type UpdateTaskPayload = {
 
 export type ReplyTaskPayload = {
   message: string
-}
-
-export type RetryTaskPayload = {
-  nodeId?: string
 }
 
 export type ResetNodePayload = {

@@ -6,6 +6,7 @@ import GoalDetailTabs from '@features/goals/components/detail/GoalDetailTabs.vue
 import GoalPlanItemSheet from '@features/goals/components/detail/GoalPlanItemSheet.vue'
 import GoalPrdEditorSheet from '@features/goals/components/detail/GoalPrdEditorSheet.vue'
 import { useGoalDetail } from '@features/goals/composables/useGoalDetail'
+import { Loader2 } from 'lucide-vue-next'
 
 defineOptions({
   name: 'GoalDetailView',
@@ -26,8 +27,10 @@ const {
   loadingWorkflowTemplates,
   materializeSingleSubTask,
   materializing,
-  creatingPrGroupId,
-  onCreateGroupPr,
+  mergingPlanGroupId,
+  markingBranchMergedId,
+  markBranchMergedSubTask,
+  mergePlanGroupIntoGoal,
   onPlanItemSheetOpen,
   onPrdEditorOpen,
   openPlanItemDetail,
@@ -71,8 +74,20 @@ const {
 
 <template>
   <div class="flex h-full min-h-0 flex-col gap-3 p-4">
-    <div v-if="loading" class="text-muted-foreground flex flex-1 items-center justify-center text-sm">
-      加载中...
+    <div
+      v-if="loading"
+      class="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 px-4 py-12 text-sm"
+    >
+      <template v-if="generatingPrd || generatingPlan">
+        <Loader2 class="text-muted-foreground size-9 shrink-0 animate-spin" aria-hidden="true" />
+        <p class="text-foreground text-center text-sm font-medium">
+          {{ generatingPlan ? '正在生成任务计划…' : '正在生成 PRD…' }}
+        </p>
+        <p class="text-muted-foreground max-w-sm text-center text-xs">
+          预计需要数十秒；刷新页面不会中断后台生成，本页会自动检测生成结果
+        </p>
+      </template>
+      <template v-else>加载中…</template>
     </div>
     <template v-else-if="detail">
       <GoalDetailHeader
@@ -112,13 +127,15 @@ const {
         :detail="detail"
         :loading-workflow-templates="loadingWorkflowTemplates"
         :workflow-templates="workflowTemplates"
-        :creating-pr-group-id="creatingPrGroupId"
+        :merging-plan-group-id="mergingPlanGroupId"
         :materializing="materializing"
+        :marking-branch-merged-id="markingBranchMergedId"
         :plan-item-status-label="planItemStatusLabel"
         :plan-item-approve-blocked-reason="planItemApproveBlockedReason"
         @open-plan-item-detail="(sub, title) => openPlanItemDetail(sub, title)"
         @materialize-plan-item="materializeSingleSubTask"
-        @create-group-pr="onCreateGroupPr"
+        @merge-plan-group-into-goal="mergePlanGroupIntoGoal"
+        @mark-branch-merged="markBranchMergedSubTask"
       />
 
       <GoalPlanItemSheet
@@ -153,6 +170,8 @@ const {
         :prd-editor-loading="prdEditorLoading"
         :prd-editor-saving="prdEditorSaving"
         :prd-editor-content="prdEditorContent"
+        :project-id="detail.goal.projectId"
+        :prd-doc-path="detail.goal.prdDocPath"
         @update:open="onPrdEditorOpen"
         @update:prd-editor-content="prdEditorContent = $event"
         @save="savePrdEditor"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { GitBranch, Puzzle, Server, Workflow, Zap } from 'lucide-vue-next'
 import { SidebarTrigger } from '@shared/ui/sidebar'
@@ -18,7 +19,32 @@ const props = defineProps<{
   isNavActive: (to: string) => boolean
   userAvatarInitial: string
   userDisplayName: string
+  gitSyncInfo?: { branch: string; ahead: number; behind: number } | null
 }>()
+
+const gitDotStyle = computed(() => {
+  const info = props.gitSyncInfo
+  if (!info) return null
+  if (info.behind > 0 && info.ahead > 0) {
+    return {
+      ping: 'bg-amber-400',
+      dot: 'bg-amber-500',
+      text: `${info.branch} ↑${info.ahead} ↓${info.behind}`,
+    }
+  }
+  if (info.behind > 0) {
+    return {
+      ping: 'bg-red-400',
+      dot: 'bg-red-500',
+      text: `${info.branch} 落后远端 ${info.behind} 个提交`,
+    }
+  }
+  return {
+    ping: 'bg-blue-400',
+    dot: 'bg-blue-500',
+    text: `${info.branch} 领先远端 ${info.ahead} 个提交`,
+  }
+})
 
 const headerToolIcon = (id: MenuItem['id']) => {
   if (id === 'git') return GitBranch
@@ -59,13 +85,23 @@ const headerToolIcon = (id: MenuItem['id']) => {
               }"
               :class="
                 cn(
-                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-                  props.isNavActive(item.to) && 'bg-primary/10 text-primary',
+                  'relative inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                  props.isNavActive(item.to) &&
+                    'bg-primary/10 font-medium text-primary dark:bg-primary/18',
                 )
               "
             >
               <component :is="headerToolIcon(item.id)" class="size-3.5 shrink-0" />
               <span>{{ item.label }}</span>
+              <span v-if="item.id === 'git' && gitDotStyle" class="group">
+                <span class="relative flex h-2 w-2">
+                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" :class="gitDotStyle.ping" />
+                  <span class="inline-flex h-2 w-2 rounded-full" :class="gitDotStyle.dot" />
+                </span>
+                <span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground/90 px-2.5 py-1.5 text-xs text-background opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                  {{ gitDotStyle.text }}
+                </span>
+              </span>
             </RouterLink>
             <span
               v-else

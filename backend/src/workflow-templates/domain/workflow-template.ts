@@ -6,6 +6,7 @@ export type WorkflowTemplateNode = {
   name: string;
   type: string;
   requiresApproval?: boolean;
+  requiresArtifact?: boolean;
   input?: Record<string, unknown> | null;
 };
 

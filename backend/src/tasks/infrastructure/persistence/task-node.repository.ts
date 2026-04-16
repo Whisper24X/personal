@@ -1,6 +1,6 @@
 import { NullableType } from '../../../utils/types/nullable.type';
 import { TaskNode } from '../../domain/task-node';
-import { TaskStatus } from '../../dto/task-status.enum';
+import { TaskNodeStatus } from '../../dto/task-node-status.enum';
 
 export abstract class TaskNodeRepository {
   abstract createMany(
@@ -20,7 +20,7 @@ export abstract class TaskNodeRepository {
     status,
   }: {
     taskId: TaskNode['taskId'];
-    status: TaskStatus;
+    status: TaskNodeStatus;
   }): Promise<NullableType<TaskNode>>;
 
   abstract findByTaskIdAndStatus({
@@ -28,7 +28,7 @@ export abstract class TaskNodeRepository {
     status,
   }: {
     taskId: TaskNode['taskId'];
-    status: TaskStatus;
+    status: TaskNodeStatus;
   }): Promise<TaskNode[]>;
 
   abstract claimFirstTodoNode(

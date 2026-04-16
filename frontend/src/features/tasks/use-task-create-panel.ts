@@ -31,6 +31,8 @@ export type TaskCreatePanelProps = {
 
 export type TaskCreatePanelEmit = {
   (event: 'created', taskId: string): void
+  /** 首次 loadPageData 结束（成功或失败），用于入口按钮关闭 loading */
+  (event: 'initialReady'): void
 }
 
 export type TaskCreatePanelContext = ReturnType<typeof useTaskCreatePanel>
@@ -416,6 +418,7 @@ const loadPageData = async () => {
   } finally {
     initializingProjectDependencies.value = false
     loading.value = false
+    emit('initialReady')
   }
 }
 
@@ -472,6 +475,10 @@ const pickRandomHeadline = () => {
 }
 
 const createTask = async () => {
+  if (submitting.value) {
+    return
+  }
+
   const contextProjectId = resolveProjectIdFromContext()
   const projectIdForSubmit = contextProjectId || createForm.projectId
 

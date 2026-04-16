@@ -497,7 +497,7 @@ describe('useLayout business line selection', () => {
     const wrapper = mount(Harness)
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="kanban-class"]').text()).toContain('text-sidebar-accent-foreground')
+    expect(wrapper.get('[data-testid="kanban-class"]').text()).toContain('bg-primary/10')
     expect(wrapper.get('[data-testid="tasks-class"]').text()).toContain('text-sidebar-foreground/75')
     expect(localStorage.getItem(STORAGE_KEYS.lastSelectedMenuPath)).toBe('/kanban')
   })

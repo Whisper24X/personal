@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   createFileTreeNodes,
@@ -7,25 +7,22 @@ import {
 } from '@shared/components/file-browser/file-tree'
 import type { FileBrowserPreview } from '@shared/components/file-browser/types'
 import { projectsApi } from '@/api/projects'
-import { openSseStream } from '@/api/http'
 import { useMessage } from '@app/composables/useMessage'
+import { useProjectDocsQueryStream } from '@features/knowledge-base'
 import type { Project } from '@/types/api/projects'
 import type { ProjectDocCitation } from '@/types/api/project-docs'
 import { STORAGE_KEYS } from '@shared/types/common/storage'
 import { HttpError } from '@api/shared/error'
 import { toErrorMessage } from '@api/shared/to-error-message'
 import { createOrUpdateProjectDoc } from '@shared/utils/project-doc-upload'
-import {
-  KNOWLEDGE_BASE_STREAM_CHARS_PER_TICK as STREAM_CHARS_PER_TICK,
-  KNOWLEDGE_BASE_STREAM_TICK_MS as STREAM_TICK_MS,
-} from './knowledge-base-page.constants'
-
 export type KnowledgeBasePageContext = ReturnType<typeof useKnowledgeBasePage>
 
 export function useKnowledgeBasePage() {
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+
+const { queryLoading, queryError, runDocsQueryStream } = useProjectDocsQueryStream()
 
 const loading = ref(false)
 const docsLoading = ref(false)
@@ -42,9 +39,7 @@ const previewError = ref('')
 const expandedPaths = ref<Set<string>>(new Set())
 const loadingPaths = ref<Set<string>>(new Set())
 
-const queryLoading = ref(false)
 const queryQuestion = ref('')
-const queryError = ref('')
 const queryScope = ref<'project' | 'current_doc'>('project')
 
 type QueryMessage = {
@@ -56,37 +51,6 @@ type QueryMessage = {
 }
 
 const queryMessages = ref<QueryMessage[]>([])
-const queryAbortController = ref<AbortController | null>(null)
-const streamTextBuffer = ref('')
-const activeAssistantMessage = ref<QueryMessage | null>(null)
-let streamRenderTimer: ReturnType<typeof setInterval> | null = null
-
-const stopStreamRenderer = () => {
-  if (streamRenderTimer) {
-    clearInterval(streamRenderTimer)
-    streamRenderTimer = null
-  }
-}
-
-const flushStreamBuffer = () => {
-  if (activeAssistantMessage.value && streamTextBuffer.value) {
-    activeAssistantMessage.value.content += streamTextBuffer.value
-  }
-  streamTextBuffer.value = ''
-}
-
-const ensureStreamRenderer = () => {
-  if (streamRenderTimer) return
-  streamRenderTimer = setInterval(() => {
-    if (!activeAssistantMessage.value || !streamTextBuffer.value) {
-      return
-    }
-
-    const nextDelta = streamTextBuffer.value.slice(0, STREAM_CHARS_PER_TICK)
-    streamTextBuffer.value = streamTextBuffer.value.slice(STREAM_CHARS_PER_TICK)
-    activeAssistantMessage.value.content += nextDelta
-  }, STREAM_TICK_MS)
-}
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -442,9 +406,6 @@ const submitKnowledgeQuery = async () => {
   const question = queryQuestion.value.trim()
   if (!projectId || !question) return
 
-  queryAbortController.value?.abort()
-  queryAbortController.value = new AbortController()
-  queryLoading.value = true
   queryError.value = ''
   queryQuestion.value = ''
 
@@ -461,88 +422,22 @@ const submitKnowledgeQuery = async () => {
     isStreaming: true,
   }
   queryMessages.value.push(userMessage, assistantMessage)
-  activeAssistantMessage.value = assistantMessage
-  streamTextBuffer.value = ''
-  ensureStreamRenderer()
 
   const scope = queryScope.value === 'current_doc' && selectedPath.value ? 'current_doc' : 'project'
 
-  try {
-    await openSseStream(
-      `/projects/${projectId}/docs/query/stream`,
-      {
-        question,
-        scope,
-        currentPath: scope === 'current_doc' ? selectedPath.value : undefined,
-        maxContextDocs: 6,
-      },
-      {
-        signal: queryAbortController.value.signal,
-        onEvent: (event) => {
-          if (event.event === 'chunk') {
-            try {
-              const payload = JSON.parse(event.data) as { delta?: string }
-              if (payload.delta) {
-                streamTextBuffer.value += payload.delta
-              }
-            } catch {
-              // ignore invalid chunk payload
-            }
-            return
-          }
-
-          if (event.event === 'citations') {
-            try {
-              const payload = JSON.parse(event.data) as { citations?: ProjectDocCitation[] }
-              assistantMessage.citations = payload.citations ?? []
-            } catch {
-              assistantMessage.citations = []
-            }
-            return
-          }
-
-          if (event.event === 'error') {
-            try {
-              const payload = JSON.parse(event.data) as { message?: string }
-              queryError.value = payload.message || '知识问答失败'
-            } catch {
-              queryError.value = '知识问答失败'
-            }
-            assistantMessage.isStreaming = false
-            flushStreamBuffer()
-            return
-          }
-
-          if (event.event === 'done') {
-            flushStreamBuffer()
-            assistantMessage.isStreaming = false
-            queryLoading.value = false
-          }
-        },
-        onError: (error) => {
-          flushStreamBuffer()
-          assistantMessage.isStreaming = false
-          queryLoading.value = false
-          queryError.value = toErrorMessage(error, '知识问答失败')
-        },
-      },
-    )
-  } catch (error) {
-    flushStreamBuffer()
-    assistantMessage.isStreaming = false
-    queryLoading.value = false
-    queryError.value = toErrorMessage(error, '知识问答失败')
-    if (!assistantMessage.content.trim()) {
-      assistantMessage.content = '本次问答请求失败，请稍后重试。'
-    }
-  } finally {
-    flushStreamBuffer()
-    assistantMessage.isStreaming = false
-    queryLoading.value = false
-    queryAbortController.value = null
-    activeAssistantMessage.value = null
-    stopStreamRenderer()
-  }
+  await runDocsQueryStream({
+    projectId,
+    payload: {
+      question,
+      scope,
+      currentPath: scope === 'current_doc' ? selectedPath.value : undefined,
+      maxContextDocs: 6,
+      mode: 'qa',
+    },
+    method: 'get',
+    assistantMessage,
+    errorLabel: '知识问答失败',
+  })
 }
 
 const jumpToCitation = (docPath: string) => {
@@ -551,11 +446,6 @@ const jumpToCitation = (docPath: string) => {
     selectDoc(docPath)
   }
 }
-
-onBeforeUnmount(() => {
-  queryAbortController.value?.abort()
-  stopStreamRenderer()
-})
 
 const normalizeUploadPath = (file: File) => {
   const withRelative = file as File & { webkitRelativePath?: string }
@@ -643,20 +533,14 @@ watch(
   { immediate: true },
 )
   return reactive({
-    activeAssistantMessage,
     resolveStoredProjectId,
-    queryAbortController,
-    ensureStreamRenderer,
     submitKnowledgeQuery,
     normalizeRouteParam,
     normalizeUploadPath,
     onDropAreaDragLeave,
-    stopStreamRenderer,
     canQueryCurrentDoc,
     onDropAreaDragOver,
-    flushStreamBuffer,
     onFileInputChange,
-    streamTextBuffer,
     openEditSelected,
     handleSelectFile,
     activeProjectId,

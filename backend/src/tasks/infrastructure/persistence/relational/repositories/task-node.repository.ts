@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { TaskNode } from '../../../../domain/task-node';
-import { TaskStatus } from '../../../../dto/task-status.enum';
+import { TaskNodeStatus } from '../../../../dto/task-node-status.enum';
 import { TaskNodeRepository } from '../../task-node.repository';
 import { TaskNodeEntity } from '../entities/task-node.entity';
 import { TaskNodeMapper } from '../mappers/task-node.mapper';
@@ -54,7 +54,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     const entity = await this.taskNodeRepository.findOne({
       where: {
         taskId,
-        status: TaskStatus.inProgress,
+        status: TaskNodeStatus.inProgress,
       },
       order: {
         nodeOrder: 'ASC',
@@ -69,7 +69,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     status,
   }: {
     taskId: TaskNode['taskId'];
-    status: TaskStatus;
+    status: TaskNodeStatus;
   }): Promise<NullableType<TaskNode>> {
     const entity = await this.taskNodeRepository.findOne({
       where: {
@@ -89,7 +89,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     status,
   }: {
     taskId: TaskNode['taskId'];
-    status: TaskStatus;
+    status: TaskNodeStatus;
   }): Promise<TaskNode[]> {
     const entities = await this.taskNodeRepository.find({
       where: {
@@ -109,7 +109,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     workerId: string,
     leaseUntil: Date,
   ): Promise<NullableType<TaskNode>> {
-    const todoStatus = TaskStatus.todo;
+    const todoStatus = TaskNodeStatus.todo;
     const now = new Date();
     const runtimeJson = this.buildRuntimeJsonSql({
       workerId,
@@ -135,7 +135,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
         )`,
         {
           taskId,
-          runningStatus: TaskStatus.inProgress,
+          runningStatus: TaskNodeStatus.inProgress,
         },
       )
       .andWhere(
@@ -147,7 +147,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
         )`,
         {
           taskId,
-          reviewStatus: TaskStatus.inReview,
+          reviewStatus: TaskNodeStatus.inReview,
         },
       )
       .andWhere(
@@ -160,7 +160,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
         )`,
         {
           taskId,
-          doneStatus: TaskStatus.done,
+          doneStatus: TaskNodeStatus.done,
         },
       )
       .orderBy('candidate."nodeOrder"', 'ASC')
@@ -171,7 +171,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
       .createQueryBuilder()
       .update(TaskNodeEntity)
       .set({
-        status: TaskStatus.inProgress,
+        status: TaskNodeStatus.inProgress,
         startedAt: now,
         finishedAt: null,
         agentClioutput: null,
@@ -184,9 +184,9 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
       .setParameters({
         taskId,
         todoStatus,
-        runningStatus: TaskStatus.inProgress,
-        reviewStatus: TaskStatus.inReview,
-        doneStatus: TaskStatus.done,
+        runningStatus: TaskNodeStatus.inProgress,
+        reviewStatus: TaskNodeStatus.inReview,
+        doneStatus: TaskNodeStatus.done,
         workerId,
         leaseUntil: leaseUntil.toISOString(),
         heartbeatAt: now.toISOString(),
@@ -230,7 +230,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
         nodeId,
       })
       .andWhere('status = :status', {
-        status: TaskStatus.inProgress,
+        status: TaskNodeStatus.inProgress,
       })
       .andWhere(`("runtimeJson"->>'workerId') = :workerId`, {
         workerId,
@@ -273,7 +273,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     const entities = await this.taskNodeRepository
       .createQueryBuilder('node')
       .where('node.status = :status', {
-        status: TaskStatus.inProgress,
+        status: TaskNodeStatus.inProgress,
       })
       .andWhere('(node."runtimeJson"->>\'leaseUntil\') IS NOT NULL')
       .andWhere(

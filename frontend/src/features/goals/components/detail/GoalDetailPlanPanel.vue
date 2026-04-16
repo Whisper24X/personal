@@ -14,30 +14,53 @@ const props = withDefaults(
     detail: GoalDetail
     loadingWorkflowTemplates: boolean
     workflowTemplates: WorkflowTemplate[]
-    creatingPrGroupId: string | null
+    mergingPlanGroupId: string | null
     materializing: boolean
+    markingBranchMergedId: string | null
     planItemStatusLabel: Record<GoalPlanSubTask['status'], string>
     planItemApproveBlockedReason: (item: GoalPlanSubTask) => string | null
   }>(),
-  { generatingPlan: false },
+  { generatingPlan: false, markingBranchMergedId: null, mergingPlanGroupId: null },
 )
 
 const emit = defineEmits<{
   openPlanItemDetail: [sub: GoalPlanSubTask, groupTitle: string]
   materializePlanItem: [item: GoalPlanSubTask]
-  createGroupPr: [group: GoalPlanItem]
+  mergePlanGroupIntoGoal: [group: GoalPlanItem]
+  markBranchMerged: [item: GoalPlanSubTask]
 }>()
 
 function planGroupCountableSubTasks(group: GoalPlanItem): GoalPlanSubTask[] {
   return (group.subTasks ?? []).filter((s) => s.status !== 'cancelled')
 }
 
-function planGroupAllSubTasksCompleted(group: GoalPlanItem): boolean {
+function planGroupAllSubTasksBranchMerged(group: GoalPlanItem): boolean {
   const subs = planGroupCountableSubTasks(group)
   if (subs.length === 0) {
     return false
   }
-  return subs.every((s) => s.status === 'completed')
+  return subs.every((s) => s.status === 'branch_merged')
+}
+
+function planGroupCanMergeIntoGoal(group: GoalPlanItem): boolean {
+  return (
+    planGroupAllSubTasksBranchMerged(group) &&
+    !group.groupMergedIntoGoalAt
+  )
+}
+
+function formatGroupMergedAt(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) {
+    return iso
+  }
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 /** 列表仅展示，配置在侧栏完成 */
@@ -62,7 +85,9 @@ function workflowDisplayLabel(item: GoalPlanSubTask): string {
       <Loader2 class="text-muted-foreground size-9 shrink-0 animate-spin" aria-hidden="true" />
       <div class="text-center">
         <p class="text-foreground text-sm font-medium">正在生成任务计划…</p>
-        <p class="text-muted-foreground mt-1 max-w-sm text-xs">预计需要数十秒，请勿关闭或刷新页面</p>
+        <p class="text-muted-foreground mt-1 max-w-sm text-xs">
+          预计需要数十秒；刷新页面不会中断后台生成，本页会自动检测生成结果
+        </p>
       </div>
     </div>
     <div v-else class="min-h-0 flex-1 overflow-auto">
@@ -79,7 +104,7 @@ function workflowDisplayLabel(item: GoalPlanSubTask): string {
             <col style="min-width: 9rem; max-width: min(52%, 36rem); width: 42%" />
             <col style="width: 4.75rem" />
             <col style="min-width: 6.5rem; max-width: min(28%, 18rem); width: 24%" />
-            <col style="width: 6.5rem" />
+            <col style="min-width: 7.5rem; width: 8.5rem" />
           </colgroup>
           <thead class="bg-muted/50">
             <tr>
@@ -104,18 +129,28 @@ function workflowDisplayLabel(item: GoalPlanSubTask): string {
                   </div>
                 </td>
                 <td class="whitespace-nowrap p-2 align-middle" @click.stop>
+                  <div
+                    v-if="group.groupMergedIntoGoalAt"
+                    class="text-muted-foreground max-w-[10rem] text-xs leading-snug"
+                    :title="group.groupMergedIntoGoalAt"
+                  >
+                    已并入需求分支
+                    <span class="tabular-nums">{{
+                      formatGroupMergedAt(group.groupMergedIntoGoalAt)
+                    }}</span>
+                  </div>
                   <Button
-                    v-if="planGroupAllSubTasksCompleted(group)"
+                    v-else-if="planGroupCanMergeIntoGoal(group)"
                     type="button"
                     variant="link"
                     size="sm"
                     class="h-auto px-0 text-xs"
-                    title="在浏览器中打开创建 PR 页面（功能组分支合并入需求分支）"
-                    :disabled="props.creatingPrGroupId === group.id"
-                    @click="emit('createGroupPr', group)"
+                    title="将功能组分支合并入需求分支（项目主仓库）"
+                    :disabled="props.mergingPlanGroupId === group.id"
+                    @click="emit('mergePlanGroupIntoGoal', group)"
                   >
                     {{
-                      props.creatingPrGroupId === group.id ? '生成中…' : '创建PR'
+                      props.mergingPlanGroupId === group.id ? '合并中…' : '合并分支'
                     }}
                   </Button>
                 </td>
@@ -145,14 +180,18 @@ function workflowDisplayLabel(item: GoalPlanSubTask): string {
                     </span>
                   </template>
                   <span
-                    v-else-if="item.taskId && item.status !== 'completed'"
+                    v-else-if="
+                      item.taskId &&
+                      item.status !== 'completed' &&
+                      item.status !== 'branch_merged'
+                    "
                     class="text-muted-foreground break-words"
                     :title="workflowDisplayLabel(item)"
                   >
                     {{ workflowDisplayLabel(item) }}
                   </span>
                   <span
-                    v-else-if="item.status === 'completed'"
+                    v-else-if="item.status === 'completed' || item.status === 'branch_merged'"
                     class="text-muted-foreground whitespace-nowrap"
                   >
                     —
@@ -182,6 +221,21 @@ function workflowDisplayLabel(item: GoalPlanSubTask): string {
                         @click="emit('openPlanItemDetail', item, group.title)"
                       >
                         查看
+                      </Button>
+                      <Button
+                        v-if="item.status === 'completed'"
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        class="h-auto px-0 text-xs"
+                        :disabled="props.markingBranchMergedId === item.id"
+                        @click="emit('markBranchMerged', item)"
+                      >
+                        {{
+                          props.markingBranchMergedId === item.id
+                            ? '合并中…'
+                            : '合并分支'
+                        }}
                       </Button>
                       <Button
                         v-if="item.status === 'approved' && !item.taskId"

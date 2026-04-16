@@ -96,4 +96,60 @@ describe('GoalsService.patchPlanSubTask', () => {
 
     expect(goalRepository.updatePlanSubTask).not.toHaveBeenCalled();
   });
+
+  it('should allow manual branch_merged when subtask is completed and linked task is done', async () => {
+    const goalRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'goal-1',
+        projectId: 'project-1',
+      }),
+      findPlanSubTask: jest.fn().mockResolvedValue({
+        id: 'st-1',
+        goalPlanItemId: 'item-1',
+        status: GoalPlanItemStatus.completed,
+        taskId: 'task-1',
+      }),
+      listPlanItemsWithSubTasks: jest.fn().mockResolvedValue([]),
+      updatePlanSubTask: jest.fn().mockResolvedValue({
+        id: 'st-1',
+        goalPlanItemId: 'item-1',
+        status: GoalPlanItemStatus.branchMerged,
+        taskId: 'task-1',
+      }),
+    };
+    const projectsService = {
+      assertProjectCapability: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'task-1',
+        status: TaskStatus.done,
+      }),
+    };
+    const service = new GoalsService(
+      goalRepository as never,
+      projectsService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      taskRepository as never,
+      {} as never,
+      {} as never,
+      {} as GoalsMetricsService,
+    );
+
+    const next = await service.patchPlanSubTask(
+      'goal-1',
+      'st-1',
+      { status: GoalPlanItemStatus.branchMerged },
+      createJwt(),
+    );
+
+    expect(next.status).toBe(GoalPlanItemStatus.branchMerged);
+    expect(goalRepository.updatePlanSubTask).toHaveBeenCalledWith(
+      'goal-1',
+      'st-1',
+      expect.objectContaining({ status: GoalPlanItemStatus.branchMerged }),
+    );
+  });
 });

@@ -521,6 +521,34 @@ export class ProjectsController {
     res.end();
   }
 
+  @Post(':id/docs/query/stream')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiBody({ type: QueryProjectDocsDto })
+  @HttpCode(HttpStatus.OK)
+  async queryDocsStreamPost(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: QueryProjectDocsDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    await this.projectKnowledgeService.streamDocsQuery(
+      id,
+      body,
+      request.user,
+      (event, data) => {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      },
+    );
+
+    res.end();
+  }
+
   @Get(':id/deploy-info')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({
