@@ -55,8 +55,8 @@ services:
     container_name: ainative-backend
     restart: unless-stopped
     env_file:
-      # 与根目录 package.json 中 `docker compose --env-file /dev/null` 兼容：未设置时默认使用 development
-      - ./backend/.env.${NODE_ENV:-development}
+      # 与根目录 package.json 中 `docker compose --env-file /dev/null` 兼容：未设置时默认使用 local
+      - ./backend/.env.${NODE_ENV:-local}
     environment:
       # 任务容器通过宿主机 docker.sock 再次做 bind mount，需要宿主机绝对路径。
       AINATIVE_DATA_ROOT_DIR: ${PWD}/tmp
