@@ -240,6 +240,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 @create-project="vm.openCreateProjectModal"
                 @select="vm.selectCurrentProject"
                 @open-runtime="vm.openProjectRuntimeSettingsModal"
+                @retry-provisioning="vm.retryProjectRepositoryProvisioning"
                 @open-edit="vm.openEditProjectModal"
                 @open-delete="vm.openProjectDeleteModal"
               />

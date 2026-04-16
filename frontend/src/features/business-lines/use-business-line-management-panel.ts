@@ -1,5 +1,5 @@
 import type { InjectionKey } from 'vue'
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from '@app/composables/useMessage'
 import { authApi } from '@/api/auth'
@@ -35,6 +35,7 @@ import {
   toProjectContainerRuntimeConfig,
 } from './blmProjectDisplayUtils'
 import { buildBusinessLineRoleAssignmentOptions } from '@shared/constants/access'
+import { addProjectRepositoryProvisioningChangedListener } from '@shared/utils/project-repository-provisioning-event'
 
 
 
@@ -287,6 +288,7 @@ const {
   resetMcpJsonPreviewState,
 } = useBlmLocalSkillsAndMcps(activeLineId, message)
 const lineCapabilitiesById = ref<Record<string, string[]>>({})
+let removeProjectProvisioningChangedListener: (() => void) | null = null
 
 const selectedLine = computed(() => {
   return props.lines.find((line) => line.id === activeLineId.value) ?? null
@@ -626,6 +628,19 @@ const loadLineProjects = async (lineId: string) => {
   }
 }
 
+const handleProjectRepositoryProvisioningChanged = (detail: {
+  projectId: string
+  businessLineId: string
+}) => {
+  if (!activeLineId.value || activeLineId.value !== detail.businessLineId) {
+    return
+  }
+  if (loadingProjects.value) {
+    return
+  }
+  void loadLineProjects(activeLineId.value)
+}
+
 const loadLineMembers = async (lineId: string) => {
   if (!lineId) {
     lineMembers.value = []
@@ -820,6 +835,20 @@ const openProjectRuntimeSettingsModal = (project: ProjectItem) => {
   projectRuntimeSettingsModalOpen.value = true
 }
 
+const retryProjectRepositoryProvisioning = async (project: ProjectItem) => {
+  if (!canUpdateProjectItem.value) {
+    return
+  }
+
+  try {
+    const updatedProject = await projectsApi.retryRepositoryProvisioning(project.id)
+    replaceLineProject(updatedProject)
+    message.success('已触发仓库重试，请稍后刷新查看状态')
+  } catch (error) {
+    message.error(toErrorMessage(error, '触发仓库重试失败'))
+  }
+}
+
 const handleProjectRuntimeSettingsModalOpenChange = (open: boolean) => {
   projectRuntimeSettingsModalOpen.value = open
 }
@@ -864,7 +893,11 @@ const submitProjectForm = async (payload: {
 
     projectFormModalOpen.value = false
     await refreshForCurrentLine({ includeMembers: isMemberAccessTab() })
-    message.success(projectFormMode.value === 'create' ? '新建项目成功' : '保存项目成功')
+    message.success(
+      projectFormMode.value === 'create'
+        ? '新建项目成功，仓库正在后台准备中'
+        : '保存项目成功',
+    )
   } catch (error) {
     const errMsg = toErrorMessage(error, '保存项目失败')
     projectFormError.value = errMsg
@@ -912,7 +945,18 @@ const submitProjectRuntimeSettings = async (payload: {
   }
 }
 
+onMounted(() => {
+  removeProjectProvisioningChangedListener =
+    addProjectRepositoryProvisioningChangedListener(
+      handleProjectRepositoryProvisioningChanged,
+    )
+})
+
 onBeforeUnmount(() => {
+  if (removeProjectProvisioningChangedListener) {
+    removeProjectProvisioningChangedListener()
+    removeProjectProvisioningChangedListener = null
+  }
   projectRuntimeSettingsModalOpen.value = false
 })
 
@@ -1762,6 +1806,7 @@ watch(
     openMcpJsonPreview,
     openProjectDeleteModal,
     openProjectRuntimeSettingsModal,
+    retryProjectRepositoryProvisioning,
     openRemoveMemberModal,
     openSkillPreview,
     openUploadSkillModal,

@@ -24,6 +24,7 @@ import {
   TASK_HEADLINE_ROTATE_INTERVAL_MS,
   type TaskCreateSupportedCliToolId,
 } from './task-create-panel.constants'
+import { addProjectRepositoryProvisioningChangedListener } from '@shared/utils/project-repository-provisioning-event'
 
 export type TaskCreatePanelProps = {
   projectId?: string
@@ -56,6 +57,8 @@ const currentHeadline = ref(TASK_CREATE_HEADLINES[0] ?? '我能为你做什么�
 const initializingProjectDependencies = ref(false)
 let headlineTimer: ReturnType<typeof setInterval> | null = null
 let latestBranchRequestId = 0
+let removeProjectProvisioningChangedListener: (() => void) | null = null
+const repositoryProvisioningRefreshInFlight = ref(false)
 
 const projects = ref<Project[]>([])
 const templates = ref<WorkflowTemplate[]>([])
@@ -104,12 +107,39 @@ const gitBaseBranchOptions = computed(() => {
 })
 
 const canCreateTask = computed(() => {
+  const project = projects.value.find((item) => item.id === createForm.projectId)
+  const repositoryReady =
+    !project?.repositoryProvisioningStatus ||
+    project.repositoryProvisioningStatus === 'ready'
+
   return (
     Boolean(createForm.projectId) &&
+    repositoryReady &&
     hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) =>
       accessStore.hasCapability(capability),
     )
   )
+})
+
+const selectedProject = computed(() => {
+  return projects.value.find((item) => item.id === createForm.projectId) ?? null
+})
+
+const repositoryProvisioningHint = computed(() => {
+  const project = selectedProject.value
+  if (!project) {
+    return ''
+  }
+  if (project.repositoryProvisioningStatus === 'pending') {
+    return '项目仓库准备中，请稍后再创建任务'
+  }
+  if (project.repositoryProvisioningStatus === 'failed') {
+    const detail = project.repositoryProvisioningError?.trim()
+    return detail
+      ? `项目仓库准备失败：${detail}`
+      : '项目仓库准备失败，请在项目设置中重试仓库准备'
+  }
+  return ''
 })
 
 const resolveQueryProjectId = () => {
@@ -126,6 +156,16 @@ const resolveStoredProjectId = () => {
 
 const resolveProjectIdFromContext = () => {
   return props.projectId || resolveQueryProjectId() || resolveStoredProjectId()
+}
+
+const replaceProjectInList = (project: Project) => {
+  const existingIndex = projects.value.findIndex((item) => item.id === project.id)
+  if (existingIndex < 0) {
+    projects.value = [...projects.value, project]
+    return
+  }
+
+  projects.value = projects.value.map((item, index) => (index === existingIndex ? project : item))
 }
 
 const syncProjectFromContext = () => {
@@ -346,10 +386,18 @@ const loadConversationCliOptions = async (projectId: string) => {
 }
 
 const loadProjectDependencies = async (projectId: string) => {
-  const parallel: Promise<unknown>[] = [
-    loadConversationCliOptions(projectId),
-    loadBranchesForProject(projectId),
-  ]
+  const project = projects.value.find((item) => item.id === projectId)
+  const repositoryReady =
+    !project?.repositoryProvisioningStatus ||
+    project.repositoryProvisioningStatus === 'ready'
+  const parallel: Promise<unknown>[] = [loadConversationCliOptions(projectId)]
+
+  if (repositoryReady) {
+    parallel.push(loadBranchesForProject(projectId))
+  } else {
+    branchOptions.value = []
+    createForm.gitBaseBranch = project?.defaultBranch?.trim() || ''
+  }
 
   if (createForm.mode === 'workflow') {
     parallel.push(loadTemplatesForProject(projectId))
@@ -420,6 +468,41 @@ const loadPageData = async () => {
     loading.value = false
     emit('initialReady')
   }
+}
+
+const refreshSelectedProjectProvisioningStatus = async (
+  projectId: string,
+) => {
+  if (repositoryProvisioningRefreshInFlight.value) {
+    return
+  }
+
+  repositoryProvisioningRefreshInFlight.value = true
+  try {
+    const latestProject = await projectsApi.detail(projectId)
+    replaceProjectInList(latestProject)
+
+    if (
+      latestProject.id === createForm.projectId &&
+      latestProject.repositoryProvisioningStatus === 'ready'
+    ) {
+      await loadProjectDependencies(projectId)
+    }
+  } catch {
+    // Ignore intermittent stream-driven refresh errors.
+  } finally {
+    repositoryProvisioningRefreshInFlight.value = false
+  }
+}
+
+const handleRepositoryProvisioningChanged = async (detail: {
+  projectId: string
+}) => {
+  const projectId = createForm.projectId.trim()
+  if (!projectId || projectId !== detail.projectId) {
+    return
+  }
+  await refreshSelectedProjectProvisioningStatus(projectId)
 }
 
 const openFilePicker = () => {
@@ -493,6 +576,21 @@ const createTask = async () => {
 
   if (!projectIdForSubmit) {
     showValidationError('请先在左侧栏选择项目后再创建任务')
+    return
+  }
+
+  const selected = projects.value.find((item) => item.id === projectIdForSubmit)
+  if (selected?.repositoryProvisioningStatus === 'pending') {
+    showValidationError('项目仓库准备中，请稍后再创建任务')
+    return
+  }
+  if (selected?.repositoryProvisioningStatus === 'failed') {
+    const detail = selected.repositoryProvisioningError?.trim()
+    showValidationError(
+      detail
+        ? `项目仓库准备失败：${detail}`
+        : '项目仓库准备失败，请在项目设置中重试仓库准备',
+    )
     return
   }
 
@@ -633,6 +731,10 @@ watch(
 )
 
 onMounted(() => {
+  removeProjectProvisioningChangedListener =
+    addProjectRepositoryProvisioningChangedListener(
+      handleRepositoryProvisioningChanged,
+    )
   pickRandomHeadline()
   headlineTimer = setInterval(() => {
     pickRandomHeadline()
@@ -641,6 +743,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (removeProjectProvisioningChangedListener) {
+    removeProjectProvisioningChangedListener()
+    removeProjectProvisioningChangedListener = null
+  }
   if (headlineTimer !== null) {
     clearInterval(headlineTimer)
     headlineTimer = null
@@ -681,6 +787,7 @@ onBeforeUnmount(() => {
     openFilePicker,
     pickRandomHeadline,
     projects,
+    repositoryProvisioningHint,
     refreshAccessContext,
     removeFile,
     resetCreateForm,

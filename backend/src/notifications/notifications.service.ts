@@ -15,6 +15,8 @@ import { NotificationEvent } from './domain/notification-event';
 import { FindNotificationEventsDto } from './dto/find-notification-events.dto';
 import { NotificationEventsEmitterService } from './notification-events-emitter.service';
 
+type RepositoryProvisioningStatus = 'ready' | 'failed';
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -239,6 +241,56 @@ export class NotificationsService {
     });
   }
 
+  async notifyProjectRepositoryProvisioningChanged({
+    userId,
+    projectId,
+    projectName,
+    businessLineId,
+    status,
+    errorMessage,
+  }: {
+    userId: string;
+    projectId: string;
+    projectName?: string | null;
+    businessLineId: string;
+    status: RepositoryProvisioningStatus;
+    errorMessage?: string | null;
+  }): Promise<NotificationEvent | null> {
+    const normalizedStatus = status === 'failed' ? 'failed' : 'ready';
+    const displayName = projectName?.trim() || projectId;
+    const eventType = `project.repository_provisioning.${normalizedStatus}`;
+    const title =
+      normalizedStatus === 'ready' ? '项目仓库已就绪' : '项目仓库准备失败';
+    const content =
+      normalizedStatus === 'ready'
+        ? `项目「${displayName}」的仓库已准备完成，可以开始创建任务。`
+        : `项目「${displayName}」的仓库准备失败，请重试仓库准备。`;
+    const normalizedErrorMessage = errorMessage?.trim() || null;
+
+    return this.publishNotification({
+      userId,
+      taskId: null,
+      eventType,
+      status: normalizedStatus,
+      statusLabel: normalizedStatus === 'ready' ? '仓库就绪' : '仓库准备失败',
+      title,
+      content,
+      payload: {
+        projectId,
+        businessLineId,
+        status: normalizedStatus,
+        errorMessage: normalizedErrorMessage,
+      },
+      webhookPayload: {
+        projectId,
+        businessLineId,
+        status: normalizedStatus,
+        errorMessage: normalizedErrorMessage,
+      },
+      dedupeKey: `${userId}:${projectId}:${eventType}`,
+    });
+  }
+
   private async sendWebhookNotification({
     dedupeKey,
     userId,
@@ -255,7 +307,7 @@ export class NotificationsService {
   }: {
     dedupeKey: string;
     userId: string;
-    taskId: string;
+    taskId?: string | null;
     eventType: string;
     status: string;
     statusLabel: string;
@@ -400,7 +452,7 @@ export class NotificationsService {
   }: {
     title: string;
     content: string;
-    taskId: string;
+    taskId?: string | null;
     eventType: string;
     statusLabel: string;
     occurredAt: string;
@@ -409,9 +461,11 @@ export class NotificationsService {
     const frontendDomain = this.configService.get('app.frontendDomain', {
       infer: true,
     });
-    const taskUrl = frontendDomain
-      ? `${frontendDomain}/task-detail/${taskId}`
-      : null;
+    const taskUrl =
+      frontendDomain && taskId
+        ? `${frontendDomain}/task-detail/${taskId}`
+        : null;
+    const statusLabelPrefix = taskId ? '任务状态: ' : '状态: ';
 
     const lines: Record<string, unknown>[][] = [
       [{ tag: 'text', text: content }],
@@ -421,18 +475,21 @@ export class NotificationsService {
         { tag: 'text', text: eventType },
       ],
       [
-        { tag: 'text', text: '任务状态: ' },
+        { tag: 'text', text: statusLabelPrefix },
         { tag: 'text', text: statusLabel },
-      ],
-      [
-        { tag: 'text', text: '任务 ID: ' },
-        { tag: 'text', text: taskId },
       ],
       [
         { tag: 'text', text: '发生时间: ' },
         { tag: 'text', text: occurredAt },
       ],
     ];
+
+    if (taskId) {
+      lines.splice(4, 0, [
+        { tag: 'text', text: '任务 ID: ' },
+        { tag: 'text', text: taskId },
+      ]);
+    }
 
     if (taskUrl) {
       lines.push([]);
@@ -473,7 +530,7 @@ export class NotificationsService {
     dedupeKey,
   }: {
     userId: string;
-    taskId: string;
+    taskId?: string | null;
     eventType: string;
     status: string;
     statusLabel: string;

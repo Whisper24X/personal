@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
+import { RepositoryProvisioningStatus } from '../../../../domain/repository-provisioning-status.enum';
 
 @Entity({
   name: 'projects',
@@ -45,6 +46,28 @@ export class ProjectEntity extends EntityRelationalHelper {
 
   @Column({ type: 'jsonb', nullable: true, comment: '项目配置JSON' })
   configJson?: Record<string, unknown> | null;
+
+  @Column({
+    type: String,
+    length: 24,
+    default: RepositoryProvisioningStatus.Ready,
+    comment: '仓库本地副本准备状态',
+  })
+  repositoryProvisioningStatus: RepositoryProvisioningStatus;
+
+  @Column({
+    type: 'text',
+    nullable: true,
+    comment: '仓库准备失败信息（若有）',
+  })
+  repositoryProvisioningError?: string | null;
+
+  @Column({
+    type: 'timestamptz',
+    nullable: true,
+    comment: '仓库最近一次准备成功时间',
+  })
+  repositoryProvisionedAt?: Date | null;
 
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;

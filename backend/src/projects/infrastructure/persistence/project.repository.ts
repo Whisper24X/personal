@@ -2,6 +2,7 @@ import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { RepositoryDiagnosticsOptions } from '../../../observability/repository-diagnostics';
 import { Project } from '../../domain/project';
+import { RepositoryProvisioningStatus } from '../../domain/repository-provisioning-status.enum';
 
 export abstract class ProjectRepository {
   abstract create(
@@ -23,6 +24,10 @@ export abstract class ProjectRepository {
     businessLineId: Project['businessLineId'],
     name: Project['name'],
   ): Promise<NullableType<Project>>;
+
+  abstract findByRepositoryProvisioningStatus(
+    status: RepositoryProvisioningStatus,
+  ): Promise<Project[]>;
 
   abstract findAllWithPagination({
     paginationOptions,

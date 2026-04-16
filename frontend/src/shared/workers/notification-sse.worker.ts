@@ -14,6 +14,32 @@ type SseParsed = {
   data: string
 }
 
+type NotificationEventPayload = {
+  title?: string
+  content?: string
+  taskId?: string | null
+  eventType?: string
+  payload?: Record<string, unknown> | null
+}
+
+const PROJECT_PROVISIONING_EVENT_TYPES = new Set([
+  'project.repository_provisioning.ready',
+  'project.repository_provisioning.failed',
+])
+
+const asString = (value: unknown) => {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+const normalizeAuthToken = (value: unknown) => {
+  const token = asString(value)
+  if (!token) {
+    return ''
+  }
+
+  return token.startsWith('Bearer ') ? token.slice('Bearer '.length).trim() : token
+}
+
 function reportNotificationError(code: string, message: string) {
   const now = Date.now()
   const lastErrorAt = lastErrorAtByCode.get(code)
@@ -91,18 +117,52 @@ function showNotification(title: string, body: string, taskId?: string | null) {
       notification.close()
     }
   }
+  notification.onshow = () => {
+  }
+  notification.onerror = () => {
+  }
+  notification.onclose = () => {
+  }
 }
 
 function handleSseEvent(parsed: SseParsed) {
   if (parsed.event !== 'new_event') return
 
   try {
-    const payload = JSON.parse(parsed.data)
+    const payload = JSON.parse(parsed.data) as NotificationEventPayload
     showNotification(
       payload.title ?? '新通知',
       payload.content ?? '',
       payload.taskId,
     )
+
+    if (!payload.eventType || !PROJECT_PROVISIONING_EVENT_TYPES.has(payload.eventType)) {
+      return
+    }
+
+    const provisioningPayload = payload.payload ?? {}
+    const projectId = asString(provisioningPayload.projectId)
+    const businessLineId = asString(provisioningPayload.businessLineId)
+    const status = asString(provisioningPayload.status)
+
+    if (!projectId || !businessLineId || (status !== 'ready' && status !== 'failed')) {
+      return
+    }
+
+    self.postMessage({
+      type: 'project_repository_provisioning_changed',
+      eventId: parsed.id ?? null,
+      eventType: payload.eventType ?? null,
+      projectId,
+      businessLineId,
+      status,
+      title: payload.title ?? '',
+      content: payload.content ?? '',
+      errorMessage:
+        typeof provisioningPayload.errorMessage === 'string'
+          ? provisioningPayload.errorMessage
+          : null,
+    })
   } catch {
     // ignore
   }
@@ -170,7 +230,16 @@ self.onmessage = (e: MessageEvent) => {
 
   if (msg.type === 'start') {
     sseUrl = msg.sseUrl
-    authToken = msg.authToken ?? ''
+    authToken = normalizeAuthToken(msg.authToken)
+    connectSse()
+  }
+
+  if (msg.type === 'update_auth') {
+    const nextToken = normalizeAuthToken(msg.authToken)
+    if (!nextToken || nextToken === authToken) {
+      return
+    }
+    authToken = nextToken
     connectSse()
   }
 

@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { provide } from 'vue'
 import { RouterView } from 'vue-router'
+import { useBrowserNotification } from '@app/composables/useBrowserNotification'
 import { useLayout } from '@features/layout/composables/useLayout'
 import { layoutWorkspaceKey } from '@features/layout/model/workspace.context'
 
 defineOptions({
   name: 'WorkspacePageLayout',
 })
+
+useBrowserNotification()
 
 const {
   hasAnyBusinessLine,
