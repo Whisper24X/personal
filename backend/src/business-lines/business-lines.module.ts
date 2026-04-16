@@ -19,6 +19,7 @@ import { RelationalBusinessLinePersistenceModule } from './infrastructure/persis
 import { UsersModule } from '../users/users.module';
 import { RelationalProjectPersistenceModule } from '../projects/infrastructure/persistence/relational/relational-persistence.module';
 import { AccessModule } from '../access/access.module';
+import { AgentExecutionModule } from '../agent-execution/agent-execution.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AccessModule } from '../access/access.module';
     RelationalProjectPersistenceModule,
     UsersModule,
     AccessModule,
+    AgentExecutionModule,
   ],
   controllers: [BusinessLinesController],
   providers: [

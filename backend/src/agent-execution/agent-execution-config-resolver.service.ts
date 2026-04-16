@@ -12,6 +12,7 @@ import {
   AgentCliAdapterId,
   AgentCliRunnerConfigInput,
 } from './agent-cli/agent-cli-adapter.interface';
+import { sanitizeAgentToolConfigJson } from './agent-cli-sanitize-config';
 import {
   AgentPromptTemplateService,
   PromptTemplateRuntimeContext,
@@ -510,7 +511,11 @@ export class AgentExecutionConfigResolverService {
       return null;
     }
 
-    const sanitizedConfig = this.sanitizeAgentToolConfig(adapter, parsedConfig);
+    const sanitizedConfig = sanitizeAgentToolConfigJson(
+      this.agentCliAdapterRegistry,
+      adapter,
+      parsedConfig,
+    );
 
     return {
       runnerConfig: this.resolveToolRunnerConfig(adapter, sanitizedConfig),
@@ -571,7 +576,8 @@ export class AgentExecutionConfigResolverService {
       return null;
     }
 
-    const sanitizedConfig = this.sanitizeAgentToolConfig(
+    const sanitizedConfig = sanitizeAgentToolConfigJson(
+      this.agentCliAdapterRegistry,
       adapter,
       selected.config,
     );
@@ -675,22 +681,6 @@ export class AgentExecutionConfigResolverService {
     }
 
     return entries.find((item) => item.isDefault) ?? entries[0];
-  }
-
-  private sanitizeAgentToolConfig(
-    adapter: AgentAdapter,
-    config: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const allowedKeys =
-      this.agentCliAdapterRegistry.getById(adapter).toolConfigAllowedKeys;
-    const sanitized: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(config)) {
-      if (allowedKeys.has(key)) {
-        sanitized[key] = value;
-      }
-    }
-
-    return sanitized;
   }
 
   private resolveToolRunnerConfig(

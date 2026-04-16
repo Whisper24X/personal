@@ -52,6 +52,7 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { FindAllBusinessLinesDto } from './dto/find-all-business-lines.dto';
+import { AgentToolConfigSmokeTestResultDto } from './dto/agent-tool-config-smoke-test-result.dto';
 import { UpdateAgentToolConfigDto } from './dto/update-agent-tool-config.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { BusinessLineDto } from './dto/business-line.dto';
@@ -904,6 +905,33 @@ export class BusinessLinesController {
     );
 
     return this.toAgentToolConfigDto(config);
+  }
+
+  @Post(':businessLineId/agent-tool-configs/:configId/test')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'configId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: AgentToolConfigSmokeTestResultDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  testAgentToolConfig(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('configId', ParseUUIDPipe) configId: string,
+  ): Promise<AgentToolConfigSmokeTestResultDto> {
+    return this.businessLinesService.testAgentToolConfig(
+      businessLineId,
+      configId,
+      request.user,
+    );
   }
 
   @Patch(':businessLineId/agent-tool-configs/:configId')

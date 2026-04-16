@@ -15,6 +15,7 @@ defineProps<{
   activeAgentCliToolLabel: string
   submittingAgentToolConfig: boolean
   deletingAgentToolConfigId: string
+  testingAgentToolConfigId: string
   supportedCliTools: Array<{ id: SupportedCliToolId; label: string }>
   formatDate: (value?: string) => string
 }>()
@@ -25,6 +26,7 @@ const emit = defineEmits<{
   'edit-config': [config: AgentToolConfig]
   'set-default': [config: AgentToolConfig]
   'remove-config': [configId: string]
+  'test-config': [config: AgentToolConfig]
 }>()
 </script>
 
@@ -111,6 +113,14 @@ const emit = defineEmits<{
               <td class="px-4 py-3 text-muted-foreground">{{ formatDate(config.updatedAt) }}</td>
               <td class="px-4 py-3">
                 <div class="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="testingAgentToolConfigId === config.id"
+                    @click="emit('test-config', config)"
+                  >
+                    {{ testingAgentToolConfigId === config.id ? '探测中…' : '测试' }}
+                  </button>
                   <button
                     type="button"
                     class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"

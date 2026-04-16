@@ -170,6 +170,19 @@ export class BusinessLineAgentToolConfigService {
     await this.agentToolConfigRepository.remove(configId);
   }
 
+  async getAgentToolConfigForBusinessLine(
+    businessLineId: string,
+    configId: AgentToolConfig['id'],
+  ): Promise<AgentToolConfig> {
+    const existedConfig =
+      await this.agentToolConfigRepository.findById(configId);
+    if (!existedConfig || existedConfig.businessLineId !== businessLineId) {
+      throw new NotFoundException('Agent tool config not found');
+    }
+
+    return existedConfig;
+  }
+
   private normalizeToolId(value: string): string {
     const normalized = value.trim().toLowerCase();
 
