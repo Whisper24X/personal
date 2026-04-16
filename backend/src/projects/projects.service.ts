@@ -323,7 +323,15 @@ export class ProjectsService {
         ? this.sanitizeProjectConfigJson(updateProjectDto.configJson)
         : undefined;
 
-    const updatedProject = await this.projectRepository.update(id, {
+    const nextDefaultBranch =
+      updateProjectDto.defaultBranch !== undefined
+        ? updateProjectDto.defaultBranch.trim()
+        : undefined;
+    const currentDefaultBranch = currentProject.defaultBranch?.trim() || '';
+    const shouldCheckoutDefaultBranch =
+      nextDefaultBranch !== undefined &&
+      nextDefaultBranch !== currentDefaultBranch;
+    const updatePayload = {
       ...(updateProjectDto.name !== undefined
         ? { name: updateProjectDto.name }
         : {}),
@@ -333,38 +341,96 @@ export class ProjectsService {
       ...(updateProjectDto.gitUrl !== undefined
         ? { gitUrl: updateProjectDto.gitUrl }
         : {}),
-      ...(updateProjectDto.defaultBranch !== undefined
-        ? { defaultBranch: updateProjectDto.defaultBranch }
+      ...(nextDefaultBranch !== undefined
+        ? { defaultBranch: nextDefaultBranch }
         : {}),
       ...(nextConfigJson !== undefined ? { configJson: nextConfigJson } : {}),
       ...(updateProjectDto.businessLineId !== undefined
         ? { businessLineId: updateProjectDto.businessLineId }
         : {}),
-    });
+    };
 
-    if (!updatedProject) {
-      throw new NotFoundException('Project not found');
-    }
+    const persistProjectUpdate = async (
+      repositoryRoot?: string,
+    ): Promise<Project> => {
+      const updatedProject = await this.projectRepository.update(
+        id,
+        updatePayload,
+      );
 
-    if (updatedProject.businessLineId !== currentProject.businessLineId) {
-      await this.taskRepository.bulkUpdateBusinessLineIdByProjectId({
-        projectId: updatedProject.id,
-        businessLineId: updatedProject.businessLineId,
-      });
+      if (!updatedProject) {
+        throw new NotFoundException('Project not found');
+      }
 
-      await this.workflowTemplateRepository.bulkUpdateBusinessLineIdByProjectId(
-        {
+      if (updatedProject.businessLineId !== currentProject.businessLineId) {
+        await this.taskRepository.bulkUpdateBusinessLineIdByProjectId({
           projectId: updatedProject.id,
           businessLineId: updatedProject.businessLineId,
+        });
+
+        await this.workflowTemplateRepository.bulkUpdateBusinessLineIdByProjectId(
+          {
+            projectId: updatedProject.id,
+            businessLineId: updatedProject.businessLineId,
+          },
+        );
+      }
+
+      await this.projectRepositoryWorkspaceService.syncRunnerConfigBackup(
+        updatedProject,
+        repositoryRoot,
+      );
+
+      return updatedProject;
+    };
+
+    if (shouldCheckoutDefaultBranch && nextDefaultBranch) {
+      return this.projectRepositoryWorkspaceService.runWithProjectRepositoryLock(
+        id,
+        currentUser,
+        { syncRemote: true },
+        async ({ repositoryRoot }) => {
+          let switchedToNextDefaultBranch = false;
+
+          try {
+            await this.projectRepositoryWorkspaceService.checkoutBranch(
+              repositoryRoot,
+              nextDefaultBranch,
+            );
+            switchedToNextDefaultBranch = true;
+
+            return await persistProjectUpdate(repositoryRoot);
+          } catch (error) {
+            if (switchedToNextDefaultBranch && currentDefaultBranch) {
+              try {
+                await this.projectRepositoryWorkspaceService.checkoutBranch(
+                  repositoryRoot,
+                  currentDefaultBranch,
+                );
+              } catch (rollbackError) {
+                this.logger.warn(
+                  `project_default_branch_checkout_rollback_failed ${JSON.stringify(
+                    {
+                      projectId: id,
+                      targetBranch: nextDefaultBranch,
+                      rollbackBranch: currentDefaultBranch,
+                      errorMessage:
+                        rollbackError instanceof Error
+                          ? rollbackError.message
+                          : String(rollbackError),
+                    },
+                  )}`,
+                );
+              }
+            }
+
+            throw error;
+          }
         },
       );
     }
 
-    await this.projectRepositoryWorkspaceService.syncRunnerConfigBackup(
-      updatedProject,
-    );
-
-    return updatedProject;
+    return persistProjectUpdate();
   }
 
   async remove(id: Project['id'], currentUser: JwtPayloadType): Promise<void> {
