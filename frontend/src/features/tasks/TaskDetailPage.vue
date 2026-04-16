@@ -82,7 +82,11 @@ const workflowCardRef = toRef(vm, 'workflowCardRef')
               :node="vm.currentActionNode"
               :status-label-map="nodeStatusLabelMap"
               :can-manage-review="vm.canManageReview"
+              :action-loading="vm.actionLoading"
+              :show-approve-confirmation="vm.showApproveConfirmation"
               @approve-node="vm.approveNode"
+              @confirm-approve-node="vm.confirmApproveNode"
+              @cancel-approve-confirmation="vm.cancelApproveConfirmation"
             />
 
             <TaskExecutionContextBar
