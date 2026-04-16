@@ -45,6 +45,10 @@ import { AgentExecutionModule } from '../agent-execution/agent-execution.module'
     BusinessLineRoleCatalogService,
     BusinessLineRoleTemplateService,
   ],
-  exports: [BusinessLinesService, RelationalBusinessLinePersistenceModule],
+  exports: [
+    BusinessLinesService,
+    BusinessLineAgentToolConfigService,
+    RelationalBusinessLinePersistenceModule,
+  ],
 })
 export class BusinessLinesModule {}

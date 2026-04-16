@@ -53,14 +53,16 @@ const emit = defineEmits<{
           v-for="item in localMcps"
           :key="item.id"
           :data-mcp-id="item.id"
-          class="flex cursor-pointer flex-col rounded-lg border border-border bg-background/70 px-2.5 py-2 transition hover:border-primary/40 hover:bg-muted/30"
-          role="button"
-          tabindex="0"
-          @click="void emit('preview', item)"
-          @keydown.enter.prevent="void emit('preview', item)"
-          @keydown.space.prevent="void emit('preview', item)"
+          class="flex min-h-[6.5rem] flex-col gap-1.5 rounded-lg border border-border bg-background/70 px-2.5 py-2 transition hover:border-primary/40 hover:bg-muted/30"
         >
-          <div class="min-w-0 flex-1">
+          <div
+            class="min-w-0 flex-1 cursor-pointer"
+            role="button"
+            tabindex="0"
+            @click="void emit('preview', item)"
+            @keydown.enter.prevent="void emit('preview', item)"
+            @keydown.space.prevent="void emit('preview', item)"
+          >
             <p class="truncate text-xs font-semibold">{{ item.name }}</p>
             <p
               v-if="item.version && item.version !== 'local'"

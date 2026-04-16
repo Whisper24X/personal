@@ -42,6 +42,45 @@ export class AgentCliSmokeTestService {
     private readonly localProcessLauncher: LocalProcessLauncherService,
   ) {}
 
+  /**
+   * Environment used when probing MCP servers so it matches real control-plane runs
+   * (see {@link runSmokeTest} and {@link ControlPlaneAgentExecutionService.buildLocalEnvironment}).
+   */
+  buildProbeEnvironmentForAgentToolConfig(params: {
+    toolId: string;
+    configJson: Record<string, unknown>;
+  }): NodeJS.ProcessEnv {
+    const adapter = this.agentCliAdapterRegistry.resolve(params.toolId);
+    if (!adapter) {
+      throw new BadRequestException('Unsupported agent CLI tool id');
+    }
+
+    const sanitized = sanitizeAgentToolConfigJson(
+      this.agentCliAdapterRegistry,
+      adapter,
+      params.configJson,
+    );
+
+    const cliAdapter = this.agentCliAdapterRegistry.getById(adapter);
+    const runnerConfig = cliAdapter.buildToolRunnerConfig(sanitized);
+
+    return this.buildLocalEnvironment(this.resolveRunnerEnv(runnerConfig));
+  }
+
+  resolveLocalMcpProbeTimeoutMs(): number {
+    const raw = this.configService
+      .get<string>('AINATIVE_LOCAL_MCP_PROBE_TIMEOUT_MS', { infer: true })
+      ?.trim();
+    if (raw) {
+      const n = Number.parseInt(raw, 10);
+      if (Number.isFinite(n) && n > 0) {
+        return Math.min(n, MAX_SMOKE_TIMEOUT_MS);
+      }
+    }
+
+    return this.resolveSmokeTestTimeoutMs();
+  }
+
   async runSmokeTest(params: {
     toolId: string;
     configJson: Record<string, unknown>;

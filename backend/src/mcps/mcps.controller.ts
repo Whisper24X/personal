@@ -30,6 +30,8 @@ import { ProjectLocalMcpConfigDto } from './dto/project-local-mcp-config.dto';
 import { ImportProjectLocalMcpsDto } from './dto/import-project-local-mcps.dto';
 import { ImportProjectLocalMcpsResultDto } from './dto/import-project-local-mcps-result.dto';
 import { RemoveProjectLocalMcpDto } from './dto/remove-project-local-mcp.dto';
+import { TestProjectLocalMcpDto } from './dto/test-project-local-mcp.dto';
+import { LocalMcpProbeResultDto } from '../business-lines/dto/local-mcp-probe-result.dto';
 
 @ApiTags('MCPs')
 @ApiBearerAuth()
@@ -69,6 +71,16 @@ export class McpsController {
         limit,
       },
     );
+  }
+
+  @Post('project-local/test')
+  @ApiOkResponse({ type: LocalMcpProbeResultDto })
+  @HttpCode(HttpStatus.OK)
+  testProjectLocalMcp(
+    @Request() request,
+    @Body() body: TestProjectLocalMcpDto,
+  ): Promise<LocalMcpProbeResultDto> {
+    return this.mcpsService.testProjectLocalMcp(body, request.user);
   }
 
   @Get('project-local/config')
