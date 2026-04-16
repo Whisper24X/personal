@@ -7,6 +7,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
@@ -20,11 +21,14 @@ export class ProjectDeployService {
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly deployLocks = new Map<string, string>();
 
+  private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
+
   constructor(
     private readonly projectAccessService: ProjectAccessService,
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
     private readonly taskRepository: TaskRepository,
     private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
+    private readonly configService: ConfigService,
   ) {}
 
   async getDeployInfo(
@@ -158,9 +162,17 @@ export class ProjectDeployService {
           });
           throw new BadRequestException('主仓库状态异常，请联系管理员');
         }
+        await this.runCommand('git', ['-C', mainRepoPath, 'clean', '-fd']);
       }
 
       const originalBranch = await this.resolveCurrentBranch(execCwd);
+      const gitlabUsername =
+        this.configService.get<string>('GITLAB_USERNAME', { infer: true }) ??
+        'oauth2';
+      const gitlabToken = this.configService.get<string>('GITLAB_TOKEN', {
+        infer: true,
+      });
+
       const execEnv: NodeJS.ProcessEnv = {
         ...process.env,
         FORCE_COLOR: '0',
@@ -169,6 +181,14 @@ export class ProjectDeployService {
         GIT_COMMITTER_NAME: gitName,
         GIT_COMMITTER_EMAIL: gitEmail,
       };
+
+      if (gitlabToken) {
+        const encodedUsername = encodeURIComponent(gitlabUsername);
+        const encodedToken = encodeURIComponent(gitlabToken);
+        execEnv.GIT_CONFIG_COUNT = '1';
+        execEnv.GIT_CONFIG_KEY_0 = `url.https://${encodedUsername}:${encodedToken}@${this.gitlabHttpAuthHost}/.insteadOf`;
+        execEnv.GIT_CONFIG_VALUE_0 = `git@${this.gitlabHttpAuthHost}:`;
+      }
       if (isDefaultDeploy && featureBranch) {
         execEnv.BRANCH = featureBranch;
       }
