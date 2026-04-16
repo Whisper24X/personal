@@ -14,12 +14,13 @@ import { mergeAssistantTurns } from '../mergeAssistantTurns'
 import type { CodexMessageGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { asRecord, getString, tryParseJson } from '../utils'
+import { asRecord, assistantTurnTimeLabel, getString, tryParseJson } from '../utils'
 
 defineOptions({ name: 'CliCodexRenderer' })
 
 const props = defineProps<{
   messages: TaskMessage[]
+  formatDate?: (value?: string) => string
 }>()
 
 const entries = computed(() => parseCodexMessages(props.messages))
@@ -105,10 +106,15 @@ function codexTurnFinished(items: CodexMessageGroup[]): boolean {
 <template>
   <div v-if="groups.length > 0" class="space-y-3">
     <template v-for="(turn, tIdx) in turns" :key="tIdx">
-      <UserMessage v-if="turn.kind === 'user' && turn.item.type === 'other'" :entry="turn.item.entry" />
+      <UserMessage
+        v-if="turn.kind === 'user' && turn.item.type === 'other'"
+        :entry="turn.item.entry"
+        :format-date="props.formatDate"
+      />
 
       <AssistantMessageShell
         v-else-if="turn.kind === 'assistant'"
+        :time-label="assistantTurnTimeLabel(turn.items, props.formatDate)"
         :wrap-body="false"
       >
         <div class="space-y-3">

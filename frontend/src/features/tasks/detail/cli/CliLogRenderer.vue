@@ -11,6 +11,8 @@ import FallbackRenderer from './fallback/Renderer.vue'
 const props = defineProps<{
   agentCliId: string
   messages: TaskMessage[]
+  /** 与任务详情页一致，用于用户/助手消息展示完整发送时间 */
+  formatDate?: (value?: string) => string
 }>()
 
 const rendererMap: Record<string, Component> = {
@@ -27,5 +29,5 @@ const rendererComponent = computed(() => rendererMap[props.agentCliId] || Fallba
 </script>
 
 <template>
-  <component :is="rendererComponent" :messages="messages" />
+  <component :is="rendererComponent" :messages="messages" :format-date="formatDate" />
 </template>

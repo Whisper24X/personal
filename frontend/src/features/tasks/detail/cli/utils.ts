@@ -283,28 +283,46 @@ export function formatTime(timestamp: number): string {
   })
 }
 
+/** 与任务详情一致的全局日期格式；未传入时退回为当日时刻 */
+export function formatTimestampForDialog(
+  timestamp: number,
+  formatDate?: (value?: string) => string,
+): string {
+  if (!timestamp || Number.isNaN(timestamp)) {
+    return ''
+  }
+  if (formatDate) {
+    return formatDate(new Date(timestamp).toISOString())
+  }
+  return formatTime(timestamp)
+}
+
 /** 任务组内最早一条日志的时间，用于助手侧时间行展示 */
 export function earliestTimestampInEntries(tools: NormalizedEntry[]): number | undefined {
   if (!tools.length) return undefined
   return Math.min(...tools.map((t) => t.timestamp))
 }
 
-export function formatTaskGroupTimeLabel(tools: NormalizedEntry[]): string {
+export function formatTaskGroupTimeLabel(
+  tools: NormalizedEntry[],
+  formatDate?: (value?: string) => string,
+): string {
   const ts = earliestTimestampInEntries(tools)
-  return ts !== undefined ? formatTime(ts) : ''
+  return ts !== undefined ? formatTimestampForDialog(ts, formatDate) : ''
 }
 
 /** 助手轮次时间行：从该批第一条可解析时间的分组取时间 */
 export function assistantTurnTimeLabel(
   items: Array<{ type: 'task'; tools: NormalizedEntry[] } | { type: 'other'; entry: NormalizedEntry }>,
+  formatDate?: (value?: string) => string,
 ): string {
   for (const g of items) {
     if (g.type === 'task') {
-      const label = formatTaskGroupTimeLabel(g.tools)
+      const label = formatTaskGroupTimeLabel(g.tools, formatDate)
       if (label) return label
       continue
     }
-    return formatTime(g.entry.timestamp)
+    return formatTimestampForDialog(g.entry.timestamp, formatDate)
   }
   return ''
 }

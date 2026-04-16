@@ -95,6 +95,7 @@ onBeforeUnmount(() => {
         <CliLogRenderer
           :agent-cli-id="props.agentCliId"
           :messages="props.messages"
+          :format-date="props.formatDate"
         />
       </template>
     </div>
