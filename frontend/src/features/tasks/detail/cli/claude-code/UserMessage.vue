@@ -22,7 +22,7 @@ const sentAtLabel = computed(() => formatTimestampForDialog(props.entry.timestam
         {{ entry.content }}
       </p>
       <div v-if="sentAtLabel" class="mt-1.5 text-right">
-        <span class="text-[10px] text-primary-foreground/70">发送于 {{ sentAtLabel }}</span>
+        <span class="text-[10px] text-primary-foreground/70">{{ sentAtLabel }}</span>
       </div>
     </div>
   </div>
