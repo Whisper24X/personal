@@ -104,6 +104,17 @@ export class ProjectsController {
     return this.projectsService.create(createProjectDto, request.user);
   }
 
+  @Post(':id/repository-provisioning/retry')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: ProjectDto })
+  @HttpCode(HttpStatus.OK)
+  retryRepositoryProvisioning(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.projectsService.retryRepositoryProvisioning(id, request.user);
+  }
+
   @Get()
   @ApiOkResponse({
     type: InfinityPaginationResponse(ProjectDto),

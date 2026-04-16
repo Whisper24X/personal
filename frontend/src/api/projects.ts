@@ -61,6 +61,10 @@ export const projectsApi = {
     return apiHttp.patch<Project>(`/projects/${projectId}`, payload)
   },
 
+  retryRepositoryProvisioning(projectId: string) {
+    return apiHttp.post<Project>(`/projects/${projectId}/repository-provisioning/retry`)
+  },
+
   remove(projectId: string) {
     return apiHttp.delete<void>(`/projects/${projectId}`)
   },

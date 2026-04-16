@@ -21,11 +21,32 @@ const emit = defineEmits<{
   'create-project': []
   select: [project: ProjectItem]
   'open-runtime': [project: ProjectItem]
+  'retry-provisioning': [project: ProjectItem]
   'open-edit': [project: ProjectItem]
   'open-delete': [project: ProjectItem]
 }>()
 
 const isCurrentProject = (projectId: string) => projectId === props.selectedProjectId
+
+type RepositoryProvisioningStatus = 'pending' | 'ready' | 'failed'
+
+const provisioningStatusLabelMap: Record<RepositoryProvisioningStatus, string> = {
+  pending: '仓库准备中',
+  ready: '仓库就绪',
+  failed: '仓库准备失败',
+}
+
+const provisioningStatusClassMap: Record<RepositoryProvisioningStatus, string> = {
+  pending: 'border-amber-400/50 bg-amber-500/10 text-amber-600',
+  ready: 'border-emerald-400/50 bg-emerald-500/10 text-emerald-600',
+  failed: 'border-destructive/40 bg-destructive/10 text-destructive',
+}
+
+const resolveProvisioningStatus = (
+  project: ProjectItem,
+): RepositoryProvisioningStatus => {
+  return project.repositoryProvisioningStatus ?? 'ready'
+}
 </script>
 
 <template>
@@ -83,6 +104,12 @@ const isCurrentProject = (projectId: string) => projectId === props.selectedProj
               <div class="flex flex-wrap items-center gap-2">
                 <p class="text-sm font-semibold text-foreground">{{ project.name }}</p>
                 <span
+                  class="inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+                  :class="provisioningStatusClassMap[resolveProvisioningStatus(project)]"
+                >
+                  {{ provisioningStatusLabelMap[resolveProvisioningStatus(project)] }}
+                </span>
+                <span
                   v-if="isCurrentProject(project.id)"
                   class="inline-flex rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary"
                 >
@@ -92,12 +119,30 @@ const isCurrentProject = (projectId: string) => projectId === props.selectedProj
               <p class="text-xs text-muted-foreground">{{ project.description || '暂无描述' }}</p>
               <p class="font-mono text-[11px] text-muted-foreground">{{ project.gitUrl }}</p>
               <p class="text-xs text-muted-foreground">默认分支：{{ project.defaultBranch }}</p>
+              <p
+                v-if="resolveProvisioningStatus(project) === 'failed' && project.repositoryProvisioningError"
+                class="text-xs text-destructive"
+              >
+                失败原因：{{ project.repositoryProvisioningError }}
+              </p>
               <p class="text-xs text-muted-foreground">
                 容器设置：{{ summarizeProjectRuntime(project) }}
               </p>
             </div>
 
             <div class="flex flex-wrap items-center justify-end gap-2">
+              <button
+                v-if="
+                  canUpdateProjectItem &&
+                  (resolveProvisioningStatus(project) === 'pending' ||
+                    resolveProvisioningStatus(project) === 'failed')
+                "
+                type="button"
+                class="inline-flex h-8 items-center justify-center rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 text-xs font-semibold text-amber-700 transition hover:bg-amber-500/20"
+                @click.stop="emit('retry-provisioning', project)"
+              >
+                重试仓库准备
+              </button>
               <button
                 v-if="canUpdateProjectItem"
                 type="button"

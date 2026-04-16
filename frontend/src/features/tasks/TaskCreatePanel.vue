@@ -97,6 +97,12 @@ const fileInputRef = toRef(vm, 'fileInputRef')
           </div>
 
           <div class="overflow-x-auto border-t border-border px-4 py-3 sm:px-5">
+            <p
+              v-if="vm.repositoryProvisioningHint"
+              class="mb-2 text-xs text-amber-600"
+            >
+              {{ vm.repositoryProvisioningHint }}
+            </p>
             <div class="flex min-w-full w-max flex-nowrap items-center gap-2 [&>*]:shrink-0">
               <input
                 ref="fileInputRef"

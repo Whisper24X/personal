@@ -48,6 +48,8 @@ import { SlowApiDiagnosticsSession } from '../observability/slow-api-diagnostics
 import { resolveGitRemoteUrlWithHttpAuth } from '../git/git-remote-auth.util';
 import { ProjectAccessService } from './project-access.service';
 import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
+import { ProjectRepositoryProvisioningService } from './project-repository-provisioning.service';
+import { RepositoryProvisioningStatus } from './domain/repository-provisioning-status.enum';
 
 export type EnsureProjectRepositoryOptions = {
   syncRemote?: boolean;
@@ -56,7 +58,7 @@ export type EnsureProjectRepositoryOptions = {
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
-  private readonly defaultGitTimeoutMs = 60_000;
+  private readonly defaultGitTimeoutMs = 600_000;
   private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
 
   constructor(
@@ -72,6 +74,7 @@ export class ProjectsService {
     private readonly configService: ConfigService,
     private readonly projectAccessService: ProjectAccessService,
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
+    private readonly projectRepositoryProvisioningService: ProjectRepositoryProvisioningService,
   ) {}
 
   async create(
@@ -98,6 +101,11 @@ export class ProjectsService {
 
     await this.validateGitRepositoryAccessible(createProjectDto.gitUrl);
 
+    const userId = currentUser?.sub;
+    if (!userId) {
+      throw new BadRequestException('Invalid user session');
+    }
+
     let project: Project;
 
     try {
@@ -108,6 +116,9 @@ export class ProjectsService {
         gitUrl: createProjectDto.gitUrl,
         defaultBranch: createProjectDto.defaultBranch ?? 'main',
         configJson: this.sanitizeProjectConfigJson(createProjectDto.configJson),
+        repositoryProvisioningStatus: RepositoryProvisioningStatus.Pending,
+        repositoryProvisioningError: null,
+        repositoryProvisionedAt: null,
       });
     } catch (error) {
       throw this.mapDatabaseErrorToHttpException(
@@ -117,48 +128,59 @@ export class ProjectsService {
     }
 
     try {
-      const repositoryRoot =
-        await this.projectRepositoryWorkspaceService.ensureProjectRepository(
-          project,
+      const existedCreatorMember =
+        await this.projectMemberRepository.findByProjectIdAndUserId(
+          project.id,
+          userId,
         );
-      await this.projectRepositoryWorkspaceService.syncRunnerConfigBackup(
-        project,
-        repositoryRoot,
-      );
+
+      if (!existedCreatorMember) {
+        await this.ensureDefaultProjectCustomRoles(project.businessLineId);
+        const ownerRole = await this.findDefaultProjectCustomRole(
+          project.businessLineId,
+          ProjectMemberRole.owner,
+        );
+
+        await this.projectMemberRepository.create({
+          projectId: project.id,
+          userId: currentUser.sub,
+          roleId: ownerRole.id,
+        });
+      }
     } catch (error) {
       await this.rollbackCreatedProject(project.id);
-      throw new BadRequestException(
-        this.formatGitSyncFailureMessage(error, project.gitUrl),
+      throw this.mapDatabaseErrorToHttpException(
+        error,
+        'Failed to initialize project owner role',
       );
     }
 
-    const userId = currentUser?.sub;
-    if (!userId) {
-      await this.rollbackCreatedProject(project.id);
-      throw new BadRequestException('Invalid user session');
-    }
-
-    const existedCreatorMember =
-      await this.projectMemberRepository.findByProjectIdAndUserId(
-        project.id,
-        userId,
-      );
-
-    if (!existedCreatorMember) {
-      await this.ensureDefaultProjectCustomRoles(project.businessLineId);
-      const ownerRole = await this.findDefaultProjectCustomRole(
-        project.businessLineId,
-        ProjectMemberRole.owner,
-      );
-
-      await this.projectMemberRepository.create({
-        projectId: project.id,
-        userId: currentUser.sub,
-        roleId: ownerRole.id,
-      });
-    }
+    this.projectRepositoryProvisioningService.enqueue(project.id);
 
     return project;
+  }
+
+  async retryRepositoryProvisioning(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<Project> {
+    const project = await this.projectAccessService.assertCanManageProject(
+      projectId,
+      currentUser,
+    );
+
+    const updated = await this.projectRepository.update(project.id, {
+      repositoryProvisioningStatus: RepositoryProvisioningStatus.Pending,
+      repositoryProvisioningError: null,
+      repositoryProvisionedAt: null,
+    });
+    if (!updated) {
+      throw new NotFoundException('Project not found');
+    }
+
+    this.projectRepositoryProvisioningService.enqueue(project.id);
+
+    return updated;
   }
 
   private mapDatabaseErrorToHttpException(

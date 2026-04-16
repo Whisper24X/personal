@@ -15,6 +15,8 @@ import { ProjectDeployService } from './project-deploy.service';
 import { ProjectDocsService } from './project-docs.service';
 import { ProjectKnowledgeService } from './project-knowledge.service';
 import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
+import { ProjectRepositoryProvisioningService } from './project-repository-provisioning.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -27,6 +29,7 @@ import { ProjectRepositoryWorkspaceService } from './project-repository-workspac
     UsersModule,
     BusinessLinesModule,
     AccessModule,
+    NotificationsModule,
   ],
   controllers: [ProjectsController],
   providers: [
@@ -36,6 +39,7 @@ import { ProjectRepositoryWorkspaceService } from './project-repository-workspac
     ProjectKnowledgeService,
     ProjectDeployService,
     ProjectRepositoryWorkspaceService,
+    ProjectRepositoryProvisioningService,
   ],
   exports: [
     ProjectsService,
@@ -44,6 +48,7 @@ import { ProjectRepositoryWorkspaceService } from './project-repository-workspac
     ProjectKnowledgeService,
     ProjectDeployService,
     ProjectRepositoryWorkspaceService,
+    ProjectRepositoryProvisioningService,
     RelationalProjectPersistenceModule,
   ],
 })

@@ -14,6 +14,7 @@ import {
   extractTaskNameIdFromGitWorktree,
 } from '../../git/branch-name.util';
 import { Project } from '../../projects/domain/project';
+import { RepositoryProvisioningStatus } from '../../projects/domain/repository-provisioning-status.enum';
 import { ProjectAccessService } from '../../projects/project-access.service';
 import { WorkflowTemplatesService } from '../../workflow-templates/workflow-templates.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
@@ -82,6 +83,25 @@ export class TaskCommandService {
       currentUser,
       'project.task.read',
     );
+
+    if (
+      project.repositoryProvisioningStatus ===
+      RepositoryProvisioningStatus.Pending
+    ) {
+      throw new ConflictException('项目仓库准备中，请稍后重试');
+    }
+
+    if (
+      project.repositoryProvisioningStatus ===
+      RepositoryProvisioningStatus.Failed
+    ) {
+      const detail = project.repositoryProvisioningError?.trim();
+      throw new ConflictException(
+        detail
+          ? `项目仓库准备失败，请重试仓库准备后再创建任务：${detail}`
+          : '项目仓库准备失败，请重试仓库准备后再创建任务',
+      );
+    }
 
     let resolvedMode: TaskMode = createTaskDto.mode ?? TaskMode.conversation;
     const taskConfig = this.taskConfigResolver.mergeTaskConfig(

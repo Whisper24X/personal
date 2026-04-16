@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Project } from '../../projects/domain/project';
+import { RepositoryProvisioningStatus } from '../../projects/domain/repository-provisioning-status.enum';
 import { Task } from '../domain/task';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
@@ -35,6 +36,9 @@ const createProject = (overrides: Partial<Project> = {}): Project => ({
   gitUrl: 'git@example.com:group/repo.git',
   defaultBranch: 'main',
   configJson: null,
+  repositoryProvisioningStatus: RepositoryProvisioningStatus.Ready,
+  repositoryProvisioningError: null,
+  repositoryProvisionedAt: null,
   createdAt: new Date('2026-03-20T00:00:00.000Z'),
   updatedAt: new Date('2026-03-20T00:00:00.000Z'),
   deletedAt: null,
@@ -251,6 +255,53 @@ describe('TaskCommandService.create', () => {
         title: '计划子任务标题',
         prompt: longPrompt,
       }),
+    );
+  });
+
+  it('should reject task creation when project repository is pending', async () => {
+    const { service, projectsService } = createService();
+    const currentUser = createCurrentUser();
+    const project = createProject({
+      repositoryProvisioningStatus: RepositoryProvisioningStatus.Pending,
+    });
+
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+
+    await expect(
+      service.create(
+        {
+          projectId: project.id,
+          mode: TaskMode.conversation,
+          prompt: 'hello',
+          configJson: {},
+        } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('项目仓库准备中，请稍后重试');
+  });
+
+  it('should reject task creation when project repository provisioning failed', async () => {
+    const { service, projectsService } = createService();
+    const currentUser = createCurrentUser();
+    const project = createProject({
+      repositoryProvisioningStatus: RepositoryProvisioningStatus.Failed,
+      repositoryProvisioningError: 'git clone failed',
+    });
+
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+
+    await expect(
+      service.create(
+        {
+          projectId: project.id,
+          mode: TaskMode.conversation,
+          prompt: 'hello',
+          configJson: {},
+        } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow(
+      '项目仓库准备失败，请重试仓库准备后再创建任务：git clone failed',
     );
   });
 
