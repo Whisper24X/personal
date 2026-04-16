@@ -554,6 +554,7 @@ const createTask = async () => {
     resetCreateForm(projectIdForSubmit)
     emit('created', task.id)
     void refreshSidebarRecentTasks()
+    window.dispatchEvent(new Event('git-sync-updated'))
     await router.push({
       name: 'task-detail',
       params: { id: task.id },

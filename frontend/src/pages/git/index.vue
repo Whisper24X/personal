@@ -142,6 +142,7 @@ const loadBranches = async () => {
   try {
     const branchData = await gitApi.branchesDetail(projectId)
     branches.value = branchData.branches
+    window.dispatchEvent(new Event('git-sync-updated'))
   } catch (error) {
     message.error(toErrorMessage(error, '读取分支信息失败'))
     branches.value = []

@@ -90,6 +90,7 @@ const editOpen = ref(false)
 const deleteOpen = ref(false)
 const savingEdit = ref(false)
 const removingTask = ref(false)
+const approveConfirmationNodeId = ref<string | null>(null)
 const editForm = reactive<TaskEditFormValue>({
   title: '',
   prompt: '',
@@ -235,6 +236,13 @@ const currentActionNode = computed(() => {
   }
 
   return currentFailedNode.value ?? currentReviewNode.value
+})
+
+const showApproveConfirmation = computed(() => {
+  return (
+    currentActionNode.value?.status === 'in_review' &&
+    currentActionNode.value.id === approveConfirmationNodeId.value
+  )
 })
 
 const showReviewCard = computed(() => {
@@ -892,6 +900,7 @@ const resetTaskState = () => {
   selectedWorkflowNodeId.value = null
   lastWorkflowAutoSyncSignature.value = null
   rightPanelArtifactRefreshPaths.value = []
+  approveConfirmationNodeId.value = null
   clearPendingStreamLogs()
 }
 
@@ -1122,18 +1131,40 @@ const terminateEnvironment = async () => {
   }
 }
 
+const submitApproveNode = async (node: TaskNode) => {
+  if (!taskId.value) {
+    return
+  }
+
+  detail.value = await tasksApi.approve(taskId.value, {
+    nodeId: node.id,
+  })
+  approveConfirmationNodeId.value = null
+  bumpRightPanelRefresh([])
+}
+
 const approveNode = async (node: TaskNode) => {
-  if (!taskId.value || !canManageReview.value) {
+  if (!taskId.value || !canManageReview.value || actionLoading.value) {
     return
   }
 
   actionLoading.value = true
 
   try {
-    detail.value = await tasksApi.approve(taskId.value, {
-      nodeId: node.id,
-    })
-    bumpRightPanelRefresh([])
+    approveConfirmationNodeId.value = null
+
+    if (node.configJson?.requiresArtifact === true) {
+      const artifactTree = await tasksApi.gitArtifactsTree(taskId.value, {
+        nodeId: node.id,
+      })
+
+      if ((artifactTree.files?.length ?? 0) === 0) {
+        approveConfirmationNodeId.value = node.id
+        return
+      }
+    }
+
+    await submitApproveNode(node)
   } catch (error) {
     message.error(toErrorMessage(error, '审批节点失败'))
   } finally {
@@ -1141,7 +1172,33 @@ const approveNode = async (node: TaskNode) => {
   }
 }
 
+const confirmApproveNode = async (node: TaskNode) => {
+  if (
+    !taskId.value ||
+    !canManageReview.value ||
+    actionLoading.value ||
+    approveConfirmationNodeId.value !== node.id
+  ) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    await submitApproveNode(node)
+  } catch (error) {
+    message.error(toErrorMessage(error, '审批节点失败'))
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+const cancelApproveConfirmation = () => {
+  approveConfirmationNodeId.value = null
+}
+
 const handleSelectWorkflowNode = (nodeId: string) => {
+  approveConfirmationNodeId.value = null
   selectedWorkflowNodeId.value = nodeId
 }
 
@@ -1389,6 +1446,7 @@ return reactive({
     activeProjectId,
     applyTaskLog,
     approveNode,
+    approveConfirmationNodeId,
     areAllNodesDone,
     artifactFilePath,
     artifactOpenNonce,
@@ -1406,6 +1464,7 @@ return reactive({
     clearReconnectTimer,
     clearRightPanelWorkspaceRefreshTimer,
     clearStreamLogFlushTimer,
+    confirmApproveNode,
     completeTask,
     connectStream,
     containerRef,
@@ -1478,6 +1537,7 @@ return reactive({
     rightPanelWorkspaceRefreshDebounceTimer,
     route,
     router,
+    cancelApproveConfirmation,
     saveEdit,
     savingEdit,
     scheduleReconnect,
@@ -1486,6 +1546,7 @@ return reactive({
     scheduleRightPanelWorkspaceRefresh,
     selectedWorkflowNode,
     selectedWorkflowNodeId,
+    showApproveConfirmation,
     shouldShowEnvironmentGate,
     showReviewCard,
     showWorkflowCard,

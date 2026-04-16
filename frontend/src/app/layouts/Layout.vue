@@ -63,6 +63,8 @@ const {
 } = useLayout()
 
 const gitSyncInfo = ref<{ branch: string; ahead: number; behind: number } | null>(null)
+let lastRefreshAt = 0
+const REFRESH_THROTTLE_MS = 30_000
 
 const refreshGitSyncInfo = async () => {
   const projectId = selectedProjectId.value
@@ -79,6 +81,7 @@ const refreshGitSyncInfo = async () => {
     } else {
       gitSyncInfo.value = null
     }
+    lastRefreshAt = Date.now()
   } catch {
     // silent
   }
@@ -88,7 +91,20 @@ watch(selectedProjectId, refreshGitSyncInfo, { immediate: true })
 
 const onGitSyncUpdated = () => void refreshGitSyncInfo()
 window.addEventListener('git-sync-updated', onGitSyncUpdated)
-onBeforeUnmount(() => window.removeEventListener('git-sync-updated', onGitSyncUpdated))
+
+const onVisibilityChange = () => {
+  if (document.visibilityState === 'visible' && selectedProjectId.value) {
+    if (Date.now() - lastRefreshAt >= REFRESH_THROTTLE_MS) {
+      void refreshGitSyncInfo()
+    }
+  }
+}
+document.addEventListener('visibilitychange', onVisibilityChange)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('git-sync-updated', onGitSyncUpdated)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 
 provide(layoutWorkspaceKey, {
   hasAnyBusinessLine,
