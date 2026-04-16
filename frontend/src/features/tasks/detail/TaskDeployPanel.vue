@@ -3,7 +3,7 @@ import { ref, onBeforeUnmount, onMounted, nextTick } from 'vue'
 import { projectsApi } from '@/api/projects'
 import { HttpError } from '@api/shared/error'
 
-const DEFAULT_DEPLOY_COMMAND = ''
+const DEFAULT_DEPLOY_COMMAND = 'make push-test'
 
 const props = defineProps<{
   taskId: string
