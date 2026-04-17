@@ -2,14 +2,14 @@
 # AINative Workspace Makefile
 # ==============================================================================
 #
-# 子仓库：frontend/ 对应 git@gitlab.yc345.tv:dengyangwu/frontend.git（test 工作流用 develop）
+# 子仓库：frontend/ 对应 git@gitlab.yc345.tv:dengyangwu/frontend.git（默认 main；test 工作流对远端 test）
 #
 # 使用方式：
 #   make help               查看所有可用命令
 #   make subtree-pull       拉取子仓库
 #   make subtree-status     查看子仓库状态
-#   make branch-test        切换到 test 并拉取子仓库 (frontend -> develop)
-#   make subtree-push-test  推送 test 到子仓库 (frontend -> develop)
+#   make branch-test        切换到 test 并拉取子仓库 (frontend -> test)
+#   make subtree-push-test  推送 test 到子仓库 (frontend -> test)
 #
 # ==============================================================================
 
@@ -20,7 +20,7 @@
 # ==============================================================================
 
 # Subtree 配置（格式：别名|目录|仓库地址|分支）
-SUBTREES := frontend|frontend|git@gitlab.yc345.tv:dengyangwu/frontend.git|develop
+SUBTREES := frontend|frontend|git@gitlab.yc345.tv:dengyangwu/frontend.git|main
 
 # 颜色
 C_RESET  := \033[0m
@@ -158,8 +158,8 @@ subtree-add: $(foreach n,$(NAMES),subtree-add-$(n))
 # ==============================================================================
 # Test 分支工作流
 # ==============================================================================
-# 切换 test 分支后拉取子仓库：frontend -> develop
-# 推送 test 分支代码到子仓库：frontend -> develop
+# 切换 test 分支后拉取子仓库：frontend -> test
+# 推送 test 分支代码到子仓库：frontend -> test
 
 .PHONY: branch-test subtree-pull-test subtree-push-test merge-to-test push-test
 
@@ -176,7 +176,7 @@ merge-to-test:
 	echo "$(C_GREEN)✓ 已合并到 test$(C_RESET)"
 
 ## 切换到 test 分支并拉取子仓库对应分支
-## frontend -> develop
+## frontend -> test
 branch-test:
 	$(_check_env)
 	@echo "$(C_BLUE)切换到 test 分支...$(C_RESET)"
@@ -185,11 +185,11 @@ branch-test:
 	@$(MAKE) -s subtree-pull-test
 
 ## 拉取子仓库（test 分支工作流）
-## frontend -> develop
+## frontend -> test
 subtree-pull-test:
 	$(_check_env)
-	@echo "$(C_BLUE)拉取 frontend (develop)...$(C_RESET)"
-	@OUT=$$(git subtree pull --prefix=frontend git@gitlab.yc345.tv:dengyangwu/frontend.git develop --squash 2>&1); \
+	@echo "$(C_BLUE)拉取 frontend (test)...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=frontend git@gitlab.yc345.tv:dengyangwu/frontend.git test --squash 2>&1); \
 	CODE=$$?; \
 	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
 		echo "$(C_YELLOW)首次添加 frontend...$(C_RESET)"; $(MAKE) -s subtree-add-frontend; \
@@ -199,19 +199,19 @@ subtree-pull-test:
 	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库拉取完成$(C_RESET)"
 
 ## 推送 test 分支代码到子仓库对应分支
-## frontend -> develop
+## frontend -> test
 subtree-push-test:
 	$(_check_env)
 	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
 	if [ "$$CUR" != "test" ]; then \
 		echo "$(C_YELLOW)当前分支为 $$CUR，建议在 test 分支执行$(C_RESET)"; \
 	fi
-	@echo "$(C_BLUE)推送 frontend -> develop...$(C_RESET)"
-	@OUT=$$(git subtree push --prefix=frontend git@gitlab.yc345.tv:dengyangwu/frontend.git develop 2>&1); \
+	@echo "$(C_BLUE)推送 frontend -> test...$(C_RESET)"
+	@OUT=$$(git subtree push --prefix=frontend git@gitlab.yc345.tv:dengyangwu/frontend.git test 2>&1); \
 	CODE=$$?; \
 	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)frontend 无变更$(C_RESET)"; \
 	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else echo "$(C_GREEN)✓ frontend 已推送到 develop$(C_RESET)"; fi
+	else echo "$(C_GREEN)✓ frontend 已推送到 test$(C_RESET)"; fi
 	@echo ""
 	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库推送完成$(C_RESET)"
 
@@ -299,9 +299,9 @@ help:
 	@echo "  $(C_GREEN)make subtree-push-frontend feature/xxx$(C_RESET)  推送到 feature 分支"
 	@echo ""
 	@echo "$(C_YELLOW)Test 分支工作流$(C_RESET)"
-	@echo "  $(C_GREEN)make branch-test$(C_RESET)            切换到 test 并拉取子仓库 (frontend -> develop)"
-	@echo "  $(C_GREEN)make subtree-pull-test$(C_RESET)      拉取子仓库 (frontend -> develop)"
-	@echo "  $(C_GREEN)make subtree-push-test$(C_RESET)      推送 test 到子仓库 (frontend -> develop)"
+	@echo "  $(C_GREEN)make branch-test$(C_RESET)            切换到 test 并拉取子仓库 (frontend -> test)"
+	@echo "  $(C_GREEN)make subtree-pull-test$(C_RESET)      拉取子仓库 (frontend -> test)"
+	@echo "  $(C_GREEN)make subtree-push-test$(C_RESET)      推送 test 到子仓库 (frontend -> test)"
 	@echo "  $(C_GREEN)make merge-to-test$(C_RESET)          合并当前分支到 test"
 	@echo "  $(C_GREEN)make push-test$(C_RESET)  切换 test→拉取子仓→合并当前分支→推送主仓和子仓"
 	@echo ""
