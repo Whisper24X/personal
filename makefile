@@ -20,7 +20,7 @@
 # ==============================================================================
 
 # Subtree 配置（格式：别名|目录|仓库地址|分支）
-SUBTREES := frontend|frontend|git@gitlab.yc345.tv:dengyangwu/frontend.git|main
+SUBTREES := frontend|frontend|git@gitlab.yc345.tv:dengyangwu/frontend.git|test
 
 # 颜色
 C_RESET  := \033[0m
@@ -43,6 +43,46 @@ _branch = $(word 4,$(subst |, ,$(1)))
 
 # 所有 subtree 名称
 NAMES := $(foreach s,$(SUBTREES),$(call _name,$(s)))
+
+# 单子仓解析（供 test 工作流内联 recipe 使用，避免切换分支后子 make 重读旧 makefile）
+PREFIX_FRONT := $(call _prefix,$(SUBTREES))
+REPO_FRONT := $(call _repo,$(SUBTREES))
+BRANCH_FRONT := $(call _branch,$(SUBTREES))
+
+# test 工作流：拉取 / 推送 frontend（内联展开，勿用 $(MAKE) subtree-*-test，否则 reset 到 origin/test 后子 make 会读到旧 makefile）
+define SUBTREE_PULL_TEST_INNER
+	@echo "$(C_BLUE)拉取 $(PREFIX_FRONT) ($(BRANCH_FRONT))...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=$(PREFIX_FRONT) $(REPO_FRONT) $(BRANCH_FRONT) --squash 2>&1); \
+	CODE=$$?; \
+	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
+		echo "$(C_YELLOW)首次添加 $(PREFIX_FRONT)...$(C_RESET)"; \
+		if [ -d "$(PREFIX_FRONT)" ]; then \
+			echo "$(C_YELLOW)清理已存在的目录...$(C_RESET)"; \
+			git rm -rf --cached $(PREFIX_FRONT) 2>/dev/null || true; \
+			rm -rf $(PREFIX_FRONT); \
+			git commit -m "chore: reset $(PREFIX_FRONT)" 2>/dev/null || true; \
+		fi; \
+		git subtree add --prefix=$(PREFIX_FRONT) $(REPO_FRONT) $(BRANCH_FRONT) --squash || { echo "$(C_RED)subtree add 失败$(C_RESET)"; exit 1; }; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
+	else echo "$(C_GREEN)✓ $(PREFIX_FRONT) 已更新$(C_RESET)"; fi
+	@echo ""
+	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库拉取完成$(C_RESET)"
+endef
+
+define SUBTREE_PUSH_TEST_INNER
+	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	if [ "$$CUR" != "test" ]; then \
+		echo "$(C_YELLOW)当前分支为 $$CUR，建议在 test 分支执行$(C_RESET)"; \
+	fi; \
+	echo "$(C_BLUE)推送 $(PREFIX_FRONT) -> $(BRANCH_FRONT)...$(C_RESET)"; \
+	OUT=$$(git subtree push --prefix=$(PREFIX_FRONT) $(REPO_FRONT) $(BRANCH_FRONT) 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)$(PREFIX_FRONT) 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ $(PREFIX_FRONT) 已推送到 $(BRANCH_FRONT)$(C_RESET)"; fi; \
+	echo ""; \
+	echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库推送完成$(C_RESET)"
+endef
 
 # 检查执行环境
 define _check_env
@@ -172,7 +212,7 @@ merge-to-test:
 		echo "$(C_YELLOW)当前已在 test 分支$(C_RESET)"; exit 0; \
 	fi; \
 	echo "$(C_BLUE)合并 $$CUR -> test...$(C_RESET)"; \
-	git checkout test && git pull origin test && git merge --no-ff $$CUR -m "Merge branch '$$CUR' into test" && \
+	git switch test && git pull origin test && git merge --no-ff $$CUR -m "Merge branch '$$CUR' into test" && \
 	echo "$(C_GREEN)✓ 已合并到 test$(C_RESET)"
 
 ## 切换到 test 分支并拉取子仓库对应分支
@@ -180,40 +220,21 @@ merge-to-test:
 branch-test:
 	$(_check_env)
 	@echo "$(C_BLUE)切换到 test 分支...$(C_RESET)"
-	@git checkout test
+	@git switch test
 	@git reset --hard origin/test
-	@$(MAKE) -s subtree-pull-test
+	$(SUBTREE_PULL_TEST_INNER)
 
 ## 拉取子仓库（test 分支工作流）
 ## frontend -> test
 subtree-pull-test:
 	$(_check_env)
-	@echo "$(C_BLUE)拉取 frontend (test)...$(C_RESET)"
-	@OUT=$$(git subtree pull --prefix=frontend git@gitlab.yc345.tv:dengyangwu/frontend.git test --squash 2>&1); \
-	CODE=$$?; \
-	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
-		echo "$(C_YELLOW)首次添加 frontend...$(C_RESET)"; $(MAKE) -s subtree-add-frontend; \
-	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
-	else echo "$(C_GREEN)✓ frontend 已更新$(C_RESET)"; fi
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库拉取完成$(C_RESET)"
+	$(SUBTREE_PULL_TEST_INNER)
 
 ## 推送 test 分支代码到子仓库对应分支
 ## frontend -> test
 subtree-push-test:
 	$(_check_env)
-	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
-	if [ "$$CUR" != "test" ]; then \
-		echo "$(C_YELLOW)当前分支为 $$CUR，建议在 test 分支执行$(C_RESET)"; \
-	fi
-	@echo "$(C_BLUE)推送 frontend -> test...$(C_RESET)"
-	@OUT=$$(git subtree push --prefix=frontend git@gitlab.yc345.tv:dengyangwu/frontend.git test 2>&1); \
-	CODE=$$?; \
-	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)frontend 无变更$(C_RESET)"; \
-	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else echo "$(C_GREEN)✓ frontend 已推送到 test$(C_RESET)"; fi
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库推送完成$(C_RESET)"
+	$(SUBTREE_PUSH_TEST_INNER)
 
 ## 完整流程：1) 切换到 test 并拉取子仓库 2) 合并切换前的分支到 test 3) 提交到 test 4) 推送 test 到子仓
 ## 用法: make push-test（在 feature 分支上执行，自动合并当前分支到 test）
@@ -225,15 +246,35 @@ push-test:
 		echo "$(C_RED)错误: 当前已在 test 分支，请在 feature 分支上执行$(C_RESET)"; exit 1; \
 	fi; \
 	echo "$(C_BLUE)1/4 切换到 test 并拉取子仓库...$(C_RESET)"; \
-	git checkout test || { echo "$(C_RED)切换失败$(C_RESET)"; exit 1; }; \
+	git switch test || { echo "$(C_RED)切换失败$(C_RESET)"; exit 1; }; \
 	git reset --hard origin/test || { echo "$(C_RED)同步 test 分支失败$(C_RESET)"; exit 1; }; \
-	$(MAKE) -s subtree-pull-test || { echo "$(C_RED)子仓库拉取失败，中止部署$(C_RESET)"; exit 1; }; \
+	OUT=$$(git subtree pull --prefix=$(PREFIX_FRONT) $(REPO_FRONT) $(BRANCH_FRONT) --squash 2>&1); \
+	CODE=$$?; \
+	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
+		echo "$(C_YELLOW)首次添加 $(PREFIX_FRONT)...$(C_RESET)"; \
+		if [ -d "$(PREFIX_FRONT)" ]; then \
+			echo "$(C_YELLOW)清理已存在的目录...$(C_RESET)"; \
+			git rm -rf --cached $(PREFIX_FRONT) 2>/dev/null || true; \
+			rm -rf $(PREFIX_FRONT); \
+			git commit -m "chore: reset $(PREFIX_FRONT)" 2>/dev/null || true; \
+		fi; \
+		git subtree add --prefix=$(PREFIX_FRONT) $(REPO_FRONT) $(BRANCH_FRONT) --squash || { echo "$(C_RED)subtree add 失败$(C_RESET)"; exit 1; }; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
+	else echo "$(C_GREEN)✓ $(PREFIX_FRONT) 已更新$(C_RESET)"; fi; \
+	echo ""; \
+	echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库拉取完成$(C_RESET)"; \
 	echo "$(C_BLUE)2/4 合并 $$CUR -> test...$(C_RESET)"; \
 	git merge --no-ff $$CUR -m "Merge branch '$$CUR' into test" || { echo "$(C_RED)合并失败，请解决冲突后重试$(C_RESET)"; exit 1; }; \
 	echo "$(C_BLUE)3/4 提交到 test 分支（合并已完成）$(C_RESET)"; \
 	echo "$(C_BLUE)4/4 推送 test 到主仓和子仓库...$(C_RESET)"; \
 	git push origin test || { echo "$(C_RED)推送主仓失败$(C_RESET)"; exit 1; }; \
-	$(MAKE) -s subtree-push-test || { echo "$(C_RED)子仓库推送失败$(C_RESET)"; exit 1; }; \
+	OUT=$$(git subtree push --prefix=$(PREFIX_FRONT) $(REPO_FRONT) $(BRANCH_FRONT) 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)$(PREFIX_FRONT) 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)子仓库推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ $(PREFIX_FRONT) 已推送到 $(BRANCH_FRONT)$(C_RESET)"; fi; \
+	echo ""; \
+	echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库推送完成$(C_RESET)"; \
 	echo ""; \
 	echo "$(C_GREEN)$(C_BOLD)✓ push-test 完成$(C_RESET)"
 
