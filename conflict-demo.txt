@@ -1,3 +1,8 @@
+<<<<<<< HEAD
 # 故意用于演示合并冲突：main 侧内容
 CONFLICT_SIDE=from-main
+=======
+# 故意用于演示合并冲突：另一分支修改了同一行
+CONFLICT_SIDE=other
+>>>>>>> demo/conflict-merge
 
