@@ -2,17 +2,14 @@
 # AINative Workspace Makefile
 # ==============================================================================
 #
-# 项目结构：
-#   - ainative-backend  : Go 后端服务
-#   - ainative-shadow   : 影子服务
-#   - ainative-app      : 移动端小程序
+# 子仓库：frontend/ 对应 git@gitlab.yc345.tv:dengyangwu/frontend.git（test 工作流用 develop）
 #
 # 使用方式：
-#   make help           查看所有可用命令
-#   make subtree-pull   拉取所有子仓库
-#   make subtree-status 查看子仓库状态
-#   make branch-test    切换到 test 并拉取子仓库 (backend=test, shadow/app=develop)
-#   make subtree-push-test  推送 test 到子仓库 (backend=test, shadow/app=develop)
+#   make help               查看所有可用命令
+#   make subtree-pull       拉取子仓库
+#   make subtree-status     查看子仓库状态
+#   make branch-test        切换到 test 并拉取子仓库 (frontend -> develop)
+#   make subtree-push-test  推送 test 到子仓库 (frontend -> develop)
 #
 # ==============================================================================
 
@@ -23,10 +20,7 @@
 # ==============================================================================
 
 # Subtree 配置（格式：别名|目录|仓库地址|分支）
-SUBTREES := \
-	backend|ainative-backend|git@gitlab.yc345.tv:backend/yanxue.git|master \
-	shadow|ainative-shadow|git@gitlab.yc345.tv:frontend/trip-shadow.git|master \
-	app|ainative-app|git@gitlab.yc345.tv:frontend/trip-miniprogram.git|master
+SUBTREES := frontend|frontend|git@gitlab.yc345.tv:dengyangwu/frontend.git|develop
 
 # 颜色
 C_RESET  := \033[0m
@@ -85,7 +79,7 @@ subtree-pull-$(call _name,$(1)):
 endef
 
 # 生成 subtree-push 目标: subtree-push-{name} feature/xxx
-# 用法: make subtree-push-backend feature/xxx
+# 用法: make subtree-push-frontend feature/xxx
 # 必须指定 feature/ 分支，禁止直接推送到 master
 define _gen_push
 subtree-push-$(call _name,$(1)):
@@ -164,8 +158,8 @@ subtree-add: $(foreach n,$(NAMES),subtree-add-$(n))
 # ==============================================================================
 # Test 分支工作流
 # ==============================================================================
-# 切换 test 分支后拉取子仓库：backend=test, shadow/app=develop
-# 推送 test 分支代码到子仓库：backend=test, shadow/app=develop
+# 切换 test 分支后拉取子仓库：frontend -> develop
+# 推送 test 分支代码到子仓库：frontend -> develop
 
 .PHONY: branch-test subtree-pull-test subtree-push-test merge-to-test push-test
 
@@ -182,7 +176,7 @@ merge-to-test:
 	echo "$(C_GREEN)✓ 已合并到 test$(C_RESET)"
 
 ## 切换到 test 分支并拉取子仓库对应分支
-## backend -> test, shadow/app -> develop
+## frontend -> develop
 branch-test:
 	$(_check_env)
 	@echo "$(C_BLUE)切换到 test 分支...$(C_RESET)"
@@ -191,59 +185,33 @@ branch-test:
 	@$(MAKE) -s subtree-pull-test
 
 ## 拉取子仓库（test 分支工作流）
-## backend -> test, shadow/app -> develop
+## frontend -> develop
 subtree-pull-test:
 	$(_check_env)
-	@echo "$(C_BLUE)拉取 ainative-backend (test)...$(C_RESET)"
-	@OUT=$$(git subtree pull --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git test --squash 2>&1); \
+	@echo "$(C_BLUE)拉取 frontend (develop)...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=frontend git@gitlab.yc345.tv:dengyangwu/frontend.git develop --squash 2>&1); \
 	CODE=$$?; \
 	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
-		echo "$(C_YELLOW)首次添加 ainative-backend...$(C_RESET)"; $(MAKE) -s subtree-add-backend; \
+		echo "$(C_YELLOW)首次添加 frontend...$(C_RESET)"; $(MAKE) -s subtree-add-frontend; \
 	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
-	else echo "$(C_GREEN)✓ ainative-backend 已更新$(C_RESET)"; fi
-	@echo "$(C_BLUE)拉取 ainative-shadow (develop)...$(C_RESET)"
-	@OUT=$$(git subtree pull --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git develop --squash 2>&1); \
-	CODE=$$?; \
-	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
-		echo "$(C_YELLOW)首次添加 ainative-shadow...$(C_RESET)"; $(MAKE) -s subtree-add-shadow; \
-	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
-	else echo "$(C_GREEN)✓ ainative-shadow 已更新$(C_RESET)"; fi
-	@echo "$(C_BLUE)拉取 ainative-app (develop)...$(C_RESET)"
-	@OUT=$$(git subtree pull --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop --squash 2>&1); \
-	CODE=$$?; \
-	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
-		echo "$(C_YELLOW)首次添加 ainative-app...$(C_RESET)"; $(MAKE) -s subtree-add-app; \
-	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
-	else echo "$(C_GREEN)✓ ainative-app 已更新$(C_RESET)"; fi
+	else echo "$(C_GREEN)✓ frontend 已更新$(C_RESET)"; fi
 	@echo ""
 	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库拉取完成$(C_RESET)"
 
 ## 推送 test 分支代码到子仓库对应分支
-## backend -> test, shadow/app -> develop
+## frontend -> develop
 subtree-push-test:
 	$(_check_env)
 	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
 	if [ "$$CUR" != "test" ]; then \
 		echo "$(C_YELLOW)当前分支为 $$CUR，建议在 test 分支执行$(C_RESET)"; \
 	fi
-	@echo "$(C_BLUE)推送 ainative-backend -> test...$(C_RESET)"
-	@OUT=$$(git subtree push --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git test 2>&1); \
+	@echo "$(C_BLUE)推送 frontend -> develop...$(C_RESET)"
+	@OUT=$$(git subtree push --prefix=frontend git@gitlab.yc345.tv:dengyangwu/frontend.git develop 2>&1); \
 	CODE=$$?; \
-	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-backend 无变更$(C_RESET)"; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)frontend 无变更$(C_RESET)"; \
 	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else echo "$(C_GREEN)✓ ainative-backend 已推送到 test$(C_RESET)"; fi
-	@echo "$(C_BLUE)推送 ainative-shadow -> develop...$(C_RESET)"
-	@OUT=$$(git subtree push --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git develop 2>&1); \
-	CODE=$$?; \
-	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-shadow 无变更$(C_RESET)"; \
-	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else echo "$(C_GREEN)✓ ainative-shadow 已推送到 develop$(C_RESET)"; fi
-	@echo "$(C_BLUE)推送 ainative-app -> develop...$(C_RESET)"
-	@OUT=$$(git subtree push --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop 2>&1); \
-	CODE=$$?; \
-	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-app 无变更$(C_RESET)"; \
-	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else echo "$(C_GREEN)✓ ainative-app 已推送到 develop$(C_RESET)"; fi
+	else echo "$(C_GREEN)✓ frontend 已推送到 develop$(C_RESET)"; fi
 	@echo ""
 	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库推送完成$(C_RESET)"
 
@@ -328,12 +296,12 @@ help:
 	@echo ""
 	@echo ""
 	@echo "$(C_YELLOW)推送到指定分支$(C_RESET)"
-	@echo "  $(C_GREEN)make subtree-push-backend feature/xxx$(C_RESET)  推送到 feature 分支"
+	@echo "  $(C_GREEN)make subtree-push-frontend feature/xxx$(C_RESET)  推送到 feature 分支"
 	@echo ""
 	@echo "$(C_YELLOW)Test 分支工作流$(C_RESET)"
-	@echo "  $(C_GREEN)make branch-test$(C_RESET)            切换到 test 并拉取子仓库 (backend=test, shadow/app=develop)"
-	@echo "  $(C_GREEN)make subtree-pull-test$(C_RESET)      拉取子仓库 (backend=test, shadow/app=develop)"
-	@echo "  $(C_GREEN)make subtree-push-test$(C_RESET)      推送 test 到子仓库 (backend=test, shadow/app=develop)"
+	@echo "  $(C_GREEN)make branch-test$(C_RESET)            切换到 test 并拉取子仓库 (frontend -> develop)"
+	@echo "  $(C_GREEN)make subtree-pull-test$(C_RESET)      拉取子仓库 (frontend -> develop)"
+	@echo "  $(C_GREEN)make subtree-push-test$(C_RESET)      推送 test 到子仓库 (frontend -> develop)"
 	@echo "  $(C_GREEN)make merge-to-test$(C_RESET)          合并当前分支到 test"
 	@echo "  $(C_GREEN)make push-test$(C_RESET)  切换 test→拉取子仓→合并当前分支→推送主仓和子仓"
 	@echo ""
