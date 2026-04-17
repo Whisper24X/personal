@@ -9,6 +9,7 @@ import { Task } from '../tasks/domain/task';
 import { TaskNode } from '../tasks/domain/task-node';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
 import { AgentExecutionConfigResolverService } from './agent-execution-config-resolver.service';
+import { summarizeAgentCliArgsForLog } from './runner-agent-cli-args-log';
 import {
   AgentExecutionConfig,
   AgentExecutionContext,
@@ -255,7 +256,9 @@ export class RunnerAgentExecutionService {
         containerRef: containerExecRef,
         command: config.command,
         args: spawnArgs,
-        cwd: this.containerExecutionConfig!.getRunnerWorkspace(),
+        cwd:
+          config.runnerContainerCwd ??
+          this.containerExecutionConfig!.getRunnerWorkspace(),
         env: this.buildDockerExecEnvironment(config.env),
       });
       const activeExecution: ActiveAgentExecution = {
@@ -694,7 +697,7 @@ export class RunnerAgentExecutionService {
       ...executionContext,
       adapter: config.adapter,
       command: config.command,
-      args: config.args,
+      args: summarizeAgentCliArgsForLog(config.args),
       cwd: config.cwd,
       promptLength: prompt.length,
       envKeys: Object.keys(mergedEnv)
@@ -756,7 +759,7 @@ export class RunnerAgentExecutionService {
       ...executionContext,
       adapter: config.adapter,
       command: config.command,
-      args: config.args,
+      args: summarizeAgentCliArgsForLog(config.args),
       cwd: config.cwd,
       durationMs,
       interrupted: interrupted ?? false,

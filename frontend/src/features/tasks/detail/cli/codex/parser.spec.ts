@@ -224,4 +224,65 @@ describe('parseCodexMessages', () => {
       }),
     ])
   })
+
+  it('parses mcp_tool_call item.started into standalone MCP card metadata', () => {
+    const entries = parseCodexMessages([
+      createMessage({
+        type: 'item.started',
+        item: {
+          id: 'call_mcp_1',
+          type: 'mcp_tool_call',
+          server: 'figma',
+          tool: 'list_pages',
+          arguments: { file_key: 'abc123' },
+        },
+      }),
+    ])
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        type: 'system_message',
+        content: 'MCP · figma → list_pages\n{"file_key":"abc123"}',
+        metadata: expect.objectContaining({
+          codexCardType: 'mcp_tool_call',
+          codexItemPhase: 'started',
+          mcpServer: 'figma',
+          mcpTool: 'list_pages',
+          mcpArguments: { file_key: 'abc123' },
+        }),
+      }),
+    ])
+  })
+
+  it('parses mcp_tool_call item.completed with text result content', () => {
+    const entries = parseCodexMessages([
+      createMessage({
+        type: 'item.completed',
+        item: {
+          id: 'call_mcp_2',
+          type: 'mcp_tool_call',
+          server: 'figma',
+          tool: 'list_pages',
+          status: 'completed',
+          result: {
+            content: [{ type: 'text', text: 'page-1, page-2' }],
+          },
+        },
+      }),
+    ])
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        type: 'system_message',
+        content: 'MCP · figma → list_pages · completed\npage-1, page-2',
+        metadata: expect.objectContaining({
+          codexCardType: 'mcp_tool_call',
+          codexItemPhase: 'completed',
+          mcpServer: 'figma',
+          mcpTool: 'list_pages',
+          mcpStatus: 'completed',
+        }),
+      }),
+    ])
+  })
 })

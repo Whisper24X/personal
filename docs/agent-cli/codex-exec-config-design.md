@@ -109,6 +109,16 @@ key=value
 
 用于把额外环境变量注入 Codex 子进程。
 
+### 3.4 Runner 任务与 MCP
+
+`config_overrides` 的每一项都是传给 `codex exec` 的 `-c` 参数，格式为 `key=value` 的**内联配置片段**（与全局/项目 `config.toml` 里 `[mcp_servers]` 表项等价，见 [Codex MCP 文档](https://developers.openai.com/codex/mcp)）。
+
+**推荐架构（任务容器）**：在 **Docker 宿主机**运行 MCP（或监听在宿主机可路由地址），通过 **`Project.configJson.containerRuntime.env`** 把 `http://host.docker.internal:…` 等 URL 注入任务容器（与 Postgres/Redis 连接串同类）。Bridge 模式 Runner 默认会添加 `host.docker.internal` → 宿主机网关（见 [`task-container-execution-boundaries.md`](../../backend/docs/task-container-execution-boundaries.md)）。避免在配置里写死仅容器内可达的 `http://127.0.0.1:…` 去访问宿主机上的 MCP，除非 Runner `networkMode` 为 `host`。
+
+可复制示例（含 `@bytebase/dbhub` HTTP 与 `.codex/config.toml`）：见 [codex-runner-mcp-example.md](./codex-runner-mcp-example.md)。
+
+**可选**：仓库内 `.codex/config.toml` 仍可用于模型与本地路径；若 `.codex` 在 monorepo 子目录，配合 **`runnerWorkingSubdirectory`**。后端仍会对 Agent 工具 raw 里指向 **worktree 内文件**的宿主机绝对路径做 `/workspace/...` 改写（含 `config_overrides` 行内路径），见 [`rewriteRunnerWorktreeAbsolutePaths`](../../backend/src/agent-execution/runner-platform-mcp-augmentation.ts)。
+
 ## 4. 默认值
 
 前端新建 Codex 配置时，会自动填入以下默认值：

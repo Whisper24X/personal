@@ -185,6 +185,107 @@ function createCodexToolUseFromItem(item: RecordLike, timestamp: number, idBase:
   }
 }
 
+const MCP_DISPLAY_MAX = 500
+
+function truncateForDisplay(value: string, max = MCP_DISPLAY_MAX): string {
+  if (value.length <= max) return value
+  return `${value.slice(0, max)}…`
+}
+
+function summarizeMcpArguments(args: unknown): string | undefined {
+  if (args === undefined || args === null) return undefined
+  try {
+    const s = typeof args === 'string' ? args : JSON.stringify(args)
+    return truncateForDisplay(s, 240)
+  } catch {
+    return undefined
+  }
+}
+
+function summarizeMcpResult(result: unknown): string | undefined {
+  const r = asRecord(result)
+  if (!r) return undefined
+  const content = r.content
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      const b = asRecord(block)
+      if (!b || getString(b.type) !== 'text') continue
+      const text = getString(b.text)
+      if (text) return truncateForDisplay(text)
+    }
+  }
+  const structured = r.structured_content ?? r.structuredContent
+  if (structured !== undefined) {
+    try {
+      return truncateForDisplay(JSON.stringify(structured), MCP_DISPLAY_MAX)
+    } catch {
+      return undefined
+    }
+  }
+  const fallback = stringifyContent(r)
+  return fallback ? truncateForDisplay(fallback) : undefined
+}
+
+function createCodexMcpToolCallEntry(
+  item: RecordLike,
+  timestamp: number,
+  normalizedType: string | undefined,
+  idBase: string,
+): NormalizedEntry | null {
+  const server = getString(item.server) || 'mcp'
+  const tool = getString(item.tool) || 'tool'
+  const argsSummary = summarizeMcpArguments(item.arguments)
+  const statusRaw = getString(item.status)?.toLowerCase()
+  const phase = normalizedType?.endsWith('_completed')
+    ? 'completed'
+    : normalizedType?.endsWith('_started')
+      ? 'started'
+      : normalizedType?.endsWith('_updated')
+        ? 'updated'
+        : 'event'
+
+  const errRec = asRecord(item.error)
+  const errMsg = errRec
+    ? getString(errRec.message) || stringifyContent(errRec) || stringifyContent(item.error)
+    : undefined
+
+  let content: string
+  if (phase === 'started') {
+    const argsLine = argsSummary ? `\n${argsSummary}` : ''
+    content = `MCP · ${server} → ${tool}${argsLine}`
+  } else if (phase === 'completed') {
+    const resultSummary = summarizeMcpResult(item.result)
+    const failed = statusRaw === 'failed' || Boolean(errMsg)
+    const body = failed ? errMsg || resultSummary || '(failed)' : resultSummary || '(done)'
+    content = `MCP · ${server} → ${tool} · ${failed ? 'failed' : 'completed'}\n${truncateForDisplay(body, MCP_DISPLAY_MAX)}`
+  } else {
+    const parts = [`MCP · ${server} → ${tool} · ${phase}`]
+    if (argsSummary) parts.push(argsSummary)
+    const rs = summarizeMcpResult(item.result)
+    if (rs) parts.push(rs)
+    if (errMsg) parts.push(errMsg)
+    content = parts.join('\n')
+  }
+
+  const metadata: Record<string, unknown> = {
+    codexCardType: 'mcp_tool_call',
+    codexItemPhase: phase,
+    mcpServer: server,
+    mcpTool: tool,
+    mcpArguments: item.arguments,
+    mcpStatus: statusRaw,
+  }
+  if (errRec) metadata.mcpError = item.error
+
+  return {
+    id: idBase,
+    type: 'system_message',
+    timestamp,
+    content,
+    metadata,
+  }
+}
+
 function extractTodoListItems(item: RecordLike): Array<{ text: string; completed: boolean }> {
   const rawItems = Array.isArray(item.items) ? item.items : []
   return rawItems
@@ -335,6 +436,11 @@ function parseCodexItemEvent(
 
   if (itemType && (itemType.includes('command') || itemType.includes('exec'))) {
     return createCodexCommandEntry(item, timestamp, { isStarted, isCompleted }, idBase)
+  }
+
+  // Must run before `includes('tool')`: `mcp_tool_call` contains the substring "tool".
+  if (itemType === 'mcp_tool_call') {
+    return createCodexMcpToolCallEntry(item, timestamp, normalizedType, idBase)
   }
 
   if (itemType && itemType.includes('tool')) {

@@ -2,6 +2,24 @@
 
 使用 `@modelcontextprotocol/sdk` 的 `Client` 连接 MCP Server（stdio / SSE / HTTP），执行 `listTools` 并统计工具数量。探测时子进程/请求所用的 **环境变量** 与真实控制面执行 Agent CLI 时一致，由 `AgentCliSmokeTestService.buildProbeEnvironmentForAgentToolConfig` 根据所选业务线 Agent 工具配置生成。
 
+**与 Runner 任务的区别**：探测在**宿主机/控制面**进程内执行；任务节点中的 Agent 在 **Docker runner** 内通过 `docker exec` 运行，**MCP 以任务 worktree 内已提交的配置为准**（无单独业务线 MCP 目录挂载）；路径类字段在解析时可能从宿主机 worktree 绝对路径改写为容器 `/workspace/...`（见 `backend/docs/task-container-execution-boundaries.md`）。探测成功不保证 runner 内 stdio/网络环境完全一致。
+
+### 任务 Runner 与「会话 MCP」对照
+
+| 维度 | 本地 MCP 探测（本文） | 任务详情里的容器 Agent（Runner） |
+|------|----------------------|-----------------------------------|
+| 进程位置 | Nest 宿主机 / 控制面 | 任务容器内 `docker exec` → 各 CLI |
+| MCP 配置来源 | 项目本地 MCP 文件 + 所选 Agent 工具配置（用于环境对齐） | **推荐**：在 **Docker 宿主机**跑 MCP（stdio 转监听或独立 HTTP/SSE），通过 **`containerRuntime.env` 注入 URL**（与 Postgres/Redis 同类映射）；可选 worktree 内 `.codex` 仅当文件与 cwd 在挂载内可用 |
+| 与「聊天里 list_mcp_resources」的关系 | **无关** | **无关**；任务内以 CLI + 可达 URL 为准 |
+
+### 任务详情聊天里「没有 list_pages」说明什么
+
+- **任务详情里的模型**所看到的工具列表，由 **产品聊天宿主**在会话建立时下发，**不会**因为 Runner 里 Codex 已加载 chrome-devtools MCP 就自动出现 `list_pages` 等同名工具。
+- **验证 Runner 内 MCP 是否生效**：看 **Runner 日志**与 **CLI 的 JSON 输出**，不要以任务页聊天侧是否列出工具为准（详见 `backend/docs/task-container-execution-boundaries.md` 中 **Task detail UI chat vs container Agent CLI MCP**）。
+- **若必须让任务聊天也能调 MCP**：属于 **会话网关 / 前端** 的产品需求（桥接或透传），本仓库 Runner 配置无法单独实现。
+
+排查「任务里 MCP 不生效」时：确认 **bridge** 下 `host.docker.internal` 是否启用（默认注入，见 `backend/docs/task-container-execution-boundaries.md`）、**MCP 是否监听在宿主机可访问地址**、以及 Agent 配置里的 URL 是否仍写成容器内 `127.0.0.1`。
+
 ---
 
 ## 目标

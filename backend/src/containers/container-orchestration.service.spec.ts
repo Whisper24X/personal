@@ -1,6 +1,9 @@
+import path from 'node:path';
 import { TaskMode } from '../tasks/dto/task-mode.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { ContainerOrchestrationService } from './container-orchestration.service';
+
+process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
 
 describe('ContainerOrchestrationService', () => {
   const createTask = (status: TaskStatus) => ({
@@ -62,6 +65,7 @@ describe('ContainerOrchestrationService', () => {
       isDockerMode: jest.fn().mockReturnValue(true),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
     };
     const isolatedRunner = {
@@ -116,6 +120,7 @@ describe('ContainerOrchestrationService', () => {
       isDockerMode: jest.fn().mockReturnValue(true),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
       resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
     };
     const isolatedRunner = {
@@ -236,6 +241,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(90000),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
       getRunnerExposePortRange: jest
         .fn()
         .mockReturnValue({ start: 38080, end: 38080 }),
@@ -355,6 +361,7 @@ describe('ContainerOrchestrationService', () => {
       expect.objectContaining({
         containerName: 'ainative-task-task-1',
         image: 'ainative/runner:project-1',
+        readOnlyBindMounts: [],
         env: {
           GITLAB_TOKEN: 'token-value',
           PORT: '4173',
@@ -407,6 +414,7 @@ describe('ContainerOrchestrationService', () => {
             containerPort: 4173,
           },
         ],
+        addHostDockerInternalGateway: true,
       }),
     );
     expect(slotRepository.updateContainerRuntimeByTaskId).toHaveBeenCalledWith(
@@ -449,6 +457,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
       getRunnerExposePortRange: jest
         .fn()
         .mockReturnValue({ start: 38080, end: 38080 }),
@@ -542,6 +551,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
     };
     const isolatedRunner = {
       inspect: jest.fn().mockResolvedValue({
@@ -630,6 +640,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
     };
     const isolatedRunner = {
       inspect: jest.fn().mockResolvedValue(null),
@@ -713,6 +724,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
     };
     const isolatedRunner = {
       inspect: jest.fn().mockResolvedValue({
@@ -796,6 +808,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
     };
     const isolatedRunner = {
       inspect: jest.fn().mockResolvedValue({
@@ -882,6 +895,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
     };
     const isolatedRunner = {
       inspect: jest.fn().mockResolvedValue({
@@ -969,6 +983,7 @@ describe('ContainerOrchestrationService', () => {
       getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
       getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
       getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
     };
     const isolatedRunner = {
       inspect: jest.fn().mockResolvedValue({

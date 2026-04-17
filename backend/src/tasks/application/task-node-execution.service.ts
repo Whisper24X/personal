@@ -324,6 +324,10 @@ export class TaskNodeExecutionService {
               gitBaseBranch: runtimeContext.gitBaseBranch,
               gitWorktree: runtimeContext.gitWorktree,
               gitWorktreePath: runtimeContext.worktreePath,
+              executionPlane: 'runner',
+              runnerWorkspaceMount:
+                this.containerExecutionConfig?.getRunnerWorkspace() ??
+                '/workspace',
             }
           : undefined,
         callbacks: {

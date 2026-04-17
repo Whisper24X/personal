@@ -29,6 +29,11 @@ export type RunnerManagedVolumeMount = {
   labels?: Record<string, string>;
 };
 
+export type RunnerReadOnlyBindMount = {
+  hostPath: string;
+  containerPath: string;
+};
+
 const RUNNER_MANAGED_VOLUME_LABEL = 'ainative.runner-managed';
 const RUNNER_MANAGED_VOLUME_CONTAINER_LABEL = 'ainative.container-name';
 
@@ -47,17 +52,28 @@ export class IsolatedRunnerContainerService {
     resourceLimits?: { memoryMb?: number; pidsLimit?: number };
     sharedVolumeMounts?: RunnerNamedVolumeConfig[];
     managedVolumeMounts?: RunnerManagedVolumeMount[];
+    /** Extra host:container bind mounts (optional), mounted read-only. */
+    readOnlyBindMounts?: RunnerReadOnlyBindMount[];
     readinessProbeUrl?: string | null;
     startTimeoutMs?: number;
     platform?: RunnerPlatform | null;
     networkMode?: RunnerNetworkMode;
     publishedPorts?: PublishedPortMapping[];
+    /**
+     * When `networkMode` is `bridge`, add `--add-host host.docker.internal:host-gateway`
+     * so the task container can reach processes on the Docker host (MCP, DB, Redis URLs).
+     * Set to `false` to skip.
+     */
+    addHostDockerInternalGateway?: boolean;
   }): Promise<{ containerId: string; publishedPorts: PublishedPortMapping[] }> {
     const startTimeoutMs = params.startTimeoutMs ?? 30_000;
     const networkMode = params.networkMode ?? 'host';
     const publishedPorts =
       networkMode === 'bridge' ? (params.publishedPorts ?? []) : [];
     const managedVolumeMounts = params.managedVolumeMounts ?? [];
+    const readOnlyBindMounts = params.readOnlyBindMounts ?? [];
+    const addHostGateway =
+      networkMode === 'bridge' && params.addHostDockerInternalGateway !== false;
     this.logger.log(
       `runner_container_start ${JSON.stringify({
         containerName: params.containerName,
@@ -66,6 +82,7 @@ export class IsolatedRunnerContainerService {
         workspaceMount: params.workspaceMount,
         command: params.command ?? ['sleep', 'infinity'],
         sharedVolumeMounts: params.sharedVolumeMounts ?? [],
+        readOnlyBindMounts,
         managedVolumeMounts,
         cpuLimit: params.cpuLimit ?? null,
         resourceLimits: params.resourceLimits ?? {},
@@ -74,6 +91,7 @@ export class IsolatedRunnerContainerService {
         platform: params.platform ?? null,
         networkMode,
         publishedPorts,
+        addHostDockerInternalGateway: addHostGateway,
       })}`,
     );
     await this.ensureManagedVolumes(managedVolumeMounts);
@@ -86,9 +104,15 @@ export class IsolatedRunnerContainerService {
       ...(params.platform ? ['--platform', params.platform] : []),
       '--network',
       networkMode,
+      ...(addHostGateway
+        ? ['--add-host', 'host.docker.internal:host-gateway']
+        : []),
       '-v',
       `${params.worktreePath}:${params.workspaceMount}`,
     ];
+    for (const bind of readOnlyBindMounts) {
+      args.push('-v', `${bind.hostPath}:${bind.containerPath}:ro`);
+    }
     for (const mapping of publishedPorts) {
       args.push(
         '-p',

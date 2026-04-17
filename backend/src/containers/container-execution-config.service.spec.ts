@@ -143,6 +143,18 @@ describe('ContainerExecutionConfigService', () => {
     expect(service.getRunnerEnv()).toEqual({});
   });
 
+  it('should default shouldAddHostDockerInternalGateway to true', () => {
+    const service = createService({});
+    expect(service.shouldAddHostDockerInternalGateway()).toBe(true);
+  });
+
+  it('should disable host.docker.internal mapping when env is false', () => {
+    const service = createService({
+      AINATIVE_RUNNER_ADD_HOST_DOCKER_INTERNAL: 'false',
+    });
+    expect(service.shouldAddHostDockerInternalGateway()).toBe(false);
+  });
+
   it('should only read project-level env overrides while runtime policy stays global', () => {
     const service = createService({
       AINATIVE_TASK_SANDBOX_PROFILE: 'runner-only',
