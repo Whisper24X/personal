@@ -1,2 +1,3 @@
 # 故意用于演示合并冲突：main 侧内容
-CONFLICT_SIDE=main
+CONFLICT_SIDE=from-main
+
