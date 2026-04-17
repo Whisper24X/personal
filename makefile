@@ -20,7 +20,7 @@
 # ==============================================================================
 
 # Subtree 配置（格式：别名|目录|仓库地址|分支）
-SUBTREES := frontend|frontend|git@gitlab.yc345.tv:dengyangwu/frontend.git|main
+SUBTREES := frontend|frontend|git@gitlab.yc345.tv:dengyangwu/frontend.git|test
 
 # 颜色
 C_RESET  := \033[0m
