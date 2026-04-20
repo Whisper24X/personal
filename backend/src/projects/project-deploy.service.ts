@@ -7,6 +7,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
@@ -20,11 +21,14 @@ export class ProjectDeployService {
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly deployLocks = new Map<string, string>();
 
+  private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
+
   constructor(
     private readonly projectAccessService: ProjectAccessService,
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
     private readonly taskRepository: TaskRepository,
     private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
+    private readonly configService: ConfigService,
   ) {}
 
   async getDeployInfo(
@@ -142,15 +146,40 @@ export class ProjectDeployService {
           });
         }
 
-        await this.runCommand('git', ['-C', mainRepoPath, 'fetch', '--all']);
+        const mainBranch = project.defaultBranch || 'main';
 
-        const currentMainBranch = await this.resolveCurrentBranch(mainRepoPath);
+        const fetch = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'fetch',
+          '--all',
+        ]);
+        if (!fetch.success) {
+          emit('stdout', { text: '[pre-deploy] git fetch 失败，部署中止\n' });
+          throw new BadRequestException('git fetch 失败，请检查网络或仓库配置');
+        }
+
+        const checkout = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'checkout',
+          mainBranch,
+        ]);
+        if (!checkout.success) {
+          emit('stdout', {
+            text: `[pre-deploy] checkout ${mainBranch} 失败，部署中止\n`,
+          });
+          throw new BadRequestException(
+            `无法切换到主分支 ${mainBranch}，请检查分支是否存在`,
+          );
+        }
+
         const reset = await this.runCommand('git', [
           '-C',
           mainRepoPath,
           'reset',
           '--hard',
-          `origin/${currentMainBranch}`,
+          `origin/${mainBranch}`,
         ]);
         if (!reset.success) {
           emit('stdout', {
@@ -158,9 +187,17 @@ export class ProjectDeployService {
           });
           throw new BadRequestException('主仓库状态异常，请联系管理员');
         }
+        await this.runCommand('git', ['-C', mainRepoPath, 'clean', '-fd']);
       }
 
       const originalBranch = await this.resolveCurrentBranch(execCwd);
+      const gitlabUsername =
+        this.configService.get<string>('GITLAB_USERNAME', { infer: true }) ??
+        'oauth2';
+      const gitlabToken = this.configService.get<string>('GITLAB_TOKEN', {
+        infer: true,
+      });
+
       const execEnv: NodeJS.ProcessEnv = {
         ...process.env,
         FORCE_COLOR: '0',
@@ -169,6 +206,14 @@ export class ProjectDeployService {
         GIT_COMMITTER_NAME: gitName,
         GIT_COMMITTER_EMAIL: gitEmail,
       };
+
+      if (gitlabToken) {
+        const encodedUsername = encodeURIComponent(gitlabUsername);
+        const encodedToken = encodeURIComponent(gitlabToken);
+        execEnv.GIT_CONFIG_COUNT = '1';
+        execEnv.GIT_CONFIG_KEY_0 = `url.https://${encodedUsername}:${encodedToken}@${this.gitlabHttpAuthHost}/.insteadOf`;
+        execEnv.GIT_CONFIG_VALUE_0 = `git@${this.gitlabHttpAuthHost}:`;
+      }
       if (isDefaultDeploy && featureBranch) {
         execEnv.BRANCH = featureBranch;
       }
@@ -272,6 +317,51 @@ export class ProjectDeployService {
 
       emit('deploy_end', { exitCode, aborted, timedOut });
     } finally {
+      if (isDefaultDeploy) {
+        const mainBranch = project.defaultBranch || 'main';
+        const ft = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'fetch',
+          '--all',
+        ]);
+        if (!ft.success) {
+          this.logger.warn(`[deploy-cleanup] fetch --all failed: ${ft.stderr}`);
+        }
+        const co = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'checkout',
+          mainBranch,
+        ]);
+        if (!co.success) {
+          this.logger.warn(
+            `[deploy-cleanup] checkout ${mainBranch} failed: ${co.stderr}`,
+          );
+        } else {
+          const rs = await this.runCommand('git', [
+            '-C',
+            mainRepoPath,
+            'reset',
+            '--hard',
+            `origin/${mainBranch}`,
+          ]);
+          if (!rs.success) {
+            this.logger.warn(
+              `[deploy-cleanup] reset --hard origin/${mainBranch} failed: ${rs.stderr}`,
+            );
+          }
+        }
+        const cl = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'clean',
+          '-fd',
+        ]);
+        if (!cl.success) {
+          this.logger.warn(`[deploy-cleanup] clean -fd failed: ${cl.stderr}`);
+        }
+      }
       this.deployLocks.delete(lockKey);
     }
   }

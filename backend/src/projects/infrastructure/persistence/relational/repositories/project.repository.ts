@@ -9,6 +9,7 @@ import {
   readTypeOrmPoolSnapshot,
 } from '../../../../../observability/repository-diagnostics';
 import { Project } from '../../../../domain/project';
+import { RepositoryProvisioningStatus } from '../../../../domain/repository-provisioning-status.enum';
 import { ProjectRepository } from '../../project.repository';
 import { ProjectEntity } from '../entities/project.entity';
 import { ProjectMapper } from '../mappers/project.mapper';
@@ -166,6 +167,22 @@ export class ProjectRelationalRepository implements ProjectRepository {
     });
 
     return entity ? ProjectMapper.toDomain(entity) : null;
+  }
+
+  async findByRepositoryProvisioningStatus(
+    status: RepositoryProvisioningStatus,
+  ): Promise<Project[]> {
+    const entities = await this.projectRepository.find({
+      where: {
+        repositoryProvisioningStatus: status,
+        deletedAt: IsNull(),
+      },
+      order: {
+        createdAt: 'ASC',
+      },
+    });
+
+    return entities.map((entity) => ProjectMapper.toDomain(entity));
   }
 
   async findAllWithPagination({

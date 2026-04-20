@@ -67,6 +67,9 @@ export function mapProjectItem(project: Project): ProjectItem {
     description: project.description ?? null,
     gitUrl: project.gitUrl,
     defaultBranch: project.defaultBranch,
+    repositoryProvisioningStatus: project.repositoryProvisioningStatus ?? 'ready',
+    repositoryProvisioningError: project.repositoryProvisioningError ?? null,
+    repositoryProvisionedAt: project.repositoryProvisionedAt ?? null,
     configJson: project.configJson ?? null,
   }
 }

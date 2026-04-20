@@ -1,4 +1,5 @@
 import { Project } from '../../../../domain/project';
+import { RepositoryProvisioningStatus } from '../../../../domain/repository-provisioning-status.enum';
 import { ProjectEntity } from '../entities/project.entity';
 
 export class ProjectMapper {
@@ -11,6 +12,10 @@ export class ProjectMapper {
     domainEntity.gitUrl = raw.gitUrl;
     domainEntity.defaultBranch = raw.defaultBranch;
     domainEntity.configJson = raw.configJson;
+    domainEntity.repositoryProvisioningStatus =
+      raw.repositoryProvisioningStatus;
+    domainEntity.repositoryProvisioningError = raw.repositoryProvisioningError;
+    domainEntity.repositoryProvisionedAt = raw.repositoryProvisionedAt;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
@@ -31,6 +36,13 @@ export class ProjectMapper {
     persistenceEntity.gitUrl = domainEntity.gitUrl;
     persistenceEntity.defaultBranch = domainEntity.defaultBranch;
     persistenceEntity.configJson = domainEntity.configJson;
+    persistenceEntity.repositoryProvisioningStatus =
+      domainEntity.repositoryProvisioningStatus ??
+      RepositoryProvisioningStatus.Ready;
+    persistenceEntity.repositoryProvisioningError =
+      domainEntity.repositoryProvisioningError;
+    persistenceEntity.repositoryProvisionedAt =
+      domainEntity.repositoryProvisionedAt;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     persistenceEntity.deletedAt = domainEntity.deletedAt;

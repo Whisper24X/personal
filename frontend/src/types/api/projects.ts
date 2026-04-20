@@ -5,6 +5,9 @@ export type Project = {
   description?: string | null
   gitUrl: string
   defaultBranch: string
+  repositoryProvisioningStatus?: 'pending' | 'ready' | 'failed'
+  repositoryProvisioningError?: string | null
+  repositoryProvisionedAt?: string | null
   configJson?: Record<string, unknown> | null
   createdAt?: string
   updatedAt?: string

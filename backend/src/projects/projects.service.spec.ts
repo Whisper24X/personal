@@ -1,7 +1,11 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import path from 'path';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { Project } from './domain/project';
+import { RepositoryProvisioningStatus } from './domain/repository-provisioning-status.enum';
 import { ProjectsService } from './projects.service';
 
 process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
@@ -30,6 +34,9 @@ const createProject = (): Project => ({
   gitUrl: 'git@example.com:group/ainative.git',
   defaultBranch: 'main',
   configJson: {},
+  repositoryProvisioningStatus: RepositoryProvisioningStatus.Ready,
+  repositoryProvisioningError: null,
+  repositoryProvisionedAt: new Date(),
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -39,6 +46,7 @@ const createProjectsService = () => {
   const projectRepository = {
     findById: jest.fn(),
     findByBusinessLineIdAndName: jest.fn(),
+    findByRepositoryProvisioningStatus: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
@@ -103,6 +111,10 @@ const createProjectsService = () => {
     checkoutBranch: jest.fn(),
     syncRunnerConfigBackup: jest.fn(),
   };
+  const projectRepositoryProvisioningService = {
+    enqueue: jest.fn(),
+    markPendingAndEnqueue: jest.fn(),
+  };
 
   const service = new ProjectsService(
     projectRepository as never,
@@ -117,6 +129,7 @@ const createProjectsService = () => {
     configService as never,
     projectAccessService as never,
     projectRepositoryWorkspaceService as never,
+    projectRepositoryProvisioningService as never,
   );
 
   return {
@@ -131,6 +144,7 @@ const createProjectsService = () => {
     accessService,
     projectAccessService,
     projectRepositoryWorkspaceService,
+    projectRepositoryProvisioningService,
   };
 };
 
@@ -158,19 +172,25 @@ describe('ProjectsService', () => {
       projectRepository,
       projectMemberRepository,
       businessLineRepository,
-      projectRepositoryWorkspaceService,
+      projectRepositoryProvisioningService,
     } = createProjectsService();
     const serviceAny = service as any;
     const dto = createProjectDto();
     const currentUser = createCurrentUser();
     const project = createProject();
+    const expectedCreatedProject = {
+      ...project,
+      repositoryProvisioningStatus: RepositoryProvisioningStatus.Pending,
+      repositoryProvisioningError: null,
+      repositoryProvisionedAt: null,
+    };
 
     businessLineRepository.findById.mockResolvedValue({
       id: dto.businessLineId,
       name: 'BL',
     });
     projectRepository.findByBusinessLineIdAndName.mockResolvedValue(null);
-    projectRepository.create.mockResolvedValue(project);
+    projectRepository.create.mockResolvedValue(expectedCreatedProject);
     projectMemberRepository.findByProjectIdAndUserId.mockResolvedValue(null);
     projectMemberRepository.create.mockResolvedValue({
       id: 'member-1',
@@ -182,20 +202,18 @@ describe('ProjectsService', () => {
     const validateGitSpy = jest
       .spyOn(serviceAny, 'validateGitRepositoryAccessible')
       .mockResolvedValue(undefined);
-    projectRepositoryWorkspaceService.ensureProjectRepository.mockResolvedValue(
-      '/tmp/ainative-project-repo',
-    );
-    projectRepositoryWorkspaceService.syncRunnerConfigBackup.mockResolvedValue(
-      undefined,
-    );
-
     const result = await service.create(dto, currentUser);
 
-    expect(result).toEqual(project);
+    expect(result).toEqual(expectedCreatedProject);
     expect(validateGitSpy).toHaveBeenCalledWith(dto.gitUrl);
-    expect(
-      projectRepositoryWorkspaceService.ensureProjectRepository,
-    ).toHaveBeenCalledWith(project);
+    expect(projectRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repositoryProvisioningStatus: RepositoryProvisioningStatus.Pending,
+      }),
+    );
+    expect(projectRepositoryProvisioningService.enqueue).toHaveBeenCalledWith(
+      expectedCreatedProject.id,
+    );
     expect(projectMemberRepository.create).toHaveBeenCalledTimes(1);
   });
 
@@ -224,13 +242,13 @@ describe('ProjectsService', () => {
     expect(projectRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should rollback project creation when repository sync fails', async () => {
+  it('should rollback project creation when owner role initialization fails', async () => {
     const {
       service,
       projectRepository,
       projectMemberRepository,
       businessLineRepository,
-      projectRepositoryWorkspaceService,
+      projectRepositoryProvisioningService,
     } = createProjectsService();
     const serviceAny = service as any;
     const dto = createProjectDto();
@@ -245,19 +263,18 @@ describe('ProjectsService', () => {
     projectRepository.create.mockResolvedValue(project);
     projectRepository.remove.mockResolvedValue(undefined);
     projectMemberRepository.findByProjectIdAndUserId.mockResolvedValue(null);
+    projectMemberRepository.create.mockRejectedValue(
+      new Error('create member failed'),
+    );
 
     jest
       .spyOn(serviceAny, 'validateGitRepositoryAccessible')
       .mockResolvedValue(undefined);
-    projectRepositoryWorkspaceService.ensureProjectRepository.mockRejectedValue(
-      new Error('git fetch failed'),
-    );
-
     await expect(service.create(dto, currentUser)).rejects.toBeInstanceOf(
-      BadRequestException,
+      InternalServerErrorException,
     );
     expect(projectRepository.remove).toHaveBeenCalledWith(project.id);
-    expect(projectMemberRepository.create).not.toHaveBeenCalled();
+    expect(projectRepositoryProvisioningService.enqueue).not.toHaveBeenCalled();
   });
 
   it('should forward explicit repository sync options', async () => {

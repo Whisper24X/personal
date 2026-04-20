@@ -65,6 +65,7 @@ export class IsolatedRunnerContainerService {
      * Set to `false` to skip.
      */
     addHostDockerInternalGateway?: boolean;
+    repositoryGitPath?: string;
   }): Promise<{ containerId: string; publishedPorts: PublishedPortMapping[] }> {
     const startTimeoutMs = params.startTimeoutMs ?? 30_000;
     const networkMode = params.networkMode ?? 'host';
@@ -109,6 +110,9 @@ export class IsolatedRunnerContainerService {
         : []),
       '-v',
       `${params.worktreePath}:${params.workspaceMount}`,
+      ...(params.repositoryGitPath
+        ? ['-v', `${params.repositoryGitPath}:${params.repositoryGitPath}:ro`]
+        : []),
     ];
     for (const bind of readOnlyBindMounts) {
       args.push('-v', `${bind.hostPath}:${bind.containerPath}:ro`);

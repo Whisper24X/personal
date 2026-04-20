@@ -5,6 +5,8 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { createServer } from 'net';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { Project } from '../projects/domain/project';
 import { Task } from '../tasks/domain/task';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
@@ -539,6 +541,9 @@ export class ContainerOrchestrationService
               }
             : {}),
         };
+        const repositoryGitPath = await this.resolveRepositoryGitPath(
+          params.worktreePath,
+        );
         const result = await this.isolatedRunner.run({
           containerName: params.containerName,
           image: params.runnerImage,
@@ -566,6 +571,7 @@ export class ContainerOrchestrationService
           publishedPorts,
           addHostDockerInternalGateway:
             this.config.shouldAddHostDockerInternalGateway(params.project),
+          repositoryGitPath,
         });
         const mapping = result.publishedPorts[0];
         return {
@@ -854,6 +860,25 @@ export class ContainerOrchestrationService
 
   private resolvePreviewConfig(project: Project) {
     return this.runnerOrchestration?.resolvePreviewConfig(project) ?? null;
+  }
+
+  private async resolveRepositoryGitPath(
+    worktreePath: string,
+  ): Promise<string | undefined> {
+    try {
+      const content = await fs.readFile(
+        path.join(worktreePath, '.git'),
+        'utf-8',
+      );
+      const match = content.match(/^gitdir:\s*(.+)$/m);
+      if (!match) return undefined;
+      // gitdir points to e.g. /repo/.git/worktrees/wk-xxx
+      // Go up two levels to get the main .git directory: /repo/.git
+      return path.dirname(path.dirname(match[1].trim()));
+    } catch {
+      // .git is a directory (this is the main repo, not a worktree) or unreadable
+      return undefined;
+    }
   }
 }
 
