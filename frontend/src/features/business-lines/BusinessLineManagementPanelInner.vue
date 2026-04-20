@@ -298,6 +298,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :active-agent-cli-tool-label="vm.activeAgentCliToolLabel"
                 :submitting-agent-tool-config="vm.submittingAgentToolConfig"
                 :deleting-agent-tool-config-id="vm.deletingAgentToolConfigId"
+                :testing-agent-tool-config-id="vm.testingAgentToolConfigId"
                 :supported-cli-tools="SUPPORTED_CLI_TOOLS"
                 :format-date="formatDate"
                 @refresh="vm.loadAgentToolConfigs(vm.activeLineId, vm.activeAgentCliToolId)"
@@ -305,6 +306,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 @edit-config="vm.openEditAgentToolConfig"
                 @set-default="vm.setAgentToolConfigAsDefault"
                 @remove-config="vm.removeAgentToolConfig"
+                @test-config="vm.testAgentToolConfig"
               />
 
               <BlmWorkflowTab

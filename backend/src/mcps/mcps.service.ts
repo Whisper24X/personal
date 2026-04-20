@@ -8,6 +8,10 @@ import path from 'path';
 import { Mcp } from './domain/mcp';
 import { FindAllMcpsDto } from './dto/find-all-mcps.dto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { AccessService } from '../access/access.service';
+import { BusinessLineAgentToolConfigService } from '../business-lines/business-line-agent-tool-config.service';
+import { LocalMcpProbeService } from '../business-lines/local-mcp-probe.service';
+import { LocalMcpProbeResultDto } from '../business-lines/dto/local-mcp-probe-result.dto';
 import { ProjectAccessService } from '../projects/project-access.service';
 import {
   loadProjectLocalMcps,
@@ -22,10 +26,18 @@ import {
 import { ImportProjectLocalMcpsResultDto } from './dto/import-project-local-mcps-result.dto';
 import { ProjectLocalMcpConfigDto } from './dto/project-local-mcp-config.dto';
 import { RemoveProjectLocalMcpDto } from './dto/remove-project-local-mcp.dto';
+import { TestProjectLocalMcpDto } from './dto/test-project-local-mcp.dto';
+import { GitService } from '../git/git.service';
 
 @Injectable()
 export class McpsService {
-  constructor(private readonly projectAccessService: ProjectAccessService) {}
+  constructor(
+    private readonly accessService: AccessService,
+    private readonly projectAccessService: ProjectAccessService,
+    private readonly businessLineAgentToolConfigService: BusinessLineAgentToolConfigService,
+    private readonly localMcpProbeService: LocalMcpProbeService,
+    private readonly gitService: GitService,
+  ) {}
 
   async findAllWithPagination(
     query: FindAllMcpsDto,
@@ -127,6 +139,42 @@ export class McpsService {
     throw new BadRequestException('Current MCP source format is not editable');
   }
 
+  async testProjectLocalMcp(
+    dto: TestProjectLocalMcpDto,
+    currentUser: JwtPayloadType,
+  ): Promise<LocalMcpProbeResultDto> {
+    const project = await this.projectAccessService.assertCanAccessProject(
+      dto.projectId,
+      currentUser,
+    );
+
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      project.businessLineId,
+      'businessLine.agentCli.read',
+    );
+
+    const local = await this.getProjectLocalMcpConfig(
+      {
+        projectId: dto.projectId,
+        name: dto.name,
+        sourcePath: dto.sourcePath,
+      },
+      currentUser,
+    );
+
+    const agentToolConfig =
+      await this.businessLineAgentToolConfigService.getAgentToolConfigForBusinessLine(
+        project.businessLineId,
+        dto.agentToolConfigId,
+      );
+
+    return this.localMcpProbeService.probeWithResolvedLocal({
+      agentToolConfig,
+      local,
+    });
+  }
+
   async importProjectLocalMcps(
     importProjectLocalMcpsDto: ImportProjectLocalMcpsDto,
     currentUser: JwtPayloadType,
@@ -189,6 +237,13 @@ export class McpsService {
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, `${JSON.stringify(payload, null, 2)}\n`);
 
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [targetPath],
+        'add mcp',
+      );
+
       return {
         importedCount,
         overwrittenCount,
@@ -226,6 +281,13 @@ export class McpsService {
       const nextContent = this.upsertTomlMcpServers(existingContent, updates);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, nextContent, 'utf-8');
+
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [targetPath],
+        'add mcp',
+      );
 
       return {
         importedCount,
@@ -287,6 +349,12 @@ export class McpsService {
         `${JSON.stringify(payload, null, 2)}\n`,
         'utf-8',
       );
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [sourcePath],
+        'remove mcp',
+      );
       return;
     }
 
@@ -300,6 +368,12 @@ export class McpsService {
 
       const nextContent = this.removeTomlMcpServer(existingContent, mcpName);
       await fs.writeFile(sourcePath, nextContent, 'utf-8');
+      await this.gitService.commitProjectPathsIfDirty(
+        project.id,
+        currentUser,
+        [sourcePath],
+        'remove mcp',
+      );
       return;
     }
 

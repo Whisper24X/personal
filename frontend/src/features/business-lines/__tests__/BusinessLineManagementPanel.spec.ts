@@ -5,7 +5,17 @@ import BusinessLineManagementPanel from '@features/business-lines/BusinessLineMa
 import AgentToolConfigModal from '@features/business-lines/modals/AgentToolConfigModal.vue'
 import McpJsonImportModal from '@features/business-lines/modals/McpJsonImportModal.vue'
 
-const { authApi, businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages, routerPush } = vi.hoisted(() => ({
+const {
+  authApi,
+  businessLinesApi,
+  projectsApi,
+  usersApi,
+  workflowApi,
+  fetchAllPages,
+  routerPush,
+  success,
+  error,
+} = vi.hoisted(() => ({
   authApi: {
     access: vi.fn(),
   },
@@ -55,6 +65,8 @@ const { authApi, businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllP
   },
   fetchAllPages: vi.fn(),
   routerPush: vi.fn(),
+  success: vi.fn(),
+  error: vi.fn(),
 }))
 
 vi.mock('@/api/auth', () => ({
@@ -75,6 +87,13 @@ vi.mock('@/api/users', () => ({
 
 vi.mock('@/api/workflow', () => ({
   workflowApi,
+}))
+
+vi.mock('@app/composables/useMessage', () => ({
+  useMessage: () => ({
+    success,
+    error,
+  }),
 }))
 
 vi.mock('@shared/utils/pagination', () => ({
@@ -418,6 +437,48 @@ describe('BusinessLineManagementPanel', () => {
     expect(wrapper.emitted('request-refresh')).toBeTruthy()
   })
 
+  it('shows backend error when updating project default branch fails', async () => {
+    projectsApi.update.mockRejectedValueOnce(new Error('无法切换到 release 分支'))
+
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const editProjectButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '编辑基础信息')
+
+    expect(editProjectButton).toBeDefined()
+    await editProjectButton!.trigger('click')
+    await flushPromises()
+
+    const projectFormModal = wrapper.findComponent({ name: 'ProjectFormModal' })
+    projectFormModal.vm.$emit('submit', {
+      name: 'Guard Backend',
+      description: 'Main service',
+      gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
+      defaultBranch: 'release',
+    })
+    await flushPromises()
+
+    expect(projectsApi.update).toHaveBeenCalledWith('project-1', {
+      name: 'Guard Backend',
+      description: 'Main service',
+      gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
+      defaultBranch: 'release',
+    })
+    expect(error).toHaveBeenCalledWith('无法切换到 release 分支')
+    expect(wrapper.findComponent({ name: 'ProjectFormModal' }).props('open')).toBe(true)
+  })
+
   it('opens runtime settings modal from the projects tab and saves configJson overrides', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {
@@ -466,9 +527,7 @@ describe('BusinessLineManagementPanel', () => {
         },
       },
     })
-    expect(
-      wrapper.findComponent({ name: 'ProjectRuntimeSettingsModal' }).props('open'),
-    ).toBe(false)
+    expect(wrapper.findComponent({ name: 'ProjectRuntimeSettingsModal' }).props('open')).toBe(false)
     expect(wrapper.emitted('request-refresh')).toBeTruthy()
   })
 
@@ -577,7 +636,9 @@ describe('BusinessLineManagementPanel', () => {
     expect(nameInput.exists()).toBe(true)
     await nameInput.setValue('业务线默认流-更新')
 
-    const workflowForm = wrapper.find('[aria-labelledby="business-line-workflow-create-modal-title"] form')
+    const workflowForm = wrapper.find(
+      '[aria-labelledby="business-line-workflow-create-modal-title"] form',
+    )
     expect(workflowForm.exists()).toBe(true)
     await workflowForm.trigger('submit')
     await flushPromises()
@@ -654,7 +715,9 @@ describe('BusinessLineManagementPanel', () => {
     expect(nameInput.exists()).toBe(true)
     await nameInput.setValue('业务线默认流')
 
-    const workflowForm = wrapper.find('[aria-labelledby="business-line-workflow-create-modal-title"] form')
+    const workflowForm = wrapper.find(
+      '[aria-labelledby="business-line-workflow-create-modal-title"] form',
+    )
     expect(workflowForm.exists()).toBe(true)
     await workflowForm.trigger('submit')
     await flushPromises()
@@ -742,7 +805,9 @@ describe('BusinessLineManagementPanel', () => {
     expect(nameInput.exists()).toBe(true)
     await nameInput.setValue('带 marker 的模板')
 
-    const workflowForm = wrapper.find('[aria-labelledby="business-line-workflow-create-modal-title"] form')
+    const workflowForm = wrapper.find(
+      '[aria-labelledby="business-line-workflow-create-modal-title"] form',
+    )
     expect(workflowForm.exists()).toBe(true)
     await workflowForm.trigger('submit')
     await flushPromises()
@@ -824,7 +889,9 @@ describe('BusinessLineManagementPanel', () => {
     expect(nameInput.exists()).toBe(true)
     await nameInput.setValue('带产物门禁的模板')
 
-    const workflowForm = wrapper.find('[aria-labelledby="business-line-workflow-create-modal-title"] form')
+    const workflowForm = wrapper.find(
+      '[aria-labelledby="business-line-workflow-create-modal-title"] form',
+    )
     expect(workflowForm.exists()).toBe(true)
     await workflowForm.trigger('submit')
     await flushPromises()
@@ -865,16 +932,12 @@ describe('BusinessLineManagementPanel', () => {
     })
     await flushPromises()
 
-    const mcpTab = wrapper
-      .findAll('button')
-      .find((button) => button.text().trim() === 'MCP')
+    const mcpTab = wrapper.findAll('button').find((button) => button.text().trim() === 'MCP')
     expect(mcpTab).toBeDefined()
     await mcpTab!.trigger('click')
     await flushPromises()
 
-    const importButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().trim() === '添加')
+    const importButton = wrapper.findAll('button').find((button) => button.text().trim() === '添加')
     expect(importButton).toBeDefined()
     await importButton!.trigger('click')
     await flushPromises()
@@ -929,9 +992,7 @@ describe('BusinessLineManagementPanel', () => {
 
     await flushPromises()
 
-    const mcpTab = wrapper
-      .findAll('button')
-      .find((button) => button.text().trim() === 'MCP')
+    const mcpTab = wrapper.findAll('button').find((button) => button.text().trim() === 'MCP')
     expect(mcpTab).toBeDefined()
     await mcpTab!.trigger('click')
     await flushPromises()
@@ -1058,9 +1119,7 @@ describe('BusinessLineManagementPanel', () => {
 
     await flushPromises()
 
-    const mcpTab = wrapper
-      .findAll('button')
-      .find((button) => button.text().trim() === 'MCP')
+    const mcpTab = wrapper.findAll('button').find((button) => button.text().trim() === 'MCP')
     expect(mcpTab).toBeDefined()
     await mcpTab!.trigger('click')
     await flushPromises()

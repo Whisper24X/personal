@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import path from 'path';
 import { AgentToolConfig } from '../business-lines/domain/agent-tool-config';
@@ -12,11 +12,15 @@ import {
   AgentCliAdapterId,
   AgentCliRunnerConfigInput,
 } from './agent-cli/agent-cli-adapter.interface';
+import { sanitizeAgentToolConfigJson } from './agent-cli-sanitize-config';
 import {
   AgentPromptTemplateService,
   PromptTemplateRuntimeContext,
 } from './agent-prompt-template.service';
 import { AgentExecutionConfig } from './agent-execution.types';
+import { parseRunnerWorkingSubdirectoryFromConfigJson } from './parse-runner-working-subdirectory';
+import { rewriteRunnerWorktreeAbsolutePaths } from './runner-platform-mcp-augmentation';
+import { computeRunnerContainerCwd } from './runner-container-cwd';
 
 type AgentAdapter = AgentCliAdapterId;
 type RunnerConfigInput = AgentCliRunnerConfigInput;
@@ -39,6 +43,10 @@ type ResolvedAgentToolConfig = {
 
 @Injectable()
 export class AgentExecutionConfigResolverService {
+  private readonly logger = new Logger(
+    AgentExecutionConfigResolverService.name,
+  );
+
   constructor(
     private readonly agentToolConfigRepository: AgentToolConfigRepository,
     private readonly configService: ConfigService,
@@ -76,15 +84,64 @@ export class AgentExecutionConfigResolverService {
       project,
       adapter,
     );
+
+    let effectiveToolRunnerConfig = agentToolConfig?.runnerConfig;
+    let effectiveRawForContinuation: Record<string, unknown> =
+      agentToolConfig?.rawConfig ?? {};
+
+    if (
+      runtimeContext?.executionPlane === 'runner' &&
+      agentToolConfig?.rawConfig
+    ) {
+      const containerMount =
+        this.normalizeOptionalString(runtimeContext.runnerWorkspaceMount) ||
+        '/workspace';
+      let raw: Record<string, unknown> = { ...agentToolConfig.rawConfig };
+      const hostWorktreeAbs = this.resolveHostWorktreeAbsoluteForRunner(
+        task,
+        project,
+        runtimeContext,
+      );
+      if (hostWorktreeAbs) {
+        raw = rewriteRunnerWorktreeAbsolutePaths(
+          adapter,
+          raw,
+          hostWorktreeAbs,
+          containerMount,
+        );
+      }
+      const resanitized = sanitizeAgentToolConfigJson(
+        this.agentCliAdapterRegistry,
+        adapter,
+        raw,
+      );
+      this.logger.log(
+        `runner_path_rewrite ${JSON.stringify({
+          taskId: task.id,
+          nodeId: node.id,
+          projectId: project.id,
+          adapter,
+          containerMount,
+          hostWorktreePresent: Boolean(hostWorktreeAbs),
+          pathRewriteApplied: Boolean(hostWorktreeAbs),
+        })}`,
+      );
+      effectiveToolRunnerConfig = this.resolveToolRunnerConfig(
+        adapter,
+        resanitized,
+      );
+      effectiveRawForContinuation = resanitized;
+    }
+
     const runnerConfig = this.mergeRunnerConfig(
       baseRunnerConfig,
-      agentToolConfig?.runnerConfig,
+      effectiveToolRunnerConfig,
     );
 
     const continuationConfig = {
       ...configJson,
       ...executionToolConfig,
-      ...(agentToolConfig?.rawConfig ?? {}),
+      ...effectiveRawForContinuation,
     };
     const command =
       runnerConfig.command?.trim() || this.resolveDefaultCommand(adapter);
@@ -116,11 +173,31 @@ export class AgentExecutionConfigResolverService {
 
     const cwd = this.resolveRunnerCwd(task, project, runtimeContext);
 
+    let runnerContainerCwd: string | undefined;
+    if (runtimeContext?.executionPlane === 'runner') {
+      const hostWt = this.resolveHostWorktreeAbsoluteForRunner(
+        task,
+        project,
+        runtimeContext,
+      );
+      const containerMount =
+        this.normalizeOptionalString(runtimeContext.runnerWorkspaceMount) ||
+        '/workspace';
+      if (hostWt) {
+        runnerContainerCwd = computeRunnerContainerCwd({
+          hostWorktreeAbs: hostWt,
+          hostResolvedCwd: cwd,
+          containerMount,
+        });
+      }
+    }
+
     return {
       adapter,
       command,
       args,
       cwd,
+      ...(runnerContainerCwd ? { runnerContainerCwd } : {}),
       env,
       ...(agentToolConfig?.configId
         ? { agentToolConfigId: agentToolConfig.configId }
@@ -212,6 +289,29 @@ export class AgentExecutionConfigResolverService {
       .extractSessionId(content);
   }
 
+  private resolveHostWorktreeAbsoluteForRunner(
+    task: Task,
+    project: Project,
+    runtimeContext?: PromptTemplateRuntimeContext,
+  ): string | null {
+    const fromRuntime = this.normalizeOptionalString(
+      runtimeContext?.gitWorktreePath,
+    );
+    if (fromRuntime) {
+      return path.resolve(fromRuntime);
+    }
+
+    const taskWorktree = this.normalizeOptionalString(task.gitWorktree);
+    if (!taskWorktree) {
+      return null;
+    }
+
+    return this.projectWorkspacePathsService.resolveTaskWorktreePath(
+      task,
+      project,
+    );
+  }
+
   private resolveRunnerCwd(
     task: Task,
     project: Project,
@@ -234,7 +334,7 @@ export class AgentExecutionConfigResolverService {
           `Task worktree path ${cwd} is outside allowed roots: ${allowedRoots.join(' | ')}`,
         );
       }
-      return cwd;
+      return this.applyRunnerWorkingSubdirectory(cwd, project, 'runtime');
     }
 
     const taskWorktree = this.normalizeOptionalString(task.gitWorktree);
@@ -254,7 +354,43 @@ export class AgentExecutionConfigResolverService {
       );
     }
 
-    return cwd;
+    return this.applyRunnerWorkingSubdirectory(cwd, project, 'task');
+  }
+
+  private applyRunnerWorkingSubdirectory(
+    worktreeRoot: string,
+    project: Project,
+    mode: 'runtime' | 'task',
+  ): string {
+    const rel = parseRunnerWorkingSubdirectoryFromConfigJson(
+      project.configJson,
+    );
+    if (!rel) {
+      return worktreeRoot;
+    }
+    const out = path.resolve(worktreeRoot, rel);
+    if (mode === 'runtime') {
+      const allowedRoots = [
+        this.resolveWorktreeAllowedRoot(project),
+        this.resolveProjectStorageBaseDir(project),
+      ];
+      const ok = allowedRoots.some((root) =>
+        this.isPathWithinAllowedRoot(out, root),
+      );
+      if (!ok) {
+        throw new Error(
+          `runnerWorkingSubdirectory resolves to ${out} outside allowed roots`,
+        );
+      }
+    } else {
+      const root = this.resolveWorktreeAllowedRoot(project);
+      if (!this.isPathWithinAllowedRoot(out, root)) {
+        throw new Error(
+          `runnerWorkingSubdirectory resolves to ${out} outside allowed root ${root}`,
+        );
+      }
+    }
+    return out;
   }
 
   private resolveWorktreeAllowedRoot(project: Project): string {
@@ -510,7 +646,11 @@ export class AgentExecutionConfigResolverService {
       return null;
     }
 
-    const sanitizedConfig = this.sanitizeAgentToolConfig(adapter, parsedConfig);
+    const sanitizedConfig = sanitizeAgentToolConfigJson(
+      this.agentCliAdapterRegistry,
+      adapter,
+      parsedConfig,
+    );
 
     return {
       runnerConfig: this.resolveToolRunnerConfig(adapter, sanitizedConfig),
@@ -571,7 +711,8 @@ export class AgentExecutionConfigResolverService {
       return null;
     }
 
-    const sanitizedConfig = this.sanitizeAgentToolConfig(
+    const sanitizedConfig = sanitizeAgentToolConfigJson(
+      this.agentCliAdapterRegistry,
       adapter,
       selected.config,
     );
@@ -675,22 +816,6 @@ export class AgentExecutionConfigResolverService {
     }
 
     return entries.find((item) => item.isDefault) ?? entries[0];
-  }
-
-  private sanitizeAgentToolConfig(
-    adapter: AgentAdapter,
-    config: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const allowedKeys =
-      this.agentCliAdapterRegistry.getById(adapter).toolConfigAllowedKeys;
-    const sanitized: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(config)) {
-      if (allowedKeys.has(key)) {
-        sanitized[key] = value;
-      }
-    }
-
-    return sanitized;
   }
 
   private resolveToolRunnerConfig(

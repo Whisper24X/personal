@@ -143,6 +143,14 @@ dangerously_skip_permissions = true
 
 原因是当前项目把这视为一个更高优先级的明确危险模式，而不是同时叠加两套权限表达。
 
+### 4.3 Runner 与 MCP
+
+当任务的 `executionPlane` 为 `runner` 时，**`mcp_config` 所列 JSON 文件应以仓库内路径为准**（例如 `.cursor/mcp.json`），经 git 同步进入 worktree。若 Agent 工具配置里仍使用**宿主机 worktree 的绝对路径**，[`AgentExecutionConfigResolverService`](../../backend/src/agent-execution/agent-execution-config-resolver.service.ts) 会将其重写为容器内 `/workspace/...`（见 [`rewriteRunnerWorktreeAbsolutePaths`](../../backend/src/agent-execution/runner-platform-mcp-augmentation.ts)）。
+
+**`allowed_tools` 白名单**仅反映工具配置 raw 中的列表；若需放行 MCP 工具，请在配置中显式加入 `mcp__...` 形式项（见 Claude Code 权限文档），或避免在非空 `allowed_tools` 下列出过窄列表导致 MCP 被挡在门外。详见 [`task-container-execution-boundaries.md`](../../backend/docs/task-container-execution-boundaries.md)。
+
+**任务详情聊天 UI** 里模型可见的工具列表与 **Runner 内 Claude 子进程** 不是同一套能力；即使容器内 MCP 已加载，聊天侧也不会自动出现 `mcp__...` 工具名。验证 Runner 内 MCP 请看日志与 CLI 输出；若聊天侧也要可调 MCP，属产品会话网关范围（见 boundaries 文档 **Task detail UI chat vs container Agent CLI MCP**）。
+
 ## 5. 一个完整示例
 
 配置：

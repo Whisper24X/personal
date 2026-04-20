@@ -48,3 +48,13 @@ export type CreateMcpPayload = {
 }
 
 export type UpdateMcpPayload = Partial<CreateMcpPayload>
+
+export type LocalMcpProbeResult = {
+  ok: boolean
+  transport?: 'stdio' | 'http' | 'sse'
+  toolsCount?: number
+  errorCode?: string
+  message?: string
+  stderrPreview?: string
+  warnings?: string[]
+}

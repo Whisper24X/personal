@@ -4,7 +4,13 @@ export type AgentExecutionConfig = {
   adapter: AgentCliAdapterId;
   command: string;
   args: string[];
+  /** Host absolute path (logs / control plane). */
   cwd: string;
+  /**
+   * In-container cwd for `docker exec -w` when executing on the runner plane.
+   * Host `cwd` stays separate so logs and guards keep host paths.
+   */
+  runnerContainerCwd?: string;
   env: Record<string, string>;
   agentToolConfigId?: string;
   agentToolConfigName?: string;

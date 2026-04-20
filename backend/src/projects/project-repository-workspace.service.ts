@@ -164,6 +164,76 @@ export class ProjectRepositoryWorkspaceService {
     return this.projectWorkspacePathsService.resolveRepositoryRoot(project);
   }
 
+  async checkoutBranch(
+    repositoryRoot: string,
+    branchName: string,
+  ): Promise<void> {
+    const normalizedBranchName = branchName.trim();
+    if (!normalizedBranchName) {
+      throw new BadRequestException('分支名不能为空');
+    }
+
+    const localBranchResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/heads/${normalizedBranchName}`,
+    ]);
+
+    if (localBranchResult.success) {
+      const checkoutResult = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'checkout',
+        normalizedBranchName,
+      ]);
+
+      if (!checkoutResult.success) {
+        throw new BadRequestException(
+          this.formatGitFailure(
+            `检出 ${normalizedBranchName} 失败`,
+            checkoutResult,
+          ),
+        );
+      }
+
+      return;
+    }
+
+    const remoteBranchResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/remotes/origin/${normalizedBranchName}`,
+    ]);
+
+    if (!remoteBranchResult.success) {
+      throw new BadRequestException(
+        `仓库中不存在分支 ${normalizedBranchName}（本地或 origin/${normalizedBranchName}）`,
+      );
+    }
+
+    const checkoutResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'checkout',
+      '-B',
+      normalizedBranchName,
+      `origin/${normalizedBranchName}`,
+    ]);
+
+    if (!checkoutResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(
+          `从远端创建本地分支 ${normalizedBranchName} 失败`,
+          checkoutResult,
+        ),
+      );
+    }
+  }
+
   normalizeProjectDocPath(value: string): string {
     return this.projectWorkspacePathsService.normalizeProjectDocPath(value);
   }
@@ -651,6 +721,17 @@ export class ProjectRepositoryWorkspaceService {
     }
 
     return `${normalized.slice(0, 500)}...`;
+  }
+
+  private formatGitFailure(prefix: string, result: GitCommandResult): string {
+    const detail = mergeGitOutput(result) || result.stderr || result.stdout;
+    const normalizedDetail = detail.trim();
+
+    if (!normalizedDetail) {
+      return prefix;
+    }
+
+    return `${prefix}: ${this.truncateError(normalizedDetail)}`;
   }
 
   private async runCommand(

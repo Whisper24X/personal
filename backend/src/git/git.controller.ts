@@ -18,6 +18,7 @@ import { GitBranchesDto } from './dto/git-branches.dto';
 import { GitBranchesDetailDto } from './dto/git-branches-detail.dto';
 import { GitLogDto } from './dto/git-log.dto';
 import { GitPullMainDto } from './dto/git-pull-main.dto';
+import { GitPushResultDto } from './dto/git-push-result.dto';
 import { GitProjectDto } from './dto/git-project.dto';
 import { GitStatusDto } from './dto/git-status.dto';
 import { GitCreateBranchDto } from './dto/git-create-branch.dto';
@@ -91,6 +92,20 @@ export class GitController {
     @Body() payload: GitBranchOperationDto,
   ): Promise<GitBranchActionResultDto> {
     return this.gitService.pullBranch(
+      payload.projectId,
+      payload.branch,
+      request.user,
+    );
+  }
+
+  @Post('push-branch')
+  @ApiOkResponse({ type: GitPushResultDto })
+  @HttpCode(HttpStatus.OK)
+  pushBranch(
+    @Request() request,
+    @Body() payload: GitBranchOperationDto,
+  ): Promise<GitPushResultDto> {
+    return this.gitService.pushBranch(
       payload.projectId,
       payload.branch,
       request.user,

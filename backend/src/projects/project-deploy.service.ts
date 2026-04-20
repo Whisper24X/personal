@@ -148,16 +148,30 @@ export class ProjectDeployService {
 
         const mainBranch = project.defaultBranch || 'main';
 
-        const fetch = await this.runCommand('git', ['-C', mainRepoPath, 'fetch', '--all']);
+        const fetch = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'fetch',
+          '--all',
+        ]);
         if (!fetch.success) {
           emit('stdout', { text: '[pre-deploy] git fetch 失败，部署中止\n' });
           throw new BadRequestException('git fetch 失败，请检查网络或仓库配置');
         }
 
-        const checkout = await this.runCommand('git', ['-C', mainRepoPath, 'checkout', mainBranch]);
+        const checkout = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'checkout',
+          mainBranch,
+        ]);
         if (!checkout.success) {
-          emit('stdout', { text: `[pre-deploy] checkout ${mainBranch} 失败，部署中止\n` });
-          throw new BadRequestException(`无法切换到主分支 ${mainBranch}，请检查分支是否存在`);
+          emit('stdout', {
+            text: `[pre-deploy] checkout ${mainBranch} 失败，部署中止\n`,
+          });
+          throw new BadRequestException(
+            `无法切换到主分支 ${mainBranch}，请检查分支是否存在`,
+          );
         }
 
         const reset = await this.runCommand('git', [
@@ -305,22 +319,45 @@ export class ProjectDeployService {
     } finally {
       if (isDefaultDeploy) {
         const mainBranch = project.defaultBranch || 'main';
-        const ft = await this.runCommand('git', ['-C', mainRepoPath, 'fetch', '--all']);
+        const ft = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'fetch',
+          '--all',
+        ]);
         if (!ft.success) {
           this.logger.warn(`[deploy-cleanup] fetch --all failed: ${ft.stderr}`);
         }
-        const co = await this.runCommand('git', ['-C', mainRepoPath, 'checkout', mainBranch]);
+        const co = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'checkout',
+          mainBranch,
+        ]);
         if (!co.success) {
-          this.logger.warn(`[deploy-cleanup] checkout ${mainBranch} failed: ${co.stderr}`);
+          this.logger.warn(
+            `[deploy-cleanup] checkout ${mainBranch} failed: ${co.stderr}`,
+          );
         } else {
           const rs = await this.runCommand('git', [
-            '-C', mainRepoPath, 'reset', '--hard', `origin/${mainBranch}`,
+            '-C',
+            mainRepoPath,
+            'reset',
+            '--hard',
+            `origin/${mainBranch}`,
           ]);
           if (!rs.success) {
-            this.logger.warn(`[deploy-cleanup] reset --hard origin/${mainBranch} failed: ${rs.stderr}`);
+            this.logger.warn(
+              `[deploy-cleanup] reset --hard origin/${mainBranch} failed: ${rs.stderr}`,
+            );
           }
         }
-        const cl = await this.runCommand('git', ['-C', mainRepoPath, 'clean', '-fd']);
+        const cl = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'clean',
+          '-fd',
+        ]);
         if (!cl.success) {
           this.logger.warn(`[deploy-cleanup] clean -fd failed: ${cl.stderr}`);
         }

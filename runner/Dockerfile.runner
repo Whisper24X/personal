@@ -20,6 +20,8 @@ ENV TZ=Asia/Shanghai \
     GOPRIVATE=gitlab.yc345.tv \
     CGO_ENABLED=1 \
     NODE_ENV=development \
+    CHROME_BIN=/usr/bin/chromium \
+    CHROME_PATH=/usr/bin/chromium \
     PATH=/go/bin:/usr/local/go/bin:/root/.local/bin:/root/.opencode/bin:${PATH}
 
 # ============================================================
@@ -53,6 +55,12 @@ RUN --mount=type=cache,id=runner-runtime-apt-cache,target=/var/cache/apt,sharing
     && ln -sf /usr/bin/batcat /usr/local/bin/bat \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
+
+# chromium + fonts-liberation：体积大、易因镜像源/资源导致 apt 失败；单独一层且失败不阻断镜像，避免拖死后续 Cursor CLI 等步骤
+# 未安装成功时 CHROME_BIN 仍指向 /usr/bin/chromium，Chrome DevTools MCP 需在镜像内浏览器时需自行换源或改用带浏览器的 profile
+RUN --mount=type=cache,id=runner-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=runner-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
+    bash -o pipefail -c 'apt-get update && (apt-get install -y --no-install-recommends chromium fonts-liberation || echo "WARN: chromium/fonts-liberation install failed; browser-based MCP may be unavailable in this image.") && rm -rf /var/lib/apt/lists/*'
 
 # protoc 锁定 3.21.9
 RUN ARCH=$(uname -m) \

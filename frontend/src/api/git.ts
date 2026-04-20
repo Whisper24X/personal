@@ -30,10 +30,6 @@ export const gitApi = {
     return apiHttp.get<GitChangedFiles>('/git/changed-files', { projectId })
   },
 
-  push(projectId: string, branch?: string) {
-    return apiHttp.post<GitPushResult>('/git/push', { projectId, branch })
-  },
-
   commitDetail(projectId: string, sha: string) {
     return apiHttp.get<GitCommitDetail>(`/git/commit/${sha}`, { projectId })
   },

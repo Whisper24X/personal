@@ -558,6 +558,7 @@ export class ContainerOrchestrationService
             containerName: params.containerName,
             targets: managedVolumeTargets,
           }),
+          readOnlyBindMounts: [],
           env: containerEnv,
           cpuLimit: this.config.getRunnerCpuLimit(params.project),
           resourceLimits: this.config.resourceLimitsForProfile(params.project),
@@ -568,6 +569,8 @@ export class ContainerOrchestrationService
           platform: this.config.getRunnerPlatform(params.project),
           networkMode: this.config.getRunnerNetworkMode(params.project),
           publishedPorts,
+          addHostDockerInternalGateway:
+            this.config.shouldAddHostDockerInternalGateway(params.project),
           repositoryGitPath,
         });
         const mapping = result.publishedPorts[0];

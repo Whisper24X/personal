@@ -42,6 +42,10 @@ function isFileChangeEvent(entry: NormalizedEntry) {
   return getString(entry.metadata?.codexCardType) === 'file_change'
 }
 
+function isMcpToolCallEvent(entry: NormalizedEntry) {
+  return getString(entry.metadata?.codexCardType) === 'mcp_tool_call'
+}
+
 function isLifecycleEvent(entry: NormalizedEntry) {
   const eventType = getString(entry.metadata?.codexEventType)
   return eventType === 'thread_started' || eventType === 'turn_started' || eventType === 'turn_completed'
@@ -138,6 +142,16 @@ function codexTurnFinished(items: CodexMessageGroup[]): boolean {
                 embedded
                 :entry="group.entry"
               />
+
+              <div
+                v-else-if="group.type === 'other' && isMcpToolCallEvent(group.entry)"
+                class="border-0 bg-violet-500/10 px-3 py-2 text-xs text-violet-950 dark:text-violet-100"
+              >
+                <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700/90 dark:text-violet-200/90">
+                  MCP
+                </div>
+                <pre class="font-sans whitespace-pre-wrap text-sm leading-relaxed">{{ group.entry.content }}</pre>
+              </div>
 
               <!-- Patch apply event -->
               <div

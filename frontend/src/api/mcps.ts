@@ -2,6 +2,7 @@ import type {
   CreateMcpPayload,
   ImportProjectLocalMcpsPayload,
   ImportProjectLocalMcpsResult,
+  LocalMcpProbeResult,
   Mcp,
   ProjectLocalMcpConfig,
   UpdateMcpPayload,
@@ -41,6 +42,15 @@ export const mcpsApi = {
       name: params.name,
       sourcePath: params.sourcePath,
     })
+  },
+
+  testProjectLocalMcp(payload: {
+    projectId: string
+    name: string
+    sourcePath: string
+    agentToolConfigId: string
+  }) {
+    return apiHttp.post<LocalMcpProbeResult>('/mcps/project-local/test', payload)
   },
 
   importProjectLocalMcps(payload: ImportProjectLocalMcpsPayload) {

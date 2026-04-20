@@ -177,6 +177,7 @@ const {
   loadingAgentToolConfigs,
   submittingAgentToolConfig,
   deletingAgentToolConfigId,
+  testingAgentToolConfigId,
   agentCliValidationMessage,
   agentToolConfigModalOpen,
   agentToolConfigMode,
@@ -191,6 +192,7 @@ const {
   saveAgentToolConfig,
   setAgentToolConfigAsDefault,
   removeAgentToolConfig,
+  testAgentToolConfig,
 } = useBlmAgentCli(activeLineId, message)
 
 const {
@@ -1890,6 +1892,8 @@ watch(
     submitProjectRuntimeSettings,
     submitUploadSkill,
     submitWorkflowTemplate,
+    testAgentToolConfig,
+    testingAgentToolConfigId,
     submittingAgentToolConfig,
     submittingWorkflowTemplate,
     tabClass,

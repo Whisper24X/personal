@@ -9,6 +9,7 @@ import { Task } from '../tasks/domain/task';
 import { TaskNode } from '../tasks/domain/task-node';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
 import { AgentExecutionConfigResolverService } from './agent-execution-config-resolver.service';
+import { summarizeAgentCliArgsForLog } from './runner-agent-cli-args-log';
 import {
   AgentExecutionConfig,
   AgentExecutionContext,
@@ -49,6 +50,7 @@ export class RunnerAgentExecutionService {
     runtimeContext,
     callbacks,
     containerExecRef,
+    additionalRunnerEnv,
   }: {
     task: Task;
     node: TaskNode;
@@ -56,6 +58,8 @@ export class RunnerAgentExecutionService {
     runtimeContext?: PromptTemplateRuntimeContext;
     callbacks?: AgentExecutionStreamCallbacks;
     containerExecRef?: string;
+    /** Merged into runner Agent `docker exec` env after resolution (e.g. ephemeral MCP base URLs). */
+    additionalRunnerEnv?: Record<string, string>;
   }): Promise<AgentExecutionResult> {
     const executionContext = {
       taskId: task.id,
@@ -69,6 +73,7 @@ export class RunnerAgentExecutionService {
       node,
       runtimeContext,
       callbacks,
+      additionalRunnerEnv,
     );
     const resolvedRef =
       containerExecRef ?? (await this.resolveContainerExecRefForTask(task));
@@ -106,6 +111,7 @@ export class RunnerAgentExecutionService {
       },
       runtimeContext,
       callbacks,
+      additionalRunnerEnv,
     );
     const fallbackResult = await this.runWithConfig(
       fallbackExecution.config,
@@ -255,7 +261,9 @@ export class RunnerAgentExecutionService {
         containerRef: containerExecRef,
         command: config.command,
         args: spawnArgs,
-        cwd: this.containerExecutionConfig!.getRunnerWorkspace(),
+        cwd:
+          config.runnerContainerCwd ??
+          this.containerExecutionConfig!.getRunnerWorkspace(),
         env: this.buildDockerExecEnvironment(config.env),
       });
       const activeExecution: ActiveAgentExecution = {
@@ -480,16 +488,24 @@ export class RunnerAgentExecutionService {
     node: TaskNode,
     runtimeContext: PromptTemplateRuntimeContext | undefined,
     callbacks: AgentExecutionStreamCallbacks | undefined,
+    additionalRunnerEnv?: Record<string, string>,
   ): Promise<{
     config: AgentExecutionConfig;
     prompt: string;
   }> {
-    const config = await this.resolveRunnerConfig(
+    const resolved = await this.resolveRunnerConfig(
       project,
       task,
       node,
       runtimeContext,
     );
+    const config: AgentExecutionConfig = {
+      ...resolved,
+      env: {
+        ...resolved.env,
+        ...(additionalRunnerEnv ?? {}),
+      },
+    };
     const prompt = this.resolvePrompt(
       task,
       node,
@@ -694,7 +710,7 @@ export class RunnerAgentExecutionService {
       ...executionContext,
       adapter: config.adapter,
       command: config.command,
-      args: config.args,
+      args: summarizeAgentCliArgsForLog(config.args),
       cwd: config.cwd,
       promptLength: prompt.length,
       envKeys: Object.keys(mergedEnv)
@@ -756,7 +772,7 @@ export class RunnerAgentExecutionService {
       ...executionContext,
       adapter: config.adapter,
       command: config.command,
-      args: config.args,
+      args: summarizeAgentCliArgsForLog(config.args),
       cwd: config.cwd,
       durationMs,
       interrupted: interrupted ?? false,

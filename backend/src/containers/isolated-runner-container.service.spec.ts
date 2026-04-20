@@ -70,6 +70,10 @@ describe('IsolatedRunnerContainerService', () => {
       expect.arrayContaining([
         '--platform',
         'linux/amd64',
+        '--network',
+        'bridge',
+        '--add-host',
+        'host.docker.internal:host-gateway',
         '--cpus',
         '2',
         '--memory',
@@ -82,6 +86,49 @@ describe('IsolatedRunnerContainerService', () => {
       ]),
     );
     expect(execDocker).not.toHaveBeenCalled();
+  });
+
+  it('should omit host.docker.internal when addHostDockerInternalGateway is false', async () => {
+    const service = new IsolatedRunnerContainerService();
+    const execDockerCapture = jest
+      .fn()
+      .mockResolvedValueOnce('ainative-task-task-1-workspace-logs\n')
+      .mockResolvedValueOnce('container-1\n');
+    const execDocker = jest.fn().mockResolvedValue(undefined);
+    (service as any).execDockerCapture = execDockerCapture;
+    (service as any).execDocker = execDocker;
+    (service as any).inspectById = jest.fn().mockResolvedValue({
+      id: 'container-1',
+      status: 'running',
+      running: true,
+      image: 'ainative/runner:latest',
+      platform: 'linux/amd64',
+      publishedPorts: [],
+    });
+
+    await service.run({
+      containerName: 'ainative-task-task-1',
+      image: 'ainative/runner:latest',
+      worktreePath: '/tmp/worktrees/wk-task-1',
+      workspaceMount: '/workspace',
+      command: ['sleep', 'infinity'],
+      managedVolumeMounts: [
+        {
+          name: 'ainative-task-task-1-workspace-logs',
+          target: '/workspace/logs',
+          labels: {},
+        },
+      ],
+      startTimeoutMs: 1000,
+      networkMode: 'bridge',
+      addHostDockerInternalGateway: false,
+    });
+
+    const runArgs = execDockerCapture.mock.calls.find(
+      (c) => c[0][0] === 'run',
+    )?.[0] as string[] | undefined;
+    expect(runArgs).toBeDefined();
+    expect(runArgs).not.toContain('host.docker.internal');
   });
 
   it('should remove managed volumes after removing the container', async () => {

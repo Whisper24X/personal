@@ -30,7 +30,9 @@ import { UpdateBusinessLineCustomRoleDto } from './dto/update-business-line-cust
 import { UpdateBusinessLineDto } from './dto/update-business-line.dto';
 import { UpdateBusinessLineMemberDto } from './dto/update-business-line-member.dto';
 import { UploadLocalSkillResultDto } from './dto/upload-local-skill-result.dto';
+import { AgentCliSmokeTestService } from '../agent-execution/agent-cli-smoke-test.service';
 import { AgentToolConfig } from './domain/agent-tool-config';
+import { AgentToolConfigSmokeTestResultDto } from './dto/agent-tool-config-smoke-test-result.dto';
 import { BusinessLineCustomRole } from './domain/business-line-custom-role';
 import { BusinessLineInviteDto } from './dto/business-line-invite.dto';
 import { BusinessLineMember } from './domain/business-line-member';
@@ -48,6 +50,7 @@ export class BusinessLinesService {
     private readonly businessLineRoleCatalogService: BusinessLineRoleCatalogService,
     private readonly businessLineAgentToolConfigService: BusinessLineAgentToolConfigService,
     private readonly businessLineLocalAssetsService: BusinessLineLocalAssetsService,
+    private readonly agentCliSmokeTestService: AgentCliSmokeTestService,
   ) {}
 
   async create(
@@ -528,6 +531,44 @@ export class BusinessLinesService {
       businessLineId,
       configId,
     );
+  }
+
+  async testAgentToolConfig(
+    businessLineId: BusinessLine['id'],
+    configId: AgentToolConfig['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<AgentToolConfigSmokeTestResultDto> {
+    await this.ensureCanReadAgentCli(businessLineId, currentUser);
+
+    const config =
+      await this.businessLineAgentToolConfigService.getAgentToolConfigForBusinessLine(
+        businessLineId,
+        configId,
+      );
+
+    return this.agentCliSmokeTestService.runSmokeTest({
+      toolId: config.toolId,
+      configJson: this.parsePersistedAgentToolConfigJson(config.configJson),
+    });
+  }
+
+  private parsePersistedAgentToolConfigJson(
+    configJson: string,
+  ): Record<string, unknown> {
+    if (!configJson.trim()) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(configJson);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+
+    return {};
   }
 
   private async ensureCanManageBusinessLine(

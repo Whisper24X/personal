@@ -241,6 +241,23 @@ export class ContainerExecutionConfigService {
     return this.readProjectContainerRuntimeConfig(project)?.env ?? {};
   }
 
+  /**
+   * When true (default), bridge-mode task runners get `host.docker.internal` pointing at the
+   * Docker host so Agent CLIs can reach host-bound MCP / DB / Redis URLs (see task-container-execution-boundaries.md).
+   * Disable with `AINATIVE_RUNNER_ADD_HOST_DOCKER_INTERNAL=false`.
+   */
+  shouldAddHostDockerInternalGateway(project?: Project | null): boolean {
+    void project;
+    const v = this.configService
+      .get<string>('AINATIVE_RUNNER_ADD_HOST_DOCKER_INTERNAL', { infer: true })
+      ?.trim()
+      .toLowerCase();
+    if (v === '0' || v === 'false' || v === 'no') {
+      return false;
+    }
+    return true;
+  }
+
   getRunnerBootstrapEnv(): Record<string, string> {
     const env: Record<string, string> = {};
     const gitlabUsername = this.configService
