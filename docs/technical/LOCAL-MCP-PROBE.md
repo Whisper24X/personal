@@ -9,7 +9,7 @@
 | 维度 | 本地 MCP 探测（本文） | 任务详情里的容器 Agent（Runner） |
 |------|----------------------|-----------------------------------|
 | 进程位置 | Nest 宿主机 / 控制面 | 任务容器内 `docker exec` → 各 CLI |
-| MCP 配置来源 | 项目本地 MCP 文件 + 所选 Agent 工具配置（用于环境对齐） | **推荐**：在 **Docker 宿主机**跑 MCP（stdio 转监听或独立 HTTP/SSE），通过 **`containerRuntime.env` 注入 URL**（与 Postgres/Redis 同类映射）；可选 worktree 内 `.codex` 仅当文件与 cwd 在挂载内可用 |
+| MCP 配置来源 | 项目本地 MCP 文件 + 所选 Agent 工具配置（用于环境对齐） | **`containerRuntime.ephemeralMcp`** 由控制在 Runner 内按需拉起 HTTP MCP 并注入 URL 环境变量（见 [runner-ephemeral-mcp.md](./runner-ephemeral-mcp.md)）；或在 **Docker 宿主机**跑 MCP 并通过 **`containerRuntime.env` 注入 URL**；可选 worktree 内 `.codex` 当文件与 cwd 在挂载内可用 |
 | 与「聊天里 list_mcp_resources」的关系 | **无关** | **无关**；任务内以 CLI + 可达 URL 为准 |
 
 ### 任务详情聊天里「没有 list_pages」说明什么
@@ -18,7 +18,7 @@
 - **验证 Runner 内 MCP 是否生效**：看 **Runner 日志**与 **CLI 的 JSON 输出**，不要以任务页聊天侧是否列出工具为准（详见 `backend/docs/task-container-execution-boundaries.md` 中 **Task detail UI chat vs container Agent CLI MCP**）。
 - **若必须让任务聊天也能调 MCP**：属于 **会话网关 / 前端** 的产品需求（桥接或透传），本仓库 Runner 配置无法单独实现。
 
-排查「任务里 MCP 不生效」时：确认 **bridge** 下 `host.docker.internal` 是否启用（默认注入，见 `backend/docs/task-container-execution-boundaries.md`）、**MCP 是否监听在宿主机可访问地址**、以及 Agent 配置里的 URL 是否仍写成容器内 `127.0.0.1`。
+排查「任务里 MCP 不生效」时：若使用 **ephemeral**，确认模板 **健康检查路径**、Runner 镜像内 **`curl`**、以及 Codex / Agent 是否引用注入的 `AINATIVE_EPHEMERAL_MCP_*_URL`；若使用**宿主机 MCP**，确认 **bridge** 下 `host.docker.internal` 是否启用、**MCP 是否监听在宿主机可访问地址**、以及 Agent 配置里的 URL 是否误写成仅宿主机可达的地址（参见 `backend/docs/task-container-execution-boundaries.md`）。
 
 ---
 

@@ -479,6 +479,14 @@ export class ProjectsService {
           containerRuntime.runnerOrchestration;
       }
 
+      if (
+        containerRuntime.ephemeralMcp &&
+        typeof containerRuntime.ephemeralMcp === 'object' &&
+        !Array.isArray(containerRuntime.ephemeralMcp)
+      ) {
+        nextContainerRuntime.ephemeralMcp = containerRuntime.ephemeralMcp;
+      }
+
       if (Object.keys(nextContainerRuntime).length > 0) {
         nextConfigJson.containerRuntime = nextContainerRuntime;
       } else {

@@ -606,6 +606,16 @@ describe('ProjectsService', () => {
             },
           ],
         },
+        ephemeralMcp: {
+          templates: [
+            {
+              id: 'demo',
+              listenPort: 5980,
+              command: 'npx',
+              args: ['-y', '@demo/mcp'],
+            },
+          ],
+        },
         networkMode: 'bridge',
         exposeHostIp: '192.168.50.8',
         exposeContainerPort: 4173,
@@ -631,6 +641,16 @@ describe('ProjectsService', () => {
                 name: 'web',
                 workdir: 'web',
                 command: 'pnpm dev',
+              },
+            ],
+          },
+          ephemeralMcp: {
+            templates: [
+              {
+                id: 'demo',
+                listenPort: 5980,
+                command: 'npx',
+                args: ['-y', '@demo/mcp'],
               },
             ],
           },

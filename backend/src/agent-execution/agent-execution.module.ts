@@ -9,6 +9,7 @@ import { AgentPromptTemplateService } from './agent-prompt-template.service';
 import { ControlPlaneAgentExecutionService } from './control-plane-agent-execution.service';
 import { LocalProcessLauncherService } from './local-process-launcher.service';
 import { RunnerAgentExecutionService } from './runner-agent-execution.service';
+import { RunnerEphemeralMcpService } from './runner-ephemeral-mcp.service';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { RunnerAgentExecutionService } from './runner-agent-execution.service';
     LocalProcessLauncherService,
     ControlPlaneAgentExecutionService,
     RunnerAgentExecutionService,
+    RunnerEphemeralMcpService,
     AgentCliAdapterRegistry,
     AgentCliSmokeTestService,
   ],
@@ -30,6 +32,7 @@ import { RunnerAgentExecutionService } from './runner-agent-execution.service';
     AgentExecutionConfigResolverService,
     ControlPlaneAgentExecutionService,
     RunnerAgentExecutionService,
+    RunnerEphemeralMcpService,
     LocalProcessLauncherService,
     AgentCliAdapterRegistry,
     AgentCliSmokeTestService,
