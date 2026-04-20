@@ -8,6 +8,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AgentCliAdapterRegistry } from '../../agent-execution/agent-cli/agent-cli-adapter.registry';
 import { RunnerAgentExecutionService } from '../../agent-execution/runner-agent-execution.service';
+import type { AgentExecutionResult } from '../../agent-execution/agent-execution.types';
+import { RunnerEphemeralMcpService } from '../../agent-execution/runner-ephemeral-mcp.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
@@ -78,6 +80,8 @@ export class TaskNodeExecutionService {
       TaskWorkspaceArtifactService,
       'hasArtifactsForNode'
     >,
+    @Optional()
+    private readonly runnerEphemeralMcpService?: RunnerEphemeralMcpService,
   ) {}
 
   async runNode({
@@ -312,63 +316,105 @@ export class TaskNodeExecutionService {
       });
     }
 
-    const executionResult =
-      await this.runnerAgentExecutionService.executeAgentNode({
-        task,
-        node,
-        project,
-        containerExecRef,
-        runtimeContext: runtimeContext
-          ? {
-              gitBranch: runtimeContext.gitBranch,
-              gitBaseBranch: runtimeContext.gitBaseBranch,
-              gitWorktree: runtimeContext.gitWorktree,
-              gitWorktreePath: runtimeContext.worktreePath,
-            }
-          : undefined,
-        callbacks: {
-          onPrepared: async ({ adapter, prompt, preparedAt }) => {
-            await this.appendPreExecutionOutputRecords({
-              task,
-              node,
-              adapter,
-              prompt,
-              preparedAt,
-            });
-          },
-          onStdoutLine: (line) => {
-            streamedStdoutLineCount += 1;
-            const lineIndex = streamedStdoutLineCount;
-            streamPersistQueue = streamPersistQueue.then(async () => {
-              persistedStdoutJsonlLineCount +=
+    let ephemeralMcpTeardown: (() => Promise<void>) | undefined;
+    let additionalRunnerEnv: Record<string, string> | undefined;
+    if (runtimeContext && containerExecRef && this.runnerEphemeralMcpService) {
+      try {
+        const mcpSession = await this.runnerEphemeralMcpService.startSessions({
+          project,
+          task,
+          node,
+          containerExecRef,
+        });
+        ephemeralMcpTeardown = mcpSession.teardown;
+        additionalRunnerEnv =
+          Object.keys(mcpSession.mergedEnv).length > 0
+            ? mcpSession.mergedEnv
+            : undefined;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'ephemeral MCP start failed';
+        await this.taskLogService.appendLog({
+          taskId,
+          taskNodeId: nodeId,
+          level: TaskLogLevel.error,
+          message: 'Ephemeral MCP failed to start',
+          payload: { error: message },
+        });
+        throw error;
+      }
+    }
+
+    let executionResult: AgentExecutionResult;
+    try {
+      executionResult = await this.runnerAgentExecutionService.executeAgentNode(
+        {
+          task,
+          node,
+          project,
+          containerExecRef,
+          additionalRunnerEnv,
+          runtimeContext: runtimeContext
+            ? {
+                gitBranch: runtimeContext.gitBranch,
+                gitBaseBranch: runtimeContext.gitBaseBranch,
+                gitWorktree: runtimeContext.gitWorktree,
+                gitWorktreePath: runtimeContext.worktreePath,
+                executionPlane: 'runner',
+                runnerWorkspaceMount:
+                  this.containerExecutionConfig?.getRunnerWorkspace() ??
+                  '/workspace',
+              }
+            : undefined,
+          callbacks: {
+            onPrepared: async ({ adapter, prompt, preparedAt }) => {
+              await this.appendPreExecutionOutputRecords({
+                task,
+                node,
+                adapter,
+                prompt,
+                preparedAt,
+              });
+            },
+            onStdoutLine: (line) => {
+              streamedStdoutLineCount += 1;
+              const lineIndex = streamedStdoutLineCount;
+              streamPersistQueue = streamPersistQueue.then(async () => {
+                persistedStdoutJsonlLineCount +=
+                  await this.persistAgentCliStreamLine({
+                    taskId,
+                    nodeId,
+                    task,
+                    node,
+                    stream: 'stdout',
+                    line,
+                    lineIndex,
+                  });
+              });
+            },
+            onStderrLine: (line) => {
+              streamedStderrLineCount += 1;
+              const lineIndex = streamedStderrLineCount;
+              streamPersistQueue = streamPersistQueue.then(async () => {
                 await this.persistAgentCliStreamLine({
                   taskId,
                   nodeId,
                   task,
                   node,
-                  stream: 'stdout',
+                  stream: 'stderr',
                   line,
                   lineIndex,
                 });
-            });
-          },
-          onStderrLine: (line) => {
-            streamedStderrLineCount += 1;
-            const lineIndex = streamedStderrLineCount;
-            streamPersistQueue = streamPersistQueue.then(async () => {
-              await this.persistAgentCliStreamLine({
-                taskId,
-                nodeId,
-                task,
-                node,
-                stream: 'stderr',
-                line,
-                lineIndex,
               });
-            });
+            },
           },
         },
-      });
+      );
+    } finally {
+      if (ephemeralMcpTeardown) {
+        await ephemeralMcpTeardown();
+      }
+    }
 
     await streamPersistQueue;
 

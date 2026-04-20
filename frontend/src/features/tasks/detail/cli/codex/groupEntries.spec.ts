@@ -215,6 +215,53 @@ describe('groupCodexEntries', () => {
     })
   })
 
+  it('keeps MCP tool call cards standalone instead of merging them into task tools', () => {
+    const groups = groupCodexEntries([
+      createEntry({
+        id: 'assistant-1',
+        type: 'assistant_message',
+        timestamp: 1,
+        content: 'Call list_pages',
+      }),
+      createEntry({
+        id: 'tool-1',
+        type: 'command_run',
+        timestamp: 2,
+        content: 'pwd',
+        metadata: {
+          status: 'running',
+        },
+      }),
+      createEntry({
+        id: 'mcp-1',
+        type: 'system_message',
+        timestamp: 3,
+        content: 'MCP · figma → list_pages',
+        metadata: {
+          codexCardType: 'mcp_tool_call',
+          mcpServer: 'figma',
+          mcpTool: 'list_pages',
+        },
+      }),
+    ])
+
+    expect(groups).toHaveLength(2)
+    expect(groups[0]).toMatchObject({
+      type: 'task',
+      tools: [
+        expect.objectContaining({
+          id: 'tool-1',
+        }),
+      ],
+    })
+    expect(groups[1]).toMatchObject({
+      type: 'other',
+      entry: {
+        id: 'mcp-1',
+      },
+    })
+  })
+
   it('merges leading thinking-only into the assistant task group', () => {
     const groups = groupCodexEntries([
       createEntry({

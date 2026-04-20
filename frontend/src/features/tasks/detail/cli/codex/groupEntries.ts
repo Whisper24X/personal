@@ -43,7 +43,8 @@ function isStandaloneCodexCard(entry: NormalizedEntry): boolean {
   return (
     entry.type === 'system_message' &&
     (entry.metadata?.codexCardType === 'todo_list' ||
-      entry.metadata?.codexCardType === 'file_change')
+      entry.metadata?.codexCardType === 'file_change' ||
+      entry.metadata?.codexCardType === 'mcp_tool_call')
   )
 }
 

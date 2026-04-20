@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { BadRequestException } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -225,5 +226,89 @@ describe('ProjectRepositoryWorkspaceService', () => {
     ).rejects.toThrow('fatal: early EOF');
 
     await expect(fs.access(repositoryRoot)).rejects.toThrow();
+  });
+
+  it('should checkout an existing local branch', async () => {
+    const { service } = createService();
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      });
+
+    await service.checkoutBranch('/tmp/project-repo', 'release');
+
+    expect(runCommandSpy).toHaveBeenNthCalledWith(1, 'git', [
+      '-C',
+      '/tmp/project-repo',
+      'rev-parse',
+      '--verify',
+      'refs/heads/release',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(2, 'git', [
+      '-C',
+      '/tmp/project-repo',
+      'checkout',
+      'release',
+    ]);
+  });
+
+  it('should create local branch from origin when only remote branch exists', async () => {
+    const { service } = createService();
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockResolvedValueOnce({
+        success: false,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      });
+
+    await service.checkoutBranch('/tmp/project-repo', 'release');
+
+    expect(runCommandSpy).toHaveBeenNthCalledWith(3, 'git', [
+      '-C',
+      '/tmp/project-repo',
+      'checkout',
+      '-B',
+      'release',
+      'origin/release',
+    ]);
+  });
+
+  it('should reject checkout when neither local nor remote branch exists', async () => {
+    const { service } = createService();
+
+    jest.spyOn(service as any, 'runCommand').mockResolvedValue({
+      success: false,
+      stdout: '',
+      stderr: '',
+      timedOut: false,
+    });
+
+    await expect(
+      service.checkoutBranch('/tmp/project-repo', 'release'),
+    ).rejects.toThrow(BadRequestException);
   });
 });

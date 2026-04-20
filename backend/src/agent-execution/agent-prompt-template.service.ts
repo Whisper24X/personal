@@ -9,6 +9,10 @@ export type PromptTemplateRuntimeContext = {
   gitBaseBranch?: string | null;
   gitWorktree?: string | null;
   gitWorktreePath?: string | null;
+  /** When set to `runner`, MCP and path translation for Docker task execution apply. */
+  executionPlane?: 'host' | 'runner' | null;
+  /** In-container workspace mount (e.g. `/workspace`); used with `executionPlane: 'runner'`. */
+  runnerWorkspaceMount?: string | null;
   agentAdapter?: string | null;
   agentToolConfigId?: string | null;
   agentToolConfigName?: string | null;

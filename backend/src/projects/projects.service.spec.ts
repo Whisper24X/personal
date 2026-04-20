@@ -108,6 +108,7 @@ const createProjectsService = () => {
     ensureProjectRepository: jest.fn(),
     ensureProjectRepositoryReady: jest.fn(),
     runWithProjectRepositoryLock: jest.fn(),
+    checkoutBranch: jest.fn(),
     syncRunnerConfigBackup: jest.fn(),
   };
   const projectRepositoryProvisioningService = {
@@ -452,6 +453,139 @@ describe('ProjectsService', () => {
     });
   });
 
+  it('should checkout next default branch before persisting project update', async () => {
+    const { service, projectRepository, projectRepositoryWorkspaceService } =
+      createProjectsService();
+    const serviceAny = service as any;
+    const currentUser = createCurrentUser();
+    const currentProject = createProject();
+    const updatedProject = {
+      ...currentProject,
+      defaultBranch: 'release',
+    };
+
+    jest
+      .spyOn(serviceAny, 'ensureCanUpdateProjectItem')
+      .mockResolvedValue(currentProject);
+    projectRepositoryWorkspaceService.runWithProjectRepositoryLock.mockImplementation(
+      async (
+        _projectId: string,
+        _user: unknown,
+        _options: unknown,
+        operation: (ctx: { repositoryRoot: string }) => Promise<Project>,
+      ) => operation({ repositoryRoot: '/tmp/project-repo' }),
+    );
+    projectRepository.update.mockResolvedValue(updatedProject);
+
+    const result = await service.update(
+      currentProject.id,
+      {
+        defaultBranch: 'release',
+      } as never,
+      currentUser,
+    );
+
+    expect(result).toEqual(updatedProject);
+    expect(
+      projectRepositoryWorkspaceService.runWithProjectRepositoryLock,
+    ).toHaveBeenCalledWith(
+      currentProject.id,
+      currentUser,
+      { syncRemote: true },
+      expect.any(Function),
+    );
+    expect(
+      projectRepositoryWorkspaceService.checkoutBranch,
+    ).toHaveBeenCalledWith('/tmp/project-repo', 'release');
+    expect(projectRepository.update).toHaveBeenCalledWith(currentProject.id, {
+      defaultBranch: 'release',
+    });
+    expect(
+      projectRepositoryWorkspaceService.syncRunnerConfigBackup,
+    ).toHaveBeenCalledWith(updatedProject, '/tmp/project-repo');
+  });
+
+  it('should not persist default branch when checkout fails', async () => {
+    const { service, projectRepository, projectRepositoryWorkspaceService } =
+      createProjectsService();
+    const serviceAny = service as any;
+    const currentUser = createCurrentUser();
+    const currentProject = createProject();
+    const checkoutError = new BadRequestException('检出 release 失败');
+
+    jest
+      .spyOn(serviceAny, 'ensureCanUpdateProjectItem')
+      .mockResolvedValue(currentProject);
+    projectRepositoryWorkspaceService.runWithProjectRepositoryLock.mockImplementation(
+      async (
+        _projectId: string,
+        _user: unknown,
+        _options: unknown,
+        operation: (ctx: { repositoryRoot: string }) => Promise<Project>,
+      ) => operation({ repositoryRoot: '/tmp/project-repo' }),
+    );
+    projectRepositoryWorkspaceService.checkoutBranch.mockRejectedValue(
+      checkoutError,
+    );
+
+    await expect(
+      service.update(
+        currentProject.id,
+        {
+          defaultBranch: 'release',
+        } as never,
+        currentUser,
+      ),
+    ).rejects.toThrow(checkoutError);
+
+    expect(projectRepository.update).not.toHaveBeenCalled();
+    expect(
+      projectRepositoryWorkspaceService.syncRunnerConfigBackup,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('should rollback repository branch when persistence fails after checkout', async () => {
+    const { service, projectRepository, projectRepositoryWorkspaceService } =
+      createProjectsService();
+    const serviceAny = service as any;
+    const currentUser = createCurrentUser();
+    const currentProject = createProject();
+    const persistenceError = new Error('db unavailable');
+
+    jest
+      .spyOn(serviceAny, 'ensureCanUpdateProjectItem')
+      .mockResolvedValue(currentProject);
+    projectRepositoryWorkspaceService.runWithProjectRepositoryLock.mockImplementation(
+      async (
+        _projectId: string,
+        _user: unknown,
+        _options: unknown,
+        operation: (ctx: { repositoryRoot: string }) => Promise<Project>,
+      ) => operation({ repositoryRoot: '/tmp/project-repo' }),
+    );
+    projectRepositoryWorkspaceService.checkoutBranch.mockResolvedValue(
+      undefined,
+    );
+    projectRepository.update.mockRejectedValue(persistenceError);
+
+    await expect(
+      service.update(
+        currentProject.id,
+        {
+          defaultBranch: 'release',
+        } as never,
+        currentUser,
+      ),
+    ).rejects.toThrow(persistenceError);
+
+    expect(
+      projectRepositoryWorkspaceService.checkoutBranch,
+    ).toHaveBeenNthCalledWith(1, '/tmp/project-repo', 'release');
+    expect(
+      projectRepositoryWorkspaceService.checkoutBranch,
+    ).toHaveBeenNthCalledWith(2, '/tmp/project-repo', 'main');
+  });
+
   it('should persist only supported project-level container runtime fields', async () => {
     const { service, projectRepository } = createProjectsService();
     const serviceAny = service as any;
@@ -489,6 +623,16 @@ describe('ProjectsService', () => {
             },
           ],
         },
+        ephemeralMcp: {
+          templates: [
+            {
+              id: 'demo',
+              listenPort: 5980,
+              command: 'npx',
+              args: ['-y', '@demo/mcp'],
+            },
+          ],
+        },
         networkMode: 'bridge',
         exposeHostIp: '192.168.50.8',
         exposeContainerPort: 4173,
@@ -514,6 +658,16 @@ describe('ProjectsService', () => {
                 name: 'web',
                 workdir: 'web',
                 command: 'pnpm dev',
+              },
+            ],
+          },
+          ephemeralMcp: {
+            templates: [
+              {
+                id: 'demo',
+                listenPort: 5980,
+                command: 'npx',
+                args: ['-y', '@demo/mcp'],
               },
             ],
           },

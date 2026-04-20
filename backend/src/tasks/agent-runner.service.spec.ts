@@ -16,6 +16,7 @@ import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
 import { TaskMode } from './dto/task-mode.enum';
+import { TaskNodeStatus } from './dto/task-node-status.enum';
 import { TaskStatus } from './dto/task-status.enum';
 
 jest.mock('child_process', () => ({
@@ -84,7 +85,7 @@ const createNode = (): TaskNode => ({
     maxLoops: 1,
   },
   runtimeJson: null,
-  status: TaskStatus.todo,
+  status: TaskNodeStatus.todo,
   createdAt: new Date(),
   updatedAt: new Date(),
 });
@@ -2431,5 +2432,101 @@ describe('AgentRunnerService', () => {
       }),
     );
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('should use runnerContainerCwd for docker exec when provided', async () => {
+    const repositoryMock = createRepositoryMock();
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const childProcess = new EventEmitter() as any;
+    childProcess.stdout = stdout;
+    childProcess.stderr = stderr;
+    childProcess.stdin = {
+      write: jest.fn(),
+      end: jest.fn(),
+    };
+    childProcess.kill = jest.fn().mockReturnValue(true);
+
+    const launcher = {
+      spawn: jest.fn().mockReturnValue(childProcess),
+    };
+    const containerExecutionConfig = {
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+    };
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      containerExecutionConfig as any,
+      launcher as any,
+    );
+    const serviceAny = service as any;
+
+    const resultPromise = serviceAny.runWithConfig(
+      {
+        adapter: 'codex',
+        command: 'codex',
+        args: ['exec', '--json', '-'],
+        cwd: '/host/worktrees/wk-1/packages/app',
+        runnerContainerCwd: '/workspace/packages/app',
+        env: {},
+      },
+      'Run task',
+      {
+        taskId: 'task-1',
+        nodeId: 'node-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+      },
+      undefined,
+      'container-123',
+    );
+
+    stdout.emit(
+      'data',
+      '{"event":"session.started","session_id":"session-1"}\n',
+    );
+    childProcess.emit('close', 0, null);
+
+    await expect(resultPromise).resolves.toMatchObject({
+      success: true,
+      exitCode: 0,
+      sessionId: 'session-1',
+    });
+    expect(launcher.spawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: '/workspace/packages/app',
+      }),
+    );
+    expect(containerExecutionConfig.getRunnerWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('should resolve runnerContainerCwd from runnerWorkingSubdirectory on runner plane', async () => {
+    const repositoryMock = createRepositoryMock();
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const resolver = (
+      service as unknown as {
+        configResolver: AgentExecutionConfigResolverService;
+      }
+    ).configResolver;
+    const wt = path.join(worktreeRoot, 'task-1');
+    const project = createProject({
+      runnerWorkingSubdirectory: 'packages/app',
+    });
+    const task = createTask({ gitWorktree: wt });
+    const node = createNode();
+
+    const config = await resolver.resolveExecutionConfig(project, task, node, {
+      executionPlane: 'runner',
+      gitWorktreePath: wt,
+      runnerWorkspaceMount: '/workspace',
+    });
+
+    expect(config.cwd).toBe(path.join(wt, 'packages', 'app'));
+    expect(config.runnerContainerCwd).toBe('/workspace/packages/app');
   });
 });

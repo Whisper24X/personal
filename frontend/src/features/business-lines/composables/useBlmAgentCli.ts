@@ -14,6 +14,7 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
   const loadingAgentToolConfigs = ref(false)
   const submittingAgentToolConfig = ref(false)
   const deletingAgentToolConfigId = ref('')
+  const testingAgentToolConfigId = ref('')
   const agentCliValidationMessage = ref('')
   const agentToolConfigModalOpen = ref(false)
   const agentToolConfigMode = ref<'create' | 'edit'>('create')
@@ -191,6 +192,56 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
     }
   }
 
+  const formatSmokeTestError = (code?: string) => {
+    switch (code) {
+      case 'ENOENT':
+        return '未找到可执行文件（PATH 或自定义命令无效）'
+      case 'TIMEOUT':
+        return '命令执行超时'
+      case 'NON_ZERO':
+        return '命令退出码非 0'
+      case 'SPAWN_ERROR':
+        return '无法启动进程'
+      case 'AUTH_ERROR':
+        return '输出疑似鉴权失败（如 invalid API key、401/403）'
+      default:
+        return '探测失败'
+    }
+  }
+
+  const SMOKE_COST_HINT = '（已发起真实模型调用，可能产生费用）'
+
+  const testAgentToolConfig = async (config: AgentToolConfig) => {
+    if (!activeLineId.value) {
+      return
+    }
+
+    testingAgentToolConfigId.value = config.id
+    try {
+      const result = await businessLinesApi.testAgentToolConfig(activeLineId.value, config.id)
+      if (result.ok) {
+        const hint = result.stdoutPreview?.trim() || result.stderrPreview?.trim()
+        message.success(
+          hint
+            ? `端到端可用 ${SMOKE_COST_HINT} ${hint.slice(0, 200)}${hint.length > 200 ? '…' : ''}`
+            : `端到端可用 ${SMOKE_COST_HINT} 退出码 0`,
+        )
+      } else {
+        const reason = formatSmokeTestError(result.errorCode)
+        const detail = result.stderrPreview?.trim() || result.stdoutPreview?.trim()
+        message.error(
+          detail
+            ? `${reason} ${SMOKE_COST_HINT}：${detail.slice(0, 400)}${detail.length > 400 ? '…' : ''}`
+            : `${reason} ${SMOKE_COST_HINT}`,
+        )
+      }
+    } catch (error) {
+      message.error(toErrorMessage(error, '测试 Agent CLI 配置失败'))
+    } finally {
+      testingAgentToolConfigId.value = ''
+    }
+  }
+
   const removeAgentToolConfig = async (configId: string) => {
     if (!activeLineId.value) {
       return
@@ -218,6 +269,7 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
     loadingAgentToolConfigs,
     submittingAgentToolConfig,
     deletingAgentToolConfigId,
+    testingAgentToolConfigId,
     agentCliValidationMessage,
     agentToolConfigModalOpen,
     agentToolConfigMode,
@@ -234,5 +286,6 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
     saveAgentToolConfig,
     setAgentToolConfigAsDefault,
     removeAgentToolConfig,
+    testAgentToolConfig,
   }
 }

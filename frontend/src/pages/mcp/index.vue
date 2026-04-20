@@ -130,18 +130,62 @@ const vm = useMcpPage()
           </span>
         </div>
 
+        <div
+          v-if="group.serverCount > 0 && vm.activeProjectId && vm.projectBusinessLineId"
+          class="mt-3 flex flex-wrap items-center gap-2 border-b border-border pb-3"
+        >
+          <template v-if="vm.hasMcpProbeMappingForProvider(group.id)">
+            <span class="text-xs font-medium text-muted-foreground">
+              用于探测的 Agent CLI 配置（{{ group.label }}）
+            </span>
+            <select
+              class="h-9 max-w-full min-w-[200px] flex-1 rounded-lg border border-border bg-background px-2 text-xs text-foreground md:max-w-md"
+              :disabled="vm.loading || vm.filterAgentToolConfigsForMcpProvider(group.id, vm.allAgentToolConfigs).length === 0"
+              :value="vm.getProbeAgentToolConfigId(group.id)"
+              @change="
+                vm.setProbeAgentToolConfigId(
+                  group.id,
+                  ($event.target as HTMLSelectElement).value,
+                )
+              "
+            >
+              <option
+                v-for="cfg in vm.filterAgentToolConfigsForMcpProvider(group.id, vm.allAgentToolConfigs)"
+                :key="cfg.id"
+                :value="cfg.id"
+              >
+                {{ cfg.name }}（{{ cfg.toolId }}）
+              </option>
+            </select>
+            <p
+              v-if="!vm.loading && vm.filterAgentToolConfigsForMcpProvider(group.id, vm.allAgentToolConfigs).length === 0"
+              class="w-full text-xs text-amber-700 dark:text-amber-400"
+            >
+              请先在业务线「Agent CLI」中为 {{ group.label }} 创建对应类型的配置后再探测。
+            </p>
+          </template>
+          <p
+            v-else
+            class="w-full text-xs text-amber-700 dark:text-amber-400"
+          >
+            该 MCP 来源无法匹配 Agent CLI 探测类型，「测试」已禁用。
+          </p>
+        </div>
+
         <div v-if="group.serverCount > 0" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <article
             v-for="item in group.servers"
             :key="item.id"
-            role="button"
-            class="flex cursor-pointer flex-col rounded-xl border border-border bg-background/70 px-4 py-3 transition-colors hover:border-foreground/20"
-            tabindex="0"
-            @click="void vm.openMcpJsonPreview(item)"
-            @keydown.enter.prevent="void vm.openMcpJsonPreview(item)"
-            @keydown.space.prevent="void vm.openMcpJsonPreview(item)"
+            class="flex min-h-[8rem] flex-col gap-2 rounded-xl border border-border bg-background/70 px-4 py-3 transition-colors hover:border-foreground/20"
           >
-            <div class="min-w-0 flex-1">
+            <div
+              class="min-w-0 flex-1 cursor-pointer"
+              role="button"
+              tabindex="0"
+              @click="void vm.openMcpJsonPreview(item)"
+              @keydown.enter.prevent="void vm.openMcpJsonPreview(item)"
+              @keydown.space.prevent="void vm.openMcpJsonPreview(item)"
+            >
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <p class="text-sm font-semibold">{{ item.name }}</p>
@@ -151,6 +195,14 @@ const vm = useMcpPage()
 
               <p class="mt-3 break-all font-mono text-[10px] text-muted-foreground">{{ vm.resolveSourcePath(item) || '-' }}</p>
             </div>
+            <button
+              type="button"
+              class="inline-flex h-8 w-full items-center justify-center rounded-md border border-border bg-background text-xs font-semibold text-foreground transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="!vm.groupProbeTestReady(group.id) || vm.testingProjectMcpId === item.id"
+              @click.stop="void vm.testProjectLocalMcp(item)"
+            >
+              {{ vm.testingProjectMcpId === item.id ? '探测中…' : '测试' }}
+            </button>
           </article>
         </div>
 

@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { spawn } from 'child_process';
+import path from 'path';
 import { GitBranchActionResultDto } from './dto/git-branch-action-result.dto';
 import { GitBranchesDto } from './dto/git-branches.dto';
 import {
@@ -12,6 +14,7 @@ import {
 } from './dto/git-branches-detail.dto';
 import { GitLogDto } from './dto/git-log.dto';
 import { GitPullMainDto } from './dto/git-pull-main.dto';
+import { GitPushResultDto } from './dto/git-push-result.dto';
 import { GitStatusDto } from './dto/git-status.dto';
 import { GitCreateBranchResultDto } from './dto/git-create-branch-result.dto';
 import { GitBranchMergeResultDto } from './dto/git-branch-merge-result.dto';
@@ -20,6 +23,7 @@ import { ProjectRepositoryWorkspaceService } from '../projects/project-repositor
 
 @Injectable()
 export class GitService {
+  private readonly logger = new Logger(GitService.name);
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly fallbackDefaultBranch = 'main';
 
@@ -144,6 +148,91 @@ export class GitService {
       success: true,
       branch: normalizedBranchName,
       output: result.output,
+    };
+  }
+
+  async pushBranch(
+    projectId: string,
+    branchName: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitPushResultDto> {
+    const normalizedBranchName = this.normalizeAndAssertBranchName(
+      branchName,
+      '分支名',
+    );
+
+    const { repositoryRoot, defaultBranch } = await this.resolveProjectContext(
+      projectId,
+      currentUser,
+      { syncRemote: true },
+    );
+    const snapshot = await this.readBranchSnapshot(
+      repositoryRoot,
+      defaultBranch,
+    );
+
+    if (!snapshot.localBranches.includes(normalizedBranchName)) {
+      throw new BadRequestException(
+        `仓库不存在 ${normalizedBranchName} 本地分支，无法推送`,
+      );
+    }
+
+    if (snapshot.currentBranch !== normalizedBranchName) {
+      throw new BadRequestException(
+        `请先切换到 ${normalizedBranchName} 分支后再执行推送，避免误推送其他分支`,
+      );
+    }
+
+    let pushedCommits = 0;
+    const hasRemoteBranch =
+      snapshot.remoteBranches.includes(normalizedBranchName);
+    if (hasRemoteBranch) {
+      const divergence = await this.readBranchDivergence(
+        repositoryRoot,
+        normalizedBranchName,
+        `origin/${normalizedBranchName}`,
+      );
+      pushedCommits = divergence.ahead;
+    } else {
+      const countResult = await this.runCommand([
+        '-C',
+        repositoryRoot,
+        'rev-list',
+        '--count',
+        `${defaultBranch}..${normalizedBranchName}`,
+      ]);
+      if (countResult.success) {
+        pushedCommits = Number.parseInt(countResult.stdout.trim(), 10) || 0;
+      }
+    }
+
+    const pushResult = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'push',
+      '-u',
+      'origin',
+      normalizedBranchName,
+    ]);
+
+    if (!pushResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(
+          `推送 ${normalizedBranchName} 分支失败`,
+          pushResult,
+        ),
+      );
+    }
+
+    const output =
+      (pushResult.stderr && pushResult.stderr.trim()) ||
+      (pushResult.stdout && pushResult.stdout.trim()) ||
+      'Push completed.';
+
+    return {
+      success: true,
+      output,
+      pushedCommits,
     };
   }
 
@@ -714,6 +803,128 @@ export class GitService {
     return {
       commits: this.parseCommits(logResult.stdout),
     };
+  }
+
+  /**
+   * Stages the given paths (if inside the project repository) and creates a commit when
+   * there are staged changes. Swallows errors so callers can treat Git as best-effort.
+   */
+  async commitProjectPathsIfDirty(
+    projectId: string,
+    currentUser: JwtPayloadType,
+    absolutePaths: string[],
+    message: string,
+  ): Promise<void> {
+    const trimmedMessage = message.trim();
+    if (!absolutePaths.length || !trimmedMessage) {
+      return;
+    }
+
+    try {
+      await this.projectRepositoryWorkspaceService.runWithProjectRepositoryLock(
+        projectId,
+        currentUser,
+        { syncRemote: false },
+        async ({ repositoryRoot }) => {
+          const root = path.resolve(repositoryRoot);
+          const relativePaths: string[] = [];
+
+          for (const rawPath of absolutePaths) {
+            const absPath = path.resolve(String(rawPath).trim());
+            if (!absPath) {
+              continue;
+            }
+
+            const relPath = path.relative(root, absPath);
+            if (
+              !relPath ||
+              relPath.startsWith('..') ||
+              path.isAbsolute(relPath)
+            ) {
+              this.logger.warn(
+                `commitProjectPathsIfDirty: skip path outside repository projectId=${projectId} path=${absPath}`,
+              );
+              continue;
+            }
+
+            relativePaths.push(relPath);
+          }
+
+          if (!relativePaths.length) {
+            this.logger.warn(
+              `commitProjectPathsIfDirty: no valid paths under repository projectId=${projectId}`,
+            );
+            return;
+          }
+
+          const addResult = await this.runCommand([
+            '-C',
+            root,
+            'add',
+            '--',
+            ...relativePaths,
+          ]);
+
+          if (!addResult.success) {
+            this.logger.warn(
+              `commitProjectPathsIfDirty: ${this.formatGitFailure('git add', addResult)} projectId=${projectId}`,
+            );
+            return;
+          }
+
+          const stagedResult = await this.runCommand([
+            '-C',
+            root,
+            'diff',
+            '--cached',
+            '--name-only',
+          ]);
+
+          if (!stagedResult.success) {
+            this.logger.warn(
+              `commitProjectPathsIfDirty: ${this.formatGitFailure(
+                'git diff --cached',
+                stagedResult,
+              )} projectId=${projectId}`,
+            );
+            return;
+          }
+
+          if (!stagedResult.stdout.trim()) {
+            return;
+          }
+
+          const gitName = currentUser.username || 'ainative-user';
+          const gitEmail = `${currentUser.username || currentUser.sub}@ainative.local`;
+          const commitResult = await this.runCommand([
+            '-C',
+            root,
+            '-c',
+            `user.name=${gitName}`,
+            '-c',
+            `user.email=${gitEmail}`,
+            'commit',
+            '-m',
+            trimmedMessage,
+          ]);
+
+          if (!commitResult.success) {
+            this.logger.warn(
+              `commitProjectPathsIfDirty: ${this.formatGitFailure(
+                'git commit',
+                commitResult,
+              )} projectId=${projectId}`,
+            );
+          }
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `commitProjectPathsIfDirty: unexpected error projectId=${projectId} ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private async resolveProjectContext(

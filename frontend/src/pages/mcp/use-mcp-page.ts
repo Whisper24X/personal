@@ -2,7 +2,7 @@ import type { ComponentPublicInstance } from 'vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from '@app/composables/useMessage'
-import { businessLinesApi } from '@/api/business-lines'
+import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
 import { mcpsApi } from '@/api/mcps'
 import { projectsApi } from '@/api/projects'
 import type { Mcp, ProjectLocalMcpProvider } from '@/types/api/mcps'
@@ -16,6 +16,12 @@ import {
   MCP_PROJECT_PROVIDER_ORDER as PROJECT_PROVIDER_ORDER,
   MCP_PROVIDER_LABEL_MAP as PROVIDER_LABEL_MAP,
 } from './mcp-page.constants'
+import {
+  MCP_SOURCE_PROVIDER_TO_PROBE_TOOL_IDS,
+  filterAgentToolConfigsForMcpProvider,
+  hasMcpProbeMappingForProvider,
+  pickDefaultProbeAgentToolConfigId,
+} from './mcp-probe-provider-map'
 
 type ProviderGroup = {
   id: string
@@ -56,6 +62,9 @@ const removingProjectMcpId = ref('')
 
 const projectBusinessLineId = ref('')
 const projectName = ref('')
+const allAgentToolConfigs = ref<AgentToolConfig[]>([])
+const selectedProbeAgentToolConfigIdByProvider = ref<Record<string, string>>({})
+const testingProjectMcpId = ref('')
 const copyMcpModalOpen = ref(false)
 const copyMcpKeyword = ref('')
 const businessLineMcps = ref<Mcp[]>([])
@@ -202,6 +211,12 @@ const onDocumentPointerDown = (event: PointerEvent) => {
 const loadProjectContext = async (projectId: string) => {
   const token = ++projectContextRequestToken.value
 
+  if (!projectId.trim()) {
+    projectBusinessLineId.value = ''
+    projectName.value = ''
+    return
+  }
+
   try {
     const project = await projectsApi.detail(projectId)
     if (token !== projectContextRequestToken.value) {
@@ -218,6 +233,133 @@ const loadProjectContext = async (projectId: string) => {
     projectBusinessLineId.value = ''
     projectName.value = ''
     message.error(toErrorMessage(error, '加载项目信息失败'))
+  }
+}
+
+const syncProbeSelectionsAfterConfigsLoad = () => {
+  const configs = allAgentToolConfigs.value
+  const prev = selectedProbeAgentToolConfigIdByProvider.value
+  const next: Record<string, string> = {}
+
+  for (const providerId of Object.keys(MCP_SOURCE_PROVIDER_TO_PROBE_TOOL_IDS)) {
+    const filtered = filterAgentToolConfigsForMcpProvider(providerId, configs)
+    const prevId = prev[providerId]
+    if (prevId && filtered.some((c) => c.id === prevId)) {
+      next[providerId] = prevId
+    } else {
+      next[providerId] = pickDefaultProbeAgentToolConfigId(filtered)
+    }
+  }
+
+  selectedProbeAgentToolConfigIdByProvider.value = next
+}
+
+const loadMcpProbeAgentToolConfigs = async () => {
+  const businessLineId = projectBusinessLineId.value.trim()
+  if (!businessLineId) {
+    allAgentToolConfigs.value = []
+    selectedProbeAgentToolConfigIdByProvider.value = {}
+    return
+  }
+
+  try {
+    const configs = await businessLinesApi.listAgentToolConfigs(businessLineId)
+    allAgentToolConfigs.value = configs
+    syncProbeSelectionsAfterConfigsLoad()
+  } catch {
+    allAgentToolConfigs.value = []
+    selectedProbeAgentToolConfigIdByProvider.value = {}
+  }
+}
+
+const getProbeAgentToolConfigId = (providerId: string) => {
+  return selectedProbeAgentToolConfigIdByProvider.value[providerId] ?? ''
+}
+
+const setProbeAgentToolConfigId = (providerId: string, configId: string) => {
+  selectedProbeAgentToolConfigIdByProvider.value = {
+    ...selectedProbeAgentToolConfigIdByProvider.value,
+    [providerId]: configId,
+  }
+}
+
+const groupProbeTestReady = (providerId: string) => {
+  if (!hasMcpProbeMappingForProvider(providerId)) {
+    return false
+  }
+  const filtered = filterAgentToolConfigsForMcpProvider(providerId, allAgentToolConfigs.value)
+  if (filtered.length === 0) {
+    return false
+  }
+  const id = getProbeAgentToolConfigId(providerId)
+  return Boolean(id && filtered.some((c) => c.id === id))
+}
+
+const formatMcpProbeWarnings = (warnings: string[] | undefined) => {
+  if (!warnings?.length) {
+    return ''
+  }
+
+  const labels: Record<string, string> = {
+    AGENT_MCP_CONFIG_MAY_NOT_REFERENCE_BUSINESS_LINE_FILE:
+      '当前 Agent CLI 配置的 mcp_config 可能未包含本 MCP 配置文件路径',
+    AGENT_GEMINI_MCP_MAY_NOT_REFERENCE_BUSINESS_LINE_FILE_OR_NAME:
+      'Gemini 的 extensions 或 allowed_mcp_server_names 可能未引用当前 MCP',
+  }
+
+  return warnings.map((w) => labels[w] ?? w).join('；')
+}
+
+const testProjectLocalMcp = async (item: Mcp) => {
+  const projectId = activeProjectId.value
+  if (!projectId || testingProjectMcpId.value) {
+    return
+  }
+
+  const sourcePath = resolveSourcePath(item)
+  if (!sourcePath) {
+    message.error('未找到 MCP 源配置路径')
+    return
+  }
+
+  const providerId = resolveSourceProvider(item)
+  if (!hasMcpProbeMappingForProvider(providerId)) {
+    message.error('当前 MCP 来源不支持探测或无法匹配 Agent CLI 类型')
+    return
+  }
+
+  const filtered = filterAgentToolConfigsForMcpProvider(providerId, allAgentToolConfigs.value)
+  const agentToolConfigId = getProbeAgentToolConfigId(providerId)
+  if (
+    !agentToolConfigId ||
+    !filtered.some((c) => c.id === agentToolConfigId)
+  ) {
+    message.error('请先在本分组选择用于探测的 Agent CLI 配置')
+    return
+  }
+
+  testingProjectMcpId.value = item.id
+
+  try {
+    const result = await mcpsApi.testProjectLocalMcp({
+      projectId,
+      name: item.name,
+      sourcePath,
+      agentToolConfigId,
+    })
+
+    if (result.ok) {
+      const warnText = formatMcpProbeWarnings(result.warnings)
+      const base = `MCP「${item.name}」探测成功（tools：${result.toolsCount ?? 0}）`
+      message.success(warnText ? `${base}。${warnText}` : base)
+    } else {
+      const detail = [result.message, result.stderrPreview].filter(Boolean).join('\n')
+      message.error(detail || 'MCP 探测失败')
+    }
+  } catch (error) {
+    message.error(toErrorMessage(error, 'MCP 探测失败'))
+  } finally {
+    testingProjectMcpId.value = ''
   }
 }
 
@@ -677,7 +819,11 @@ watch(
     copyMcpModalOpen.value = false
     projectBusinessLineId.value = ''
     projectName.value = ''
+    allAgentToolConfigs.value = []
+    selectedProbeAgentToolConfigIdByProvider.value = {}
     resetMcpJsonPreviewState()
+    await loadProjectContext(activeProjectId.value)
+    await loadMcpProbeAgentToolConfigs()
     await loadProjectMcps()
   },
   { immediate: true },
@@ -729,6 +875,15 @@ onBeforeUnmount(() => {
     openImportMcpJsonModal,
     loadingMcpJsonPreview,
     projectBusinessLineId,
+    allAgentToolConfigs,
+    selectedProbeAgentToolConfigIdByProvider,
+    filterAgentToolConfigsForMcpProvider,
+    hasMcpProbeMappingForProvider,
+    getProbeAgentToolConfigId,
+    setProbeAgentToolConfigId,
+    groupProbeTestReady,
+    testingProjectMcpId,
+    testProjectLocalMcp,
     resolveSourceProvider,
     onDocumentPointerDown,
     removeProjectLocalMcp,

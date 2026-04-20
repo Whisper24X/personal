@@ -85,6 +85,16 @@ export type AgentToolConfig = {
   updatedAt: string
 }
 
+export type AgentToolConfigSmokeTestResult = {
+  ok: boolean
+  exitCode: number | null
+  command: string
+  args: string[]
+  stdoutPreview?: string
+  stderrPreview?: string
+  errorCode?: 'ENOENT' | 'TIMEOUT' | 'NON_ZERO' | 'SPAWN_ERROR' | 'AUTH_ERROR'
+}
+
 export type BusinessLineCustomRole = {
   id: string
   businessLineId: string
@@ -296,6 +306,12 @@ export const businessLinesApi = {
     return apiHttp.delete<void>(`/business-lines/${businessLineId}/agent-tool-configs/${configId}`)
   },
 
+  testAgentToolConfig(businessLineId: string, configId: string) {
+    return apiHttp.post<AgentToolConfigSmokeTestResult>(
+      `/business-lines/${businessLineId}/agent-tool-configs/${configId}/test`,
+    )
+  },
+
   listLocalSkills(businessLineId: string, params?: { keyword?: string }) {
     return apiHttp.get<Skill[]>(`/business-lines/${businessLineId}/local-skills`, params)
   },
@@ -369,4 +385,5 @@ export const businessLinesApi = {
       `/business-lines/${businessLineId}/local-mcps?${query.toString()}`,
     )
   },
+
 }
