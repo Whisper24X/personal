@@ -12,16 +12,16 @@
     "baseUrl": "./",
     "paths": {
       "@modelcontextprotocol/sdk/client": [
-        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index.js"
+        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index.d.ts"
       ],
       "@modelcontextprotocol/sdk/client/sse.js": [
-        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/sse.js"
+        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/sse.d.ts"
       ],
       "@modelcontextprotocol/sdk/client/stdio.js": [
-        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/stdio.js"
+        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/stdio.d.ts"
       ],
       "@modelcontextprotocol/sdk/client/streamableHttp.js": [
-        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/streamableHttp.js"
+        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/streamableHttp.d.ts"
       ]
     },
     "incremental": true,
