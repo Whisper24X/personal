@@ -21,7 +21,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
-  (event: 'submit', payload: { containerRuntime?: ProjectContainerRuntimeConfig }): void
+  (
+    event: 'submit',
+    payload: {
+      containerRuntime?: ProjectContainerRuntimeConfig
+    },
+  ): void
 }>()
 
 const validationMessage = ref('')

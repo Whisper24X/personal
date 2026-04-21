@@ -18,6 +18,8 @@ import { RepositoryProvisioningStatus } from '../../projects/domain/repository-p
 import { ProjectAccessService } from '../../projects/project-access.service';
 import { WorkflowTemplatesService } from '../../workflow-templates/workflow-templates.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
+import { DatabaseIsolationService } from '../../containers/database-isolation.service';
+import { DatabaseIsolationConfig } from '../../containers/types/database-isolation.types';
 import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { Task } from '../domain/task';
 import { CreateTaskDto } from '../dto/create-task.dto';
@@ -72,6 +74,7 @@ export class TaskCommandService {
     private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
     private readonly goalRepository: GoalRepository,
     private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
+    private readonly dbIsolationService: DatabaseIsolationService,
   ) {}
 
   async create(
@@ -591,6 +594,30 @@ export class TaskCommandService {
     this.logger.log(
       `task_deleted ${JSON.stringify({ taskId: task.id, deletedBy: currentUser.sub, gitWorktree: task.gitWorktree ?? null })}`,
     );
+
+    if (task.projectId) {
+      const projectForDbCleanup = await this.taskAccessService
+        .getProjectByIdOrThrow(task.projectId)
+        .catch(() => null);
+      if (projectForDbCleanup) {
+        const dbIsolation = (
+          projectForDbCleanup.configJson as Record<string, unknown>
+        )?.databaseIsolation as DatabaseIsolationConfig | undefined;
+        if (dbIsolation?.enabled) {
+          const taskDbName = `task_${task.id}_${dbIsolation.postgres.sourceDatabase}`;
+          const adminPassword = (
+            projectForDbCleanup.configJson as Record<string, unknown>
+          )?.dbIsolationAdminPassword as string;
+          await this.dbIsolationService
+            .dropTaskDatabase(dbIsolation, adminPassword, taskDbName)
+            .catch((err) => {
+              this.logger.warn(
+                `task_database_drop_failed taskId=${task.id}: ${err instanceof Error ? err.message : err}`,
+              );
+            });
+        }
+      }
+    }
 
     await this.taskRepository.remove(task.id);
     this.taskWorkspaceContextCache.invalidateTask(task.id);

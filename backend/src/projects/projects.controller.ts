@@ -6,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -68,6 +69,9 @@ import type { Response } from 'express';
 import { ProjectDeployService } from './project-deploy.service';
 import { ProjectDocsService } from './project-docs.service';
 import { ProjectKnowledgeService } from './project-knowledge.service';
+import { DatabaseIsolationService } from '../containers/database-isolation.service';
+import { TableInfo } from '../containers/types/database-isolation.types';
+import { ScanDatabaseTablesDto } from './dto/scan-database-tables.dto';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
@@ -82,6 +86,7 @@ export class ProjectsController {
     private readonly projectDocsService: ProjectDocsService,
     private readonly projectKnowledgeService: ProjectKnowledgeService,
     private readonly projectDeployService: ProjectDeployService,
+    private readonly dbIsolationService: DatabaseIsolationService,
   ) {}
 
   @Post('inspect-repository')
@@ -618,6 +623,53 @@ export class ProjectsController {
 
     if (!res.writableEnded) {
       res.end();
+    }
+  }
+
+  @Post(':id/database-isolation/scan-tables')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          estimatedRows: { type: 'number' },
+          sizeBytes: { type: 'number' },
+        },
+      },
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  async scanDatabaseTables(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ScanDatabaseTablesDto,
+  ): Promise<TableInfo[]> {
+    const project = await this.projectsService.findById(id, request.user);
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    try {
+      return await this.dbIsolationService.scanTables(
+        {
+          host: body.host,
+          port: body.port ?? 5432,
+          adminUser: body.adminUser ?? 'postgres',
+          sourceDatabase: body.sourceDatabase,
+        },
+        body.adminPassword,
+      );
+    } catch (error: unknown) {
+      const code = (error as { code?: string }).code;
+      let message = error instanceof Error ? error.message : String(error);
+      if (code === 'ECONNREFUSED')
+        message = '数据库服务器连接被拒绝，请检查地址和端口';
+      if (code === '28P01') message = '数据库认证失败，请检查用户名或密码';
+      if (code === '3D000') message = '基准数据库不存在';
+      throw new BadRequestException(`数据库连接失败: ${message}`);
     }
   }
 }

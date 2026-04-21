@@ -126,6 +126,12 @@ const projectRuntimeSettingsProject = ref<ProjectItem | null>(null)
 const projectRuntimeSettingsInitialContainerRuntime = ref<ProjectContainerRuntimeConfig | null>(null)
 const projectRuntimeSettingsInitialConfigJson = ref<Record<string, unknown> | null>(null)
 
+const dbIsolationModalOpen = ref(false)
+const dbIsolationSubmitting = ref(false)
+const dbIsolationError = ref('')
+const dbIsolationProject = ref<ProjectItem | null>(null)
+const dbIsolationInitialConfigJson = ref<Record<string, unknown> | null>(null)
+
 const memberPermissionModalOpen = ref(false)
 const memberPermissionModalMode = ref<'create' | 'edit'>('create')
 const memberPermissionModalSubmitting = ref(false)
@@ -1267,14 +1273,18 @@ const submitProjectRuntimeSettings = async (payload: {
   try {
     projectContainerRuntimeForm.syncFromContainerRuntime(payload.containerRuntime)
 
+    const mergedConfigJson = projectContainerRuntimeForm.buildProjectConfigJson(
+      projectRuntimeSettingsInitialConfigJson.value,
+    )
+
     const updatedProject = await projectsApi.update(project.id, {
       name: project.name.trim(),
       description: project.description?.trim() ?? '',
       gitUrl: project.gitUrl.trim(),
       defaultBranch: project.defaultBranch.trim() || 'main',
-      configJson: projectContainerRuntimeForm.buildProjectConfigJson(
-        projectRuntimeSettingsInitialConfigJson.value,
-      ),
+      configJson: mergedConfigJson && Object.keys(mergedConfigJson).length > 0
+        ? mergedConfigJson
+        : undefined,
     })
 
     applyProjectRuntimeSettingsProject(updatedProject)
@@ -1291,6 +1301,70 @@ const submitProjectRuntimeSettings = async (payload: {
   }
 }
 
+const openDbIsolationModal = (project: ProjectItem) => {
+  if (!canUpdateProjectItem.value) {
+    return
+  }
+  dbIsolationProject.value = project
+  dbIsolationInitialConfigJson.value = project.configJson
+    ? { ...project.configJson }
+    : null
+  dbIsolationError.value = ''
+  dbIsolationModalOpen.value = true
+}
+
+const handleDbIsolationModalOpenChange = (open: boolean) => {
+  dbIsolationModalOpen.value = open
+}
+
+const submitDbIsolation = async (payload: {
+  dbIsolationConfigJson: Record<string, unknown>
+}) => {
+  const project = dbIsolationProject.value
+  if (!project || !canUpdateProjectItem.value) {
+    return
+  }
+
+  dbIsolationSubmitting.value = true
+  dbIsolationError.value = ''
+
+  try {
+    const base = { ...dbIsolationInitialConfigJson.value }
+    delete base.databaseIsolation
+    delete base.dbIsolationAdminPassword
+    const mergedConfigJson = {
+      ...base,
+      ...payload.dbIsolationConfigJson,
+    }
+
+    const updatedProject = await projectsApi.update(project.id, {
+      name: project.name.trim(),
+      description: project.description?.trim() ?? '',
+      gitUrl: project.gitUrl.trim(),
+      defaultBranch: project.defaultBranch.trim() || 'main',
+      configJson: Object.keys(mergedConfigJson).length > 0
+        ? mergedConfigJson
+        : undefined,
+    })
+
+    const updatedItem = mapProjectItem(updatedProject)
+    dbIsolationProject.value = updatedItem
+    dbIsolationInitialConfigJson.value = updatedProject.configJson
+      ? { ...(updatedProject.configJson as Record<string, unknown>) }
+      : null
+    replaceLineProject(updatedProject)
+    emit('request-refresh')
+    dbIsolationModalOpen.value = false
+    message.success('保存数据库隔离设置成功')
+  } catch (error) {
+    const errMsg = toErrorMessage(error, '保存数据库隔离设置失败')
+    dbIsolationError.value = errMsg
+    message.error(errMsg)
+  } finally {
+    dbIsolationSubmitting.value = false
+  }
+}
+
 onMounted(() => {
   removeProjectProvisioningChangedListener =
     addProjectRepositoryProvisioningChangedListener(
@@ -1304,6 +1378,7 @@ onBeforeUnmount(() => {
     removeProjectProvisioningChangedListener = null
   }
   projectRuntimeSettingsModalOpen.value = false
+  dbIsolationModalOpen.value = false
 })
 
 const openProjectDeleteModal = (project: ProjectItem) => {
@@ -2135,6 +2210,7 @@ watch(
     openEditProjectModal,
     openImportMcpJsonModal,
     openMcpJsonPreview,
+    openDbIsolationModal,
     openProjectDeleteModal,
     openProjectRuntimeSettingsModal,
     retryProjectRepositoryProvisioning,
@@ -2151,6 +2227,13 @@ watch(
     permissionProjectRoleModalMode,
     permissionProjectRoleModalOpen,
     permissionProjectRoleModalSubmitting,
+    dbIsolationError,
+    dbIsolationInitialConfigJson,
+    dbIsolationModalOpen,
+    dbIsolationProject,
+    dbIsolationSubmitting,
+    handleDbIsolationModalOpenChange,
+    submitDbIsolation,
     projectContainerRuntimeForm,
     projectDeleteModalOpen,
     projectFormError,

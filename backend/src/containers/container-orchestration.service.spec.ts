@@ -100,6 +100,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
     );
 
     await service.resumeActiveSlotsOnStartup();
@@ -155,6 +156,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
     );
 
     await service.resumeActiveSlotsOnStartup();
@@ -199,6 +201,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
     );
 
     const result = await service.inspectTaskContainer({
@@ -338,6 +341,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       runnerOrchestration as never,
     );
     jest
@@ -507,6 +511,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       createRunnerOrchestration() as never,
     );
     jest
@@ -584,6 +589,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       createRunnerOrchestration() as never,
     );
 
@@ -674,6 +680,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       createRunnerOrchestration() as never,
     );
     jest
@@ -765,6 +772,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       createRunnerOrchestration() as never,
     );
 
@@ -848,6 +856,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       createRunnerOrchestration() as never,
     );
     const result = await service.ensureContainer({
@@ -929,6 +938,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       createRunnerOrchestration() as never,
     );
     const loggerWarn = jest
@@ -1017,6 +1027,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       createRunnerOrchestration() as never,
     );
     const loggerWarn = jest
@@ -1066,6 +1077,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
       createRunnerOrchestration() as never,
     );
     const loggerLog = jest
@@ -1107,6 +1119,7 @@ describe('ContainerOrchestrationService', () => {
       isolatedRunner as never,
       slotRepository as never,
       taskRepository as never,
+      {} as never,
     );
     const loggerLog = jest
       .spyOn((service as any).logger, 'log')

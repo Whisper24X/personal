@@ -22,6 +22,7 @@ const emit = defineEmits<{
   'create-project': []
   select: [project: ProjectItem]
   'open-runtime': [project: ProjectItem]
+  'open-db-isolation': [project: ProjectItem]
   'retry-provisioning': [project: ProjectItem]
   'open-edit': [project: ProjectItem]
   'open-delete': [project: ProjectItem]
@@ -176,6 +177,14 @@ const resolveProvisioningStatus = (
                   @click.stop="emit('open-runtime', project)"
                 >
                   容器设置
+                </button>
+                <button
+                  v-if="canUpdateProjectItem"
+                  type="button"
+                  class="inline-flex h-8 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20"
+                  @click.stop="emit('open-db-isolation', project)"
+                >
+                  数据库配置
                 </button>
                 <button
                   v-if="canUpdateProjectItem"
