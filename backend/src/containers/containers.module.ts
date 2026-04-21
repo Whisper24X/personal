@@ -9,6 +9,7 @@ import { ProjectExecutionSlotEntity } from './infrastructure/persistence/relatio
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { IsolatedRunnerContainerService } from './isolated-runner-container.service';
 import { RunnerOrchestrationService } from './runner-orchestration.service';
+import { DatabaseIsolationService } from './database-isolation.service';
 import { ProjectRunnerImageService } from './project-runner-image.service';
 
 @Module({
@@ -25,6 +26,7 @@ import { ProjectRunnerImageService } from './project-runner-image.service';
     DockerExecProcessLauncherService,
     ProjectExecutionSlotRepository,
     ContainerOrchestrationService,
+    DatabaseIsolationService,
   ],
   exports: [
     ContainerExecutionConfigService,
@@ -34,6 +36,7 @@ import { ProjectRunnerImageService } from './project-runner-image.service';
     DockerExecProcessLauncherService,
     ProjectExecutionSlotRepository,
     IsolatedRunnerContainerService,
+    DatabaseIsolationService,
   ],
 })
 export class ContainersModule {}

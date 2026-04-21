@@ -158,6 +158,7 @@ const createService = () => {
     taskWorkspaceWatchService as never,
     goalRepository as never,
     taskWorkspaceContextCache as never,
+    {} as never,
   );
 
   return {

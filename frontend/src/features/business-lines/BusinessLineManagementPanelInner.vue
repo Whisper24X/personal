@@ -6,6 +6,7 @@ import MemberPermissionModal from './modals/MemberPermissionModal.vue'
 import { CustomRoleModal } from '@features/access'
 import ProjectFormModal from './modals/ProjectFormModal.vue'
 import ProjectRuntimeSettingsModal from './modals/ProjectRuntimeSettingsModal.vue'
+import DatabaseIsolationSettingsModal from './modals/DatabaseIsolationSettingsModal.vue'
 import AgentToolConfigModal from './modals/AgentToolConfigModal.vue'
 import SkillUploadModal from './modals/SkillUploadModal.vue'
 import McpJsonImportModal from './modals/McpJsonImportModal.vue'
@@ -240,6 +241,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 @create-project="vm.openCreateProjectModal"
                 @select="vm.selectCurrentProject"
                 @open-runtime="vm.openProjectRuntimeSettingsModal"
+                @open-db-isolation="vm.openDbIsolationModal"
                 @retry-provisioning="vm.retryProjectRepositoryProvisioning"
                 @open-edit="vm.openEditProjectModal"
                 @open-delete="vm.openProjectDeleteModal"
@@ -427,6 +429,17 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
         :error-message="vm.projectRuntimeSettingsError"
         @update:open="vm.handleProjectRuntimeSettingsModalOpenChange"
         @submit="vm.submitProjectRuntimeSettings"
+      />
+
+      <DatabaseIsolationSettingsModal
+        :open="vm.dbIsolationModalOpen"
+        :submitting="vm.dbIsolationSubmitting"
+        :project-id="vm.dbIsolationProject?.id ?? ''"
+        :project-name="vm.dbIsolationProject?.name ?? ''"
+        :initial-config-json="vm.dbIsolationInitialConfigJson"
+        :error-message="vm.dbIsolationError"
+        @update:open="vm.handleDbIsolationModalOpenChange"
+        @submit="vm.submitDbIsolation"
       />
 
       <MemberPermissionModal

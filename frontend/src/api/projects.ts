@@ -11,6 +11,7 @@ import type {
 import type {
   CreateProjectMemberPayload,
   CreateProjectPayload,
+  DatabaseIsolationTableInfo,
   InspectProjectRepositoryPayload,
   Project,
   ProjectRepositoryInspection,
@@ -185,5 +186,21 @@ export const projectsApi = {
 
   deploy(projectId: string, taskId: string, command: string, callbacks: SseCallbacks) {
     return postSseStream(`/projects/${projectId}/deploy`, { taskId, command }, callbacks)
+  },
+
+  scanDatabaseTables(
+    projectId: string,
+    params: {
+      adminPassword: string
+      host: string
+      port?: number
+      adminUser?: string
+      sourceDatabase: string
+    },
+  ) {
+    return apiHttp.post<DatabaseIsolationTableInfo[]>(
+      `/projects/${projectId}/database-isolation/scan-tables`,
+      params,
+    )
   },
 }

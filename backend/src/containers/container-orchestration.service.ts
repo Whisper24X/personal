@@ -12,6 +12,7 @@ import { Task } from '../tasks/domain/task';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
 import { ContainerExecutionConfigService } from './container-execution-config.service';
+import { DatabaseIsolationService } from './database-isolation.service';
 import {
   IsolatedRunnerContainerService,
   RunnerManagedVolumeMount,
@@ -21,6 +22,7 @@ import { ProjectExecutionSlotRepository } from './infrastructure/persistence/rel
 import { buildPreviewUrl } from './preview-url';
 import { ProjectRunnerImageService } from './project-runner-image.service';
 import { RunnerOrchestrationService } from './runner-orchestration.service';
+import { DatabaseIsolationConfig } from './types/database-isolation.types';
 
 @Injectable()
 export class ContainerOrchestrationService
@@ -40,6 +42,7 @@ export class ContainerOrchestrationService
     private readonly isolatedRunner: IsolatedRunnerContainerService,
     private readonly slotRepository: ProjectExecutionSlotRepository,
     private readonly taskRepository: TaskRepository,
+    private readonly dbIsolationService: DatabaseIsolationService,
     private readonly runnerOrchestration?: RunnerOrchestrationService,
   ) {}
 
@@ -541,6 +544,22 @@ export class ContainerOrchestrationService
               }
             : {}),
         };
+        const dbIsolation = (params.project.configJson as Record<string, unknown>)
+          ?.databaseIsolation as DatabaseIsolationConfig | undefined;
+        if (dbIsolation?.enabled) {
+          const taskDbName = `task_${params.task.id}_${dbIsolation.postgres.sourceDatabase}`;
+          const adminPassword =
+            (params.project.configJson as Record<string, unknown>)
+              ?.dbIsolationAdminPassword as string;
+          await this.dbIsolationService.ensureTaskDatabase(
+            dbIsolation,
+            adminPassword,
+            taskDbName,
+            dbIsolation.dataImport?.tables ?? [],
+          );
+          containerEnv[dbIsolation.envVar] = taskDbName;
+        }
+
         const repositoryGitPath = await this.resolveRepositoryGitPath(
           params.worktreePath,
         );

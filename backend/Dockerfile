@@ -43,6 +43,7 @@ RUN --mount=type=cache,id=backend-runtime-apt-cache,target=/var/cache/apt,sharin
     --mount=type=cache,id=backend-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     bash curl git openssh-client netcat-openbsd zip unzip ca-certificates make \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
@@ -57,7 +58,6 @@ RUN ARCH=$(uname -m) \
     && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
     && rm -rf /tmp/docker /tmp/docker.tgz \
     && docker --version
-
 
 # ============================================================
 # AI Coding CLI 工具
