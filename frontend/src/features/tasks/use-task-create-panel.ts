@@ -168,6 +168,21 @@ const replaceProjectInList = (project: Project) => {
   projects.value = projects.value.map((item, index) => (index === existingIndex ? project : item))
 }
 
+const ensureProjectLoaded = async (projectId: string) => {
+  if (!projectId) {
+    return null
+  }
+
+  const existingProject = projects.value.find((item) => item.id === projectId)
+  if (existingProject) {
+    return existingProject
+  }
+
+  const latestProject = await projectsApi.detail(projectId)
+  replaceProjectInList(latestProject)
+  return latestProject
+}
+
 const syncProjectFromContext = () => {
   const projectId = resolveProjectIdFromContext()
   if (projectId) {
@@ -338,7 +353,7 @@ const loadTemplatesForProject = async (projectId: string) => {
 }
 
 const loadConversationCliOptions = async (projectId: string) => {
-  const project = projects.value.find((item) => item.id === projectId)
+  const project = await ensureProjectLoaded(projectId)
   if (!project?.businessLineId) {
     configuredCliTools.value = []
     agentConfigsByTool.value = {}
@@ -386,7 +401,7 @@ const loadConversationCliOptions = async (projectId: string) => {
 }
 
 const loadProjectDependencies = async (projectId: string) => {
-  const project = projects.value.find((item) => item.id === projectId)
+  const project = await ensureProjectLoaded(projectId)
   const repositoryReady =
     !project?.repositoryProvisioningStatus ||
     project.repositoryProvisioningStatus === 'ready'

@@ -105,6 +105,31 @@ const syncProjectFromContext = () => {
   }
 }
 
+const replaceProjectInList = (project: Project) => {
+  const existingIndex = projects.value.findIndex((item) => item.id === project.id)
+  if (existingIndex < 0) {
+    projects.value = [...projects.value, project]
+    return
+  }
+
+  projects.value = projects.value.map((item, index) => (index === existingIndex ? project : item))
+}
+
+const ensureProjectLoaded = async (projectId: string) => {
+  if (!projectId) {
+    return null
+  }
+
+  const existingProject = projects.value.find((item) => item.id === projectId)
+  if (existingProject) {
+    return existingProject
+  }
+
+  const latestProject = await projectsApi.detail(projectId)
+  replaceProjectInList(latestProject)
+  return latestProject
+}
+
 function docTypeForGoalSourceFile(file: File): GoalSourceDocType {
   const name = file.name.toLowerCase()
   if (name.endsWith('.zip')) {
@@ -177,7 +202,7 @@ const isTaskCreateSupportedCliToolId = (toolId: string): toolId is TaskCreateSup
 
 const loadBranchesForProject = async (projectId: string) => {
   const requestId = ++latestBranchRequestId
-  const project = projects.value.find((item) => item.id === projectId)
+  const project = await ensureProjectLoaded(projectId)
   const projectDefaultBranch = project?.defaultBranch?.trim() || ''
 
   if (!projectId) {
@@ -241,7 +266,7 @@ const syncAgentToolConfigsForSelectedTool = () => {
 }
 
 const loadConversationCliOptions = async (projectId: string) => {
-  const project = projects.value.find((item) => item.id === projectId)
+  const project = await ensureProjectLoaded(projectId)
   if (!project?.businessLineId) {
     configuredCliTools.value = []
     agentConfigsByTool.value = {}
