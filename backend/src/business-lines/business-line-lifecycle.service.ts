@@ -8,6 +8,7 @@ import { BusinessLine } from './domain/business-line';
 import { BusinessLineMemberRepository } from './infrastructure/persistence/business-line-member.repository';
 import { BusinessLineRepository } from './infrastructure/persistence/business-line.repository';
 import { BusinessLineRoleCatalogService } from './business-line-role-catalog.service';
+import { WorkflowTemplateDefaultSeedingService } from '../workflow-templates/workflow-template-default-seeding.service';
 
 @Injectable()
 export class BusinessLineLifecycleService {
@@ -15,6 +16,7 @@ export class BusinessLineLifecycleService {
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
     private readonly businessLineRoleCatalogService: BusinessLineRoleCatalogService,
+    private readonly workflowTemplateDefaultSeedingService: WorkflowTemplateDefaultSeedingService,
   ) {}
 
   async create(
@@ -39,6 +41,10 @@ export class BusinessLineLifecycleService {
     );
     await this.businessLineRoleCatalogService.ensureDefaultProjectCustomRoles(
       businessLine.id,
+    );
+    await this.workflowTemplateDefaultSeedingService.ensureDefaultBusinessLineWorkflowTemplates(
+      businessLine.id,
+      currentUser.sub,
     );
     const ownerRole =
       await this.businessLineRoleCatalogService.findDefaultBusinessLineCustomRole(

@@ -544,13 +544,14 @@ export class ContainerOrchestrationService
               }
             : {}),
         };
-        const dbIsolation = (params.project.configJson as Record<string, unknown>)
-          ?.databaseIsolation as DatabaseIsolationConfig | undefined;
+        const dbIsolation = (
+          params.project.configJson as Record<string, unknown>
+        )?.databaseIsolation as DatabaseIsolationConfig | undefined;
         if (dbIsolation?.enabled) {
           const taskDbName = `task_${params.task.id}_${dbIsolation.postgres.sourceDatabase}`;
-          const adminPassword =
-            (params.project.configJson as Record<string, unknown>)
-              ?.dbIsolationAdminPassword as string;
+          const adminPassword = (
+            params.project.configJson as Record<string, unknown>
+          )?.dbIsolationAdminPassword as string;
           await this.dbIsolationService.ensureTaskDatabase(
             dbIsolation,
             adminPassword,

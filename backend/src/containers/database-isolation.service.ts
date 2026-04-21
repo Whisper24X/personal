@@ -47,9 +47,7 @@ export class DatabaseIsolationService {
     });
     await client.connect();
     try {
-      await client.query(
-        `CREATE DATABASE "${taskDbName.replace(/"/g, '""')}"`,
-      );
+      await client.query(`CREATE DATABASE "${taskDbName.replace(/"/g, '""')}"`);
     } finally {
       await client.end();
     }
@@ -270,9 +268,7 @@ export class DatabaseIsolationService {
       execFile(command, args, { env }, (error, stdout, stderr) => {
         if (error) {
           reject(
-            new Error(
-              `${command} failed: ${stderr?.trim() || error.message}`,
-            ),
+            new Error(`${command} failed: ${stderr?.trim() || error.message}`),
           );
           return;
         }

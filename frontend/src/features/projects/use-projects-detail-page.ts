@@ -44,6 +44,7 @@ import {
   normalizeWorkflowNodeInput,
   normalizeWorkflowNodes,
   resolveWorkflowNodeInputByContext,
+  validateBusinessLineWorkflowTemplateForProjectCopy,
   validateWorkflowNodesPlain,
 } from '@features/projects/projects-detail-workflow.helpers'
 import type {
@@ -885,10 +886,34 @@ const submitCopyBusinessLineWorkflowTemplate = async (template: WorkflowTemplate
     return
   }
 
+  const businessLineId = project.value?.businessLineId
+  if (!businessLineId) {
+    message.error('当前项目未绑定业务线，无法复制模板')
+    return
+  }
+
   copyingBusinessLineWorkflowTemplateId.value = template.id
   copyWorkflowErrorMessage.value = ''
 
   try {
+    await loadWorkflowConfiguredCliTools(businessLineId)
+
+    const nodesForValidation = cloneWorkflowNodesFromTemplate(template)
+    const copyValidationMessage = validateBusinessLineWorkflowTemplateForProjectCopy(
+      nodesForValidation,
+      {
+        configuredCliToolIdSet: workflowConfiguredCliToolIdSet.value,
+        configsByTool: workflowNodeConfigsByTool.value,
+        hasConfiguredCliTools: workflowConfiguredCliTools.value.length > 0,
+      },
+    )
+
+    if (copyValidationMessage) {
+      copyWorkflowErrorMessage.value = copyValidationMessage
+      message.error(copyValidationMessage)
+      return
+    }
+
     await workflowApi.create({
       name: buildCopiedWorkflowTemplateName(template.name),
       description: normalizeOptionalText(template.description ?? ''),

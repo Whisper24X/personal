@@ -985,7 +985,7 @@ const submitDbIsolation = async (payload: {
   dbIsolationError.value = ''
 
   try {
-    const base = { ...(dbIsolationInitialConfigJson.value ?? {}) }
+    const base = { ...dbIsolationInitialConfigJson.value }
     delete base.databaseIsolation
     delete base.dbIsolationAdminPassword
     const mergedConfigJson = {

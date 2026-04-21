@@ -3,7 +3,7 @@ import { reactive, ref, watch } from 'vue'
 import {
   createDatabaseIsolationFormState,
   useDatabaseIsolationForm,
-} from '@shared/composables/useDatabaseIsolationForm'
+} from '../composables/useDatabaseIsolationForm'
 
 defineOptions({
   name: 'DatabaseIsolationSettingsModal',

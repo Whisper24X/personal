@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class ScanDatabaseTablesDto {
   @ApiProperty({ type: String, example: '10.8.8.110' })
@@ -14,7 +21,11 @@ export class ScanDatabaseTablesDto {
   @Max(65535)
   port?: number;
 
-  @ApiPropertyOptional({ type: String, example: 'postgres', default: 'postgres' })
+  @ApiPropertyOptional({
+    type: String,
+    example: 'postgres',
+    default: 'postgres',
+  })
   @IsOptional()
   @IsString()
   adminUser?: string;
@@ -22,7 +33,8 @@ export class ScanDatabaseTablesDto {
   @ApiProperty({
     type: String,
     example: 'yanxue_ainative',
-    description: '基准数据库名（即当前共享环境使用的源库，非 task_ 开头的隔离库）',
+    description:
+      '基准数据库名（即当前共享环境使用的源库，非 task_ 开头的隔离库）',
   })
   @IsString()
   @IsNotEmpty()
