@@ -2,6 +2,7 @@ import type { BusinessLineCustomRole } from '@/api/business-lines'
 import type { ProjectCustomRole } from '@/types/api/projects'
 export {
   BUSINESS_LINE_CAPABILITY_OPTIONS,
+  BUSINESS_LINE_CAPABILITY_DEPENDENCIES,
   PROJECT_CAPABILITY_OPTIONS,
   BUSINESS_LINE_CAPABILITY_TREE,
   PROJECT_CAPABILITY_TREE,
@@ -208,14 +209,13 @@ const matchesTemplate = <Role extends string>(
 
 const buildRoleDescription = (
   description: string | null | undefined,
-  source: 'default' | 'custom',
 ) => {
   const normalized = description?.trim()
   if (normalized) {
     return normalized
   }
 
-  return source === 'default' ? '默认角色' : '自定义角色'
+  return '角色'
 }
 
 export const isBusinessLineDefaultRole = (
@@ -241,7 +241,7 @@ export const buildBusinessLineRoleAssignmentOptions = (
     return {
       key: `role:${role.id}`,
       label: role.name,
-      description: buildRoleDescription(role.description, source),
+      description: buildRoleDescription(role.description),
       roleId: role.id,
       source,
     }
@@ -257,7 +257,7 @@ export const buildProjectRoleAssignmentOptions = (
     return {
       key: `role:${role.id}`,
       label: role.name,
-      description: buildRoleDescription(role.description, source),
+      description: buildRoleDescription(role.description),
       roleId: role.id,
       source,
     }

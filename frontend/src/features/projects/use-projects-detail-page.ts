@@ -307,35 +307,10 @@ const projectRoleOptions = computed(() => {
 })
 
 const projectRoleSelectOptions = computed(() => {
-  const groups = []
-  const defaultOptions = projectRoleOptions.value
-    .filter((item) => item.source === 'default')
-    .map((item) => ({
-      label: item.label,
-      value: item.key,
-    }))
-  const customOptions = projectRoleOptions.value
-    .filter((item) => item.source === 'custom')
-    .map((item) => ({
-      label: item.label,
-      value: item.key,
-    }))
-
-  if (defaultOptions.length > 0) {
-    groups.push({
-      label: '默认角色',
-      options: defaultOptions,
-    })
-  }
-
-  if (customOptions.length > 0) {
-    groups.push({
-      label: '自定义角色',
-      options: customOptions,
-    })
-  }
-
-  return groups
+  return projectRoleOptions.value.map((item) => ({
+    label: item.label,
+    value: item.key,
+  }))
 })
 
 const preferredProjectRoleKey = computed(() => {

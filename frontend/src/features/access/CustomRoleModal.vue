@@ -16,6 +16,8 @@ const props = defineProps<{
   scopeLabel: string
   submitting: boolean
   capabilityTree: CapabilityTreeNode[]
+  capabilityDependencies?: Record<string, string[]>
+  foundationCapabilityCode?: string
   initialName?: string
   initialDescription?: string
   initialCapabilities: string[]
@@ -40,6 +42,7 @@ const formDescription = ref('')
 const selectedCapabilities = ref<string[]>([])
 const validationMessage = ref('')
 const expandedGroupKeys = ref<Set<string>>(new Set())
+const foundationCapabilityExplicitlySelected = ref(false)
 
 const collectGroupKeys = (nodes: CapabilityTreeNode[]): string[] => {
   return nodes.flatMap((node) => {
@@ -60,17 +63,112 @@ const sectionClass = computed(() => {
     : 'relative z-10 flex max-h-[min(88vh,820px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl'
 })
 
-const flattenedOptions = computed(() => flattenCapabilityTree(props.capabilityTree))
+const removeCapabilityFromTree = (
+  nodes: CapabilityTreeNode[],
+  hiddenCode?: string,
+): CapabilityTreeNode[] => {
+  if (!hiddenCode) {
+    return nodes
+  }
+
+  const filteredNodes: CapabilityTreeNode[] = []
+
+  for (const node of nodes) {
+    if (isCapabilityTreeLeaf(node)) {
+      if (node.code !== hiddenCode) {
+        filteredNodes.push(node)
+      }
+      continue
+    }
+
+    const children = removeCapabilityFromTree(node.children, hiddenCode)
+    if (children.length > 0) {
+      filteredNodes.push({ ...node, children })
+    }
+  }
+
+  return filteredNodes
+}
+
+const allFlattenedOptions = computed(() => flattenCapabilityTree(props.capabilityTree))
+const visibleCapabilityTree = computed(() => {
+  return removeCapabilityFromTree(props.capabilityTree, props.foundationCapabilityCode)
+})
+const flattenedOptions = computed(() => flattenCapabilityTree(visibleCapabilityTree.value))
+const visibleCapabilityCodeSet = computed(() => {
+  return new Set(flattenedOptions.value.map((item) => item.code))
+})
 const selectedCapabilitySet = computed(() => new Set(selectedCapabilities.value))
-const allGroupKeys = computed(() => collectGroupKeys(props.capabilityTree))
+const allGroupKeys = computed(() => collectGroupKeys(visibleCapabilityTree.value))
+const selectedVisibleCapabilityCount = computed(() => {
+  return selectedCapabilities.value.filter((item) => visibleCapabilityCodeSet.value.has(item)).length
+})
+
+const capabilityDependsOn = (
+  capability: string,
+  targetCapability: string,
+  visited = new Set<string>(),
+): boolean => {
+  if (visited.has(capability)) {
+    return false
+  }
+
+  visited.add(capability)
+  const dependencies = props.capabilityDependencies?.[capability] ?? []
+
+  return (
+    dependencies.includes(targetCapability) ||
+    dependencies.some((dependency) =>
+      capabilityDependsOn(dependency, targetCapability, visited),
+    )
+  )
+}
+
+const hasFoundationDependency = (capabilities: string[]) => {
+  if (!props.foundationCapabilityCode) {
+    return false
+  }
+
+  return capabilities.some((capability) => {
+    return (
+      visibleCapabilityCodeSet.value.has(capability) &&
+      capabilityDependsOn(capability, props.foundationCapabilityCode!)
+    )
+  })
+}
+
+const foundationCapabilityLocked = computed(() => {
+  return hasFoundationDependency(selectedCapabilities.value)
+})
+
+const syncFoundationCapabilityState = () => {
+  if (!props.foundationCapabilityCode) {
+    return
+  }
+
+  const nextSelectedCapabilities = new Set(selectedCapabilities.value)
+  if (foundationCapabilityLocked.value || foundationCapabilityExplicitlySelected.value) {
+    nextSelectedCapabilities.add(props.foundationCapabilityCode)
+  } else {
+    nextSelectedCapabilities.delete(props.foundationCapabilityCode)
+  }
+
+  selectedCapabilities.value = Array.from(nextSelectedCapabilities)
+}
 
 const syncState = () => {
   formName.value = props.initialName ?? ''
   formDescription.value = props.initialDescription ?? ''
-  const allowedCapabilities = new Set(flattenedOptions.value.map((item) => item.code))
+  const allowedCapabilities = new Set(allFlattenedOptions.value.map((item) => item.code))
   selectedCapabilities.value = props.initialCapabilities.filter((item) =>
     allowedCapabilities.has(item),
   )
+  foundationCapabilityExplicitlySelected.value = Boolean(
+    props.foundationCapabilityCode &&
+      props.initialCapabilities.includes(props.foundationCapabilityCode) &&
+      !hasFoundationDependency(props.initialCapabilities),
+  )
+  syncFoundationCapabilityState()
   validationMessage.value = ''
   expandedGroupKeys.value = new Set(allGroupKeys.value)
 }
@@ -113,9 +211,11 @@ const getGroupSelectedCount = (node: CapabilityTreeNode) =>
 const toggleCapability = (code: string) => {
   if (selectedCapabilities.value.includes(code)) {
     selectedCapabilities.value = selectedCapabilities.value.filter((item) => item !== code)
-    return
+  } else {
+    selectedCapabilities.value = [...selectedCapabilities.value, code]
   }
-  selectedCapabilities.value = [...selectedCapabilities.value, code]
+
+  syncFoundationCapabilityState()
 }
 
 const toggleGroup = (node: CapabilityTreeNode) => {
@@ -129,6 +229,8 @@ const toggleGroup = (node: CapabilityTreeNode) => {
     codes.forEach((c) => next.add(c))
     selectedCapabilities.value = Array.from(next)
   }
+
+  syncFoundationCapabilityState()
 }
 
 const isGroupChecked = (node: CapabilityTreeNode): boolean => {
@@ -165,11 +267,15 @@ const collapseAllGroups = () => {
 }
 
 const selectAllCapabilities = () => {
+  foundationCapabilityExplicitlySelected.value = false
   selectedCapabilities.value = flattenedOptions.value.map((item) => item.code)
+  syncFoundationCapabilityState()
 }
 
 const clearAllCapabilities = () => {
+  foundationCapabilityExplicitlySelected.value = false
   selectedCapabilities.value = []
+  syncFoundationCapabilityState()
 }
 
 const submit = () => {
@@ -271,7 +377,7 @@ const vIndeterminate = {
                   <span
                     class="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-foreground"
                   >
-                    已选 {{ selectedCapabilities.length }} / {{ flattenedOptions.length }}
+                    已选 {{ selectedVisibleCapabilityCount }} / {{ flattenedOptions.length }}
                   </span>
                   <button
                     type="button"
@@ -307,7 +413,7 @@ const vIndeterminate = {
 
               <ul class="space-y-3">
                 <template
-                  v-for="node in props.capabilityTree"
+                  v-for="node in visibleCapabilityTree"
                   :key="isCapabilityTreeLeaf(node) ? node.code : (node as { key: string }).key"
                 >
                   <!-- 分组节点 -->
@@ -369,6 +475,7 @@ const vIndeterminate = {
                       >
                         <label
                           v-if="isCapabilityTreeLeaf(child)"
+                          :data-capability-code="child.code"
                           class="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition"
                           :class="
                             selectedCapabilitySet.has(child.code)
@@ -418,6 +525,7 @@ const vIndeterminate = {
                     class="relative rounded-2xl border border-border bg-background shadow-sm"
                   >
                     <label
+                      :data-capability-code="node.code"
                       class="flex cursor-pointer items-start gap-3 rounded-2xl px-4 py-3 transition"
                       :class="
                         selectedCapabilitySet.has(node.code)

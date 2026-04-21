@@ -17,6 +17,8 @@ defineProps<{
   fileLoading: boolean
   content: string
   error: string
+  canDownloadSkill: boolean
+  canRemoveSkill: boolean
   downloadingLocalSkillId: string
   removingLocalSkillId: string
 }>()
@@ -52,7 +54,7 @@ const emit = defineEmits<{
         </div>
         <div class="ml-4 flex shrink-0 items-center gap-2">
           <button
-            v-if="item"
+            v-if="item && canDownloadSkill"
             type="button"
             class="inline-flex h-8 items-center justify-center rounded-md border border-primary/60 bg-primary/5 px-3 text-xs font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="loadingTree || downloadingLocalSkillId === item.id"
@@ -61,7 +63,7 @@ const emit = defineEmits<{
             {{ downloadingLocalSkillId === item?.id ? '下载中...' : '下载' }}
           </button>
           <button
-            v-if="item"
+            v-if="item && canRemoveSkill"
             type="button"
             class="inline-flex h-8 items-center justify-center rounded-md border border-destructive/60 bg-destructive/5 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="删除 Skill"

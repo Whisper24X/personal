@@ -144,14 +144,39 @@ beforeEach(() => {
       projectRole: null,
     },
     capabilities: [
+      'businessLine.read',
       'businessLine.update',
+      'businessLine.role.read',
+      'businessLine.role.create',
+      'businessLine.role.update',
+      'businessLine.role.delete',
+      'businessLine.projectRole.read',
+      'businessLine.projectRole.create',
+      'businessLine.projectRole.update',
+      'businessLine.projectRole.delete',
       'businessLine.member.read',
       'businessLine.member.invite',
       'businessLine.member.remove',
       'businessLine.member.updateRole',
+      'businessLine.project.list.all',
       'businessLine.project.create',
       'businessLine.project.update',
       'businessLine.project.delete',
+      'businessLine.agentCli.read',
+      'businessLine.agentCli.create',
+      'businessLine.agentCli.update',
+      'businessLine.agentCli.setDefault',
+      'businessLine.agentCli.delete',
+      'businessLine.workflow.read',
+      'businessLine.workflow.create',
+      'businessLine.workflow.update',
+      'businessLine.workflow.delete',
+      'businessLine.skill.read',
+      'businessLine.skill.upload',
+      'businessLine.skill.update',
+      'businessLine.skill.delete',
+      'businessLine.mcp.read',
+      'businessLine.mcp.manage',
     ],
     visibility: {
       visibleBusinessLineIds: ['line-1'],
@@ -297,7 +322,7 @@ describe('BusinessLineManagementPanel', () => {
     expect(routerPush).toHaveBeenCalledWith({ name: 'home' })
   })
 
-  it('renders left-right layout with 7 tabs by default', async () => {
+  it('renders left-right layout with all business line tabs by default', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {
       props: buildProps(true),
@@ -337,7 +362,7 @@ describe('BusinessLineManagementPanel', () => {
     expect(wrapper.text()).toContain('Opencode')
   })
 
-  it('disables create business line button when user has no permission', async () => {
+  it('hides create business line button when user has no permission', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {
       props: buildProps(false),
@@ -355,9 +380,48 @@ describe('BusinessLineManagementPanel', () => {
       .findAll('button')
       .find((button) => button.text().trim() === '创建业务线')
 
-    expect(createLineButton).toBeDefined()
-    expect((createLineButton!.element as HTMLButtonElement).disabled).toBe(true)
-    expect(wrapper.text()).toContain('当前账号暂无创建业务线权限')
+    expect(createLineButton).toBeUndefined()
+    expect(wrapper.text()).not.toContain('创建业务线')
+  })
+
+  it('shows action-only project tab without loading project list when user cannot view it', async () => {
+    authApi.access.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        username: 'tester',
+        nickname: 'Tester',
+        avatar: null,
+      },
+      currentContext: {
+        businessLineId: 'line-1',
+        businessRole: 'owner',
+        projectRole: null,
+      },
+      capabilities: ['businessLine.project.create'],
+      visibility: {
+        visibleBusinessLineIds: ['line-1'],
+        visibleProjectIds: ['project-1'],
+      },
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('项目')
+    expect(wrapper.text()).not.toContain('成员')
+    expect(wrapper.text()).toContain('暂无查看项目列表权限')
+    expect(wrapper.text()).toContain('新建项目')
+    expect(projectsApi.list).not.toHaveBeenCalled()
   })
 
   it('renders permission tab with nested role tabs', async () => {

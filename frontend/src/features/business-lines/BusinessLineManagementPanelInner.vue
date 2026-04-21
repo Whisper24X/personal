@@ -30,6 +30,7 @@ import {
   summarizeProjectRuntimeConfig,
 } from './blmProjectDisplayUtils'
 import {
+  BUSINESS_LINE_CAPABILITY_DEPENDENCIES,
   BUSINESS_LINE_CAPABILITY_TREE,
   PROJECT_CAPABILITY_TREE,
 } from '@shared/constants/access'
@@ -81,19 +82,14 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
               </div>
             </div>
 
-            <footer class="border-t border-border p-3">
+            <footer v-if="vm.props.canCreateBusinessLine" class="border-t border-border p-3">
               <button
                 type="button"
                 class="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="!vm.props.canCreateBusinessLine"
-                :title="vm.props.canCreateBusinessLine ? '创建业务线' : '当前账号暂无创建业务线权限'"
                 @click="vm.openCreateLineModal"
               >
                 创建业务线
               </button>
-              <p v-if="!vm.props.canCreateBusinessLine" class="mt-2 text-[11px] text-muted-foreground">
-                当前账号暂无创建业务线权限
-              </p>
             </footer>
           </aside>
 
@@ -158,73 +154,26 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
             <div class="border-b border-border px-4 py-3">
               <div class="flex flex-wrap gap-2">
                 <button
+                  v-for="tab in vm.availableMainTabs"
+                  :key="tab.key"
                   class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-                  :class="vm.tabClass('projects')"
+                  :class="vm.tabClass(tab.key)"
                   type="button"
-                  @click="vm.activeTab = 'projects'"
+                  @click="vm.activeTab = tab.key"
                 >
-                  项目
-                </button>
-                <button
-                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-                  :class="vm.tabClass('members')"
-                  type="button"
-                  @click="vm.activeTab = 'members'"
-                >
-                  成员
-                </button>
-                <button
-                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-                  :class="vm.tabClass('permissions')"
-                  type="button"
-                  @click="vm.activeTab = 'permissions'"
-                >
-                  权限
-                </button>
-                <button
-                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-                  :class="vm.tabClass('agent-cli')"
-                  type="button"
-                  @click="vm.activeTab = 'agent-cli'"
-                >
-                  Agent CLI
-                </button>
-                <button
-                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-                  :class="vm.tabClass('workflow')"
-                  type="button"
-                  @click="vm.activeTab = 'workflow'"
-                >
-                  工作流
-                </button>
-                <button
-                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-                  :class="vm.tabClass('skill')"
-                  type="button"
-                  @click="vm.activeTab = 'skill'"
-                >
-                  Skills
-                </button>
-                <button
-                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-                  :class="vm.tabClass('mcp')"
-                  type="button"
-                  @click="vm.activeTab = 'mcp'"
-                >
-                  MCP
-                </button>
-                <button
-                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-                  :class="vm.tabClass('settings')"
-                  type="button"
-                  @click="vm.activeTab = 'settings'"
-                >
-                  设置
+                  {{ tab.label }}
                 </button>
               </div>
             </div>
 
             <div class="min-h-0 flex-1 overflow-y-auto p-4">
+              <section
+                v-if="vm.activeLineId && vm.availableMainTabs.length === 0"
+                class="panel-card rounded-2xl border border-dashed border-border bg-background/60 px-4 py-8 text-center text-sm text-muted-foreground"
+              >
+                当前业务线暂无可访问功能。
+              </section>
+
               <BlmProjectsTab
                 v-if="vm.activeTab === 'projects'"
                 v-model:project-query="vm.projectQuery"
@@ -232,6 +181,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :loading-projects="vm.loadingProjects"
                 :filtered-projects="vm.filteredProjects"
                 :selected-project-id="vm.props.selectedProjectId"
+                :can-view-project-list="vm.canViewProjectList"
                 :can-create-project-item="vm.canCreateProjectItem"
                 :can-update-project-item="vm.canUpdateProjectItem"
                 :can-delete-project-item="vm.canDeleteProjectItem"
@@ -251,6 +201,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :active-line-id="vm.activeLineId"
                 :loading-members="vm.loadingMembers"
                 :filtered-members="vm.filteredMembers"
+                :can-view-member-list="vm.canViewMemberList"
                 :can-invite-members="vm.canInviteMembers"
                 :can-update-member-role="vm.canUpdateMemberRole"
                 :can-remove-members="vm.canRemoveMembers"
@@ -271,12 +222,17 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :active-line-id="vm.activeLineId"
                 :loading-custom-roles="vm.loadingCustomRoles"
                 :line-custom-roles="vm.lineCustomRoles"
+                :can-view-business-line-role-list="vm.canViewBusinessLineRoleList"
                 :can-create-business-line-role="vm.canCreateBusinessLineRole"
                 :can-update-business-line-role="vm.canUpdateBusinessLineRole"
                 :can-delete-business-line-role="vm.canDeleteBusinessLineRole"
                 :deleting-custom-role-id="vm.deletingCustomRoleId"
                 :loading-permission-project-role-library="vm.loadingPermissionProjectRoleLibrary"
                 :permission-project-role-library="vm.permissionProjectRoleLibrary"
+                :can-view-project-role-list="vm.canViewProjectRoleList"
+                :can-create-project-role="vm.canCreatePermissionProjectRole"
+                :can-update-project-role="vm.canUpdatePermissionProjectRole"
+                :can-delete-project-role="vm.canDeletePermissionProjectRole"
                 :can-manage-permission-project-roles="vm.canManagePermissionProjectRoles"
                 :deleting-permission-project-role-id="vm.deletingPermissionProjectRoleId"
                 @refresh-line-roles="vm.refreshLinePermissionSection()"
@@ -296,6 +252,12 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :loading-agent-tool-configs="vm.loadingAgentToolConfigs"
                 :agent-tool-configs="vm.agentToolConfigs"
                 :active-agent-cli-tool-label="vm.activeAgentCliToolLabel"
+                :can-view-agent-tool-config-list="vm.canViewAgentToolConfigList"
+                :can-create-agent-tool-config="vm.canCreateAgentToolConfig"
+                :can-update-agent-tool-config="vm.canUpdateAgentToolConfig"
+                :can-set-default-agent-tool-config="vm.canSetDefaultAgentToolConfig"
+                :can-delete-agent-tool-config="vm.canDeleteAgentToolConfig"
+                :can-test-agent-tool-config="vm.canReadAgentToolConfigList"
                 :submitting-agent-tool-config="vm.submittingAgentToolConfig"
                 :deleting-agent-tool-config-id="vm.deletingAgentToolConfigId"
                 :testing-agent-tool-config-id="vm.testingAgentToolConfigId"
@@ -315,6 +277,10 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :loading-workflow-templates="vm.loadingWorkflowTemplates"
                 :workflow-templates="vm.workflowTemplates"
                 :workflow-template-action-id="vm.workflowTemplateActionId"
+                :can-view-workflow-template-list="vm.canViewWorkflowTemplateList"
+                :can-create-workflow-template="vm.canCreateWorkflowTemplate"
+                :can-update-workflow-template="vm.canUpdateWorkflowTemplate"
+                :can-delete-workflow-template="vm.canDeleteWorkflowTemplate"
                 @create-template="vm.openWorkflowCreateModal"
                 @refresh="vm.loadWorkflowTemplates(vm.activeLineId)"
                 @edit-template="vm.openWorkflowEditModal"
@@ -327,6 +293,8 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :active-line-id="vm.activeLineId"
                 :loading-local-skills="vm.loadingLocalSkills"
                 :local-skills="vm.localSkills"
+                :can-view-skill-list="vm.canViewSkillList"
+                :can-upload-local-skill="vm.canUploadLocalSkill"
                 :uploading-local-skill="vm.uploadingLocalSkill"
                 @refresh="vm.loadLocalSkills(vm.activeLineId)"
                 @search="vm.loadLocalSkills(vm.activeLineId)"
@@ -339,6 +307,8 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :active-line-id="vm.activeLineId"
                 :loading-local-mcps="vm.loadingLocalMcps"
                 :local-mcps="vm.localMcps"
+                :can-view-mcp-list="vm.canViewMcpList"
+                :can-manage-local-mcp="vm.canManageLocalMcp"
                 :importing-local-mcps="vm.importingLocalMcps"
                 @refresh="vm.loadLocalMcps(vm.activeLineId)"
                 @open-import="vm.openImportMcpJsonModal"
@@ -457,6 +427,8 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
         scope-label="业务线"
         :submitting="vm.customRoleModalSubmitting"
         :capability-tree="BUSINESS_LINE_CAPABILITY_TREE"
+        :capability-dependencies="BUSINESS_LINE_CAPABILITY_DEPENDENCIES"
+        foundation-capability-code="businessLine.read"
         :initial-name="vm.customRoleInitialName"
         :initial-description="vm.customRoleInitialDescription"
         :initial-capabilities="vm.customRoleInitialCapabilities"
@@ -527,6 +499,8 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
         :file-loading="vm.skillPreviewFileLoading"
         :content="vm.skillPreviewContent"
         :error="vm.skillPreviewError"
+        :can-download-skill="vm.canViewSkillList"
+        :can-remove-skill="vm.canDeleteLocalSkill"
         :downloading-local-skill-id="vm.downloadingLocalSkillId"
         :removing-local-skill-id="vm.removingLocalSkillId"
         @close="vm.closeSkillPreview"
@@ -543,6 +517,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
         :item="vm.mcpJsonPreviewItem"
         :loading="vm.loadingMcpJsonPreview"
         :saving="vm.savingMcpJsonPreview"
+        :can-manage-local-mcp="vm.canManageLocalMcp"
         :removing-local-mcp-id="vm.removingLocalMcpId"
         :error="vm.mcpJsonPreviewError"
         @close="vm.closeMcpJsonPreview"
@@ -601,4 +576,3 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
       />
   </div>
 </template>
-

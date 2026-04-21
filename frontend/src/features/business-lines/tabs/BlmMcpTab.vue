@@ -7,6 +7,8 @@ defineProps<{
   activeLineId: string
   loadingLocalMcps: boolean
   localMcps: Mcp[]
+  canViewMcpList: boolean
+  canManageLocalMcp: boolean
   importingLocalMcps: boolean
 }>()
 
@@ -26,6 +28,7 @@ const emit = defineEmits<{
         </div>
         <div class="ml-auto flex items-center gap-2">
           <button
+            v-if="canViewMcpList"
             type="button"
             class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
             :disabled="!activeLineId || loadingLocalMcps"
@@ -34,6 +37,7 @@ const emit = defineEmits<{
             刷新
           </button>
           <button
+            v-if="canManageLocalMcp"
             type="button"
             class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="!activeLineId || importingLocalMcps"
@@ -44,7 +48,19 @@ const emit = defineEmits<{
         </div>
       </div>
 
-      <div v-if="loadingLocalMcps" class="mt-3 text-sm text-muted-foreground">
+      <div
+        v-if="!activeLineId"
+        class="mt-3 rounded-xl border border-dashed border-border bg-background/70 px-4 py-4 text-sm text-muted-foreground"
+      >
+        请先选择业务线。
+      </div>
+      <div
+        v-else-if="!canViewMcpList"
+        class="mt-3 rounded-xl border border-dashed border-border bg-background/70 px-4 py-4 text-sm text-muted-foreground"
+      >
+        暂无查看 MCP 列表权限。
+      </div>
+      <div v-else-if="loadingLocalMcps" class="mt-3 text-sm text-muted-foreground">
         加载业务线本地 MCP 中...
       </div>
 
@@ -53,16 +69,14 @@ const emit = defineEmits<{
           v-for="item in localMcps"
           :key="item.id"
           :data-mcp-id="item.id"
-          class="flex min-h-[6.5rem] flex-col gap-1.5 rounded-lg border border-border bg-background/70 px-2.5 py-2 transition hover:border-primary/40 hover:bg-muted/30"
+          class="flex min-h-[6.5rem] cursor-pointer flex-col gap-1.5 rounded-lg border border-border bg-background/70 px-2.5 py-2 transition hover:border-primary/40 hover:bg-muted/30"
+          role="button"
+          tabindex="0"
+          @click="void emit('preview', item)"
+          @keydown.enter.prevent="void emit('preview', item)"
+          @keydown.space.prevent="void emit('preview', item)"
         >
-          <div
-            class="min-w-0 flex-1 cursor-pointer"
-            role="button"
-            tabindex="0"
-            @click="void emit('preview', item)"
-            @keydown.enter.prevent="void emit('preview', item)"
-            @keydown.space.prevent="void emit('preview', item)"
-          >
+          <div class="min-w-0 flex-1">
             <p class="truncate text-xs font-semibold">{{ item.name }}</p>
             <p
               v-if="item.version && item.version !== 'local'"

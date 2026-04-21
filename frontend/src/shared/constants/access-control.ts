@@ -465,11 +465,11 @@ export const BUTTON_ACCESS_CONFIG = {
     capabilities: ['project.workflow.read'],
   },
   createBusinessLineCustomRole: {
-    label: '创建业务线自定义角色',
+    label: '创建业务线角色',
     capabilities: ['businessLine.role.create'],
   },
   createProjectCustomRole: {
-    label: '创建项目自定义角色',
+    label: '创建项目角色',
     capabilities: ['businessLine.projectRole.create'],
   },
 } as const satisfies Record<string, ButtonAccessConfig>
@@ -525,6 +525,43 @@ export const getCapabilityOptionsByScope = (scope: Exclude<AccessScope, 'global'
 export const BUSINESS_LINE_CAPABILITY_OPTIONS = getCapabilityOptionsByScope('businessLine')
 export const PROJECT_CAPABILITY_OPTIONS = getCapabilityOptionsByScope('project')
 
+export const BUSINESS_LINE_CAPABILITY_DEPENDENCIES: Record<string, string[]> = {
+  'businessLine.update': ['businessLine.read'],
+  'businessLine.delete': ['businessLine.read'],
+  'businessLine.project.list.all': ['businessLine.read'],
+  'businessLine.project.list.joined': ['businessLine.read'],
+  'businessLine.project.create': ['businessLine.read'],
+  'businessLine.project.update': ['businessLine.read'],
+  'businessLine.project.delete': ['businessLine.read'],
+  'businessLine.member.read': ['businessLine.read'],
+  'businessLine.member.invite': ['businessLine.read'],
+  'businessLine.member.remove': ['businessLine.read'],
+  'businessLine.member.updateRole': ['businessLine.read'],
+  'businessLine.role.read': ['businessLine.read'],
+  'businessLine.role.create': ['businessLine.read'],
+  'businessLine.role.update': ['businessLine.read'],
+  'businessLine.role.delete': ['businessLine.read'],
+  'businessLine.projectRole.read': ['businessLine.read'],
+  'businessLine.projectRole.create': ['businessLine.read'],
+  'businessLine.projectRole.update': ['businessLine.read'],
+  'businessLine.projectRole.delete': ['businessLine.read'],
+  'businessLine.agentCli.read': ['businessLine.read'],
+  'businessLine.agentCli.create': ['businessLine.read'],
+  'businessLine.agentCli.update': ['businessLine.read'],
+  'businessLine.agentCli.setDefault': ['businessLine.read'],
+  'businessLine.agentCli.delete': ['businessLine.read'],
+  'businessLine.workflow.read': ['businessLine.read'],
+  'businessLine.workflow.create': ['businessLine.read'],
+  'businessLine.workflow.update': ['businessLine.read'],
+  'businessLine.workflow.delete': ['businessLine.read'],
+  'businessLine.skill.read': ['businessLine.read'],
+  'businessLine.skill.upload': ['businessLine.read'],
+  'businessLine.skill.update': ['businessLine.read'],
+  'businessLine.skill.delete': ['businessLine.read'],
+  'businessLine.mcp.read': ['businessLine.read'],
+  'businessLine.mcp.manage': ['businessLine.read'],
+}
+
 /** 业务线能力树（按管理项分组） */
 export const BUSINESS_LINE_CAPABILITY_TREE: CapabilityTreeNode[] = [
   {
@@ -532,6 +569,8 @@ export const BUSINESS_LINE_CAPABILITY_TREE: CapabilityTreeNode[] = [
     label: '业务线',
     children: [
       { code: 'businessLine.read', label: '查看业务线', description: '查看业务线基础信息' },
+      { code: 'businessLine.update', label: '编辑业务线', description: '修改业务线名称与描述' },
+      { code: 'businessLine.delete', label: '删除业务线', description: '删除业务线' },
     ],
   },
   {
@@ -607,14 +646,6 @@ export const BUSINESS_LINE_CAPABILITY_TREE: CapabilityTreeNode[] = [
     children: [
       { code: 'businessLine.mcp.read', label: '查看 MCP', description: '查看 MCP' },
       { code: 'businessLine.mcp.manage', label: '管理 MCP', description: '创建、更新、删除、导入 MCP' },
-    ],
-  },
-  {
-    key: 'settings',
-    label: '设置',
-    children: [
-      { code: 'businessLine.update', label: '编辑业务线', description: '修改业务线名称与描述' },
-      { code: 'businessLine.delete', label: '删除业务线', description: '删除业务线' },
     ],
   },
 ]

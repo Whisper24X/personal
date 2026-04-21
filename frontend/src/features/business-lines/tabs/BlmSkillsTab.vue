@@ -9,6 +9,8 @@ defineProps<{
   activeLineId: string
   loadingLocalSkills: boolean
   localSkills: Skill[]
+  canViewSkillList: boolean
+  canUploadLocalSkill: boolean
   uploadingLocalSkill: boolean
 }>()
 
@@ -24,7 +26,7 @@ const emit = defineEmits<{
   <section class="space-y-4">
     <article class="panel-card p-5">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <div class="flex flex-1 items-center gap-2">
+        <div v-if="canViewSkillList" class="flex flex-1 items-center gap-2">
           <input
             v-model="skillKeyword"
             class="h-9 min-w-[180px] flex-1 rounded-lg border border-border bg-background px-3 text-xs text-foreground"
@@ -35,6 +37,7 @@ const emit = defineEmits<{
         </div>
         <div class="flex items-center gap-2">
           <button
+            v-if="canViewSkillList"
             type="button"
             class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
             :disabled="!activeLineId || loadingLocalSkills"
@@ -43,6 +46,7 @@ const emit = defineEmits<{
             刷新
           </button>
           <button
+            v-if="canViewSkillList"
             type="button"
             class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="!activeLineId || loadingLocalSkills"
@@ -51,6 +55,7 @@ const emit = defineEmits<{
             搜索
           </button>
           <button
+            v-if="canUploadLocalSkill"
             type="button"
             class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="!activeLineId || uploadingLocalSkill"
@@ -61,7 +66,19 @@ const emit = defineEmits<{
         </div>
       </div>
 
-      <div v-if="loadingLocalSkills" class="mt-3 text-sm text-muted-foreground">
+      <div
+        v-if="!activeLineId"
+        class="mt-3 rounded-xl border border-dashed border-border bg-background/70 px-4 py-4 text-sm text-muted-foreground"
+      >
+        请先选择业务线。
+      </div>
+      <div
+        v-else-if="!canViewSkillList"
+        class="mt-3 rounded-xl border border-dashed border-border bg-background/70 px-4 py-4 text-sm text-muted-foreground"
+      >
+        暂无查看 Skills 权限。
+      </div>
+      <div v-else-if="loadingLocalSkills" class="mt-3 text-sm text-muted-foreground">
         加载业务线本地 Skill 中...
       </div>
 

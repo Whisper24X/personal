@@ -140,14 +140,26 @@ export function useLayoutWorkspace(options: {
     layoutDataLoading.value = true
 
     try {
+      const access = await accessStore.loadContext(undefined, { force: true })
+      const visibleBusinessLineIdSet = new Set(access?.visibility.visibleBusinessLineIds ?? [])
+      const visibleProjectIdSet = new Set(access?.visibility.visibleProjectIds ?? [])
+
       const [businessLineResponse, projectResponse] = await Promise.all([
-        fetchAllPages((page, limit) => businessLinesApi.list({ page, limit })),
-        fetchAllPages((page, limit) => projectsApi.list({ page, limit })),
+        visibleBusinessLineIdSet.size > 0
+          ? fetchAllPages((page, limit) => businessLinesApi.list({ page, limit }))
+          : Promise.resolve([]),
+        visibleProjectIdSet.size > 0
+          ? fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
+          : Promise.resolve([]),
       ])
 
       const lineMap = new Map<string, BusinessLine>()
 
       for (const line of businessLineResponse) {
+        if (!visibleBusinessLineIdSet.has(line.id)) {
+          continue
+        }
+
         lineMap.set(line.id, {
           id: line.id,
           name: line.name,
@@ -158,6 +170,10 @@ export function useLayoutWorkspace(options: {
       }
 
       for (const project of projectResponse) {
+        if (!visibleProjectIdSet.has(project.id)) {
+          continue
+        }
+
         const line = lineMap.get(project.businessLineId)
         if (!line) {
           continue
