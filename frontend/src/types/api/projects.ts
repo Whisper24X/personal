@@ -130,3 +130,23 @@ export type CreateProjectCustomRolePayload = {
 }
 
 export type UpdateProjectCustomRolePayload = Partial<CreateProjectCustomRolePayload>
+
+export type DatabaseIsolationConfig = {
+  enabled: boolean
+  postgres: {
+    host: string
+    port: number
+    adminUser: string
+    sourceDatabase: string
+  }
+  envVar: string
+  dataImport?: {
+    tables: string[]
+  }
+}
+
+export type DatabaseIsolationTableInfo = {
+  name: string
+  estimatedRows: number
+  sizeBytes: number
+}
