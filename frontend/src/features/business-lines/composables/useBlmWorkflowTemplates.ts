@@ -1,6 +1,10 @@
 import { computed, ref, type Ref } from 'vue'
 import { WORKFLOW_TEMPLATE_EDITOR_SELECT_PANEL_Z_INDEX } from '@features/workflow'
-import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
+import {
+  businessLinesApi,
+  type AgentToolConfig,
+  type BusinessLine,
+} from '@/api/business-lines'
 import { workflowApi } from '@/api/workflow'
 import type {
   WorkflowTemplate,
@@ -18,13 +22,23 @@ import {
   type WorkflowTemplateNodeForm,
   type WorkflowTemplateNodeInputForm,
 } from '../blm-workflow-template.types'
+import {
+  buildConfiguredCliTools,
+  groupAgentToolConfigsBySupportedTool,
+  resolvePreferredAgentCliConfigId,
+  resolvePreferredAgentCliToolId,
+} from '@shared/utils/agent-cli-defaults'
 
 type MessageLike = {
   success: (msg: string) => void
   error: (msg: string) => void
 }
 
-export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: MessageLike) {
+export function useBlmWorkflowTemplates(
+  activeLineId: Ref<string>,
+  lineDetail: Ref<BusinessLine | null>,
+  message: MessageLike,
+) {
   const loadingWorkflowTemplates = ref(false)
   const submittingWorkflowTemplate = ref(false)
   const platformCopyModalOpen = ref(false)
@@ -159,12 +173,11 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
     configsByTool: Partial<Record<SupportedCliToolId, AgentToolConfig[]>>,
   ): WorkflowTemplateNodeInputForm => {
     const nextInput = normalizeWorkflowNodeInput(input)
-    const allowedToolIds = new Set(configuredTools.map((tool) => tool.id))
-    const fallbackToolId = configuredTools[0]?.id ?? ''
-    const agentCliId =
-      nextInput.agentCliId && allowedToolIds.has(nextInput.agentCliId as SupportedCliToolId)
-        ? (nextInput.agentCliId as SupportedCliToolId)
-        : fallbackToolId
+    const agentCliId = resolvePreferredAgentCliToolId({
+      currentToolId: nextInput.agentCliId as SupportedCliToolId | '',
+      defaultToolId: lineDetail.value?.defaultAgentCliToolId,
+      configuredTools,
+    })
 
     if (!agentCliId) {
       return {
@@ -175,14 +188,14 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
     }
 
     const toolConfigs = configsByTool[agentCliId] ?? []
-    const hasSelectedConfig = toolConfigs.some((config: AgentToolConfig) => config.id === nextInput.agentCliConfigId)
-    const preferredConfigId =
-      toolConfigs.find((config: AgentToolConfig) => config.isDefault)?.id ?? toolConfigs[0]?.id ?? ''
 
     return {
       ...nextInput,
       agentCliId,
-      agentCliConfigId: hasSelectedConfig ? nextInput.agentCliConfigId : preferredConfigId,
+      agentCliConfigId: resolvePreferredAgentCliConfigId(
+        toolConfigs,
+        nextInput.agentCliConfigId,
+      ),
     }
   }
 
@@ -316,18 +329,15 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
         return
       }
 
-      const groupedConfigs: Partial<Record<SupportedCliToolId, AgentToolConfig[]>> = {}
-      for (const config of configs) {
-        if (!isSupportedCliToolId(config.toolId)) {
-          continue
-        }
+      const groupedConfigs = groupAgentToolConfigsBySupportedTool(
+        configs,
+        isSupportedCliToolId,
+      )
 
-        groupedConfigs[config.toolId] = [...(groupedConfigs[config.toolId] ?? []), config]
-      }
-
-      const configuredTools = SUPPORTED_CLI_TOOLS.filter((tool) => {
-        return Boolean(groupedConfigs[tool.id]?.length)
-      })
+      const configuredTools = buildConfiguredCliTools(
+        SUPPORTED_CLI_TOOLS,
+        groupedConfigs,
+      )
       workflowNodeConfigsByTool.value = groupedConfigs
       workflowConfiguredCliTools.value = configuredTools
       workflowCreateForm.value.nodes = normalizeWorkflowNodes(
@@ -448,8 +458,10 @@ export function useBlmWorkflowTemplates(activeLineId: Ref<string>, message: Mess
       return
     }
 
-    const preferredConfigId = configs.find((config) => config.isDefault)?.id ?? configs[0]?.id ?? ''
-    node.input.agentCliConfigId = preferredConfigId
+    node.input.agentCliConfigId = resolvePreferredAgentCliConfigId(
+      configs,
+      node.input.agentCliConfigId,
+    )
   }
 
   const preloadWorkflowNodeConfigs = async () => {

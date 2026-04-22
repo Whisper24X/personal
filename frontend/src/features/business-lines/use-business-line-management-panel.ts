@@ -184,6 +184,7 @@ const {
   submittingAgentToolConfig,
   deletingAgentToolConfigId,
   testingAgentToolConfigId,
+  savingDefaultAgentCliTool,
   agentCliValidationMessage,
   agentToolConfigModalOpen,
   agentToolConfigMode,
@@ -191,15 +192,21 @@ const {
   activeAgentCliToolId,
   agentToolConfigForm,
   activeAgentCliToolLabel,
+  canSaveDefaultAgentCliTool,
+  clearDefaultAgentCliTool,
+  currentDefaultAgentCliToolId,
+  defaultAgentCliToolDraft,
+  defaultAgentCliToolOptions,
   resetAgentToolConfigForm,
   openCreateAgentToolConfig,
   openEditAgentToolConfig,
   loadAgentToolConfigs,
+  saveDefaultAgentCliTool,
   saveAgentToolConfig,
   setAgentToolConfigAsDefault,
   removeAgentToolConfig,
   testAgentToolConfig,
-} = useBlmAgentCli(activeLineId, message)
+} = useBlmAgentCli(activeLineId, lineDetail, message)
 
 const {
   platformCopyModalOpen,
@@ -248,7 +255,7 @@ const {
   removeWorkflowTemplate,
   setWorkflowTemplateDeleteModalOpen,
   confirmRemoveWorkflowTemplate,
-} = useBlmWorkflowTemplates(activeLineId, message)
+} = useBlmWorkflowTemplates(activeLineId, lineDetail, message)
 
 const {
   loadingLocalSkills,
@@ -973,17 +980,30 @@ const syncActiveTabWithPermissions = () => {
   }
 }
 
+const resetLoadedLineScopedData = () => {
+  loadingLineDetail.value = false
+  loadingProjects.value = false
+  loadingMembers.value = false
+  loadingCustomRoles.value = false
+  loadingPermissionProjectRoleLibrary.value = false
+  lineDetail.value = null
+  lineProjects.value = []
+  lineMembers.value = []
+  lineCustomRoles.value = []
+  permissionProjectRoleLibrary.value = []
+  agentToolConfigs.value = []
+  workflowTemplates.value = []
+  workflowConfiguredCliTools.value = []
+  workflowNodeConfigsByTool.value = {}
+  workflowNodeConfigLoadingByTool.value = {}
+  loadingWorkflowConfiguredCliTools.value = false
+  localSkills.value = []
+  localMcps.value = []
+}
+
 const loadActiveTabData = async (lineId = activeLineId.value) => {
   if (!lineId) {
-    lineDetail.value = null
-    lineProjects.value = []
-    lineMembers.value = []
-    lineCustomRoles.value = []
-    permissionProjectRoleLibrary.value = []
-    agentToolConfigs.value = []
-    workflowTemplates.value = []
-    localSkills.value = []
-    localMcps.value = []
+    resetLoadedLineScopedData()
     return
   }
 
@@ -1934,18 +1954,7 @@ watch(
     memberQuery.value = ''
 
     if (!lineId) {
-      lineDetail.value = null
-      lineProjects.value = []
-      lineMembers.value = []
-      permissionProjectRoleLibrary.value = []
-      agentToolConfigs.value = []
-      workflowTemplates.value = []
-      workflowConfiguredCliTools.value = []
-      workflowNodeConfigsByTool.value = {}
-      workflowNodeConfigLoadingByTool.value = {}
-      loadingWorkflowConfiguredCliTools.value = false
-      localSkills.value = []
-      localMcps.value = []
+      resetLoadedLineScopedData()
       skillKeyword.value = ''
       uploadSkillModalOpen.value = false
       uploadSkillError.value = ''
@@ -1962,12 +1971,10 @@ watch(
       return
     }
 
-    workflowConfiguredCliTools.value = []
-    workflowNodeConfigsByTool.value = {}
-    workflowNodeConfigLoadingByTool.value = {}
-    loadingWorkflowConfiguredCliTools.value = false
-    permissionProjectRoleLibrary.value = []
+    resetLoadedLineScopedData()
     emit('select-line', lineId)
+    syncActiveTabWithPermissions()
+    void loadActiveTabData(lineId)
     void loadLineAccess(lineId)
   },
 )
@@ -2073,6 +2080,7 @@ watch(
     canReadProjectItems,
     canReadSkillList,
     canReadWorkflowTemplateList,
+    canSaveDefaultAgentCliTool,
     canSetDefaultAgentToolConfig,
     canUpdateAgentToolConfig,
     canUpdateBusinessLineRole,
@@ -2102,6 +2110,7 @@ watch(
     confirmRemoveWorkflowTemplate,
     copyFromPlatformTemplate,
     copyingPlatformTemplateId,
+    clearDefaultAgentCliTool,
     customRoleInitialCapabilities,
     customRoleInitialDescription,
     customRoleInitialName,
@@ -2246,6 +2255,9 @@ watch(
     dbIsolationModalOpen,
     dbIsolationProject,
     dbIsolationSubmitting,
+    currentDefaultAgentCliToolId,
+    defaultAgentCliToolDraft,
+    defaultAgentCliToolOptions,
     handleDbIsolationModalOpenChange,
     submitDbIsolation,
     projectContainerRuntimeForm,
@@ -2289,8 +2301,10 @@ watch(
     resetWorkflowCreateForm,
     roleBadgeClass,
     router,
+    saveDefaultAgentCliTool,
     saveAgentToolConfig,
     saveMcpJsonPreview,
+    savingDefaultAgentCliTool,
     savingMcpJsonPreview,
     selectCurrentProject,
     selectedLine,

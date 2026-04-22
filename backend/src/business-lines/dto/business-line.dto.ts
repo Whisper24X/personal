@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class BusinessLineDto {
   @ApiProperty()
@@ -22,4 +22,14 @@ export class BusinessLineDto {
   @IsOptional()
   @IsString()
   description?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'codex',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  defaultAgentCliToolId?: string | null;
 }

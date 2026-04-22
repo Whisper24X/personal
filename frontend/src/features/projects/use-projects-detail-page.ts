@@ -32,6 +32,11 @@ import { HttpError } from '@api/shared/error'
 import { toErrorMessage } from '@api/shared/to-error-message'
 import { fetchAllPages } from '@shared/utils/pagination'
 import {
+  buildConfiguredCliTools,
+  groupAgentToolConfigsBySupportedTool,
+  resolvePreferredAgentCliConfigId,
+} from '@shared/utils/agent-cli-defaults'
+import {
   buildProjectRoleAssignmentOptions,
   isProjectDefaultRole,
   resolveRoleAssignmentKey,
@@ -139,6 +144,7 @@ const workflowConfiguredCliTools = ref<Array<{ id: ProjectDetailSupportedCliTool
 const loadingWorkflowConfiguredCliTools = ref(false)
 const workflowNodeConfigsByTool = ref<Partial<Record<ProjectDetailSupportedCliToolId, AgentToolConfig[]>>>({})
 const workflowNodeConfigLoadingByTool = ref<Partial<Record<ProjectDetailSupportedCliToolId, boolean>>>({})
+const workflowDefaultAgentCliToolId = ref<ProjectDetailSupportedCliToolId | ''>('')
 const workflowEditorActiveNodeIndex = ref(0)
 const workflowCreateForm = ref<{
   name: string
@@ -428,6 +434,7 @@ const resolveWorkflowNodeInput = (
     input,
     workflowConfiguredCliTools.value,
     workflowNodeConfigsByTool.value,
+    workflowDefaultAgentCliToolId.value,
   )
 }
 
@@ -499,41 +506,54 @@ const loadWorkflowConfiguredCliTools = async (businessLineId: string) => {
   if (!businessLineId) {
     workflowConfiguredCliTools.value = []
     workflowNodeConfigsByTool.value = {}
+    workflowDefaultAgentCliToolId.value = ''
     return
   }
 
   loadingWorkflowConfiguredCliTools.value = true
 
   try {
-    const configs = await businessLinesApi.listAgentToolConfigs(businessLineId)
+    const [configs, businessLine] = await Promise.all([
+      businessLinesApi.listAgentToolConfigs(businessLineId),
+      businessLinesApi.detail(businessLineId).catch(() => null),
+    ])
     if (businessLineId !== project.value?.businessLineId) {
       return
     }
 
-    const groupedConfigs: Partial<Record<ProjectDetailSupportedCliToolId, AgentToolConfig[]>> = {}
-    for (const config of configs) {
-      if (!isProjectDetailSupportedCliToolId(config.toolId)) {
-        continue
-      }
-
-      groupedConfigs[config.toolId] = [...(groupedConfigs[config.toolId] ?? []), config]
-    }
-
-    const configuredTools = PROJECT_DETAIL_SUPPORTED_CLI_TOOLS.filter((tool) =>
-      Boolean(groupedConfigs[tool.id]?.length),
+    const groupedConfigs = groupAgentToolConfigsBySupportedTool(
+      configs,
+      isProjectDetailSupportedCliToolId,
     )
+    const configuredTools = buildConfiguredCliTools(
+      PROJECT_DETAIL_SUPPORTED_CLI_TOOLS,
+      groupedConfigs,
+    )
+    const nextDefaultAgentCliToolId = businessLine?.defaultAgentCliToolId ?? ''
     workflowNodeConfigsByTool.value = groupedConfigs
     workflowConfiguredCliTools.value = configuredTools
+    workflowDefaultAgentCliToolId.value = isProjectDetailSupportedCliToolId(
+      nextDefaultAgentCliToolId,
+    )
+      ? nextDefaultAgentCliToolId
+      : ''
     workflowCreateForm.value.nodes = normalizeWorkflowNodes(
       workflowCreateForm.value.nodes.map((node) => ({
         ...node,
-        input: resolveWorkflowNodeInputByContext(node.input, configuredTools, groupedConfigs),
+        input: resolveWorkflowNodeInputByContext(
+          node.input,
+          configuredTools,
+          groupedConfigs,
+          workflowDefaultAgentCliToolId.value,
+        ),
       })),
     )
+    syncWorkflowEditorActiveNodeIndex()
   } catch (error) {
     if (businessLineId === project.value?.businessLineId) {
       workflowConfiguredCliTools.value = []
       workflowNodeConfigsByTool.value = {}
+      workflowDefaultAgentCliToolId.value = ''
       message.error(toErrorMessage(error, '加载项目工作流 Agent CLI 列表失败'))
     }
   } finally {
@@ -635,8 +655,10 @@ const handleWorkflowNodeCliToolChange = async (node: WorkflowTemplateNodeForm) =
     return
   }
 
-  const preferredConfigId = configs.find((config) => config.isDefault)?.id ?? configs[0]?.id ?? ''
-  node.input.agentCliConfigId = preferredConfigId
+  node.input.agentCliConfigId = resolvePreferredAgentCliConfigId(
+    configs,
+    node.input.agentCliConfigId,
+  )
 }
 
 const preloadWorkflowNodeConfigs = async () => {

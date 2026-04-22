@@ -1,4 +1,8 @@
 import type { AgentToolConfig } from '@/api/business-lines'
+import {
+  resolvePreferredAgentCliConfigId,
+  resolvePreferredAgentCliToolId,
+} from '@shared/utils/agent-cli-defaults'
 import type {
   WorkflowTemplateNode,
   WorkflowTemplateNodeInput,
@@ -74,6 +78,7 @@ export function resolveWorkflowNodeInputByContext(
   input: WorkflowTemplateNodeInput | WorkflowTemplateNodeInputForm | undefined,
   configuredTools: Array<{ id: ProjectDetailSupportedCliToolId; label: string }>,
   configsByTool: Partial<Record<ProjectDetailSupportedCliToolId, AgentToolConfig[]>>,
+  defaultToolId?: string | null,
 ): WorkflowTemplateNodeInputForm {
   if (configuredTools.length === 0) {
     return {
@@ -84,13 +89,11 @@ export function resolveWorkflowNodeInputByContext(
   }
 
   const nextInput = normalizeWorkflowNodeInput(input)
-  const allowedToolIds = new Set(configuredTools.map((tool) => tool.id))
-  const fallbackToolId = configuredTools[0]?.id ?? ''
-  const agentCliId =
-    nextInput.agentCliId &&
-    allowedToolIds.has(nextInput.agentCliId as ProjectDetailSupportedCliToolId)
-      ? (nextInput.agentCliId as ProjectDetailSupportedCliToolId)
-      : fallbackToolId
+  const agentCliId = resolvePreferredAgentCliToolId({
+    currentToolId: nextInput.agentCliId as ProjectDetailSupportedCliToolId | '',
+    defaultToolId,
+    configuredTools,
+  })
 
   if (!agentCliId) {
     return {
@@ -101,14 +104,14 @@ export function resolveWorkflowNodeInputByContext(
   }
 
   const toolConfigs = configsByTool[agentCliId] ?? []
-  const hasSelectedConfig = toolConfigs.some((config: AgentToolConfig) => config.id === nextInput.agentCliConfigId)
-  const preferredConfigId =
-    toolConfigs.find((config: AgentToolConfig) => config.isDefault)?.id ?? toolConfigs[0]?.id ?? ''
 
   return {
     ...nextInput,
     agentCliId,
-    agentCliConfigId: hasSelectedConfig ? nextInput.agentCliConfigId : preferredConfigId,
+    agentCliConfigId: resolvePreferredAgentCliConfigId(
+      toolConfigs,
+      nextInput.agentCliConfigId,
+    ),
   }
 }
 

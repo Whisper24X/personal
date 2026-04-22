@@ -28,6 +28,14 @@ export class BusinessLineEntity extends EntityRelationalHelper {
   @Column({ type: 'text', nullable: true, comment: '业务线描述' })
   description?: string | null;
 
+  @Column({
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+    comment: '默认 Agent CLI 工具 ID',
+  })
+  defaultAgentCliToolId?: string | null;
+
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 

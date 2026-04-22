@@ -28,6 +28,7 @@ import { LocalSkillContentDto } from './dto/local-skill-content.dto';
 import { UpdateAgentToolConfigDto } from './dto/update-agent-tool-config.dto';
 import { UpdateBusinessLineCustomRoleDto } from './dto/update-business-line-custom-role.dto';
 import { UpdateBusinessLineDto } from './dto/update-business-line.dto';
+import { UpdateDefaultAgentCliToolDto } from './dto/update-default-agent-cli-tool.dto';
 import { UpdateBusinessLineMemberDto } from './dto/update-business-line-member.dto';
 import { UploadLocalSkillResultDto } from './dto/upload-local-skill-result.dto';
 import { AgentCliSmokeTestService } from '../agent-execution/agent-cli-smoke-test.service';
@@ -505,6 +506,19 @@ export class BusinessLinesService {
     );
   }
 
+  async updateDefaultAgentCliTool(
+    businessLineId: BusinessLine['id'],
+    updateDefaultAgentCliToolDto: UpdateDefaultAgentCliToolDto,
+    currentUser: JwtPayloadType,
+  ): Promise<BusinessLine> {
+    await this.ensureCanSetDefaultAgentCli(businessLineId, currentUser);
+
+    return this.businessLineAgentToolConfigService.updateDefaultAgentCliTool(
+      businessLineId,
+      updateDefaultAgentCliToolDto.defaultAgentCliToolId,
+    );
+  }
+
   async updateAgentToolConfig(
     businessLineId: BusinessLine['id'],
     configId: AgentToolConfig['id'],
@@ -761,6 +775,17 @@ export class BusinessLinesService {
       currentUser,
       businessLineId,
       'businessLine.agentCli.delete',
+    );
+  }
+
+  private async ensureCanSetDefaultAgentCli(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.agentCli.setDefault',
     );
   }
 
