@@ -25,8 +25,10 @@ describe('TaskPreviewPanel', () => {
     })
 
     expect(wrapper.find('iframe').attributes('src')).toBe('https://preview.example.com/p/task-1/')
-    expect(wrapper.text()).toContain('/p/task-1/')
-    expect(wrapper.text()).toContain('预览 1')
+    expect(wrapper.get('[data-testid="task-preview-active-url"]').text()).toBe(
+      'https://preview.example.com/p/task-1/',
+    )
+    expect(wrapper.text()).toContain('导航')
   })
 
   it('shows provisioning state when preview url is still being assigned', () => {
@@ -251,23 +253,4 @@ describe('TaskPreviewPanel', () => {
     expect(wrapper.find('[data-testid="task-preview-iframe-surface--full"]').exists()).toBe(true)
   })
 
-  it('adds a tab when clicking 新建标签', async () => {
-    const wrapper = mount(TaskPreviewPanel, {
-      props: {
-        preview: readyPreview,
-      },
-    })
-
-    expect(wrapper.findAll('iframe')).toHaveLength(1)
-
-    await wrapper.find('button[title="使用当前地址新建预览标签"]').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    const iframes = wrapper.findAll('iframe')
-    expect(iframes).toHaveLength(2)
-    expect(iframes[0]!.attributes('src')).toBe(readyPreview.url)
-    expect(iframes[1]!.attributes('src')).toBe(readyPreview.url)
-    expect(wrapper.text()).toMatch(/预览 1/)
-    expect(wrapper.text()).toMatch(/预览 2/)
-  })
 })

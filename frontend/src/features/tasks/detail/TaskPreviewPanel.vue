@@ -97,14 +97,6 @@ const expectedMessageOrigin = computed(() => {
   }
 })
 
-/** 开发者在预览服务 HTML 中可引用的桥接脚本地址（与当前主应用同部署） */
-const bridgeScriptUrl = computed(() => {
-  if (typeof window === 'undefined') {
-    return ''
-  }
-  return new URL('preview-iframe-bridge.js', new URL(import.meta.env.BASE_URL, window.location.origin)).href
-})
-
 const hasPreview = computed(
   () => props.preview?.status === 'ready' && Boolean(resolvedPreviewUrl.value),
 )
@@ -175,29 +167,11 @@ const ensureReloadSlot = (id: string) => {
   }
 }
 
-/** 副标题：host + 路径，避免仅显示成「/x/」而误以为未带域名 */
-const currentTabUrlSummary = computed(() => {
-  const t = activeTab.value
-  if (!t) {
-    return ''
-  }
-  try {
-    const u = new URL(t.url)
-    const path = `${u.pathname}${u.search}${u.hash}`
-    if (path.length > 0 && path !== '/') {
-      return `${u.host} · ${path}`
-    }
-    return t.url
-  } catch {
-    return t.url
-  }
-})
-
 const tabLabel = (tab: PreviewTab, index: number) => {
   if (tab.title?.trim()) {
     return tab.title.trim()!
   }
-  return `预览 ${index + 1}`
+  return index === 0 ? '导航' : `预览 ${index + 1}`
 }
 
 const previewHint = computed(() => {
@@ -312,14 +286,6 @@ const toggleLog = () => {
   logOpen.value = !logOpen.value
 }
 
-const createTabLikeTerminal = () => {
-  const url = activeTab.value?.url
-  if (!url) {
-    return
-  }
-  openTabWithUrl(url, undefined)
-}
-
 const closeTab = (tabId: string) => {
   if (tabs.value.length <= 1) {
     return
@@ -387,7 +353,6 @@ onBeforeUnmount(() => {
             "
             role="button"
             tabindex="0"
-            :title="tab.url"
             @click="activeTabId = tab.id"
             @keydown.enter="activeTabId = tab.id"
           >
@@ -427,15 +392,6 @@ onBeforeUnmount(() => {
           <RotateCw class="h-3.5 w-3.5" aria-hidden="true" />
         </button>
         <button
-          class="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground"
-          :disabled="!activeTab"
-          type="button"
-          title="使用当前地址新建预览标签"
-          @click="createTabLikeTerminal"
-        >
-          新建标签
-        </button>
-        <button
           class="border-border bg-background text-foreground h-7 rounded-md border px-2.5 text-xs transition hover:bg-accent disabled:opacity-40"
           type="button"
           title="刷新当前标签页"
@@ -455,23 +411,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </header>
-
-    <details
-      v-if="hasPreview && bridgeScriptUrl"
-      class="border-border/60 text-muted-foreground shrink-0 border-b px-3 py-1.5 text-[11px] leading-normal"
-    >
-      <summary class="cursor-pointer select-none text-xs">若链接仍打开浏览器新标签，请加载桥接脚本</summary>
-      <p class="text-muted-foreground mt-1.5">
-        当任务环境由 Runner 内 nginx 代理且部署已配置 <code>AINATIVE_PREVIEW_BRIDGE_*</code> 时，可自动注入，无需改仓库。
-        否则将下列一行加入预览应用的 <code>index.html</code>（把地址换成你的 AINative 主应用即可）：
-      </p>
-      <p
-        class="text-foreground mt-1 break-all font-mono text-[11px] select-text"
-        :title="bridgeScriptUrl"
-      >
-        &lt;script src="{{ bridgeScriptUrl }}" defer&gt;&lt;/script&gt;
-      </p>
-    </details>
 
     <header
       v-else
@@ -498,12 +437,14 @@ onBeforeUnmount(() => {
       <div v-if="hasPreview && tabs.length > 0" class="flex min-h-0 flex-1 flex-col">
         <div
           v-if="activeTab"
-          class="text-muted-foreground border-border/40 shrink-0 space-y-0.5 border-b px-3 py-1"
+          class="text-muted-foreground border-border/40 shrink-0 border-b px-3 py-1.5"
         >
-          <p class="text-xs leading-snug" :title="activeTab.url">
-            <span class="block truncate">{{ currentTabUrlSummary || activeTab.url }}</span>
+          <p
+            class="text-foreground break-all font-mono text-[11px] leading-normal select-text"
+            data-testid="task-preview-active-url"
+          >
+            {{ activeTab.url }}
           </p>
-          <p class="text-[10px] leading-tight text-muted-foreground/70">完整地址以悬停提示为准</p>
         </div>
         <div v-if="!usePresetPreviewLayout" class="relative min-h-0 flex-1" data-testid="task-preview-iframe-surface--full">
           <template v-for="tab in tabs" :key="`${tab.id}-${tabReloadNonce[tab.id] ?? 0}`">
