@@ -16,15 +16,39 @@ const main = async () => {
     orchestration.services.map((service) => [service.name, service]),
   )
 
+  const bridgeScriptUrl = resolvePreviewBridgeScriptUrlFromEnv()
   await fs.mkdir(LOG_DIR, { recursive: true })
   await Promise.all([
     fs.writeFile(
       NGINX_CONFIG_PATH,
-      renderNginxConfig(orchestration, servicesByName),
+      renderNginxConfig(orchestration, servicesByName, bridgeScriptUrl),
       'utf-8',
     ),
     renderSupervisordConfig(orchestration),
   ])
+}
+
+/** 与 TaskPreviewPanel / preview-iframe-bridge.js 协议一致，由主应用经容器环境注入。 */
+const resolvePreviewBridgeScriptUrlFromEnv = () => {
+  const raw = process.env.AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL?.trim()
+  if (!raw) {
+    return null
+  }
+  const off = (process.env.AINATIVE_PREVIEW_BRIDGE_NGINX_INJECT || 'true')
+    .trim()
+    .toLowerCase()
+  if (off === '0' || off === 'false' || off === 'no' || off === 'off') {
+    return null
+  }
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+      return null
+    }
+    return u.href
+  } catch {
+    return null
+  }
 }
 
 const readConfigInput = async (configPathArg) => {
@@ -272,7 +296,7 @@ const renderEnvironment = (env) => {
     : 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"'
 }
 
-const renderNginxConfig = (orchestration, servicesByName) => {
+const renderNginxConfig = (orchestration, servicesByName, bridgeScriptUrl) => {
   const exactRoutes = []
   const regexRoutes = []
   const prefixRoutes = []
@@ -292,10 +316,18 @@ const renderNginxConfig = (orchestration, servicesByName) => {
   }
 
   const routeSections = [
-    ...(orchestration.homepage ? [renderHomepageLocation(orchestration.homepage)] : []),
-    ...exactRoutes.map((route) => renderRoute(route, servicesByName)),
-    ...regexRoutes.map((route) => renderRoute(route, servicesByName)),
-    ...prefixRoutes.map((route) => renderRoute(route, servicesByName)),
+    ...(orchestration.homepage
+      ? [renderHomepageLocation(orchestration.homepage, bridgeScriptUrl)]
+      : []),
+    ...exactRoutes.map((route) =>
+      renderRoute(route, servicesByName, bridgeScriptUrl),
+    ),
+    ...regexRoutes.map((route) =>
+      renderRoute(route, servicesByName, bridgeScriptUrl),
+    ),
+    ...prefixRoutes.map((route) =>
+      renderRoute(route, servicesByName, bridgeScriptUrl),
+    ),
   ]
 
   if (!routeSections.length) {
@@ -355,7 +387,31 @@ ${routeSections.join('\n\n')}
 `
 }
 
-const renderRoute = (route, servicesByName) => {
+const renderNginxSubFilterForHtml = (bridgeScriptUrl) => {
+  if (!bridgeScriptUrl) {
+    return []
+  }
+  const esc = escapeNginxSubFilterAttribute(bridgeScriptUrl)
+  const snip = `<script src="${esc}" defer></script>`
+  const withHeadLower = snip + '</head>'
+  const withHeadUpper = snip + '</HEAD>'
+  return [
+    '            proxy_set_header Accept-Encoding "";',
+    '            sub_filter_types text/html;',
+    '            sub_filter_once on;',
+    `            sub_filter '</head>' '${escapeNginxSingleQuoted(withHeadLower)}';`,
+    `            sub_filter '</HEAD>' '${escapeNginxSingleQuoted(withHeadUpper)}';`,
+  ]
+}
+
+const escapeNginxSubFilterAttribute = (value) => {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll("'", '&#39;')
+    .replaceAll('"', '&quot;')
+}
+
+const renderRoute = (route, servicesByName, bridgeScriptUrl) => {
   const header =
     route.match === 'exact'
       ? `location = ${route.path} {`
@@ -397,13 +453,17 @@ const renderRoute = (route, servicesByName) => {
       '            proxy_set_header Upgrade $http_upgrade;',
       '            proxy_set_header Connection $connection_upgrade;',
     )
+  } else {
+    for (const line of renderNginxSubFilterForHtml(bridgeScriptUrl)) {
+      lines.push(line)
+    }
   }
 
   lines.push('        }')
   return lines.join('\n')
 }
 
-const renderHomepageLocation = (homepage) => {
+const renderHomepageLocation = (homepage, bridgeScriptUrl) => {
   const title = escapeHtml(homepage.title || 'AINative Runner')
   const description = escapeHtml(homepage.description || '')
   const links = (homepage.links || [])
@@ -412,7 +472,10 @@ const renderHomepageLocation = (homepage) => {
         `<a href="${escapeHtml(link.path)}" target="_blank" rel="noreferrer">${escapeHtml(link.label)}</a>`,
     )
     .join('')
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(135deg,#f4efe8 0%,#d8e2dc 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.container{background:rgba(255,255,255,.92);border-radius:24px;padding:48px 36px;box-shadow:0 24px 60px rgba(0,0,0,.16);max-width:640px;width:100%}h1{font-size:32px;font-weight:700;color:#1f2937;text-align:center}.desc{text-align:center;color:#4b5563;margin:14px 0 32px;font-size:14px}.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}a{display:flex;align-items:center;justify-content:center;padding:18px;border:1px solid #d1d5db;border-radius:14px;text-decoration:none;color:#111827;font-weight:600;background:#fff;transition:transform .2s,border-color .2s,box-shadow .2s}a:hover{transform:translateY(-2px);border-color:#2563eb;box-shadow:0 10px 24px rgba(37,99,235,.14)}@media(max-width:480px){.container{padding:36px 20px}}</style></head><body><div class="container"><h1>${title}</h1><p class="desc">${description}</p><div class="links">${links}</div></div></body></html>`
+  const bridgeTag = bridgeScriptUrl
+    ? `<script src="${escapeHtml(bridgeScriptUrl)}" defer></script>`
+    : ''
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(135deg,#f4efe8 0%,#d8e2dc 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.container{background:rgba(255,255,255,.92);border-radius:24px;padding:48px 36px;box-shadow:0 24px 60px rgba(0,0,0,.16);max-width:640px;width:100%}h1{font-size:32px;font-weight:700;color:#1f2937;text-align:center}.desc{text-align:center;color:#4b5563;margin:14px 0 32px;font-size:14px}.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}a{display:flex;align-items:center;justify-content:center;padding:18px;border:1px solid #d1d5db;border-radius:14px;text-decoration:none;color:#111827;font-weight:600;background:#fff;transition:transform .2s,border-color .2s,box-shadow .2s}a:hover{transform:translateY(-2px);border-color:#2563eb;box-shadow:0 10px 24px rgba(37,99,235,.14)}@media(max-width:480px){.container{padding:36px 20px}}</style>${bridgeTag}</head><body><div class="container"><h1>${title}</h1><p class="desc">${description}</p><div class="links">${links}</div></div></body></html>`
 
   return [
     '        location = / {',
