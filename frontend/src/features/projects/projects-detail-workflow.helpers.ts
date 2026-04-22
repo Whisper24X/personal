@@ -218,3 +218,50 @@ export function validateWorkflowNodesPlain(
 
   return ''
 }
+
+/**
+ * Validates a business-line workflow template before copying it into the current project.
+ * Skeleton templates (no Agent CLI / config) must be completed in business line management first.
+ */
+export function validateBusinessLineWorkflowTemplateForProjectCopy(
+  nodes: WorkflowTemplateNode[],
+  options: {
+    configuredCliToolIdSet: Set<ProjectDetailSupportedCliToolId>
+    configsByTool: Partial<Record<ProjectDetailSupportedCliToolId, AgentToolConfig[]>>
+    hasConfiguredCliTools: boolean
+  },
+): string {
+  const plainError = validateWorkflowNodesPlain(nodes, {
+    configuredCliToolIdSet: options.configuredCliToolIdSet,
+    hasConfiguredCliTools: options.hasConfiguredCliTools,
+  })
+
+  if (plainError) {
+    if (plainError.includes('请选择 Agent CLI')) {
+      return '该业务线工作流模板尚未配置 Agent CLI，请先到业务线工作流管理中完善各节点后再复制'
+    }
+    if (plainError.includes('暂无已配置 Agent CLI')) {
+      return '当前业务线尚未配置 Agent CLI，请先在业务线设置中配置后再复制'
+    }
+    return plainError
+  }
+
+  for (let index = 0; index < nodes.length; index += 1) {
+    const nodeInput = normalizeWorkflowNodeInput(nodes[index]?.input)
+    if (!nodeInput.agentCliId) {
+      continue
+    }
+
+    const toolId = nodeInput.agentCliId as ProjectDetailSupportedCliToolId
+    const configs = options.configsByTool[toolId] ?? []
+    const configValid =
+      Boolean(nodeInput.agentCliConfigId.trim()) &&
+      configs.some((config) => config.id === nodeInput.agentCliConfigId)
+
+    if (!configValid) {
+      return `节点 #${index + 1} 缺少有效的 Agent CLI 配置，请先到业务线工作流管理中完善后再复制`
+    }
+  }
+
+  return ''
+}
