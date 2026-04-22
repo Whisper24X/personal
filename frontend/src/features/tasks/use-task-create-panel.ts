@@ -18,6 +18,12 @@ import { requestSidebarRecentTasksRefresh } from '@features/layout'
 import { initialTitleFromPrompt } from '@shared/utils/task-title-placeholder'
 import { refreshSidebarRecentTasks } from '@shared/utils/sidebar-recent-tasks-refresh'
 import {
+  buildConfiguredCliTools,
+  groupAgentToolConfigsBySupportedTool,
+  resolvePreferredAgentCliConfigId,
+  resolvePreferredAgentCliToolId,
+} from '@shared/utils/agent-cli-defaults'
+import {
   TASK_CREATE_HEADLINES,
   TASK_CREATE_PROJECT_DETAIL_FALLBACK_TIMEOUT_MS,
   TASK_CREATE_SUPPORTED_CLI_TOOLS,
@@ -247,10 +253,10 @@ const syncAgentToolConfigsForSelectedTool = () => {
   const configs = agentConfigsByTool.value[createForm.agentCliId] ?? []
   agentToolConfigs.value = configs
 
-  if (!configs.some((config) => config.id === createForm.agentCliConfigId)) {
-    const defaultConfig = configs.find((config) => config.isDefault)
-    createForm.agentCliConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
-  }
+  createForm.agentCliConfigId = resolvePreferredAgentCliConfigId(
+    configs,
+    createForm.agentCliConfigId,
+  )
 }
 
 const loadBranchesForProject = async (projectId: string) => {
@@ -365,27 +371,25 @@ const loadConversationCliOptions = async (projectId: string) => {
 
   loadingAgentConfigs.value = true
   try {
-    const configs = await businessLinesApi.listAgentToolConfigs(project.businessLineId)
-    const groupedConfigs: Partial<Record<TaskCreateSupportedCliToolId, AgentToolConfig[]>> = {}
-
-    for (const config of configs) {
-      if (!isTaskCreateSupportedCliToolId(config.toolId)) {
-        continue
-      }
-
-      const list = groupedConfigs[config.toolId] ?? []
-      list.push(config)
-      groupedConfigs[config.toolId] = list
-    }
-
-    agentConfigsByTool.value = groupedConfigs
-    configuredCliTools.value = TASK_CREATE_SUPPORTED_CLI_TOOLS.filter(
-      (tool) => (groupedConfigs[tool.id]?.length ?? 0) > 0,
+    const [configs, businessLine] = await Promise.all([
+      businessLinesApi.listAgentToolConfigs(project.businessLineId),
+      businessLinesApi.detail(project.businessLineId).catch(() => null),
+    ])
+    const groupedConfigs = groupAgentToolConfigsBySupportedTool(
+      configs,
+      isTaskCreateSupportedCliToolId,
     )
 
-    if (!configuredCliTools.value.some((tool) => tool.id === createForm.agentCliId)) {
-      createForm.agentCliId = configuredCliTools.value[0]?.id ?? ''
-    }
+    agentConfigsByTool.value = groupedConfigs
+    configuredCliTools.value = buildConfiguredCliTools(
+      TASK_CREATE_SUPPORTED_CLI_TOOLS,
+      groupedConfigs,
+    )
+    createForm.agentCliId = resolvePreferredAgentCliToolId({
+      currentToolId: createForm.agentCliId,
+      defaultToolId: businessLine?.defaultAgentCliToolId,
+      configuredTools: configuredCliTools.value,
+    })
 
     syncAgentToolConfigsForSelectedTool()
   } catch (error) {

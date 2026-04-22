@@ -36,6 +36,7 @@ const {
     list: vi.fn(),
   },
   businessLinesApi: {
+    detail: vi.fn(),
     listAgentToolConfigs: vi.fn(),
   },
   fetchAllPages: vi.fn(),
@@ -169,6 +170,12 @@ describe('TaskCreatePanel', () => {
         isDefault: true,
       },
     ])
+    businessLinesApi.detail.mockImplementation(async (businessLineId: string) => ({
+      id: businessLineId,
+      name: businessLineId === 'line-2' ? 'Shadow' : 'Retail',
+      description: null,
+      defaultAgentCliToolId: null,
+    }))
     gitApi.branches.mockResolvedValue({
       defaultBranch: 'main',
       currentBranch: 'feature/current',
@@ -270,6 +277,47 @@ describe('TaskCreatePanel', () => {
     expect(projectsApi.detail).toHaveBeenCalledWith('project-2')
     expect(businessLinesApi.listAgentToolConfigs).toHaveBeenCalledWith('line-2')
     expect(gitApi.branches).toHaveBeenCalledWith('project-2')
+  })
+
+  it('prefers the business line default agent cli tool over the first configured tool', async () => {
+    businessLinesApi.listAgentToolConfigs.mockResolvedValueOnce([
+      {
+        id: 'cfg-cursor',
+        businessLineId: 'line-1',
+        toolId: 'cursor-agent',
+        name: 'Cursor Default',
+        description: '',
+        configJson: {},
+        isDefault: true,
+      },
+      {
+        id: 'cfg-codex',
+        businessLineId: 'line-1',
+        toolId: 'codex',
+        name: 'Codex Default',
+        description: '',
+        configJson: {},
+        isDefault: true,
+      },
+    ])
+    businessLinesApi.detail.mockResolvedValueOnce({
+      id: 'line-1',
+      name: 'Retail',
+      description: null,
+      defaultAgentCliToolId: 'codex',
+    })
+
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.find('button[aria-label="Agent CLI"]').text()).toContain('Codex')
+    expect(wrapper.find('button[aria-label="Agent CLI 配置"]').text()).toContain('Codex Default')
   })
 
   it('should create conversation task with configJson cli config fields', async () => {

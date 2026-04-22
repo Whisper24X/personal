@@ -20,6 +20,7 @@ import { UsersModule } from '../users/users.module';
 import { RelationalProjectPersistenceModule } from '../projects/infrastructure/persistence/relational/relational-persistence.module';
 import { AccessModule } from '../access/access.module';
 import { AgentExecutionModule } from '../agent-execution/agent-execution.module';
+import { WorkflowTemplateDefaultSeedingModule } from '../workflow-templates/workflow-template-default-seeding.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { AgentExecutionModule } from '../agent-execution/agent-execution.module'
     UsersModule,
     AccessModule,
     AgentExecutionModule,
+    WorkflowTemplateDefaultSeedingModule,
   ],
   controllers: [BusinessLinesController],
   providers: [

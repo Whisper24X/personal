@@ -20,6 +20,14 @@ export class BusinessLine {
   })
   description?: string | null;
 
+  @ApiProperty({
+    type: String,
+    required: false,
+    nullable: true,
+    example: 'codex',
+  })
+  defaultAgentCliToolId?: string | null;
+
   @ApiProperty()
   createdAt: Date;
 

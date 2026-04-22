@@ -1,4 +1,8 @@
 import type { AgentToolConfig } from '@/api/business-lines'
+import {
+  resolvePreferredAgentCliConfigId,
+  resolvePreferredAgentCliToolId,
+} from '@shared/utils/agent-cli-defaults'
 import type {
   WorkflowTemplateNode,
   WorkflowTemplateNodeInput,
@@ -74,6 +78,7 @@ export function resolveWorkflowNodeInputByContext(
   input: WorkflowTemplateNodeInput | WorkflowTemplateNodeInputForm | undefined,
   configuredTools: Array<{ id: ProjectDetailSupportedCliToolId; label: string }>,
   configsByTool: Partial<Record<ProjectDetailSupportedCliToolId, AgentToolConfig[]>>,
+  defaultToolId?: string | null,
 ): WorkflowTemplateNodeInputForm {
   if (configuredTools.length === 0) {
     return {
@@ -84,13 +89,11 @@ export function resolveWorkflowNodeInputByContext(
   }
 
   const nextInput = normalizeWorkflowNodeInput(input)
-  const allowedToolIds = new Set(configuredTools.map((tool) => tool.id))
-  const fallbackToolId = configuredTools[0]?.id ?? ''
-  const agentCliId =
-    nextInput.agentCliId &&
-    allowedToolIds.has(nextInput.agentCliId as ProjectDetailSupportedCliToolId)
-      ? (nextInput.agentCliId as ProjectDetailSupportedCliToolId)
-      : fallbackToolId
+  const agentCliId = resolvePreferredAgentCliToolId({
+    currentToolId: nextInput.agentCliId as ProjectDetailSupportedCliToolId | '',
+    defaultToolId,
+    configuredTools,
+  })
 
   if (!agentCliId) {
     return {
@@ -101,14 +104,14 @@ export function resolveWorkflowNodeInputByContext(
   }
 
   const toolConfigs = configsByTool[agentCliId] ?? []
-  const hasSelectedConfig = toolConfigs.some((config: AgentToolConfig) => config.id === nextInput.agentCliConfigId)
-  const preferredConfigId =
-    toolConfigs.find((config: AgentToolConfig) => config.isDefault)?.id ?? toolConfigs[0]?.id ?? ''
 
   return {
     ...nextInput,
     agentCliId,
-    agentCliConfigId: hasSelectedConfig ? nextInput.agentCliConfigId : preferredConfigId,
+    agentCliConfigId: resolvePreferredAgentCliConfigId(
+      toolConfigs,
+      nextInput.agentCliConfigId,
+    ),
   }
 }
 
@@ -210,6 +213,53 @@ export function validateWorkflowNodesPlain(
 
     if (nodeInput.loopEnabled && !nodeInput.earlyExitMarkerFileName.trim()) {
       return `节点 #${index + 1} 已启用循环，请填写 Marker 文件名`
+    }
+  }
+
+  return ''
+}
+
+/**
+ * Validates a business-line workflow template before copying it into the current project.
+ * Skeleton templates (no Agent CLI / config) must be completed in business line management first.
+ */
+export function validateBusinessLineWorkflowTemplateForProjectCopy(
+  nodes: WorkflowTemplateNode[],
+  options: {
+    configuredCliToolIdSet: Set<ProjectDetailSupportedCliToolId>
+    configsByTool: Partial<Record<ProjectDetailSupportedCliToolId, AgentToolConfig[]>>
+    hasConfiguredCliTools: boolean
+  },
+): string {
+  const plainError = validateWorkflowNodesPlain(nodes, {
+    configuredCliToolIdSet: options.configuredCliToolIdSet,
+    hasConfiguredCliTools: options.hasConfiguredCliTools,
+  })
+
+  if (plainError) {
+    if (plainError.includes('请选择 Agent CLI')) {
+      return '该业务线工作流模板尚未配置 Agent CLI，请先到业务线工作流管理中完善各节点后再复制'
+    }
+    if (plainError.includes('暂无已配置 Agent CLI')) {
+      return '当前业务线尚未配置 Agent CLI，请先在业务线设置中配置后再复制'
+    }
+    return plainError
+  }
+
+  for (let index = 0; index < nodes.length; index += 1) {
+    const nodeInput = normalizeWorkflowNodeInput(nodes[index]?.input)
+    if (!nodeInput.agentCliId) {
+      continue
+    }
+
+    const toolId = nodeInput.agentCliId as ProjectDetailSupportedCliToolId
+    const configs = options.configsByTool[toolId] ?? []
+    const configValid =
+      Boolean(nodeInput.agentCliConfigId.trim()) &&
+      configs.some((config) => config.id === nodeInput.agentCliConfigId)
+
+    if (!configValid) {
+      return `节点 #${index + 1} 缺少有效的 Agent CLI 配置，请先到业务线工作流管理中完善后再复制`
     }
   }
 
