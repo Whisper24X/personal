@@ -18,7 +18,7 @@ const ctx = useProjectsDetailPageInject()
         <div>
           <p class="text-sm font-semibold">成员管理</p>
           <p class="mt-1 text-xs text-muted-foreground">
-            新增成员支持直接分配默认角色或项目自定义角色。
+            新增成员支持直接分配项目角色。
           </p>
         </div>
         <button

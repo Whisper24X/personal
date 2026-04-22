@@ -10,6 +10,7 @@ defineProps<{
   item: Mcp | null
   loading: boolean
   saving: boolean
+  canManageLocalMcp: boolean
   removingLocalMcpId: string
   error: string
 }>()
@@ -43,7 +44,7 @@ const emit = defineEmits<{
         </div>
         <div class="flex items-center gap-2">
           <button
-            v-if="item"
+            v-if="item && canManageLocalMcp"
             type="button"
             class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
             aria-label="删除 MCP"
@@ -71,6 +72,7 @@ const emit = defineEmits<{
             删除
           </button>
           <button
+            v-if="canManageLocalMcp"
             type="button"
             data-testid="mcp-json-preview-save"
             class="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
@@ -112,6 +114,7 @@ const emit = defineEmits<{
               v-model="draft"
               data-testid="mcp-json-preview-textarea"
               class="min-h-[48vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
+              :readonly="!canManageLocalMcp"
             />
           </div>
         </div>

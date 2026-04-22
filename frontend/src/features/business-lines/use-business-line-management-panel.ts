@@ -326,8 +326,21 @@ const hasAnyActiveLineCapability = (...capabilities: string[]) => {
   return capabilities.some((cap) => hasActiveLineCapability(cap))
 }
 
+const canReadBusinessLine = computed(() => hasActiveLineCapability('businessLine.read'))
+
 const canManageActiveLine = computed(() => {
   return hasActiveLineCapability('businessLine.update')
+})
+
+const canDeleteActiveLine = computed(() => {
+  return hasActiveLineCapability('businessLine.delete')
+})
+
+const canReadProjectItems = computed(() => {
+  return hasAnyActiveLineCapability(
+    'businessLine.project.list.all',
+    'businessLine.project.list.joined',
+  )
 })
 
 const canInviteMembers = computed(() => hasActiveLineCapability('businessLine.member.invite'))
@@ -335,6 +348,12 @@ const canUpdateMemberRole = computed(() =>
   hasActiveLineCapability('businessLine.member.updateRole'),
 )
 const canRemoveMembers = computed(() => hasActiveLineCapability('businessLine.member.remove'))
+const canReadMemberList = computed(() => hasActiveLineCapability('businessLine.member.read'))
+
+const canReadBusinessLineRoleList = computed(() => {
+  return hasActiveLineCapability('businessLine.role.read')
+})
+
 const canCreateBusinessLineRole = computed(() =>
   hasActiveLineCapability('businessLine.role.create'),
 )
@@ -344,6 +363,81 @@ const canUpdateBusinessLineRole = computed(() =>
 const canDeleteBusinessLineRole = computed(() =>
   hasActiveLineCapability('businessLine.role.delete'),
 )
+const canReadProjectRoleList = computed(() => {
+  return hasActiveLineCapability('businessLine.projectRole.read')
+})
+
+const canCreatePermissionProjectRole = computed(() => {
+  return hasActiveLineCapability('businessLine.projectRole.create')
+})
+
+const canUpdatePermissionProjectRole = computed(() => {
+  return hasActiveLineCapability('businessLine.projectRole.update')
+})
+
+const canDeletePermissionProjectRole = computed(() => {
+  return hasActiveLineCapability('businessLine.projectRole.delete')
+})
+
+const canReadAgentToolConfigList = computed(() => {
+  return hasActiveLineCapability('businessLine.agentCli.read')
+})
+
+const canCreateAgentToolConfig = computed(() => {
+  return hasActiveLineCapability('businessLine.agentCli.create')
+})
+
+const canUpdateAgentToolConfig = computed(() => {
+  return hasActiveLineCapability('businessLine.agentCli.update')
+})
+
+const canSetDefaultAgentToolConfig = computed(() => {
+  return hasActiveLineCapability('businessLine.agentCli.setDefault')
+})
+
+const canDeleteAgentToolConfig = computed(() => {
+  return hasActiveLineCapability('businessLine.agentCli.delete')
+})
+
+const canReadWorkflowTemplateList = computed(() => {
+  return hasActiveLineCapability('businessLine.workflow.read')
+})
+
+const canCreateWorkflowTemplate = computed(() => {
+  return hasActiveLineCapability('businessLine.workflow.create')
+})
+
+const canUpdateWorkflowTemplate = computed(() => {
+  return hasActiveLineCapability('businessLine.workflow.update')
+})
+
+const canDeleteWorkflowTemplate = computed(() => {
+  return hasActiveLineCapability('businessLine.workflow.delete')
+})
+
+const canReadSkillList = computed(() => {
+  return hasActiveLineCapability('businessLine.skill.read')
+})
+
+const canUploadLocalSkill = computed(() => {
+  return hasActiveLineCapability('businessLine.skill.upload')
+})
+
+const canUpdateLocalSkill = computed(() => {
+  return hasActiveLineCapability('businessLine.skill.update')
+})
+
+const canDeleteLocalSkill = computed(() => {
+  return hasActiveLineCapability('businessLine.skill.delete')
+})
+
+const canReadMcpList = computed(() => {
+  return hasActiveLineCapability('businessLine.mcp.read')
+})
+
+const canManageLocalMcp = computed(() => {
+  return hasActiveLineCapability('businessLine.mcp.manage')
+})
 
 const businessLineRoleOptions = computed(() => {
   return buildBusinessLineRoleAssignmentOptions(lineCustomRoles.value)
@@ -368,15 +462,153 @@ const canDeleteProjectItem = computed(() => {
   return hasActiveLineCapability('businessLine.project.delete')
 })
 
+const canViewProjectList = computed(() => {
+  return canReadProjectItems.value
+})
+
+const canViewMemberList = computed(() => {
+  return canReadMemberList.value
+})
+
+const canViewBusinessLineRoleList = computed(() => {
+  return canReadBusinessLineRoleList.value
+})
+
+const canViewProjectRoleList = computed(() => {
+  return canReadProjectRoleList.value
+})
+
 const canManagePermissionProjectRoles = computed(() => {
   return (
     Boolean(activeLineId.value) &&
-    hasAnyActiveLineCapability(
-      'businessLine.projectRole.create',
-      'businessLine.projectRole.update',
-      'businessLine.projectRole.delete',
+    (
+      canCreatePermissionProjectRole.value ||
+      canUpdatePermissionProjectRole.value ||
+      canDeletePermissionProjectRole.value
     )
   )
+})
+
+const canViewAgentToolConfigList = computed(() => {
+  return canReadAgentToolConfigList.value
+})
+
+const canViewWorkflowTemplateList = computed(() => {
+  return canReadWorkflowTemplateList.value
+})
+
+const canViewSkillList = computed(() => {
+  return canReadSkillList.value
+})
+
+const canViewMcpList = computed(() => {
+  return canReadMcpList.value
+})
+
+const canAccessProjectsTab = computed(() => {
+  return (
+    canViewProjectList.value ||
+    canCreateProjectItem.value ||
+    canUpdateProjectItem.value ||
+    canDeleteProjectItem.value
+  )
+})
+
+const canAccessMembersTab = computed(() => {
+  return (
+    canViewMemberList.value ||
+    canInviteMembers.value ||
+    canUpdateMemberRole.value ||
+    canRemoveMembers.value
+  )
+})
+
+const canAccessPermissionsTab = computed(() => {
+  return (
+    canViewBusinessLineRoleList.value ||
+    canCreateBusinessLineRole.value ||
+    canUpdateBusinessLineRole.value ||
+    canDeleteBusinessLineRole.value ||
+    canViewProjectRoleList.value ||
+    canCreatePermissionProjectRole.value ||
+    canUpdatePermissionProjectRole.value ||
+    canDeletePermissionProjectRole.value ||
+    canManagePermissionProjectRoles.value
+  )
+})
+
+const canAccessAgentCliTab = computed(() => {
+  return (
+    canViewAgentToolConfigList.value ||
+    canCreateAgentToolConfig.value ||
+    canUpdateAgentToolConfig.value ||
+    canSetDefaultAgentToolConfig.value ||
+    canDeleteAgentToolConfig.value
+  )
+})
+
+const canAccessWorkflowTab = computed(() => {
+  return (
+    canViewWorkflowTemplateList.value ||
+    canCreateWorkflowTemplate.value ||
+    canUpdateWorkflowTemplate.value ||
+    canDeleteWorkflowTemplate.value
+  )
+})
+
+const canAccessSkillTab = computed(() => {
+  return (
+    canViewSkillList.value ||
+    canUploadLocalSkill.value ||
+    canUpdateLocalSkill.value ||
+    canDeleteLocalSkill.value
+  )
+})
+
+const canAccessMcpTab = computed(() => {
+  return canViewMcpList.value || canManageLocalMcp.value
+})
+
+const canAccessSettingsTab = computed(() => {
+  return canReadBusinessLine.value || canManageActiveLine.value || canDeleteActiveLine.value
+})
+
+const availableMainTabs = computed<Array<{ key: MainTab; label: string }>>(() => {
+  const tabs: Array<{ key: MainTab; label: string }> = []
+
+  if (canAccessProjectsTab.value) {
+    tabs.push({ key: 'projects', label: '项目' })
+  }
+
+  if (canAccessMembersTab.value) {
+    tabs.push({ key: 'members', label: '成员' })
+  }
+
+  if (canAccessPermissionsTab.value) {
+    tabs.push({ key: 'permissions', label: '权限' })
+  }
+
+  if (canAccessAgentCliTab.value) {
+    tabs.push({ key: 'agent-cli', label: 'Agent CLI' })
+  }
+
+  if (canAccessWorkflowTab.value) {
+    tabs.push({ key: 'workflow', label: '工作流' })
+  }
+
+  if (canAccessSkillTab.value) {
+    tabs.push({ key: 'skill', label: 'Skills' })
+  }
+
+  if (canAccessMcpTab.value) {
+    tabs.push({ key: 'mcp', label: 'MCP' })
+  }
+
+  if (canAccessSettingsTab.value) {
+    tabs.push({ key: 'settings', label: '设置' })
+  }
+
+  return tabs
 })
 
 const loadLineAccess = async (lineId: string) => {
@@ -429,8 +661,8 @@ const loadPermissionProjectCustomRoles = async (lineId: string) => {
 const canDeleteLine = computed(() => {
   return (
     Boolean(activeLineId.value) &&
-    hasActiveLineCapability('businessLine.delete') &&
-    lineProjects.value.length === 0
+    canDeleteActiveLine.value &&
+    (selectedLine.value?.projectCount ?? lineProjects.value.length) === 0
   )
 })
 
@@ -646,6 +878,9 @@ const handleProjectRepositoryProvisioningChanged = (detail: {
   if (loadingProjects.value) {
     return
   }
+  if (!canViewProjectList.value) {
+    return
+  }
   void loadLineProjects(activeLineId.value)
 }
 
@@ -720,28 +955,137 @@ const loadUsers = async () => {
   }
 }
 
-const loadLineContext = async ({ includeMembers = false }: { includeMembers?: boolean } = {}) => {
-  if (!activeLineId.value) {
+const syncActiveTabWithPermissions = () => {
+  const availableTabs = availableMainTabs.value
+  if (availableTabs.length === 0) {
+    return
+  }
+
+  if (!availableTabs.some((tab) => tab.key === activeTab.value)) {
+    activeTab.value = availableTabs[0]!.key
+  }
+}
+
+const loadActiveTabData = async (lineId = activeLineId.value) => {
+  if (!lineId) {
     lineDetail.value = null
     lineProjects.value = []
     lineMembers.value = []
     lineCustomRoles.value = []
+    permissionProjectRoleLibrary.value = []
+    agentToolConfigs.value = []
+    workflowTemplates.value = []
+    localSkills.value = []
+    localMcps.value = []
     return
   }
 
-  const lineId = activeLineId.value
-  await Promise.all([loadLineDetail(lineId), loadLineProjects(lineId)])
+  if (activeTab.value === 'projects') {
+    if (!canViewProjectList.value) {
+      lineProjects.value = []
+      return
+    }
 
-  if (includeMembers) {
-    await Promise.all([loadLineMembers(lineId), loadLineCustomRoles(lineId)])
+    await loadLineProjects(lineId)
+    return
   }
+
+  if (activeTab.value === 'members') {
+    await Promise.all([
+      canViewMemberList.value ? loadLineMembers(lineId) : Promise.resolve().then(() => {
+        lineMembers.value = []
+      }),
+      canInviteMembers.value || (canViewMemberList.value && canUpdateMemberRole.value)
+        ? loadLineCustomRoles(lineId)
+        : Promise.resolve().then(() => {
+            lineCustomRoles.value = []
+          }),
+      canViewMemberList.value && canUpdateMemberRole.value
+        ? loadLineProjects(lineId)
+        : Promise.resolve().then(() => {
+            lineProjects.value = []
+          }),
+      canViewMemberList.value ? loadUsers() : Promise.resolve(),
+    ])
+    return
+  }
+
+  if (activeTab.value === 'permissions') {
+    await Promise.all([
+      canViewBusinessLineRoleList.value
+        ? loadLineCustomRoles(lineId)
+        : Promise.resolve().then(() => {
+            lineCustomRoles.value = []
+          }),
+      canViewProjectRoleList.value
+        ? loadPermissionProjectCustomRoles(lineId)
+        : Promise.resolve().then(() => {
+            permissionProjectRoleLibrary.value = []
+          }),
+    ])
+    return
+  }
+
+  if (activeTab.value === 'agent-cli') {
+    resetAgentToolConfigForm()
+
+    if (!canViewAgentToolConfigList.value) {
+      agentToolConfigs.value = []
+      return
+    }
+
+    await loadAgentToolConfigs(lineId, activeAgentCliToolId.value)
+    return
+  }
+
+  if (activeTab.value === 'workflow') {
+    if (!canViewWorkflowTemplateList.value) {
+      workflowTemplates.value = []
+      workflowConfiguredCliTools.value = []
+      return
+    }
+
+    await Promise.all([
+      loadWorkflowTemplates(lineId),
+      loadWorkflowConfiguredCliTools(lineId),
+    ])
+    return
+  }
+
+  if (activeTab.value === 'skill') {
+    if (!canViewSkillList.value) {
+      localSkills.value = []
+      return
+    }
+
+    await loadLocalSkills(lineId)
+    return
+  }
+
+  if (activeTab.value === 'mcp') {
+    if (!canViewMcpList.value) {
+      localMcps.value = []
+      return
+    }
+
+    await loadLocalMcps(lineId)
+    return
+  }
+
+  if (!canReadBusinessLine.value) {
+    lineDetail.value = null
+    return
+  }
+
+  await loadLineDetail(lineId)
 }
 
 const refreshForCurrentLine = async ({
-  includeMembers = false,
+  includeMembers: _includeMembers = false,
 }: { includeMembers?: boolean } = {}) => {
+  void _includeMembers
   emit('request-refresh')
-  await loadLineContext({ includeMembers })
+  await loadActiveTabData()
 }
 
 const openCreateLineModal = () => {
@@ -1281,7 +1625,7 @@ const submitCustomRole = async (payload: {
     await loadLineCustomRoles(activeLineId.value)
     message.success(customRoleModalMode.value === 'edit' ? '保存角色成功' : '创建角色成功')
   } catch (error) {
-    customRoleModalError.value = toErrorMessage(error, '保存自定义角色失败')
+    customRoleModalError.value = toErrorMessage(error, '保存角色失败')
   } finally {
     customRoleModalSubmitting.value = false
   }
@@ -1292,7 +1636,7 @@ const removeCustomRole = async (role: BusinessLineCustomRole) => {
     return
   }
 
-  const confirmed = window.confirm(`确认删除自定义角色「${role.name}」吗？`)
+  const confirmed = window.confirm(`确认删除角色「${role.name}」吗？`)
   if (!confirmed) {
     return
   }
@@ -1304,7 +1648,7 @@ const removeCustomRole = async (role: BusinessLineCustomRole) => {
     await loadLineCustomRoles(activeLineId.value)
     message.success('删除角色成功')
   } catch (error) {
-    message.error(toErrorMessage(error, '删除自定义角色失败'))
+    message.error(toErrorMessage(error, '删除角色失败'))
   } finally {
     deletingCustomRoleId.value = ''
   }
@@ -1421,10 +1765,7 @@ const refreshLinePermissionSection = async () => {
     return
   }
 
-  await Promise.all([
-    loadLineCustomRoles(activeLineId.value),
-    loadPermissionProjectCustomRoles(activeLineId.value),
-  ])
+  await loadActiveTabData(activeLineId.value)
 }
 
 const refreshMemberAccessSection = async () => {
@@ -1432,7 +1773,7 @@ const refreshMemberAccessSection = async () => {
     return
   }
 
-  await Promise.all([loadLineMembers(activeLineId.value), loadLineCustomRoles(activeLineId.value)])
+  await loadActiveTabData(activeLineId.value)
 }
 
 const openRemoveMemberModal = (member: BusinessLineMember) => {
@@ -1545,8 +1886,6 @@ const initializePanel = () => {
     emit('select-line', activeLineId.value)
     void loadLineAccess(activeLineId.value)
   }
-
-  void loadLineContext({ includeMembers: false })
 }
 
 initializePanel()
@@ -1623,89 +1962,33 @@ watch(
     permissionProjectRoleLibrary.value = []
     emit('select-line', lineId)
     void loadLineAccess(lineId)
-    void loadLineContext({ includeMembers: isMemberAccessTab() })
-    if (activeTab.value === 'agent-cli') {
-      void loadAgentToolConfigs(lineId, activeAgentCliToolId.value)
-    } else if (activeTab.value === 'workflow') {
-      void loadWorkflowTemplates(lineId)
-    } else if (activeTab.value === 'skill') {
-      void loadLocalSkills(lineId)
-    } else if (activeTab.value === 'mcp') {
-      void loadLocalMcps(lineId)
-    }
   },
 )
 
 watch(
   () => activeTab.value,
-  (tab) => {
+  () => {
     if (!isPanelActive.value || !activeLineId.value) {
       return
     }
 
-    if (tab === 'projects') {
-      void loadLineProjects(activeLineId.value)
-      return
-    }
-
-    if (tab === 'members') {
-      void Promise.all([
-        loadLineMembers(activeLineId.value),
-        loadLineCustomRoles(activeLineId.value),
-        loadUsers(),
-      ])
-      return
-    }
-
-    if (tab === 'permissions') {
-      void Promise.all([
-        loadLineCustomRoles(activeLineId.value),
-        loadPermissionProjectCustomRoles(activeLineId.value),
-      ])
-      return
-    }
-
-    if (tab === 'agent-cli') {
-      resetAgentToolConfigForm()
-      void loadAgentToolConfigs(activeLineId.value, activeAgentCliToolId.value)
-      return
-    }
-
-    if (tab === 'workflow') {
-      void Promise.all([
-        loadWorkflowTemplates(activeLineId.value),
-        loadWorkflowConfiguredCliTools(activeLineId.value),
-      ])
-      return
-    }
-
-    if (tab === 'skill') {
-      void loadLocalSkills(activeLineId.value)
-      return
-    }
-
-    if (tab === 'mcp') {
-      void loadLocalMcps(activeLineId.value)
-      return
-    }
-
-    void loadLineDetail(activeLineId.value)
+    void loadActiveTabData(activeLineId.value)
   },
 )
 
 watch(
-  () => [isPanelActive.value, activeTab.value, activeLineId.value] as const,
-  ([active, tab]) => {
-    if (!active || tab !== 'permissions') {
+  () => getLineCapabilities(activeLineId.value).join('|'),
+  () => {
+    if (!isPanelActive.value || !activeLineId.value) {
       return
     }
 
-    if (!activeLineId.value) {
-      permissionProjectRoleLibrary.value = []
-      return
-    }
+    const previousTab = activeTab.value
+    syncActiveTabWithPermissions()
 
-    void loadPermissionProjectCustomRoles(activeLineId.value)
+    if (activeTab.value === previousTab) {
+      void loadActiveTabData(activeLineId.value)
+    }
   },
 )
 
@@ -1719,6 +2002,11 @@ watch(
     resetAgentToolConfigForm()
 
     if (activeTab.value !== 'agent-cli' || !activeLineId.value) {
+      return
+    }
+
+    if (!canViewAgentToolConfigList.value) {
+      agentToolConfigs.value = []
       return
     }
 
@@ -1740,20 +2028,61 @@ watch(
     agentToolConfigs,
     applyInviteToCreateMemberModal,
     applyProjectRuntimeSettingsProject,
+    availableMainTabs,
     buildInviteUrl,
     businessLineRoleOptions,
+    canAccessAgentCliTab,
+    canAccessMcpTab,
+    canAccessMembersTab,
+    canAccessPermissionsTab,
+    canAccessProjectsTab,
+    canAccessSettingsTab,
+    canAccessSkillTab,
+    canAccessWorkflowTab,
+    canCreateAgentToolConfig,
     canCreateBusinessLineRole,
+    canCreatePermissionProjectRole,
     canCreateProjectItem,
+    canCreateWorkflowTemplate,
+    canDeleteAgentToolConfig,
     canDeleteBusinessLineRole,
+    canDeleteLocalMcp: canManageLocalMcp,
+    canDeleteLocalSkill,
     canDeleteLine,
     canDeleteProjectItem,
+    canDeletePermissionProjectRole,
+    canDeleteWorkflowTemplate,
     canInviteMembers,
+    canManageLocalMcp,
     canManageActiveLine,
     canManagePermissionProjectRoles,
     canRemoveMembers,
+    canReadAgentToolConfigList,
+    canReadBusinessLine,
+    canReadBusinessLineRoleList,
+    canReadMcpList,
+    canReadMemberList,
+    canReadPermissionProjectRoleList: canReadProjectRoleList,
+    canReadProjectItems,
+    canReadSkillList,
+    canReadWorkflowTemplateList,
+    canSetDefaultAgentToolConfig,
+    canUpdateAgentToolConfig,
     canUpdateBusinessLineRole,
+    canUpdateLocalSkill,
     canUpdateMemberRole,
+    canUpdatePermissionProjectRole,
     canUpdateProjectItem,
+    canUpdateWorkflowTemplate,
+    canUploadLocalSkill,
+    canViewAgentToolConfigList,
+    canViewBusinessLineRoleList,
+    canViewMcpList,
+    canViewMemberList,
+    canViewProjectList,
+    canViewProjectRoleList,
+    canViewSkillList,
+    canViewWorkflowTemplateList,
     closeMcpJsonPreview,
     closeModal,
     closeSkillPreview,
@@ -1815,10 +2144,10 @@ watch(
     lineFormSubmitting,
     lineMembers,
     lineProjects,
+    loadActiveTabData,
     loadAgentToolConfigs,
     loadLatestInviteForCreateMemberModal,
     loadLineAccess,
-    loadLineContext,
     loadLineCustomRoles,
     loadLineDetail,
     loadLineMembers,

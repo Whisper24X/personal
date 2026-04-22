@@ -30,9 +30,7 @@ export const useAccessStore = defineStore('access', () => {
       return [] as string[]
     }
 
-    const nextCapabilities = new Set(currentAccess.value?.capabilities ?? [])
-    nextCapabilities.add('businessLine.create')
-    return Array.from(nextCapabilities)
+    return currentAccess.value?.capabilities ?? []
   })
 
   const currentBusinessRole = computed(() => {

@@ -1,33 +1,64 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { defineComponent, nextTick } from 'vue'
+import { defineComponent } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useLayout } from '../useLayout'
 import { STORAGE_KEYS } from '@shared/types/common/storage'
 
-const { businessLinesApi, projectsApi, authApi, routeState, routerReplace, routerPush } = vi.hoisted(() => ({
-  businessLinesApi: {
-    list: vi.fn(),
-  },
-  projectsApi: {
-    list: vi.fn(),
-  },
-  authApi: {
-    access: vi.fn(),
-    me: vi.fn(),
-    logout: vi.fn(),
-  },
-  routeState: {
-    name: 'dashboard',
-    path: '/dashboard',
-    fullPath: '/dashboard',
-    params: {},
-    query: {},
-    meta: {},
-  },
-  routerReplace: vi.fn(),
-  routerPush: vi.fn(),
-}))
+const {
+  businessLinesApi,
+  projectsApi,
+  authApi,
+  routeState,
+  routerReplace,
+  routerPush,
+  storage,
+} = vi.hoisted(() => {
+  const storage = new Map<string, string>()
+
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem(key: string) {
+        return storage.get(key) ?? null
+      },
+      setItem(key: string, value: string) {
+        storage.set(key, String(value))
+      },
+      removeItem(key: string) {
+        storage.delete(key)
+      },
+      clear() {
+        storage.clear()
+      },
+    },
+  })
+
+  return {
+    businessLinesApi: {
+      list: vi.fn(),
+    },
+    projectsApi: {
+      list: vi.fn(),
+    },
+    authApi: {
+      access: vi.fn(),
+      me: vi.fn(),
+      logout: vi.fn(),
+    },
+    routeState: {
+      name: 'dashboard',
+      path: '/dashboard',
+      fullPath: '/dashboard',
+      params: {},
+      query: {},
+      meta: {},
+    },
+    routerReplace: vi.fn(),
+    routerPush: vi.fn(),
+    storage,
+  }
+})
 
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
@@ -52,6 +83,7 @@ vi.mock('@/api/auth', () => ({
 describe('useLayout business line selection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    storage.clear()
 
     routeState.name = 'dashboard'
     routeState.path = '/dashboard'
@@ -59,25 +91,6 @@ describe('useLayout business line selection', () => {
     routeState.params = {}
     routeState.query = {}
     routeState.meta = {}
-
-    const storage = new Map<string, string>()
-    Object.defineProperty(globalThis, 'localStorage', {
-      configurable: true,
-      value: {
-        getItem(key: string) {
-          return storage.get(key) ?? null
-        },
-        setItem(key: string, value: string) {
-          storage.set(key, String(value))
-        },
-        removeItem(key: string) {
-          storage.delete(key)
-        },
-        clear() {
-          storage.clear()
-        },
-      },
-    })
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -189,6 +202,24 @@ describe('useLayout business line selection', () => {
   it('sorts project items by name within the current business line', async () => {
     setActivePinia(createPinia())
 
+    authApi.access.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        username: 'tester',
+      },
+      currentContext: {
+        businessLineId: 'line-1',
+        businessRole: 'owner',
+        projectId: 'project-1',
+        projectRole: 'owner',
+      },
+      capabilities: ['project.dashboard.read'],
+      visibility: {
+        visibleBusinessLineIds: ['line-1'],
+        visibleProjectIds: ['project-1', 'project-2', 'project-3'],
+      },
+    })
+
     projectsApi.list.mockResolvedValue({
       data: [
         {
@@ -240,6 +271,90 @@ describe('useLayout business line selection', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="project-names"]').text()).toBe('Alpha,Beta,Zoo')
+  })
+
+  it('filters business lines and projects by access visibility', async () => {
+    setActivePinia(createPinia())
+
+    authApi.access.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        username: 'tester',
+      },
+      currentContext: {
+        businessLineId: 'line-2',
+        businessRole: 'owner',
+        projectId: 'project-2',
+        projectRole: 'owner',
+      },
+      capabilities: ['project.dashboard.read'],
+      visibility: {
+        visibleBusinessLineIds: ['line-2'],
+        visibleProjectIds: ['project-2'],
+      },
+    })
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: `
+        <div>
+          <p data-testid="line-names">{{ businessLineItems.map((item) => item.name).join(',') }}</p>
+          <p data-testid="project-names">{{ projectItems.map((item) => item.name).join(',') }}</p>
+          <p data-testid="active-line">{{ activeBusinessLineId }}</p>
+        </div>
+      `,
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="line-names"]').text()).toBe('Line 2')
+    expect(wrapper.get('[data-testid="project-names"]').text()).toBe('Project 2')
+    expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-2')
+  })
+
+  it('skips business line and project list requests when visibility is empty', async () => {
+    setActivePinia(createPinia())
+
+    authApi.access.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        username: 'tester',
+      },
+      currentContext: {
+        businessLineId: '',
+        businessRole: null,
+        projectId: '',
+        projectRole: null,
+      },
+      capabilities: [],
+      visibility: {
+        visibleBusinessLineIds: [],
+        visibleProjectIds: [],
+      },
+    })
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: `
+        <div>
+          <p data-testid="line-count">{{ businessLineItems.length }}</p>
+          <p data-testid="project-count">{{ projectItems.length }}</p>
+        </div>
+      `,
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="line-count"]').text()).toBe('0')
+    expect(wrapper.get('[data-testid="project-count"]').text()).toBe('0')
+    expect(businessLinesApi.list).not.toHaveBeenCalled()
+    expect(projectsApi.list).not.toHaveBeenCalled()
   })
 
   it('includes git entry in sidebar menu items', async () => {
@@ -296,7 +411,7 @@ describe('useLayout business line selection', () => {
     })
 
     const wrapper = mount(Harness)
-    await nextTick()
+    await flushPromises()
 
     expect(wrapper.get('[data-testid="show-current-project"]').text()).toBe('0')
 

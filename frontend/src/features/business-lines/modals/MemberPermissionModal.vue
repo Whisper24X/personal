@@ -71,38 +71,11 @@ const userMap = computed(() => {
   return new Map(props.users.map((user) => [user.id, user]))
 })
 
-const defaultRoleOptions = computed(() => {
-  return props.roleOptions.filter((item) => item.source === 'default')
-})
-
-const customRoleOptions = computed(() => {
-  return props.roleOptions.filter((item) => item.source === 'custom')
-})
-
 const businessRoleSelectOptions = computed(() => {
-  const groups = []
-
-  if (defaultRoleOptions.value.length > 0) {
-    groups.push({
-      label: '默认角色',
-      options: defaultRoleOptions.value.map((option) => ({
-        label: option.label,
-        value: option.key,
-      })),
-    })
-  }
-
-  if (customRoleOptions.value.length > 0) {
-    groups.push({
-      label: '自定义角色',
-      options: customRoleOptions.value.map((option) => ({
-        label: option.label,
-        value: option.key,
-      })),
-    })
-  }
-
-  return groups
+  return props.roleOptions.map((option) => ({
+    label: option.label,
+    value: option.key,
+  }))
 })
 
 const selectedRoleOption = computed(() => {
@@ -383,20 +356,20 @@ watch(
                 <div
                   v-for="project in props.projects"
                   :key="project.id"
-                  class="flex flex-col gap-3 rounded-2xl border border-border bg-background px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
+                  class="flex flex-col gap-3 rounded-2xl border border-border bg-background px-4 py-3 lg:flex-row lg:items-center lg:gap-4"
                 >
-                  <div class="min-w-0">
+                  <div class="min-w-0 lg:flex-1">
                     <div class="truncate text-sm font-semibold text-foreground">{{ project.name }}</div>
-                    <div class="mt-1 font-mono text-[11px] text-muted-foreground">{{ project.id }}</div>
+                    <div class="mt-1 truncate font-mono text-[11px] text-muted-foreground">{{ project.id }}</div>
                   </div>
                   <AppSelect
                     :model-value="projectRoles[project.id] ?? ''"
                     aria-label="项目角色"
                     :options="props.projectRoleOptions"
-                    :block="false"
                     :panel-z-index="MEMBER_PERMISSION_SELECT_PANEL_Z_INDEX"
-                    wrapper-class="lg:w-44"
-                    trigger-class="h-10 rounded-xl border-border bg-background px-3 text-sm shadow-none"
+                    trigger-label-truncate
+                    wrapper-class="w-full lg:ml-auto lg:w-52 lg:shrink-0"
+                    trigger-class="h-10 w-full rounded-xl border-border bg-background px-3 text-sm shadow-none"
                     @update:model-value="projectRoles[project.id] = String($event ?? '')"
                   />
                 </div>
