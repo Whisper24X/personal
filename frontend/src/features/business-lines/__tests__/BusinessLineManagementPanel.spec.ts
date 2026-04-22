@@ -394,6 +394,115 @@ describe('BusinessLineManagementPanel', () => {
     expect(wrapper.text()).toContain('Opencode')
   })
 
+  it('refreshes project tab when switching back to a cached empty business line', async () => {
+    projectsApi.list.mockImplementation(async ({ businessLineId }: { businessLineId: string }) => ({
+      data: businessLineId === 'line-1'
+        ? [
+            {
+              id: 'project-1',
+              businessLineId: 'line-1',
+              name: 'Guard Backend',
+              description: 'Main service',
+              gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
+              defaultBranch: 'main',
+            },
+          ]
+        : [],
+      hasNextPage: false,
+    }))
+
+    businessLinesApi.detail.mockImplementation(async (businessLineId: string) => ({
+      id: businessLineId,
+      name: businessLineId === 'line-1' ? 'Retail' : 'Empty Line',
+      description: businessLineId === 'line-1' ? 'Retail team' : 'No projects here',
+      defaultAgentCliToolId: null,
+    }))
+
+    authApi.access.mockImplementation(async ({ businessLineId }: { businessLineId?: string } = {}) => ({
+      user: {
+        id: 'user-1',
+        username: 'tester',
+        nickname: 'Tester',
+        avatar: null,
+      },
+      currentContext: {
+        businessLineId: businessLineId ?? 'line-1',
+        businessRole: 'owner',
+        projectRole: null,
+      },
+      capabilities: [
+        'businessLine.read',
+        'businessLine.project.list.all',
+      ],
+      visibility: {
+        visibleBusinessLineIds: ['line-1', 'line-2'],
+        visibleProjectIds: ['project-1'],
+      },
+    }))
+
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: {
+        canCreateBusinessLine: true,
+        activeBusinessLineId: 'line-1',
+        selectedProjectId: '',
+        lines: [
+          {
+            id: 'line-1',
+            name: 'Retail',
+            description: 'Retail team',
+            owner: '-',
+            projectCount: 1,
+          },
+          {
+            id: 'line-2',
+            name: 'Empty Line',
+            description: 'No projects here',
+            owner: '-',
+            projectCount: 0,
+          },
+        ],
+        projects: [],
+      },
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('Guard Backend')
+
+    const retailButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Retail') && button.text().includes('项目 1'))
+    const emptyLineButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Empty Line') && button.text().includes('项目 0'))
+
+    expect(retailButton).toBeDefined()
+    expect(emptyLineButton).toBeDefined()
+
+    await emptyLineButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Guard Backend')
+    expect(wrapper.text()).toContain('当前业务线暂无项目。')
+
+    await retailButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Guard Backend')
+
+    await emptyLineButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Guard Backend')
+    expect(wrapper.text()).toContain('当前业务线暂无项目。')
+  })
+
   it('hides create business line button when user has no permission', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {

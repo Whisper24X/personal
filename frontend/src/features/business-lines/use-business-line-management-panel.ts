@@ -973,17 +973,30 @@ const syncActiveTabWithPermissions = () => {
   }
 }
 
+const resetLoadedLineScopedData = () => {
+  loadingLineDetail.value = false
+  loadingProjects.value = false
+  loadingMembers.value = false
+  loadingCustomRoles.value = false
+  loadingPermissionProjectRoleLibrary.value = false
+  lineDetail.value = null
+  lineProjects.value = []
+  lineMembers.value = []
+  lineCustomRoles.value = []
+  permissionProjectRoleLibrary.value = []
+  agentToolConfigs.value = []
+  workflowTemplates.value = []
+  workflowConfiguredCliTools.value = []
+  workflowNodeConfigsByTool.value = {}
+  workflowNodeConfigLoadingByTool.value = {}
+  loadingWorkflowConfiguredCliTools.value = false
+  localSkills.value = []
+  localMcps.value = []
+}
+
 const loadActiveTabData = async (lineId = activeLineId.value) => {
   if (!lineId) {
-    lineDetail.value = null
-    lineProjects.value = []
-    lineMembers.value = []
-    lineCustomRoles.value = []
-    permissionProjectRoleLibrary.value = []
-    agentToolConfigs.value = []
-    workflowTemplates.value = []
-    localSkills.value = []
-    localMcps.value = []
+    resetLoadedLineScopedData()
     return
   }
 
@@ -1934,18 +1947,7 @@ watch(
     memberQuery.value = ''
 
     if (!lineId) {
-      lineDetail.value = null
-      lineProjects.value = []
-      lineMembers.value = []
-      permissionProjectRoleLibrary.value = []
-      agentToolConfigs.value = []
-      workflowTemplates.value = []
-      workflowConfiguredCliTools.value = []
-      workflowNodeConfigsByTool.value = {}
-      workflowNodeConfigLoadingByTool.value = {}
-      loadingWorkflowConfiguredCliTools.value = false
-      localSkills.value = []
-      localMcps.value = []
+      resetLoadedLineScopedData()
       skillKeyword.value = ''
       uploadSkillModalOpen.value = false
       uploadSkillError.value = ''
@@ -1962,12 +1964,10 @@ watch(
       return
     }
 
-    workflowConfiguredCliTools.value = []
-    workflowNodeConfigsByTool.value = {}
-    workflowNodeConfigLoadingByTool.value = {}
-    loadingWorkflowConfiguredCliTools.value = false
-    permissionProjectRoleLibrary.value = []
+    resetLoadedLineScopedData()
     emit('select-line', lineId)
+    syncActiveTabWithPermissions()
+    void loadActiveTabData(lineId)
     void loadLineAccess(lineId)
   },
 )
