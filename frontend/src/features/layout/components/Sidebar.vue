@@ -11,7 +11,7 @@ import {
   taskStatusLabel,
   useSidebarRecentTasks,
 } from '@features/layout/composables/useSidebarRecentTasks'
-import logoImage from '@shared/assets/images/logo.svg'
+import { appSettings } from '@app/config/setting'
 import {
   Sidebar,
   SidebarContent,
@@ -32,6 +32,8 @@ import { Input } from '@shared/ui/input'
 defineOptions({
   name: 'AppWorkspaceSidebar',
 })
+
+const logoSrc = '/logo.svg' as const
 
 const props = defineProps<{
   currentBusinessLineName: string
@@ -117,9 +119,9 @@ const isRecentTaskBlinking = (status: Task['status']) => {
               <div
                 class="flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
               >
-                <img :src="logoImage" alt="" class="size-6 object-contain" />
+                <img :src="logoSrc" alt="" class="size-6 object-contain" />
               </div>
-              <span class="truncate font-semibold">AINative</span>
+              <span class="truncate font-semibold">{{ appSettings.appName }}</span>
             </RouterLink>
           </SidebarMenuButton>
         </SidebarMenuItem>

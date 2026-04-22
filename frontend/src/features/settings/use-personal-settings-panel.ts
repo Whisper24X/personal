@@ -717,9 +717,9 @@ const sendTestBrowserNotification = async () => {
   }
 
   try {
-    const notification = new Notification('AINative 测试通知', {
+    const notification = new Notification('葱搭 测试通知', {
       body: '如果你看到了这条消息，说明当前浏览器通知链路已就绪。',
-      icon: '/favicon.ico',
+      icon: '/logo.svg',
       tag: `ainative-notification-test-${Date.now()}`,
     })
 

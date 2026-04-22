@@ -1,4 +1,4 @@
 export const appSettings = {
-  appName: 'AINative',
+  appName: '葱搭',
   defaultRoute: '/dashboard',
 } as const

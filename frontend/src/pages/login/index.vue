@@ -21,11 +21,13 @@ const vm = useLoginPage()
         <div class="auth-grid grid w-full grid-cols-1 justify-center">
           <section class="auth-panel">
             <header class="auth-header">
-              <div class="auth-logo-badge">AI</div>
-              <p class="auth-kicker">AI Native Workspace</p>
+              <div class="auth-logo-badge">
+                <img src="/logo.svg" alt="葱搭" class="auth-logo-image" />
+              </div>
+              <p class="auth-kicker">葱搭工作空间</p>
               <h1 class="auth-title">{{ vm.mode === 'login' ? '欢迎回来' : '创建新账号' }}</h1>
               <p class="auth-subtitle">
-                {{ vm.mode === 'login' ? '登录后继续你的项目、任务与自动化流程。' : '注册后自动登录，立即开始使用 AI Native 平台。' }}
+                {{ vm.mode === 'login' ? '登录后继续你的项目、任务与自动化流程。' : '注册后自动登录，立即开始使用 葱搭平台。' }}
               </p>
             </header>
 

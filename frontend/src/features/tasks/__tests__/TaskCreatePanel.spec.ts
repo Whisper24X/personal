@@ -139,7 +139,7 @@ describe('TaskCreatePanel', () => {
       'project-1': {
         id: 'project-1',
         businessLineId: 'line-1',
-        name: 'AINative',
+        name: '葱搭',
         gitUrl: 'git@example.com:group/ainative.git',
         defaultBranch: 'main',
       },

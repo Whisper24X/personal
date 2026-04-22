@@ -58,9 +58,9 @@ describe('parseOpencodeMessages', () => {
             input: {
               filePath: '/tmp/demo/AGENTS.md',
             },
-            output: '<content># AINative Workspace</content>',
+            output: '<content># 葱搭 Workspace</content>',
             metadata: {
-              preview: '# AINative Workspace\n\nMonorepo 全栈应用。',
+              preview: '# 葱搭 Workspace\n\nMonorepo 全栈应用。',
             },
           },
         },
@@ -69,7 +69,7 @@ describe('parseOpencodeMessages', () => {
         type: 'text',
         timestamp: 1773311047457,
         part: {
-          text: '这个项目的主名称是 AINative Workspace。',
+          text: '这个项目的主名称是 葱搭 Workspace。',
         },
       }),
     ]
@@ -126,12 +126,12 @@ describe('parseOpencodeMessages', () => {
         status: 'success',
       },
     })
-    expect(entries[5]?.content).toContain('AINative Workspace')
-    expect(entries[5]?.metadata?.toolOutput).toContain('<content># AINative Workspace</content>')
+    expect(entries[5]?.content).toContain('葱搭 Workspace')
+    expect(entries[5]?.metadata?.toolOutput).toContain('<content># 葱搭 Workspace</content>')
 
     expect(entries[6]).toMatchObject({
       type: 'assistant_message',
-      content: '这个项目的主名称是 AINative Workspace。',
+      content: '这个项目的主名称是 葱搭 Workspace。',
     })
   })
 })
