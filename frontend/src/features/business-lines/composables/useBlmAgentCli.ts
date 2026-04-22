@@ -1,26 +1,42 @@
-import { computed, ref, type Ref } from 'vue'
-import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
+import { computed, ref, watch, type Ref } from 'vue'
+import {
+  businessLinesApi,
+  type AgentToolConfig,
+  type BusinessLine,
+} from '@/api/business-lines'
 import { toErrorMessage } from '@api/shared/to-error-message'
 import { DEFAULT_AGENT_TOOL_CONFIG_NAME, SUPPORTED_CLI_TOOLS } from '../blm-agent-cli.constants'
+import { isSupportedCliToolId } from '../blm-cli-utils'
 import { normalizeOptionalText } from '../blmFormUtils'
 import type { SupportedCliToolId } from '../blm-workflow-template.types'
+import {
+  buildConfiguredCliTools,
+  groupAgentToolConfigsBySupportedTool,
+} from '@shared/utils/agent-cli-defaults'
 
 type MessageLike = {
   success: (msg: string) => void
   error: (msg: string) => void
 }
 
-export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) {
+export function useBlmAgentCli(
+  activeLineId: Ref<string>,
+  lineDetail: Ref<BusinessLine | null>,
+  message: MessageLike,
+) {
   const loadingAgentToolConfigs = ref(false)
   const submittingAgentToolConfig = ref(false)
   const deletingAgentToolConfigId = ref('')
   const testingAgentToolConfigId = ref('')
+  const savingDefaultAgentCliTool = ref(false)
   const agentCliValidationMessage = ref('')
   const agentToolConfigModalOpen = ref(false)
   const agentToolConfigMode = ref<'create' | 'edit'>('create')
   const editingAgentToolConfigId = ref('')
+  const allAgentToolConfigs = ref<AgentToolConfig[]>([])
   const agentToolConfigs = ref<AgentToolConfig[]>([])
   const activeAgentCliToolId = ref<SupportedCliToolId>('cursor-agent')
+  const defaultAgentCliToolDraft = ref<SupportedCliToolId | ''>('')
   const agentToolConfigForm = ref({
     name: '',
     description: '',
@@ -35,6 +51,38 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
     )
   })
 
+  const allAgentToolConfigsByTool = computed(() => {
+    return groupAgentToolConfigsBySupportedTool(allAgentToolConfigs.value, isSupportedCliToolId)
+  })
+
+  const currentDefaultAgentCliToolId = computed<SupportedCliToolId | ''>(() => {
+    const toolId = lineDetail.value?.defaultAgentCliToolId?.trim() ?? ''
+
+    return isSupportedCliToolId(toolId) ? toolId : ''
+  })
+
+  const defaultAgentCliToolOptions = computed(() => {
+    return buildConfiguredCliTools(
+      SUPPORTED_CLI_TOOLS,
+      allAgentToolConfigsByTool.value,
+    ).map((tool) => ({
+      label: tool.label,
+      value: tool.id,
+    }))
+  })
+
+  const canSaveDefaultAgentCliTool = computed(() => {
+    return defaultAgentCliToolDraft.value !== currentDefaultAgentCliToolId.value
+  })
+
+  const syncVisibleAgentToolConfigs = (
+    toolId: SupportedCliToolId = activeAgentCliToolId.value,
+  ) => {
+    agentToolConfigs.value = allAgentToolConfigs.value.filter(
+      (config) => config.toolId === toolId,
+    )
+  }
+
   const resetAgentToolConfigForm = () => {
     agentToolConfigModalOpen.value = false
     agentToolConfigMode.value = 'create'
@@ -47,6 +95,24 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
       config: {},
     }
   }
+
+  watch(
+    [activeLineId, currentDefaultAgentCliToolId],
+    () => {
+      defaultAgentCliToolDraft.value = currentDefaultAgentCliToolId.value
+    },
+    { immediate: true },
+  )
+
+  watch(activeLineId, (lineId) => {
+    if (lineId) {
+      return
+    }
+
+    allAgentToolConfigs.value = []
+    agentToolConfigs.value = []
+    defaultAgentCliToolDraft.value = ''
+  })
 
   const buildCreateAgentToolConfigForm = () => {
     const hasNamedDefaultConfig = agentToolConfigs.value.some(
@@ -86,6 +152,7 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
     toolId: SupportedCliToolId = activeAgentCliToolId.value,
   ) => {
     if (!lineId) {
+      allAgentToolConfigs.value = []
       agentToolConfigs.value = []
       resetAgentToolConfigForm()
       return
@@ -93,13 +160,20 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
 
     loadingAgentToolConfigs.value = true
     try {
-      const configs = await businessLinesApi.listAgentToolConfigs(lineId, { toolId })
+      const [configs, latestLineDetail] = await Promise.all([
+        businessLinesApi.listAgentToolConfigs(lineId),
+        businessLinesApi.detail(lineId).catch(() => lineDetail.value),
+      ])
       if (lineId !== activeLineId.value) {
         return
       }
-      agentToolConfigs.value = configs
+
+      lineDetail.value = latestLineDetail
+      allAgentToolConfigs.value = configs
+      syncVisibleAgentToolConfigs(toolId)
     } catch (error) {
       if (lineId === activeLineId.value) {
+        allAgentToolConfigs.value = []
         agentToolConfigs.value = []
         message.error(toErrorMessage(error, '加载 Agent CLI 配置失败'))
       }
@@ -108,6 +182,42 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
         loadingAgentToolConfigs.value = false
       }
     }
+  }
+
+  const saveDefaultAgentCliTool = async () => {
+    if (!activeLineId.value || !canSaveDefaultAgentCliTool.value) {
+      return
+    }
+
+    savingDefaultAgentCliTool.value = true
+    try {
+      const updatedBusinessLine = await businessLinesApi.updateDefaultAgentCliTool(
+        activeLineId.value,
+        {
+          defaultAgentCliToolId: defaultAgentCliToolDraft.value || null,
+        },
+      )
+
+      lineDetail.value = updatedBusinessLine
+      message.success(
+        updatedBusinessLine.defaultAgentCliToolId
+          ? '业务线默认 Agent CLI 已更新'
+          : '业务线默认 Agent CLI 已清空',
+      )
+    } catch (error) {
+      message.error(toErrorMessage(error, '更新业务线默认 Agent CLI 失败'))
+    } finally {
+      savingDefaultAgentCliTool.value = false
+    }
+  }
+
+  const clearDefaultAgentCliTool = async () => {
+    if (!activeLineId.value) {
+      return
+    }
+
+    defaultAgentCliToolDraft.value = ''
+    await saveDefaultAgentCliTool()
   }
 
   const saveAgentToolConfig = async (payload: {
@@ -251,6 +361,9 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
     try {
       await businessLinesApi.removeAgentToolConfig(activeLineId.value, configId)
       await loadAgentToolConfigs(activeLineId.value, activeAgentCliToolId.value)
+      lineDetail.value = await businessLinesApi.detail(activeLineId.value).catch(
+        () => lineDetail.value,
+      )
 
       if (editingAgentToolConfigId.value === configId) {
         resetAgentToolConfigForm()
@@ -270,6 +383,7 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
     submittingAgentToolConfig,
     deletingAgentToolConfigId,
     testingAgentToolConfigId,
+    savingDefaultAgentCliTool,
     agentCliValidationMessage,
     agentToolConfigModalOpen,
     agentToolConfigMode,
@@ -278,11 +392,17 @@ export function useBlmAgentCli(activeLineId: Ref<string>, message: MessageLike) 
     activeAgentCliToolId,
     agentToolConfigForm,
     activeAgentCliToolLabel,
+    canSaveDefaultAgentCliTool,
+    clearDefaultAgentCliTool,
+    currentDefaultAgentCliToolId,
+    defaultAgentCliToolDraft,
+    defaultAgentCliToolOptions,
     resetAgentToolConfigForm,
     buildCreateAgentToolConfigForm,
     openCreateAgentToolConfig,
     openEditAgentToolConfig,
     loadAgentToolConfigs,
+    saveDefaultAgentCliTool,
     saveAgentToolConfig,
     setAgentToolConfigAsDefault,
     removeAgentToolConfig,

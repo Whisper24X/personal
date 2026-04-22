@@ -11,6 +11,7 @@ export type BusinessLine = {
   id: string
   name: string
   description?: string | null
+  defaultAgentCliToolId?: string | null
   createdAt?: string
   updatedAt?: string
 }
@@ -33,6 +34,10 @@ export type CreateBusinessLinePayload = {
 }
 
 export type UpdateBusinessLinePayload = Partial<CreateBusinessLinePayload>
+
+export type UpdateDefaultAgentCliToolPayload = {
+  defaultAgentCliToolId: string | null
+}
 
 export type CreateBusinessLineMemberPayload = {
   userId: string
@@ -174,6 +179,16 @@ export const businessLinesApi = {
 
   update(businessLineId: string, payload: UpdateBusinessLinePayload) {
     return apiHttp.patch<BusinessLine>(`/business-lines/${businessLineId}`, payload)
+  },
+
+  updateDefaultAgentCliTool(
+    businessLineId: string,
+    payload: UpdateDefaultAgentCliToolPayload,
+  ) {
+    return apiHttp.patch<BusinessLine>(
+      `/business-lines/${businessLineId}/agent-cli/default-tool`,
+      payload,
+    )
   },
 
   remove(businessLineId: string) {

@@ -184,6 +184,7 @@ const {
   submittingAgentToolConfig,
   deletingAgentToolConfigId,
   testingAgentToolConfigId,
+  savingDefaultAgentCliTool,
   agentCliValidationMessage,
   agentToolConfigModalOpen,
   agentToolConfigMode,
@@ -191,15 +192,21 @@ const {
   activeAgentCliToolId,
   agentToolConfigForm,
   activeAgentCliToolLabel,
+  canSaveDefaultAgentCliTool,
+  clearDefaultAgentCliTool,
+  currentDefaultAgentCliToolId,
+  defaultAgentCliToolDraft,
+  defaultAgentCliToolOptions,
   resetAgentToolConfigForm,
   openCreateAgentToolConfig,
   openEditAgentToolConfig,
   loadAgentToolConfigs,
+  saveDefaultAgentCliTool,
   saveAgentToolConfig,
   setAgentToolConfigAsDefault,
   removeAgentToolConfig,
   testAgentToolConfig,
-} = useBlmAgentCli(activeLineId, message)
+} = useBlmAgentCli(activeLineId, lineDetail, message)
 
 const {
   loadingWorkflowTemplates,
@@ -241,7 +248,7 @@ const {
   removeWorkflowTemplate,
   setWorkflowTemplateDeleteModalOpen,
   confirmRemoveWorkflowTemplate,
-} = useBlmWorkflowTemplates(activeLineId, message)
+} = useBlmWorkflowTemplates(activeLineId, lineDetail, message)
 
 const {
   loadingLocalSkills,
@@ -2066,6 +2073,7 @@ watch(
     canReadProjectItems,
     canReadSkillList,
     canReadWorkflowTemplateList,
+    canSaveDefaultAgentCliTool,
     canSetDefaultAgentToolConfig,
     canUpdateAgentToolConfig,
     canUpdateBusinessLineRole,
@@ -2092,6 +2100,7 @@ watch(
     confirmDeleteProject,
     confirmRemoveMember,
     confirmRemoveWorkflowTemplate,
+    clearDefaultAgentCliTool,
     customRoleInitialCapabilities,
     customRoleInitialDescription,
     customRoleInitialName,
@@ -2232,6 +2241,9 @@ watch(
     dbIsolationModalOpen,
     dbIsolationProject,
     dbIsolationSubmitting,
+    currentDefaultAgentCliToolId,
+    defaultAgentCliToolDraft,
+    defaultAgentCliToolOptions,
     handleDbIsolationModalOpenChange,
     submitDbIsolation,
     projectContainerRuntimeForm,
@@ -2275,8 +2287,10 @@ watch(
     resetWorkflowCreateForm,
     roleBadgeClass,
     router,
+    saveDefaultAgentCliTool,
     saveAgentToolConfig,
     saveMcpJsonPreview,
+    savingDefaultAgentCliTool,
     savingMcpJsonPreview,
     selectCurrentProject,
     selectedLine,

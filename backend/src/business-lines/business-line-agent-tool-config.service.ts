@@ -4,27 +4,22 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  normalizeAgentCliToolId,
+  normalizeSupportedAgentCliToolId,
+} from './agent-cli-tool-id';
+import { BusinessLine } from './domain/business-line';
 import { AgentToolConfig } from './domain/agent-tool-config';
 import { CreateAgentToolConfigDto } from './dto/create-agent-tool-config.dto';
 import { UpdateAgentToolConfigDto } from './dto/update-agent-tool-config.dto';
+import { BusinessLineRepository } from './infrastructure/persistence/business-line.repository';
 import { AgentToolConfigRepository } from './infrastructure/persistence/agent-tool-config.repository';
 
 @Injectable()
 export class BusinessLineAgentToolConfigService {
-  private static readonly TOOL_ID_ALIASES: Record<string, string> = {
-    claude: 'claude-code',
-    'claude-code': 'claude-code',
-    codex: 'codex',
-    'codex-cli': 'codex',
-    cursor: 'cursor-agent',
-    'cursor-agent': 'cursor-agent',
-    gemini: 'gemini-cli',
-    'gemini-cli': 'gemini-cli',
-    opencode: 'opencode',
-  };
-
   constructor(
     private readonly agentToolConfigRepository: AgentToolConfigRepository,
+    private readonly businessLineRepository: BusinessLineRepository,
   ) {}
 
   async findAgentToolConfigs(
@@ -154,6 +149,13 @@ export class BusinessLineAgentToolConfigService {
       throw new NotFoundException('Agent tool config not found');
     }
 
+    if (nextToolId !== this.normalizeToolId(existedConfig.toolId)) {
+      await this.clearBusinessLineDefaultToolIfUnavailable(
+        businessLineId,
+        existedConfig.toolId,
+      );
+    }
+
     return updatedConfig;
   }
 
@@ -168,6 +170,10 @@ export class BusinessLineAgentToolConfigService {
     }
 
     await this.agentToolConfigRepository.remove(configId);
+    await this.clearBusinessLineDefaultToolIfUnavailable(
+      businessLineId,
+      existedConfig.toolId,
+    );
   }
 
   async getAgentToolConfigForBusinessLine(
@@ -183,6 +189,58 @@ export class BusinessLineAgentToolConfigService {
     return existedConfig;
   }
 
+  async updateDefaultAgentCliTool(
+    businessLineId: BusinessLine['id'],
+    defaultAgentCliToolId: string | null,
+  ): Promise<BusinessLine> {
+    if (defaultAgentCliToolId === null) {
+      const updatedBusinessLine = await this.businessLineRepository.update(
+        businessLineId,
+        {
+          defaultAgentCliToolId: null,
+        },
+      );
+
+      if (!updatedBusinessLine) {
+        throw new NotFoundException('Business line not found');
+      }
+
+      return updatedBusinessLine;
+    }
+
+    const normalizedToolId = normalizeSupportedAgentCliToolId(
+      defaultAgentCliToolId,
+    );
+
+    if (!normalizedToolId) {
+      throw new BadRequestException('Invalid default agent cli tool id');
+    }
+
+    const configs = await this.agentToolConfigRepository.findByBusinessLineId(
+      businessLineId,
+      normalizedToolId,
+    );
+
+    if (configs.length === 0) {
+      throw new BadRequestException(
+        'Default agent cli tool must reference an existing configured tool',
+      );
+    }
+
+    const updatedBusinessLine = await this.businessLineRepository.update(
+      businessLineId,
+      {
+        defaultAgentCliToolId: normalizedToolId,
+      },
+    );
+
+    if (!updatedBusinessLine) {
+      throw new NotFoundException('Business line not found');
+    }
+
+    return updatedBusinessLine;
+  }
+
   private normalizeToolId(value: string): string {
     const normalized = value.trim().toLowerCase();
 
@@ -190,8 +248,36 @@ export class BusinessLineAgentToolConfigService {
       throw new BadRequestException('Invalid tool id');
     }
 
-    return BusinessLineAgentToolConfigService.TOOL_ID_ALIASES[normalized]
-      ? BusinessLineAgentToolConfigService.TOOL_ID_ALIASES[normalized]
-      : normalized;
+    return normalizeAgentCliToolId(normalized);
+  }
+
+  private async clearBusinessLineDefaultToolIfUnavailable(
+    businessLineId: BusinessLine['id'],
+    toolId: string,
+  ): Promise<void> {
+    const normalizedToolId = normalizeAgentCliToolId(toolId);
+    const businessLine =
+      await this.businessLineRepository.findById(businessLineId);
+
+    if (
+      !businessLine ||
+      businessLine.defaultAgentCliToolId !== normalizedToolId
+    ) {
+      return;
+    }
+
+    const remainingConfigs =
+      await this.agentToolConfigRepository.findByBusinessLineId(
+        businessLineId,
+        normalizedToolId,
+      );
+
+    if (remainingConfigs.length > 0) {
+      return;
+    }
+
+    await this.businessLineRepository.update(businessLineId, {
+      defaultAgentCliToolId: null,
+    });
   }
 }

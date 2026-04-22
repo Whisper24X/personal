@@ -23,6 +23,7 @@ const {
     detail: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateDefaultAgentCliTool: vi.fn(),
     remove: vi.fn(),
     listCustomRoles: vi.fn(),
     listProjectCustomRoles: vi.fn(),
@@ -111,6 +112,36 @@ config.global.stubs = {
   RouterLink: RouterLinkStub,
 }
 
+const selectOption = async (
+  wrapper: ReturnType<typeof mount>,
+  ariaLabel: string,
+  optionLabel: string,
+) => {
+  await wrapper.find(`button[aria-label="${ariaLabel}"]`).trigger('click')
+  await flushPromises()
+
+  const bodyOption = Array.from(document.body.querySelectorAll('button[role="option"]')).find(
+    (button) => button.textContent?.includes(optionLabel),
+  ) as HTMLButtonElement | undefined
+
+  if (bodyOption) {
+    bodyOption.click()
+    await flushPromises()
+    return
+  }
+
+  const fallbackOption = wrapper
+    .findAll('button')
+    .find((button) => button.attributes('role') === 'option' && button.text().includes(optionLabel))
+
+  if (!fallbackOption) {
+    throw new Error(`Option ${optionLabel} not found`)
+  }
+
+  await fallbackOption.trigger('click')
+  await flushPromises()
+}
+
 const buildProps = (canCreateBusinessLine = true) => ({
   canCreateBusinessLine,
   activeBusinessLineId: 'line-1',
@@ -188,6 +219,7 @@ beforeEach(() => {
     id: 'line-1',
     name: 'Retail',
     description: 'Retail team',
+    defaultAgentCliToolId: null,
   })
 
   businessLinesApi.listCustomRoles.mockResolvedValue([
@@ -1154,6 +1186,189 @@ describe('BusinessLineManagementPanel', () => {
     const agentToolConfigModal = wrapper.findComponent(AgentToolConfigModal)
     expect(agentToolConfigModal.props('initialName')).toBe('')
     expect(agentToolConfigModal.props('initialIsDefault')).toBe(false)
+  })
+
+  it('saves the business line default agent cli tool from the agent cli tab', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listAgentToolConfigs.mockResolvedValueOnce([
+      {
+        id: 'cfg-cursor',
+        businessLineId: 'line-1',
+        toolId: 'cursor-agent',
+        name: 'Cursor Default',
+        description: '',
+        configJson: {},
+        isDefault: true,
+        createdAt: '2026-03-08T00:00:00.000Z',
+        updatedAt: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'cfg-codex',
+        businessLineId: 'line-1',
+        toolId: 'codex',
+        name: 'Codex Default',
+        description: '',
+        configJson: {},
+        isDefault: true,
+        createdAt: '2026-03-08T00:00:00.000Z',
+        updatedAt: '2026-03-08T00:00:00.000Z',
+      },
+    ])
+    businessLinesApi.updateDefaultAgentCliTool.mockResolvedValue({
+      id: 'line-1',
+      name: 'Retail',
+      description: 'Retail team',
+      defaultAgentCliToolId: 'codex',
+    })
+
+    await flushPromises()
+
+    const agentCliTab = wrapper.findAll('button').find((button) => button.text().trim() === 'Agent CLI')
+    expect(agentCliTab).toBeDefined()
+    await agentCliTab!.trigger('click')
+    await flushPromises()
+
+    await selectOption(wrapper, '默认 Agent CLI', 'Codex')
+
+    const saveButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '保存')
+    expect(saveButton).toBeDefined()
+    await saveButton!.trigger('click')
+    await flushPromises()
+
+    expect(businessLinesApi.updateDefaultAgentCliTool).toHaveBeenCalledWith('line-1', {
+      defaultAgentCliToolId: 'codex',
+    })
+    expect(success).toHaveBeenCalledWith('业务线默认 Agent CLI 已更新')
+  })
+
+  it('clears the business line default agent cli tool from the agent cli tab', async () => {
+    const pinia = createPinia()
+    businessLinesApi.detail.mockResolvedValue({
+      id: 'line-1',
+      name: 'Retail',
+      description: 'Retail team',
+      defaultAgentCliToolId: 'codex',
+    })
+
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listAgentToolConfigs.mockResolvedValueOnce([
+      {
+        id: 'cfg-codex',
+        businessLineId: 'line-1',
+        toolId: 'codex',
+        name: 'Codex Default',
+        description: '',
+        configJson: {},
+        isDefault: true,
+        createdAt: '2026-03-08T00:00:00.000Z',
+        updatedAt: '2026-03-08T00:00:00.000Z',
+      },
+    ])
+    businessLinesApi.updateDefaultAgentCliTool.mockResolvedValue({
+      id: 'line-1',
+      name: 'Retail',
+      description: 'Retail team',
+      defaultAgentCliToolId: null,
+    })
+
+    await flushPromises()
+
+    const agentCliTab = wrapper.findAll('button').find((button) => button.text().trim() === 'Agent CLI')
+    expect(agentCliTab).toBeDefined()
+    await agentCliTab!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    const clearButton = wrapper.findAll('button').find((button) => button.text().trim() === '清空')
+    expect(clearButton).toBeDefined()
+    expect(clearButton?.attributes('disabled')).toBeUndefined()
+    await clearButton!.trigger('click')
+    await flushPromises()
+
+    expect(businessLinesApi.updateDefaultAgentCliTool).toHaveBeenCalledWith('line-1', {
+      defaultAgentCliToolId: null,
+    })
+    expect(success).toHaveBeenCalledWith('业务线默认 Agent CLI 已清空')
+  })
+
+  it('renders the default agent cli tool card as read-only without set default permission', async () => {
+    authApi.access.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        username: 'tester',
+        nickname: 'Tester',
+        avatar: null,
+      },
+      currentContext: {
+        businessLineId: 'line-1',
+        businessRole: 'owner',
+        projectRole: null,
+      },
+      capabilities: [
+        'businessLine.read',
+        'businessLine.agentCli.read',
+      ],
+      visibility: {
+        visibleBusinessLineIds: ['line-1'],
+        visibleProjectIds: ['project-1'],
+      },
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listAgentToolConfigs.mockResolvedValueOnce([
+      {
+        id: 'cfg-codex',
+        businessLineId: 'line-1',
+        toolId: 'codex',
+        name: 'Codex Default',
+        description: '',
+        configJson: {},
+        isDefault: true,
+        createdAt: '2026-03-08T00:00:00.000Z',
+        updatedAt: '2026-03-08T00:00:00.000Z',
+      },
+    ])
+
+    await flushPromises()
+
+    const agentCliTab = wrapper.findAll('button').find((button) => button.text().trim() === 'Agent CLI')
+    expect(agentCliTab).toBeDefined()
+    await agentCliTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('当前账号仅有查看权限，无法修改默认 Agent CLI。')
+    expect(wrapper.text()).not.toContain('保存')
   })
 
   it('edits and saves mcp json from preview modal', async () => {

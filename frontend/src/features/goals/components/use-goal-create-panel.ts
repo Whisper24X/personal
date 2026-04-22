@@ -20,6 +20,12 @@ import { fetchAllPages } from '@shared/utils/pagination'
 import { buildBranchOptions } from '@shared/utils/git-branch-options'
 import { randomUuid } from '@shared/utils/random-uuid'
 import {
+  buildConfiguredCliTools,
+  groupAgentToolConfigsBySupportedTool,
+  resolvePreferredAgentCliConfigId,
+  resolvePreferredAgentCliToolId,
+} from '@shared/utils/agent-cli-defaults'
+import {
   TASK_CREATE_HEADLINES,
   TASK_CREATE_SUPPORTED_CLI_TOOLS,
   TASK_HEADLINE_ROTATE_INTERVAL_MS,
@@ -259,10 +265,10 @@ const syncAgentToolConfigsForSelectedTool = () => {
   }
   const configs = agentConfigsByTool.value[form.agentCliId] ?? []
   agentToolConfigs.value = configs
-  if (!configs.some((config) => config.id === form.agentCliConfigId)) {
-    const defaultConfig = configs.find((config) => config.isDefault)
-    form.agentCliConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
-  }
+  form.agentCliConfigId = resolvePreferredAgentCliConfigId(
+    configs,
+    form.agentCliConfigId,
+  )
 }
 
 const loadConversationCliOptions = async (projectId: string) => {
@@ -278,21 +284,24 @@ const loadConversationCliOptions = async (projectId: string) => {
 
   loadingAgentConfigs.value = true
   try {
-    const configs = await businessLinesApi.listAgentToolConfigs(project.businessLineId)
-    const groupedConfigs: Partial<Record<TaskCreateSupportedCliToolId, AgentToolConfig[]>> = {}
-    for (const config of configs) {
-      if (!isTaskCreateSupportedCliToolId(config.toolId)) continue
-      const list = groupedConfigs[config.toolId] ?? []
-      list.push(config)
-      groupedConfigs[config.toolId] = list
-    }
-    agentConfigsByTool.value = groupedConfigs
-    configuredCliTools.value = TASK_CREATE_SUPPORTED_CLI_TOOLS.filter(
-      (tool) => (groupedConfigs[tool.id]?.length ?? 0) > 0,
+    const [configs, businessLine] = await Promise.all([
+      businessLinesApi.listAgentToolConfigs(project.businessLineId),
+      businessLinesApi.detail(project.businessLineId).catch(() => null),
+    ])
+    const groupedConfigs = groupAgentToolConfigsBySupportedTool(
+      configs,
+      isTaskCreateSupportedCliToolId,
     )
-    if (!configuredCliTools.value.some((tool) => tool.id === form.agentCliId)) {
-      form.agentCliId = configuredCliTools.value[0]?.id ?? ''
-    }
+    agentConfigsByTool.value = groupedConfigs
+    configuredCliTools.value = buildConfiguredCliTools(
+      TASK_CREATE_SUPPORTED_CLI_TOOLS,
+      groupedConfigs,
+    )
+    form.agentCliId = resolvePreferredAgentCliToolId({
+      currentToolId: form.agentCliId,
+      defaultToolId: businessLine?.defaultAgentCliToolId,
+      configuredTools: configuredCliTools.value,
+    })
     syncAgentToolConfigsForSelectedTool()
   } catch (error) {
     configuredCliTools.value = []

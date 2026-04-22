@@ -56,6 +56,7 @@ import { AgentToolConfigSmokeTestResultDto } from './dto/agent-tool-config-smoke
 import { UpdateAgentToolConfigDto } from './dto/update-agent-tool-config.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { BusinessLineDto } from './dto/business-line.dto';
+import { UpdateDefaultAgentCliToolDto } from './dto/update-default-agent-cli-tool.dto';
 import { Skill } from '../skills/domain/skill';
 import { Mcp } from '../mcps/domain/mcp';
 import { UploadLocalSkillResultDto } from './dto/upload-local-skill-result.dto';
@@ -905,6 +906,28 @@ export class BusinessLinesController {
     );
 
     return this.toAgentToolConfigDto(config);
+  }
+
+  @Patch(':businessLineId/agent-cli/default-tool')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: BusinessLineDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  updateDefaultAgentCliTool(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Body() updateDefaultAgentCliToolDto: UpdateDefaultAgentCliToolDto,
+  ): Promise<NullableType<BusinessLine>> {
+    return this.businessLinesService.updateDefaultAgentCliTool(
+      businessLineId,
+      updateDefaultAgentCliToolDto,
+      request.user,
+    );
   }
 
   @Post(':businessLineId/agent-tool-configs/:configId/test')
