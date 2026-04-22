@@ -167,4 +167,14 @@ export const systemRoutes: AppRouteRecord[] = [
       contentMode: 'full',
     }),
   },
+  {
+    path: '/platform/workflow-templates',
+    name: 'platform-workflow-templates',
+    component: () => import('@pages/platform/PlatformWorkflowTemplatesPage.vue'),
+    meta: buildRouteAccessMeta('platformWorkflowTemplates', {
+      layout: 'workspace-page',
+      contentMode: 'full',
+      requiresPlatformAdmin: true,
+    }),
+  },
 ]

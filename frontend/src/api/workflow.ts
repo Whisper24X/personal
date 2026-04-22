@@ -28,6 +28,29 @@ export const workflowApi = {
     })
   },
 
+  listGlobalMastersForBusinessLine(params: {
+    businessLineId: string
+    page?: number
+    limit?: number
+    keyword?: string
+    isActive?: boolean
+  }) {
+    return apiHttp.get<InfinityPaginationResponse<WorkflowTemplate>>('/workflow-templates/global-masters', {
+      businessLineId: params.businessLineId,
+      page: params.page,
+      limit: params.limit,
+      keyword: params.keyword,
+      isActive: params.isActive,
+    })
+  },
+
+  copyGlobalToBusinessLine(globalTemplateId: string, businessLineId: string) {
+    return apiHttp.post<WorkflowTemplate>(
+      `/workflow-templates/${globalTemplateId}/copy-to-business-line`,
+      { businessLineId },
+    )
+  },
+
   detail(templateId: string) {
     return apiHttp.get<WorkflowTemplate>(`/workflow-templates/${templateId}`)
   },

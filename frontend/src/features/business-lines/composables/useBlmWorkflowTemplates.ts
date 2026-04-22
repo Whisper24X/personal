@@ -41,6 +41,11 @@ export function useBlmWorkflowTemplates(
 ) {
   const loadingWorkflowTemplates = ref(false)
   const submittingWorkflowTemplate = ref(false)
+  const platformCopyModalOpen = ref(false)
+  const loadingPlatformMasters = ref(false)
+  const platformMasters = ref<WorkflowTemplate[]>([])
+  const copyingPlatformTemplateId = ref('')
+
   const workflowCreateModalOpen = ref(false)
   const workflowTemplateModalMode = ref<'create' | 'edit'>('create')
   const editingWorkflowTemplateId = ref('')
@@ -561,6 +566,61 @@ export function useBlmWorkflowTemplates(
     )
   }
 
+  const loadPlatformMasters = async () => {
+    if (!activeLineId.value) {
+      platformMasters.value = []
+      return
+    }
+    loadingPlatformMasters.value = true
+    try {
+      const templates = await fetchAllPages((page, limit) =>
+        workflowApi.listGlobalMastersForBusinessLine({
+          businessLineId: activeLineId.value,
+          page,
+          limit,
+          isActive: true,
+        }),
+      )
+      platformMasters.value = templates
+    } catch (error) {
+      platformMasters.value = []
+      message.error(toErrorMessage(error, '加载平台工作流母版失败'))
+    } finally {
+      loadingPlatformMasters.value = false
+    }
+  }
+
+  const openPlatformCopyModal = () => {
+    if (!activeLineId.value) {
+      return
+    }
+    platformCopyModalOpen.value = true
+    void loadPlatformMasters()
+  }
+
+  const closePlatformCopyModal = () => {
+    platformCopyModalOpen.value = false
+    platformMasters.value = []
+    copyingPlatformTemplateId.value = ''
+  }
+
+  const copyFromPlatformTemplate = async (templateId: string) => {
+    if (!activeLineId.value) {
+      return
+    }
+    copyingPlatformTemplateId.value = templateId
+    try {
+      await workflowApi.copyGlobalToBusinessLine(templateId, activeLineId.value)
+      message.success('已复制到当前业务线')
+      await loadWorkflowTemplates(activeLineId.value)
+      closePlatformCopyModal()
+    } catch (error) {
+      message.error(toErrorMessage(error, '复制失败'))
+    } finally {
+      copyingPlatformTemplateId.value = ''
+    }
+  }
+
   const loadWorkflowTemplates = async (lineId: string) => {
     if (!lineId) {
       workflowTemplates.value = []
@@ -681,6 +741,13 @@ export function useBlmWorkflowTemplates(
   }
 
   return {
+    platformCopyModalOpen,
+    loadingPlatformMasters,
+    platformMasters,
+    copyingPlatformTemplateId,
+    openPlatformCopyModal,
+    closePlatformCopyModal,
+    copyFromPlatformTemplate,
     loadingWorkflowTemplates,
     submittingWorkflowTemplate,
     workflowCreateModalOpen,

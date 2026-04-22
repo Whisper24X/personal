@@ -17,6 +17,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'create-template': []
+  'open-platform-copy': []
   refresh: []
   'edit-template': [template: WorkflowTemplate]
   'remove-template': [template: WorkflowTemplate]
@@ -44,6 +45,16 @@ const showActionColumn = computed(() => {
           </p>
         </div>
         <div class="flex items-center gap-2">
+          <button
+            v-if="canCreateWorkflowTemplate"
+            type="button"
+            class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="!activeLineId"
+            data-testid="open-copy-platform-wf"
+            @click="emit('open-platform-copy')"
+          >
+            复制平台模板
+          </button>
           <button
             v-if="canCreateWorkflowTemplate"
             type="button"
@@ -137,7 +148,7 @@ const showActionColumn = computed(() => {
             </tr>
             <tr v-if="workflowTemplates.length === 0">
               <td :colspan="showActionColumn ? 3 : 2" class="px-3 py-4 text-sm text-muted-foreground">
-                当前业务线暂无工作流模板，请先创建。
+                当前业务线暂无工作流模板。若有权限，可使用「复制平台模板」或「创建模板」。
               </td>
             </tr>
           </tbody>

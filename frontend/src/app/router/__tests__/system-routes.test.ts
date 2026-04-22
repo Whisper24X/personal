@@ -39,6 +39,12 @@ describe('systemRoutes compatibility redirects', () => {
     expect(gitRoute?.meta?.requiresAuth).toBe(true)
   })
 
+  it('registers platform workflow templates route for admins', () => {
+    const route = findByPath('/platform/workflow-templates')
+    expect(route?.name).toBe('platform-workflow-templates')
+    expect(route?.meta?.requiresPlatformAdmin).toBe(true)
+  })
+
   it('redirects /projects/:id to dashboard with projectId', () => {
     const projectDetailRoute = findByPath('/projects/:id')
     expect(projectDetailRoute?.name).toBe('project-detail')

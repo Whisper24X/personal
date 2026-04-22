@@ -22,6 +22,7 @@ const userStore = useUserStore()
 const useFullContentMode = computed(() => route.meta.contentMode === 'full')
 const isBusinessLineManageActive = computed(() => route.name === 'business-lines-manage')
 const isSettingsActive = computed(() => route.name === 'settings')
+const isPlatformWorkflowTemplatesActive = computed(() => route.name === 'platform-workflow-templates')
 
 const userAvatarInitial = computed(() => {
   const profile = userStore.profile
@@ -146,6 +147,7 @@ provide(layoutWorkspaceKey, {
         :is-workbench-nav-active="isWorkbenchNavActive"
         :is-business-line-manage-active="isBusinessLineManageActive"
         :is-settings-active="isSettingsActive"
+        :is-platform-workflow-templates-active="isPlatformWorkflowTemplatesActive"
       />
 
       <SidebarInset
