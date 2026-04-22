@@ -12,7 +12,6 @@ import { WorkflowTemplate } from './domain/workflow-template';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { FindAllWorkflowTemplatesDto } from './dto/find-all-workflow-templates.dto';
 import { IPaginationOptions } from '../utils/types/pagination-options';
-import { WorkflowTemplateNodeDto } from './dto/workflow-template-node.dto';
 import { ReorderWorkflowTemplateNodesDto } from './dto/reorder-workflow-template-nodes.dto';
 import { WorkflowTemplateScope } from './dto/workflow-template-scope.enum';
 import { ProjectAccessService } from '../projects/project-access.service';
@@ -20,6 +19,10 @@ import { BusinessLineRepository } from '../business-lines/infrastructure/persist
 import { BusinessLineMemberRepository } from '../business-lines/infrastructure/persistence/business-line-member.repository';
 import { BusinessLineCustomRoleRepository } from '../business-lines/infrastructure/persistence/business-line-custom-role.repository';
 import { canReadWorkflowByCapabilities } from '../access/access.constants';
+import {
+  ensureValidWorkflowTemplateNodes,
+  normalizeWorkflowTemplateNodes,
+} from './workflow-template-nodes.util';
 
 @Injectable()
 export class WorkflowTemplatesService {
@@ -80,7 +83,7 @@ export class WorkflowTemplatesService {
       );
     }
 
-    this.ensureValidNodes(createWorkflowTemplateDto.nodes);
+    ensureValidWorkflowTemplateNodes(createWorkflowTemplateDto.nodes);
 
     const existedTemplate = await this.workflowTemplateRepository.findByName(
       createWorkflowTemplateDto.name,
@@ -99,7 +102,7 @@ export class WorkflowTemplatesService {
       throw new ConflictException('Workflow template name already exists');
     }
 
-    const normalizedNodes = this.normalizeNodes(
+    const normalizedNodes = normalizeWorkflowTemplateNodes(
       createWorkflowTemplateDto.nodes,
     );
 
@@ -261,7 +264,7 @@ export class WorkflowTemplatesService {
     }
 
     if (updateWorkflowTemplateDto.nodes) {
-      this.ensureValidNodes(updateWorkflowTemplateDto.nodes);
+      ensureValidWorkflowTemplateNodes(updateWorkflowTemplateDto.nodes);
     }
 
     const updatedTemplate = await this.workflowTemplateRepository.update(id, {
@@ -272,7 +275,11 @@ export class WorkflowTemplatesService {
         ? { description: updateWorkflowTemplateDto.description }
         : {}),
       ...(updateWorkflowTemplateDto.nodes !== undefined
-        ? { nodesJson: this.normalizeNodes(updateWorkflowTemplateDto.nodes) }
+        ? {
+            nodesJson: normalizeWorkflowTemplateNodes(
+              updateWorkflowTemplateDto.nodes,
+            ),
+          }
         : {}),
       ...(updateWorkflowTemplateDto.isActive !== undefined
         ? { isActive: updateWorkflowTemplateDto.isActive }
@@ -298,12 +305,12 @@ export class WorkflowTemplatesService {
     }
 
     await this.ensureCanManageTemplate(template, currentUser);
-    this.ensureValidNodes(reorderDto.nodes);
+    ensureValidWorkflowTemplateNodes(reorderDto.nodes);
 
     const updatedTemplate = await this.workflowTemplateRepository.update(
       template.id,
       {
-        nodesJson: this.normalizeNodes(reorderDto.nodes),
+        nodesJson: normalizeWorkflowTemplateNodes(reorderDto.nodes),
       },
     );
 
@@ -362,51 +369,6 @@ export class WorkflowTemplatesService {
       throw new ConflictException('Workflow template is disabled');
     }
     return template;
-  }
-
-  private ensureValidNodes(nodes: WorkflowTemplateNodeDto[]): void {
-    const nodeOrderSet = new Set<number>();
-    const sortedOrders = [...nodes]
-      .map((node) => node.nodeOrder)
-      .sort((left, right) => left - right);
-
-    for (const node of nodes) {
-      if (nodeOrderSet.has(node.nodeOrder)) {
-        throw new ConflictException(
-          'Workflow template node_order must be unique',
-        );
-      }
-
-      nodeOrderSet.add(node.nodeOrder);
-    }
-
-    const hasStartNode = sortedOrders[0] === 1;
-
-    if (!hasStartNode) {
-      throw new ConflictException(
-        'Workflow template requires node_order starting from 1',
-      );
-    }
-
-    for (let index = 0; index < sortedOrders.length; index += 1) {
-      const expectedNodeOrder = index + 1;
-      if (sortedOrders[index] !== expectedNodeOrder) {
-        throw new ConflictException(
-          'Workflow template node_order must be continuous from 1',
-        );
-      }
-    }
-  }
-
-  private normalizeNodes(
-    nodes: WorkflowTemplateNodeDto[],
-  ): WorkflowTemplateNodeDto[] {
-    return [...nodes]
-      .sort((left, right) => left.nodeOrder - right.nodeOrder)
-      .map((node, index) => ({
-        ...node,
-        nodeOrder: index + 1,
-      }));
   }
 
   private isAdmin(currentUser: JwtPayloadType): boolean {
