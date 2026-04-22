@@ -277,6 +277,72 @@ export class ContainerExecutionConfigService {
     return env;
   }
 
+  /**
+   * 任务 Runner 内 nginx 对 HTML 注入 `preview-iframe-bridge.js` 时使用的脚本绝对 URL（写入容器
+   * 环境 `AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL`）。与 {@link getPreviewBridgeInjectEnabled} 需同时为真才会注入。
+   *
+   * 优先 `AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL`；未配置时若存在 `app.frontendDomain`（FRONTEND_DOMAIN），
+   * 再按 `AINATIVE_FRONTEND_BASE_PATH`（与 Vite `base` 对齐，默认可为 `/`）拼出
+   * `{origin}{base}preview-iframe-bridge.js`。
+   */
+  getPreviewBridgeScriptUrl(): string | null {
+    if (!this.getPreviewBridgeInjectEnabled()) {
+      return null;
+    }
+    const explicit = this.configService
+      .get<string>('AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL', { infer: true })
+      ?.trim();
+    if (explicit) {
+      try {
+        const u = new URL(explicit);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          return null;
+        }
+        return u.href;
+      } catch {
+        return null;
+      }
+    }
+    const frontend = this.configService
+      .get<string>('app.frontendDomain', { infer: true })
+      ?.trim();
+    if (!frontend) {
+      return null;
+    }
+    const basePath =
+      this.configService
+        .get<string>('AINATIVE_FRONTEND_BASE_PATH', { infer: true })
+        ?.trim() || '/';
+    try {
+      const root = new URL(frontend);
+      if (basePath === '/' || basePath === '') {
+        return new URL('preview-iframe-bridge.js', `${root.origin}/`).href;
+      }
+      const raw = (
+        basePath.startsWith('/') ? basePath : `/${basePath}`
+      ).replace(/\/$/, '');
+      const dir = new URL(`${raw}/`, `${root.origin}/`);
+      return new URL('preview-iframe-bridge.js', dir).href;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 为 false 时不向 Runner 传递脚本 URL、nginx 不注入。默认 true（仍要求能解析出脚本 URL）。
+   * 可设 `AINATIVE_PREVIEW_BRIDGE_NGINX_INJECT=0` 关闭。
+   */
+  getPreviewBridgeInjectEnabled(): boolean {
+    const v = this.configService
+      .get<string>('AINATIVE_PREVIEW_BRIDGE_NGINX_INJECT', { infer: true })
+      ?.trim()
+      .toLowerCase();
+    if (v === '0' || v === 'false' || v === 'no' || v === 'off') {
+      return false;
+    }
+    return true;
+  }
+
   private sanitizeContainerName(name: string): string {
     return name.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 120);
   }

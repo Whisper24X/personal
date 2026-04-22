@@ -257,4 +257,53 @@ describe('ContainerExecutionConfigService', () => {
 
     expect(service.getRunnerPlatform()).toBe('linux/arm64');
   });
+
+  describe('getPreviewBridgeScriptUrl', () => {
+    it('should return null when nginx inject is disabled', () => {
+      const service = createService({
+        AINATIVE_PREVIEW_BRIDGE_NGINX_INJECT: '0',
+        AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL:
+          'https://app.example.com/preview-iframe-bridge.js',
+        'app.frontendDomain': 'https://app.example.com',
+      });
+
+      expect(service.getPreviewBridgeScriptUrl()).toBeNull();
+    });
+
+    it('should use explicit script URL when set', () => {
+      const service = createService({
+        AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL:
+          'https://app.example.com/static/preview-iframe-bridge.js',
+      });
+
+      expect(service.getPreviewBridgeScriptUrl()).toBe(
+        'https://app.example.com/static/preview-iframe-bridge.js',
+      );
+    });
+
+    it('should compose from app.frontendDomain and AINATIVE_FRONTEND_BASE_PATH', () => {
+      const service = createService({
+        'app.frontendDomain': 'https://app.example.com',
+        AINATIVE_FRONTEND_BASE_PATH: '/ainative/',
+      });
+
+      expect(service.getPreviewBridgeScriptUrl()).toBe(
+        'https://app.example.com/ainative/preview-iframe-bridge.js',
+      );
+    });
+
+    it('should return null for invalid explicit URL', () => {
+      const service = createService({
+        AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL: 'not-a-url',
+      });
+
+      expect(service.getPreviewBridgeScriptUrl()).toBeNull();
+    });
+
+    it('should return null when neither explicit URL nor frontend domain is set', () => {
+      const service = createService({});
+
+      expect(service.getPreviewBridgeScriptUrl()).toBeNull();
+    });
+  });
 });
