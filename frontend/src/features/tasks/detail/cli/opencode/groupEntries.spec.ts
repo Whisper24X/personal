@@ -110,7 +110,7 @@ describe('buildOpencodeTaskGroupItems', () => {
           id: 'result-1',
           type: 'tool_result',
           timestamp: 3,
-          content: '# AINative Workspace',
+          content: '# 葱搭 Workspace',
           metadata: {
             toolUseId: 'call-1',
             status: 'success',

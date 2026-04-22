@@ -100,7 +100,7 @@ describe('Sidebar menu scope', () => {
       projectItems: [
         {
           id: 'p1',
-          name: 'AINative Workspace',
+          name: '葱搭 Workspace',
         },
       ],
       hasSelectedProject: true,
@@ -119,12 +119,12 @@ describe('Sidebar menu scope', () => {
     })
 
     expect(wrapper.text()).toContain('Retail')
-    expect(wrapper.text()).toContain('AINative')
+    expect(wrapper.text()).toContain('葱搭')
     expect(wrapper.text()).toContain('工作台')
       expect(wrapper.text()).toContain('需求')
     expect(wrapper.text()).toContain('新建任务')
     expect(wrapper.text()).toContain('知识库')
-    expect(wrapper.text()).toContain('AINative Workspace')
+    expect(wrapper.text()).toContain('葱搭 Workspace')
     expect(wrapper.text()).not.toContain('新建项目')
     expect(wrapper.findAllComponents(RouterLinkStub)[0]?.props('to')).toBe('/home')
 
@@ -179,7 +179,7 @@ describe('Sidebar menu scope', () => {
       projectItems: [
         {
           id: 'p1',
-          name: 'AINative Workspace',
+          name: '葱搭 Workspace',
         },
       ],
       hasSelectedProject: true,
@@ -215,7 +215,7 @@ describe('Sidebar menu scope', () => {
       projectItems: [
         {
           id: 'p1',
-          name: 'AINative Workspace',
+          name: '葱搭 Workspace',
         },
       ],
       hasSelectedProject: true,

@@ -1,5 +1,5 @@
 /**
- * AINative 任务详情「预览」iframe 内联桥：在预览页中加载，使 _blank / window.open
+ * 葱搭 任务详情「预览」iframe 内联桥：在预览页中加载，使 _blank / window.open
  * 通过 parent.postMessage 通知主应用，从而在本面板内开新标签。
  * 在预览入口 HTML 中加入:
  *   <script src="https://<主应用 origin>/preview-iframe-bridge.js" defer><\/script>

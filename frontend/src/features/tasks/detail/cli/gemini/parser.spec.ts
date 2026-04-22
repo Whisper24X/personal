@@ -124,7 +124,7 @@ describe('parseGeminiMessages', () => {
         type: 'message',
         timestamp: '2026-03-12T09:21:30.070Z',
         role: 'assistant',
-        content: '**AINative Workspace**',
+        content: '**葱搭 Workspace**',
         delta: true,
       }),
       createMessage({
@@ -144,7 +144,7 @@ describe('parseGeminiMessages', () => {
     expect(entries).toHaveLength(2)
     expect(entries[0]).toMatchObject({
       type: 'assistant_message',
-      content: 'The project is named **AINative Workspace**.',
+      content: 'The project is named **葱搭 Workspace**.',
     })
     expect(entries[1]).toMatchObject({
       type: 'system_message',
@@ -165,7 +165,7 @@ describe('parseGeminiMessages', () => {
           '```json',
           '[',
           '  {"thought":"Inspect openspec/project.md first."},',
-          '  "The project is named **AINative Workspace**."',
+          '  "The project is named **葱搭 Workspace**."',
           ']',
           '```',
         ].join('\n'),
@@ -175,7 +175,7 @@ describe('parseGeminiMessages', () => {
     expect(entries).toHaveLength(2)
     expect(entries[0]).toMatchObject({
       type: 'assistant_message',
-      content: 'The project is named **AINative Workspace**.',
+      content: 'The project is named **葱搭 Workspace**.',
     })
     expect(entries[1]).toMatchObject({
       type: 'thinking',
@@ -196,7 +196,7 @@ describe('parseGeminiMessages', () => {
         type: 'message',
         timestamp: '2026-03-12T09:21:30.430Z',
         role: 'assistant',
-        content: '"},\n  "The project is named **AINative Workspace**."\n]\n```',
+        content: '"},\n  "The project is named **葱搭 Workspace**."\n]\n```',
         delta: true,
       }),
       createMessage({
@@ -209,7 +209,7 @@ describe('parseGeminiMessages', () => {
     expect(entries).toHaveLength(3)
     expect(entries[0]).toMatchObject({
       type: 'assistant_message',
-      content: 'The project is named **AINative Workspace**.',
+      content: 'The project is named **葱搭 Workspace**.',
     })
     expect(entries[1]).toMatchObject({
       type: 'thinking',

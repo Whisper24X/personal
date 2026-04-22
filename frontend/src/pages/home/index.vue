@@ -6,6 +6,7 @@ import { Button } from '@shared/ui/button'
 import type { BusinessLineItem } from '@features/layout/composables/useLayout'
 import { layoutWorkspaceKey } from '@features/layout/model/workspace.context'
 import { useAccessStore } from '@app/stores/modules/access'
+import { appSettings } from '@app/config/setting'
 
 defineOptions({
   name: 'HomeView',
@@ -114,7 +115,9 @@ const openCreateBl = () => workspace?.openBusinessLineModal()
         <div class="relative grid gap-10 md:grid-cols-[minmax(0,1fr)_minmax(260px,380px)] md:items-center">
           <div class="space-y-5">
             <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">工作区</p>
-            <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">欢迎来到 AI Native</h1>
+            <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">
+              欢迎来到 {{ appSettings.appName }}
+            </h1>
             <p class="max-w-xl text-sm leading-relaxed text-muted-foreground">
               当前账号下还没有业务线。创建业务线后，即可新建项目、绑定仓库，并在左侧使用任务、看板与自动化能力。
             </p>
