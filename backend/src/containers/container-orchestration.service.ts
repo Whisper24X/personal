@@ -532,12 +532,16 @@ export class ContainerOrchestrationService
             this.config.getRunnerWorkspace(),
             params.project,
           );
+        const previewBridgeUrl = this.config.getPreviewBridgeScriptUrl();
         const containerEnv = {
           ...this.config.getRunnerBootstrapEnv(),
           ...this.config.getRunnerEnv(params.project),
           AINATIVE_RUNNER_LISTEN_PORT: String(
             this.config.getRunnerExposeContainerPort(params.project),
           ),
+          ...(previewBridgeUrl
+            ? { AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL: previewBridgeUrl }
+            : {}),
           ...(runnerConfig
             ? {
                 AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
