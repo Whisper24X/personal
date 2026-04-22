@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RotateCw } from 'lucide-vue-next'
+import type { SelectOption } from '@shared/components/select'
+import AppSelect from '@shared/components/select'
 import type { TaskEnvironmentPreview, TaskLog } from '@/types/api/tasks'
+import {
+  getInitialPreviewViewportState,
+  getPreviewViewportPreset,
+  PREVIEW_FULL_VIEWPORT_ID,
+  PREVIEW_VIEWPORT_PRESETS,
+  PREVIEW_VIEWPORT_STORAGE_KEY,
+  resolveFramePixelSize,
+} from './task-preview-viewports'
 
 defineOptions({
   name: 'TaskDetailPreviewPanel',
@@ -97,6 +108,62 @@ const bridgeScriptUrl = computed(() => {
 const hasPreview = computed(
   () => props.preview?.status === 'ready' && Boolean(resolvedPreviewUrl.value),
 )
+
+const initialViewport = getInitialPreviewViewportState()
+const previewViewportId = ref(initialViewport.viewportId)
+const previewViewportLandscape = ref(initialViewport.landscape)
+
+const activePreviewViewportPreset = computed(() => {
+  if (previewViewportId.value === PREVIEW_FULL_VIEWPORT_ID) {
+    return null
+  }
+  return getPreviewViewportPreset(previewViewportId.value) ?? null
+})
+
+const usePresetPreviewLayout = computed(() => activePreviewViewportPreset.value != null)
+
+const previewFrameBoxStyle = computed(() => {
+  const p = activePreviewViewportPreset.value
+  if (!p) {
+    return {}
+  }
+  const { width, height } = resolveFramePixelSize(p, previewViewportLandscape.value)
+  return { width: `${width}px`, height: `${height}px` }
+})
+
+const previewViewportOptions = computed<SelectOption[]>(() => [
+  { label: '全宽 / 自适应', value: PREVIEW_FULL_VIEWPORT_ID },
+  ...PREVIEW_VIEWPORT_PRESETS.map((preset) => ({
+    label: preset.label,
+    value: preset.id,
+  })),
+])
+
+function togglePreviewViewportLandscape() {
+  if (!usePresetPreviewLayout.value) {
+    return
+  }
+  previewViewportLandscape.value = !previewViewportLandscape.value
+}
+
+function persistPreviewViewport() {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+  try {
+    localStorage.setItem(
+      PREVIEW_VIEWPORT_STORAGE_KEY,
+      JSON.stringify({
+        viewportId: previewViewportId.value,
+        landscape: previewViewportLandscape.value,
+      }),
+    )
+  } catch {
+    /* 无存储权限等 */
+  }
+}
+
+watch([previewViewportId, previewViewportLandscape], persistPreviewViewport)
 
 const activeTab = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value) ?? null,
@@ -338,7 +405,27 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="flex shrink-0 items-center gap-1">
+      <div class="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-1">
+        <AppSelect
+          v-model="previewViewportId"
+          aria-label="预览视口大小"
+          :block="false"
+          :options="previewViewportOptions"
+          :panel-z-index="90"
+          panel-placement="bottom"
+          size="sm"
+          trigger-class="h-7 min-w-[7.5rem] max-w-[11rem] rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground shadow-none"
+        />
+        <button
+          v-show="usePresetPreviewLayout"
+          class="border-border bg-background text-foreground inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition hover:bg-accent"
+          type="button"
+          title="交换预览区域宽高（横/竖屏）"
+          aria-label="横竖屏切换，交换预览宽高"
+          @click="togglePreviewViewportLandscape"
+        >
+          <RotateCw class="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
         <button
           class="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground"
           :disabled="!activeTab"
@@ -418,7 +505,7 @@ onBeforeUnmount(() => {
           </p>
           <p class="text-[10px] leading-tight text-muted-foreground/70">完整地址以悬停提示为准</p>
         </div>
-        <div class="relative min-h-0 flex-1">
+        <div v-if="!usePresetPreviewLayout" class="relative min-h-0 flex-1" data-testid="task-preview-iframe-surface--full">
           <template v-for="tab in tabs" :key="`${tab.id}-${tabReloadNonce[tab.id] ?? 0}`">
             <iframe
               v-show="activeTabId === tab.id"
@@ -427,6 +514,27 @@ onBeforeUnmount(() => {
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
             />
           </template>
+        </div>
+        <div
+          v-else
+          class="min-h-0 flex-1 overflow-auto bg-muted/20 p-2"
+          data-testid="task-preview-iframe-surface--preset"
+        >
+          <div
+            v-if="activeTab"
+            class="border-border relative mx-auto box-border shrink-0 overflow-hidden rounded-lg border bg-background shadow-sm"
+            :style="previewFrameBoxStyle"
+            data-testid="task-preview-viewport-frame"
+          >
+            <template v-for="tab in tabs" :key="`${tab.id}-${tabReloadNonce[tab.id] ?? 0}`">
+              <iframe
+                v-show="activeTabId === tab.id"
+                :src="tab.url"
+                class="absolute inset-0 h-full w-full border-0"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+              />
+            </template>
+          </div>
         </div>
       </div>
       <div

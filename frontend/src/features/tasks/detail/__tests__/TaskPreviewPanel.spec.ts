@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PREVIEW_VIEWPORT_STORAGE_KEY } from '@features/tasks/detail/task-preview-viewports'
 import TaskPreviewPanel from '@features/tasks/detail/TaskPreviewPanel.vue'
 
 const readyPreview = {
@@ -8,6 +9,10 @@ const readyPreview = {
 }
 
 describe('TaskPreviewPanel', () => {
+  beforeEach(() => {
+    localStorage.removeItem(PREVIEW_VIEWPORT_STORAGE_KEY)
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
   })
@@ -168,6 +173,82 @@ describe('TaskPreviewPanel', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.findAll('iframe')).toHaveLength(1)
+  })
+
+  it('uses full-width preview surface by default (no valid viewport in localStorage)', () => {
+    const wrapper = mount(TaskPreviewPanel, {
+      props: {
+        preview: readyPreview,
+      },
+    })
+    expect(wrapper.find('[data-testid="task-preview-iframe-surface--full"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="task-preview-iframe-surface--preset"]').exists()).toBe(false)
+  })
+
+  it('restores fixed viewport and frame size from localStorage (portrait)', () => {
+    localStorage.setItem(
+      PREVIEW_VIEWPORT_STORAGE_KEY,
+      JSON.stringify({ viewportId: 'ios-14', landscape: false }),
+    )
+    const wrapper = mount(TaskPreviewPanel, {
+      props: {
+        preview: readyPreview,
+      },
+    })
+    expect(wrapper.find('[data-testid="task-preview-iframe-surface--preset"]').exists()).toBe(true)
+    const el = wrapper.get('[data-testid="task-preview-viewport-frame"]').element as HTMLElement
+    expect(el.style.width).toBe('390px')
+    expect(el.style.height).toBe('844px')
+  })
+
+  it('restores landscape from localStorage (swaps width and height)', () => {
+    localStorage.setItem(
+      PREVIEW_VIEWPORT_STORAGE_KEY,
+      JSON.stringify({ viewportId: 'ios-14', landscape: true }),
+    )
+    const wrapper = mount(TaskPreviewPanel, {
+      props: {
+        preview: readyPreview,
+      },
+    })
+    const el = wrapper.get('[data-testid="task-preview-viewport-frame"]').element as HTMLElement
+    expect(el.style.width).toBe('844px')
+    expect(el.style.height).toBe('390px')
+  })
+
+  it('toggles landscape and persists to localStorage', async () => {
+    localStorage.setItem(
+      PREVIEW_VIEWPORT_STORAGE_KEY,
+      JSON.stringify({ viewportId: 'ios-14', landscape: false }),
+    )
+    const wrapper = mount(TaskPreviewPanel, {
+      props: {
+        preview: readyPreview,
+      },
+    })
+    const el = wrapper.get('[data-testid="task-preview-viewport-frame"]').element as HTMLElement
+    expect(el.style.width).toBe('390px')
+    expect(el.style.height).toBe('844px')
+
+    await wrapper.find('button[aria-label="横竖屏切换，交换预览宽高"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(el.style.width).toBe('844px')
+    expect(el.style.height).toBe('390px')
+    const stored = JSON.parse(localStorage.getItem(PREVIEW_VIEWPORT_STORAGE_KEY)!) as { landscape: boolean }
+    expect(stored.landscape).toBe(true)
+  })
+
+  it('falls back to full layout when localStorage has unknown preset id', () => {
+    localStorage.setItem(
+      PREVIEW_VIEWPORT_STORAGE_KEY,
+      JSON.stringify({ viewportId: 'not-a-preset', landscape: true }),
+    )
+    const wrapper = mount(TaskPreviewPanel, {
+      props: {
+        preview: readyPreview,
+      },
+    })
+    expect(wrapper.find('[data-testid="task-preview-iframe-surface--full"]').exists()).toBe(true)
   })
 
   it('adds a tab when clicking 新建标签', async () => {
