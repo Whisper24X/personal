@@ -13,6 +13,7 @@ import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { FindAllWorkflowTemplatesDto } from './dto/find-all-workflow-templates.dto';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { ReorderWorkflowTemplateNodesDto } from './dto/reorder-workflow-template-nodes.dto';
+import { FindGlobalMastersForBusinessLineDto } from './dto/find-global-masters-for-business-line.dto';
 import { WorkflowTemplateScope } from './dto/workflow-template-scope.enum';
 import { ProjectAccessService } from '../projects/project-access.service';
 import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
@@ -42,7 +43,29 @@ export class WorkflowTemplatesService {
     let businessLineId: string | null = null;
     let projectId: string | null = null;
 
-    if (scope === WorkflowTemplateScope.businessLine) {
+    if (
+      createWorkflowTemplateDto.scope !== WorkflowTemplateScope.global &&
+      (createWorkflowTemplateDto.seedOnBusinessLineCreate !== undefined ||
+        createWorkflowTemplateDto.businessLineSeedOrder !== undefined)
+    ) {
+      throw new BadRequestException(
+        'seedOnBusinessLineCreate and businessLineSeedOrder are only valid for global templates',
+      );
+    }
+
+    if (scope === WorkflowTemplateScope.global) {
+      if (!this.isAdmin(currentUser)) {
+        throw new ForbiddenException('forbiddenWorkflowTemplate');
+      }
+      if (
+        createWorkflowTemplateDto.businessLineId ||
+        createWorkflowTemplateDto.projectId
+      ) {
+        throw new BadRequestException(
+          'businessLineId and projectId must be empty for global scope',
+        );
+      }
+    } else if (scope === WorkflowTemplateScope.businessLine) {
       businessLineId = createWorkflowTemplateDto.businessLineId ?? null;
       if (!businessLineId) {
         throw new BadRequestException(
@@ -78,9 +101,7 @@ export class WorkflowTemplatesService {
 
       businessLineId = project.businessLineId;
     } else {
-      throw new BadRequestException(
-        'scope only supports business_line or project',
-      );
+      throw new BadRequestException('Unsupported workflow template scope');
     }
 
     ensureValidWorkflowTemplateNodes(createWorkflowTemplateDto.nodes);
@@ -92,10 +113,14 @@ export class WorkflowTemplatesService {
             scope,
             businessLineId,
           }
-        : {
-            scope,
-            projectId,
-          },
+        : scope === WorkflowTemplateScope.project
+          ? {
+              scope,
+              projectId,
+            }
+          : {
+              scope: WorkflowTemplateScope.global,
+            },
     );
 
     if (existedTemplate) {
@@ -113,6 +138,14 @@ export class WorkflowTemplatesService {
       businessLineId,
       projectId,
       isActive: createWorkflowTemplateDto.isActive ?? true,
+      seedOnBusinessLineCreate:
+        scope === WorkflowTemplateScope.global
+          ? (createWorkflowTemplateDto.seedOnBusinessLineCreate ?? false)
+          : false,
+      businessLineSeedOrder:
+        scope === WorkflowTemplateScope.global
+          ? (createWorkflowTemplateDto.businessLineSeedOrder ?? 0)
+          : 0,
       nodesJson: normalizedNodes,
       createdBy: currentUser.sub,
     });
@@ -121,6 +154,88 @@ export class WorkflowTemplatesService {
       template.id,
     );
 
+    if (!createdTemplate) {
+      throw new NotFoundException('Workflow template not found');
+    }
+
+    return createdTemplate;
+  }
+
+  async findGlobalMastersForBusinessLine(
+    query: FindGlobalMastersForBusinessLineDto,
+    currentUser: JwtPayloadType,
+  ): Promise<WorkflowTemplate[]> {
+    const businessLineId = query.businessLineId;
+    await this.ensureCanManageBusinessLineTemplates(
+      businessLineId,
+      currentUser,
+    );
+
+    const paginationOptions: IPaginationOptions = {
+      page: query.page ?? 1,
+      limit: query.limit ?? 10,
+    };
+
+    return this.workflowTemplateRepository.findAllWithPagination({
+      paginationOptions,
+      keyword: query.keyword,
+      isActive: query.isActive ?? true,
+      scope: WorkflowTemplateScope.global,
+      excludeGlobal: false,
+    });
+  }
+
+  async copyGlobalTemplateToBusinessLine(
+    globalTemplateId: string,
+    businessLineId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<WorkflowTemplate> {
+    await this.ensureCanManageBusinessLineTemplates(
+      businessLineId,
+      currentUser,
+    );
+
+    const source =
+      await this.workflowTemplateRepository.findById(globalTemplateId);
+    if (!source) {
+      throw new NotFoundException('Workflow template not found');
+    }
+    if (source.scope !== WorkflowTemplateScope.global) {
+      throw new BadRequestException(
+        'Source must be a global workflow template',
+      );
+    }
+    if (!source.isActive) {
+      throw new BadRequestException('Global workflow template is not active');
+    }
+
+    const existedTemplate = await this.workflowTemplateRepository.findByName(
+      source.name,
+      {
+        scope: WorkflowTemplateScope.businessLine,
+        businessLineId,
+      },
+    );
+    if (existedTemplate) {
+      throw new ConflictException('Workflow template name already exists');
+    }
+
+    const template = await this.workflowTemplateRepository.create({
+      name: source.name,
+      description: source.description ?? null,
+      scope: WorkflowTemplateScope.businessLine,
+      businessLineId,
+      projectId: null,
+      isActive: true,
+      seedOnBusinessLineCreate: false,
+      businessLineSeedOrder: 0,
+      nodesJson: source.nodesJson,
+      createdBy: currentUser.sub,
+    });
+
+    const createdTemplate = await this.workflowTemplateRepository.findById(
+      template.id,
+    );
     if (!createdTemplate) {
       throw new NotFoundException('Workflow template not found');
     }
@@ -141,6 +256,24 @@ export class WorkflowTemplatesService {
     let businessLineId = query.businessLineId;
     const projectId = query.projectId;
     let includeGlobal = false;
+
+    if (scope === WorkflowTemplateScope.global) {
+      if (!this.isAdmin(currentUser)) {
+        throw new ForbiddenException('forbiddenWorkflowTemplate');
+      }
+      if (query.businessLineId || query.projectId) {
+        throw new BadRequestException(
+          'businessLineId and projectId must not be set when scope is global',
+        );
+      }
+      return this.workflowTemplateRepository.findAllWithPagination({
+        paginationOptions,
+        keyword: query.keyword,
+        isActive: query.isActive,
+        scope: WorkflowTemplateScope.global,
+        excludeGlobal: false,
+      });
+    }
 
     if (projectId) {
       const project = await this.projectAccessService.assertProjectCapability(
@@ -252,10 +385,14 @@ export class WorkflowTemplatesService {
                 scope: existedTemplate.scope,
                 businessLineId: existedTemplate.businessLineId ?? null,
               }
-            : {
-                scope: existedTemplate.scope,
-                projectId: existedTemplate.projectId ?? null,
-              },
+            : existedTemplate.scope === WorkflowTemplateScope.project
+              ? {
+                  scope: existedTemplate.scope,
+                  projectId: existedTemplate.projectId ?? null,
+                }
+              : {
+                  scope: WorkflowTemplateScope.global,
+                },
         );
 
       if (duplicatedTemplate) {
@@ -265,6 +402,16 @@ export class WorkflowTemplatesService {
 
     if (updateWorkflowTemplateDto.nodes) {
       ensureValidWorkflowTemplateNodes(updateWorkflowTemplateDto.nodes);
+    }
+
+    if (
+      (updateWorkflowTemplateDto.seedOnBusinessLineCreate !== undefined ||
+        updateWorkflowTemplateDto.businessLineSeedOrder !== undefined) &&
+      existedTemplate.scope !== WorkflowTemplateScope.global
+    ) {
+      throw new BadRequestException(
+        'seedOnBusinessLineCreate and businessLineSeedOrder apply only to global templates',
+      );
     }
 
     const updatedTemplate = await this.workflowTemplateRepository.update(id, {
@@ -283,6 +430,18 @@ export class WorkflowTemplatesService {
         : {}),
       ...(updateWorkflowTemplateDto.isActive !== undefined
         ? { isActive: updateWorkflowTemplateDto.isActive }
+        : {}),
+      ...(updateWorkflowTemplateDto.seedOnBusinessLineCreate !== undefined
+        ? {
+            seedOnBusinessLineCreate:
+              updateWorkflowTemplateDto.seedOnBusinessLineCreate,
+          }
+        : {}),
+      ...(updateWorkflowTemplateDto.businessLineSeedOrder !== undefined
+        ? {
+            businessLineSeedOrder:
+              updateWorkflowTemplateDto.businessLineSeedOrder,
+          }
         : {}),
     });
 
@@ -421,6 +580,9 @@ export class WorkflowTemplatesService {
     currentUser: JwtPayloadType,
   ): Promise<void> {
     if (template.scope === WorkflowTemplateScope.global) {
+      if (!this.isAdmin(currentUser)) {
+        throw new ForbiddenException('forbiddenWorkflowTemplate');
+      }
       return;
     }
 
@@ -451,6 +613,9 @@ export class WorkflowTemplatesService {
     currentUser: JwtPayloadType,
   ): Promise<void> {
     if (template.scope === WorkflowTemplateScope.global) {
+      if (!this.isAdmin(currentUser)) {
+        throw new ForbiddenException('forbiddenWorkflowTemplate');
+      }
       return;
     }
 

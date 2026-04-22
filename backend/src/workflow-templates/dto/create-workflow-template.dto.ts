@@ -2,8 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -26,11 +28,15 @@ export class CreateWorkflowTemplateDto {
   description?: string;
 
   @ApiProperty({
-    enum: [WorkflowTemplateScope.businessLine, WorkflowTemplateScope.project],
+    enum: WorkflowTemplateScope,
     enumName: 'WorkflowTemplateScope',
   })
   @IsEnum(WorkflowTemplateScope)
-  @IsIn([WorkflowTemplateScope.businessLine, WorkflowTemplateScope.project])
+  @IsIn([
+    WorkflowTemplateScope.businessLine,
+    WorkflowTemplateScope.project,
+    WorkflowTemplateScope.global,
+  ])
   scope: WorkflowTemplateScope;
 
   @ApiPropertyOptional({ type: String, nullable: true })
@@ -53,4 +59,21 @@ export class CreateWorkflowTemplateDto {
   @ApiPropertyOptional({ type: Boolean, default: true })
   @IsOptional()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: '仅 global 母版：新建业务线时是否复制此模板',
+  })
+  @IsOptional()
+  @IsBoolean()
+  seedOnBusinessLineCreate?: boolean;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: '仅 global 母版：多条种子母版的排序（升序）',
+  })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  businessLineSeedOrder?: number;
 }

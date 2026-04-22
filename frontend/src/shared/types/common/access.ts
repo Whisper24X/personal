@@ -25,4 +25,5 @@ export type CurrentAccessResponse = {
     visibleBusinessLineIds: string[]
     visibleProjectIds: string[]
   }
+  isAdmin: boolean
 }

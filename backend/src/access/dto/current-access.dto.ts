@@ -48,4 +48,7 @@ export class CurrentAccessDto {
 
   @ApiProperty({ type: CurrentAccessVisibilityDto })
   visibility: CurrentAccessVisibilityDto;
+
+  @ApiProperty({ type: Boolean })
+  isAdmin: boolean;
 }

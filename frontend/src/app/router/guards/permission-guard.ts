@@ -26,11 +26,24 @@ const resolveProjectId = (to: Parameters<NavigationGuardWithThis<undefined>>[0])
 }
 
 export const permissionGuard: NavigationGuardWithThis<undefined> = async (to) => {
-  const requiredCapabilities = (to.meta.capabilities as string[] | undefined) ?? []
-  if (requiredCapabilities.length === 0) return true
-
   const accessStore = useAccessStore()
   const projectId = resolveProjectId(to)
+
+  if (to.meta.requiresPlatformAdmin) {
+    try {
+      await accessStore.loadContext(projectId ? { projectId } : {})
+    } catch (error) {
+      void error
+      accessStore.clear()
+    }
+
+    if (!accessStore.currentAccess?.isAdmin) {
+      return { path: '/home' }
+    }
+  }
+
+  const requiredCapabilities = (to.meta.capabilities as string[] | undefined) ?? []
+  if (requiredCapabilities.length === 0) return true
 
   try {
     await accessStore.loadContext((projectId ? { projectId } : {}))

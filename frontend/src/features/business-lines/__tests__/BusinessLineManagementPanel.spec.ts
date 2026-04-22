@@ -59,6 +59,8 @@ const {
   },
   workflowApi: {
     list: vi.fn(),
+    listGlobalMastersForBusinessLine: vi.fn(),
+    copyGlobalToBusinessLine: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
@@ -238,6 +240,11 @@ beforeEach(() => {
     data: [],
     hasNextPage: false,
   })
+  workflowApi.listGlobalMastersForBusinessLine.mockResolvedValue({
+    data: [],
+    hasNextPage: false,
+  })
+  workflowApi.copyGlobalToBusinessLine.mockResolvedValue({ id: 'copied-1' })
 
   projectsApi.list.mockResolvedValue({
     data: [

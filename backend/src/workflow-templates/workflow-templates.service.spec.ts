@@ -1,3 +1,9 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { WorkflowTemplatesService } from './workflow-templates.service';
 import { WorkflowTemplateScope } from './dto/workflow-template-scope.enum';
 import { WorkflowNodeType } from './dto/workflow-node-type.enum';
@@ -132,6 +138,8 @@ describe('WorkflowTemplatesService', () => {
       businessLineId: project.businessLineId,
       projectId: 'project-1',
       isActive: true,
+      seedOnBusinessLineCreate: false,
+      businessLineSeedOrder: 0,
       nodesJson: [createWorkflowNode({ requiresApproval: true })],
       createdBy: currentUser.sub,
     });
@@ -288,5 +296,290 @@ describe('WorkflowTemplatesService', () => {
         nodesJson: [createWorkflowNode({ requiresArtifact: true })],
       },
     );
+  });
+
+  it('should create global workflow template when user is admin', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+
+    workflowTemplateRepository.findByName.mockResolvedValue(null);
+    workflowTemplateRepository.create.mockResolvedValue({ id: 'g1' });
+    workflowTemplateRepository.findById.mockResolvedValue({
+      id: 'g1',
+      name: 'Global seed',
+      description: null,
+      scope: WorkflowTemplateScope.global,
+      businessLineId: null,
+      projectId: null,
+      isActive: true,
+      seedOnBusinessLineCreate: true,
+      businessLineSeedOrder: 1,
+      nodesJson: [createWorkflowNode()],
+      createdBy: currentUser.sub,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
+
+    await service.create(
+      {
+        name: 'Global seed',
+        scope: WorkflowTemplateScope.global,
+        nodes: [createWorkflowNode()],
+        seedOnBusinessLineCreate: true,
+        businessLineSeedOrder: 1,
+      },
+      currentUser,
+    );
+
+    expect(workflowTemplateRepository.findByName).toHaveBeenCalledWith(
+      'Global seed',
+      {
+        scope: WorkflowTemplateScope.global,
+      },
+    );
+    expect(workflowTemplateRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: WorkflowTemplateScope.global,
+        businessLineId: null,
+        projectId: null,
+        seedOnBusinessLineCreate: true,
+        businessLineSeedOrder: 1,
+      }),
+    );
+  });
+
+  it('should reject global workflow template for non-admin', async () => {
+    const { service } = createWorkflowTemplatesService();
+    const currentUser = { ...createCurrentUser(), roles: ['user'] };
+
+    await expect(
+      service.create(
+        {
+          name: 'Global seed',
+          scope: WorkflowTemplateScope.global,
+          nodes: [createWorkflowNode()],
+        },
+        currentUser,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('should reject access to global template for non-admin', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = { ...createCurrentUser(), roles: ['user'] };
+
+    workflowTemplateRepository.findById.mockResolvedValue({
+      id: 'g1',
+      name: 'Global',
+      scope: WorkflowTemplateScope.global,
+      businessLineId: null,
+      projectId: null,
+      isActive: true,
+      nodesJson: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
+
+    await expect(service.findById('g1', currentUser)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('should list global masters for business line with pagination', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+    const rows = [
+      {
+        id: 'g1',
+        name: 'Platform A',
+        description: null,
+        scope: WorkflowTemplateScope.global,
+        businessLineId: null,
+        projectId: null,
+        isActive: true,
+        seedOnBusinessLineCreate: false,
+        businessLineSeedOrder: 0,
+        nodesJson: [createWorkflowNode()],
+        createdBy: 'u1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      },
+    ];
+    workflowTemplateRepository.findAllWithPagination.mockResolvedValue(rows);
+
+    const result = await service.findGlobalMastersForBusinessLine(
+      { businessLineId: 'business-line-1' },
+      currentUser,
+    );
+
+    expect(result).toEqual(rows);
+    expect(
+      workflowTemplateRepository.findAllWithPagination,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: WorkflowTemplateScope.global,
+        isActive: true,
+        excludeGlobal: false,
+        paginationOptions: { page: 1, limit: 10 },
+      }),
+    );
+  });
+
+  it('should copy global template to business line', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+    const globalTemplate = {
+      id: 'g1',
+      name: 'From platform',
+      description: 'd',
+      scope: WorkflowTemplateScope.global,
+      businessLineId: null,
+      projectId: null,
+      isActive: true,
+      seedOnBusinessLineCreate: true,
+      businessLineSeedOrder: 0,
+      nodesJson: [createWorkflowNode({ name: 'N1' })],
+      createdBy: 'admin',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    };
+    workflowTemplateRepository.findById
+      .mockResolvedValueOnce(globalTemplate)
+      .mockResolvedValueOnce({
+        ...globalTemplate,
+        id: 'bl-copy-1',
+        scope: WorkflowTemplateScope.businessLine,
+        businessLineId: 'business-line-1',
+        projectId: null,
+        isActive: true,
+        seedOnBusinessLineCreate: false,
+        businessLineSeedOrder: 0,
+        createdBy: currentUser.sub,
+      });
+    workflowTemplateRepository.findByName.mockResolvedValue(null);
+    workflowTemplateRepository.create.mockResolvedValue({ id: 'bl-copy-1' });
+
+    const out = await service.copyGlobalTemplateToBusinessLine(
+      'g1',
+      'business-line-1',
+      currentUser,
+    );
+
+    expect(out.id).toBe('bl-copy-1');
+    expect(workflowTemplateRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'From platform',
+        scope: WorkflowTemplateScope.businessLine,
+        businessLineId: 'business-line-1',
+        nodesJson: globalTemplate.nodesJson,
+        createdBy: currentUser.sub,
+        seedOnBusinessLineCreate: false,
+        businessLineSeedOrder: 0,
+      }),
+    );
+  });
+
+  it('should reject copy when source is not global', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+    workflowTemplateRepository.findById.mockResolvedValue({
+      id: 'b1',
+      name: 'BL',
+      scope: WorkflowTemplateScope.businessLine,
+      businessLineId: 'business-line-1',
+      projectId: null,
+      isActive: true,
+      nodesJson: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    } as never);
+
+    await expect(
+      service.copyGlobalTemplateToBusinessLine(
+        'b1',
+        'business-line-1',
+        currentUser,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('should reject copy when global template is inactive', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+    workflowTemplateRepository.findById.mockResolvedValue({
+      id: 'g1',
+      name: 'Off',
+      scope: WorkflowTemplateScope.global,
+      businessLineId: null,
+      projectId: null,
+      isActive: false,
+      nodesJson: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    } as never);
+
+    await expect(
+      service.copyGlobalTemplateToBusinessLine(
+        'g1',
+        'business-line-1',
+        currentUser,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('should reject copy when name exists on business line', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+    workflowTemplateRepository.findById.mockResolvedValue({
+      id: 'g1',
+      name: 'Dup',
+      scope: WorkflowTemplateScope.global,
+      businessLineId: null,
+      projectId: null,
+      isActive: true,
+      nodesJson: [createWorkflowNode()],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    } as never);
+    workflowTemplateRepository.findByName.mockResolvedValue({
+      id: 'x',
+    } as never);
+
+    await expect(
+      service.copyGlobalTemplateToBusinessLine(
+        'g1',
+        'business-line-1',
+        currentUser,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('should reject copy when global id not found', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+    workflowTemplateRepository.findById.mockResolvedValue(null);
+
+    await expect(
+      service.copyGlobalTemplateToBusinessLine(
+        'g1',
+        'business-line-1',
+        currentUser,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

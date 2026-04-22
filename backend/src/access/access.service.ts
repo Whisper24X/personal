@@ -313,6 +313,7 @@ export class AccessService {
           visibleBusinessLineIds: visibleBusinessLineIds.sort(),
           visibleProjectIds: visibleProjectIds.sort(),
         },
+        isAdmin,
       };
 
       diagnostics.add({

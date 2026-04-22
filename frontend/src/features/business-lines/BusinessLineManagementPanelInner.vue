@@ -13,6 +13,7 @@ import McpJsonImportModal from './modals/McpJsonImportModal.vue'
 import { WorkflowTemplateEditorModal } from '@features/workflow'
 import BlmSkillPreviewModal from './BlmSkillPreviewModal.vue'
 import BlmMcpJsonPreviewModal from './BlmMcpJsonPreviewModal.vue'
+import BlmCopyPlatformWorkflowModal from './BlmCopyPlatformWorkflowModal.vue'
 import BlmProjectsTab from './tabs/BlmProjectsTab.vue'
 import BlmMembersTab from './tabs/BlmMembersTab.vue'
 import BlmPermissionsTab from './tabs/BlmPermissionsTab.vue'
@@ -284,6 +285,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :can-update-workflow-template="vm.canUpdateWorkflowTemplate"
                 :can-delete-workflow-template="vm.canDeleteWorkflowTemplate"
                 @create-template="vm.openWorkflowCreateModal"
+                @open-platform-copy="vm.openPlatformCopyModal"
                 @refresh="vm.loadWorkflowTemplates(vm.activeLineId)"
                 @edit-template="vm.openWorkflowEditModal"
                 @remove-template="vm.removeWorkflowTemplate"
@@ -521,6 +523,15 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
         @remove="vm.removeLocalSkill"
         @select-file="vm.loadSkillPreviewFile(vm.skillPreviewId, $event)"
         @toggle-dir="vm.toggleSkillPreviewDir($event)"
+      />
+
+      <BlmCopyPlatformWorkflowModal
+        v-if="vm.platformCopyModalOpen"
+        :loading="vm.loadingPlatformMasters"
+        :templates="vm.platformMasters"
+        :copying-template-id="vm.copyingPlatformTemplateId"
+        @close="vm.closePlatformCopyModal"
+        @copy="vm.copyFromPlatformTemplate"
       />
 
       <BlmMcpJsonPreviewModal

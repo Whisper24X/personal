@@ -92,12 +92,15 @@ export const useAccessStore = defineStore('access', () => {
     return nextCapabilities.some((capability) => hasCapability(capability))
   }
 
+  const isPlatformAdmin = computed(() => currentAccess.value?.isAdmin ?? false)
+
   return {
     currentAccess,
     loading,
     capabilities,
     currentBusinessRole,
     currentProjectRole,
+    isPlatformAdmin,
     setAccess,
     clear,
     loadContext,

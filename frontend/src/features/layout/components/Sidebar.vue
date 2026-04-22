@@ -2,7 +2,8 @@
 import { computed, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
-import { BookOpen, Building2, LayoutDashboard, ListTodo, Target, Settings2 } from 'lucide-vue-next'
+import { BookOpen, Building2, GitBranch, LayoutDashboard, ListTodo, Target, Settings2 } from 'lucide-vue-next'
+import { useAccessStore } from '@app/stores/modules/access'
 import type { Task } from '@/types/api/tasks'
 import type { ProjectItem } from '@features/layout/composables/useLayout'
 import {
@@ -48,9 +49,11 @@ const props = defineProps<{
   isWorkbenchNavActive: () => boolean
   isBusinessLineManageActive: boolean
   isSettingsActive: boolean
+  isPlatformWorkflowTemplatesActive: boolean
 }>()
 
 const route = useRoute()
+const accessStore = useAccessStore()
 const { setOpenMobile } = useSidebar()
 
 const recentSearchQuery = ref('')
@@ -292,6 +295,7 @@ const isRecentTaskBlinking = (status: Task['status']) => {
     <SidebarFooter class="border-t border-sidebar-border p-2">
       <SidebarMenu
         class="grid w-full min-w-0 grid-cols-2 gap-1 group-data-[collapsible=icon]:grid-cols-1 group-data-[collapsible=icon]:justify-items-center"
+        :class="accessStore.isPlatformAdmin ? 'md:grid-cols-3' : ''"
       >
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -303,6 +307,19 @@ const isRecentTaskBlinking = (status: Task['status']) => {
             <RouterLink to="/business-lines" @click="setOpenMobile(false)">
               <Building2 class="size-3.5 shrink-0" />
               <span>业务线</span>
+            </RouterLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem v-if="accessStore.isPlatformAdmin">
+          <SidebarMenuButton
+            as-child
+            tooltip="平台工作流母版"
+            class="h-9 w-full justify-center gap-1.5 text-xs group-data-[collapsible=icon]:[&_span]:hidden"
+            :is-active="props.isPlatformWorkflowTemplatesActive"
+          >
+            <RouterLink to="/platform/workflow-templates" @click="setOpenMobile(false)">
+              <GitBranch class="size-3.5 shrink-0" />
+              <span>母版</span>
             </RouterLink>
           </SidebarMenuButton>
         </SidebarMenuItem>

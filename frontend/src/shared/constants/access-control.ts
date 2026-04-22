@@ -354,6 +354,10 @@ export const ROUTE_ACCESS_CONFIG = {
     title: '设置',
     capabilities: [],
   },
+  platformWorkflowTemplates: {
+    title: '平台工作流母版',
+    capabilities: [],
+  },
 } as const satisfies Record<string, RouteAccessConfig>
 
 export type RouteAccessKey = keyof typeof ROUTE_ACCESS_CONFIG

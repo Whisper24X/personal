@@ -20,6 +20,7 @@ import {
   ApiNoContentResponse,
   ApiOkResponse,
   ApiParam,
+  ApiBody,
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -34,6 +35,8 @@ import {
 import { FindAllWorkflowTemplatesDto } from './dto/find-all-workflow-templates.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { ReorderWorkflowTemplateNodesDto } from './dto/reorder-workflow-template-nodes.dto';
+import { FindGlobalMastersForBusinessLineDto } from './dto/find-global-masters-for-business-line.dto';
+import { CopyGlobalWorkflowToBusinessLineDto } from './dto/copy-global-workflow-to-business-line.dto';
 
 @ApiTags('WorkflowTemplates')
 @ApiBearerAuth()
@@ -47,6 +50,23 @@ export class WorkflowTemplatesController {
     private readonly workflowTemplatesService: WorkflowTemplatesService,
   ) {}
 
+  @Post(':globalTemplateId/copy-to-business-line')
+  @ApiParam({ name: 'globalTemplateId', type: String, required: true })
+  @ApiBody({ type: CopyGlobalWorkflowToBusinessLineDto })
+  @ApiCreatedResponse({ type: WorkflowTemplate })
+  @HttpCode(HttpStatus.CREATED)
+  copyGlobalToBusinessLine(
+    @Request() request,
+    @Param('globalTemplateId', ParseUUIDPipe) globalTemplateId: string,
+    @Body() copyDto: CopyGlobalWorkflowToBusinessLineDto,
+  ) {
+    return this.workflowTemplatesService.copyGlobalTemplateToBusinessLine(
+      globalTemplateId,
+      copyDto.businessLineId,
+      request.user,
+    );
+  }
+
   @Post()
   @ApiCreatedResponse({ type: WorkflowTemplate })
   @HttpCode(HttpStatus.CREATED)
@@ -57,6 +77,36 @@ export class WorkflowTemplatesController {
     return this.workflowTemplatesService.create(
       createWorkflowTemplateDto,
       request.user,
+    );
+  }
+
+  @Get('global-masters')
+  @ApiOkResponse({ type: InfinityPaginationResponse(WorkflowTemplate) })
+  @HttpCode(HttpStatus.OK)
+  async findGlobalMasters(
+    @Request() request,
+    @Query() query: FindGlobalMastersForBusinessLineDto,
+  ): Promise<InfinityPaginationResponseDto<WorkflowTemplate>> {
+    const page = query?.page ?? 1;
+    let limit = query?.limit ?? 10;
+
+    if (limit > 50) {
+      limit = 50;
+    }
+
+    return infinityPagination(
+      await this.workflowTemplatesService.findGlobalMastersForBusinessLine(
+        {
+          ...query,
+          page,
+          limit,
+        },
+        request.user,
+      ),
+      {
+        page,
+        limit,
+      },
     );
   }
 

@@ -86,6 +86,10 @@ export class WorkflowTemplateRelationalRepository
       query.andWhere('workflowTemplate.scope = :scope', {
         scope: options.scope,
       });
+      if (options.scope === WorkflowTemplateScope.global) {
+        query.andWhere('workflowTemplate.businessLineId IS NULL');
+        query.andWhere('workflowTemplate.projectId IS NULL');
+      }
     }
 
     if (options?.businessLineId !== undefined) {
@@ -146,6 +150,11 @@ export class WorkflowTemplateRelationalRepository
       query.andWhere('workflowTemplate.scope = :scope', {
         scope,
       });
+
+      if (scope === WorkflowTemplateScope.global) {
+        query.andWhere('workflowTemplate.businessLineId IS NULL');
+        query.andWhere('workflowTemplate.projectId IS NULL');
+      }
 
       if (scope === WorkflowTemplateScope.businessLine && businessLineId) {
         query.andWhere('workflowTemplate.businessLineId = :businessLineId', {
@@ -212,8 +221,15 @@ export class WorkflowTemplateRelationalRepository
       });
     }
 
+    if (scope === WorkflowTemplateScope.global) {
+      query
+        .orderBy('workflowTemplate.businessLineSeedOrder', 'ASC')
+        .addOrderBy('workflowTemplate.createdAt', 'ASC');
+    } else {
+      query.orderBy('workflowTemplate.createdAt', 'DESC');
+    }
+
     const entities = await query
-      .orderBy('workflowTemplate.createdAt', 'DESC')
       .offset((paginationOptions.page - 1) * paginationOptions.limit)
       .limit(paginationOptions.limit)
       .getMany();
