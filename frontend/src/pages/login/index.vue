@@ -22,7 +22,7 @@ const vm = useLoginPage()
           <section class="auth-panel">
             <header class="auth-header">
               <div class="brand-logo-badge">
-                <img src="/logo.svg" alt="葱搭" class="brand-logo-image" />
+                <img src="/logo.png" alt="葱搭" class="brand-logo-image" />
               </div>
               <p class="auth-kicker">葱搭工作空间</p>
               <h1 class="auth-title">{{ vm.mode === 'login' ? '欢迎回来' : '创建新账号' }}</h1>

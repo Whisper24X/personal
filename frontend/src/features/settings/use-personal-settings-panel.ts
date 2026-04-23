@@ -35,7 +35,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const themeColor = ref<ThemeColor>('mono')
 const appearanceMode = ref<AppearanceMode>('light')
-const backgroundStyle = ref<BackgroundStyle>('grid')
+const backgroundStyle = ref<BackgroundStyle>('plain')
 const activeTab = ref<PersonalSettingsTab>('profile')
 const loading = ref(false)
 const notificationSaving = ref(false)
@@ -719,7 +719,7 @@ const sendTestBrowserNotification = async () => {
   try {
     const notification = new Notification('葱搭 测试通知', {
       body: '如果你看到了这条消息，说明当前浏览器通知链路已就绪。',
-      icon: '/logo.svg',
+      icon: '/logo.png',
       tag: `ainative-notification-test-${Date.now()}`,
     })
 

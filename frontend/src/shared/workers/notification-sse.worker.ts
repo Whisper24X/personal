@@ -1,6 +1,6 @@
 const SSE_RECONNECT_DELAY_MS = 5_000
 const ERROR_DEDUP_WINDOW_MS = 60_000
-const NOTIFICATION_ICON = '/logo.svg'
+const NOTIFICATION_ICON = '/logo.png'
 
 let currentAbort: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null

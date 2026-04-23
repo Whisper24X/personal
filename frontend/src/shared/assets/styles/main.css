@@ -14,7 +14,6 @@
   }
 
   :root {
-    --grid-line: color-mix(in oklab, var(--border) 65%, transparent);
     --app-viewport-height: 100vh;
     /* 登录 .brand-logo-badge 内 SVG 圆角；徽章见 @layer components */
     --brand-logo-img-radius: 0.75rem;
@@ -40,52 +39,6 @@
   body {
     @apply h-full bg-background text-foreground antialiased;
     letter-spacing: var(--tracking-normal);
-    background-image:
-      linear-gradient(var(--grid-line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-      radial-gradient(circle at 18% 12%, color-mix(in oklab, var(--primary) 10%, transparent) 0%, transparent 44%),
-      radial-gradient(circle at 86% 76%, color-mix(in oklab, var(--secondary) 12%, transparent) 0%, transparent 48%);
-    background-size:
-      40px 40px,
-      40px 40px,
-      100% 100%,
-      100% 100%;
-    background-attachment: fixed;
-  }
-
-  /* Keep background style visible on the main workspace container. */
-  .app-surface {
-    background-image:
-      linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px),
-      radial-gradient(circle at 18% 12%, rgba(251, 191, 36, 0.08) 0%, transparent 44%),
-      radial-gradient(circle at 86% 76%, rgba(20, 184, 166, 0.1) 0%, transparent 48%);
-    background-size:
-      40px 40px,
-      40px 40px,
-      100% 100%,
-      100% 100%;
-  }
-
-  @supports (color: color-mix(in oklab, black, white)) {
-    .app-surface {
-      background-image:
-        linear-gradient(var(--grid-line) 1px, transparent 1px),
-        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-        radial-gradient(circle at 18% 12%, color-mix(in oklab, var(--primary) 10%, transparent) 0%, transparent 44%),
-        radial-gradient(circle at 86% 76%, color-mix(in oklab, var(--secondary) 12%, transparent) 0%, transparent 48%);
-    }
-  }
-
-  html[data-background-style='plain'] body {
-    background-image: none;
-    background-size: auto;
-    background-attachment: scroll;
-  }
-
-  html[data-background-style='plain'] .app-surface {
-    background-image: none;
-    background-size: auto;
   }
 
   html[data-background-style='glow'] body {

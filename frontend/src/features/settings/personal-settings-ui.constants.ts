@@ -28,7 +28,6 @@ export const APPEARANCE_OPTIONS: Array<{ value: AppearanceMode; label: string }>
 ]
 
 export const BACKGROUND_STYLE_OPTIONS: Array<{ value: BackgroundStyle; label: string }> = [
-  { value: 'grid', label: '网格光斑' },
   { value: 'plain', label: '纯色' },
   { value: 'glow', label: '柔光' },
 ]

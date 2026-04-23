@@ -33,7 +33,7 @@ defineOptions({
   name: 'AppWorkspaceSidebar',
 })
 
-const logoSrc = '/logo.svg' as const
+const logoSrc = '/logo.png' as const
 
 const props = defineProps<{
   currentBusinessLineName: string
@@ -116,7 +116,7 @@ const isRecentTaskBlinking = (status: Task['status']) => {
         <SidebarMenuItem>
           <SidebarMenuButton size="lg" as-child>
             <RouterLink to="/home" class="flex items-center gap-2 overflow-hidden">
-              <div class="size-8 shrink-0 overflow-hidden rounded-lg bg-sidebar-primary">
+              <div class="size-8 shrink-0 overflow-hidden rounded-lg bg-white">
                 <img
                   :src="logoSrc"
                   alt="葱搭"

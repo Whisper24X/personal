@@ -166,11 +166,9 @@ const logoutConfirmButtonRef = toRef(vm, 'logoutConfirmButtonRef')
               <div
                 class="h-16 w-24 rounded-md border"
                 :class="
-                  option.value === 'grid'
-                    ? 'border-slate-200 bg-[linear-gradient(0deg,rgba(148,163,184,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.1)_1px,transparent_1px)] bg-[size:12px_12px]'
-                    : option.value === 'plain'
-                      ? 'border-slate-200 bg-slate-50'
-                      : 'border-violet-200 bg-gradient-to-br from-fuchsia-50 to-violet-100'
+                  option.value === 'plain'
+                    ? 'border-slate-200 bg-slate-50'
+                    : 'border-violet-200 bg-gradient-to-br from-fuchsia-50 to-violet-100'
                 "
               />
               <span

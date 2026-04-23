@@ -6,7 +6,7 @@ export type AppearanceMode = (typeof APPEARANCE_MODES)[number]
 export const THEME_COLORS = ['mono', 'amber', 'ocean', 'forest', 'rose', 'violet', 'teal', 'slate'] as const
 export type ThemeColor = (typeof THEME_COLORS)[number]
 
-export const BACKGROUND_STYLES = ['grid', 'plain', 'glow'] as const
+export const BACKGROUND_STYLES = ['plain', 'glow'] as const
 export type BackgroundStyle = (typeof BACKGROUND_STYLES)[number]
 
 type UiPreferences = {
@@ -36,7 +36,7 @@ export const resolveThemeColor = (value: string | null) => {
 }
 
 export const resolveBackgroundStyle = (value: string | null) => {
-  return asKnownValue(value, BACKGROUND_STYLES, 'grid')
+  return asKnownValue(value, BACKGROUND_STYLES, 'plain')
 }
 
 export const applyAppearanceMode = (appearanceMode: AppearanceMode) => {

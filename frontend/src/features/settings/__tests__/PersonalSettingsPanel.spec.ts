@@ -149,7 +149,7 @@ describe('PersonalSettingsPanel browser notifications', () => {
       '葱搭 测试通知',
       expect.objectContaining({
         body: '如果你看到了这条消息，说明当前浏览器通知链路已就绪。',
-        icon: '/logo.svg',
+        icon: '/logo.png',
       }),
     )
   })
