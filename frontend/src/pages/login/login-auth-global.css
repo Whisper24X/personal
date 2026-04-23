@@ -26,11 +26,6 @@ html[data-theme-color='mono'] .login-view .auth-panel::after {
   display: none;
 }
 
-html[data-theme-color='mono'] .login-view .auth-logo-badge {
-  background: var(--primary);
-  box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 58%, transparent);
-}
-
 html[data-theme-color='mono'] .login-view .auth-mode-button.is-active {
   background: var(--primary);
 }

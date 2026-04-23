@@ -127,33 +127,6 @@
   gap: 0.58rem;
 }
 
-.auth-logo-badge {
-  display: grid;
-  height: 3.2rem;
-  width: 3.2rem;
-  place-items: center;
-  padding: 0.25rem;
-  overflow: hidden;
-  border-radius: 1rem;
-  border: 1px solid color-mix(in oklab, white 34%, transparent);
-  background: linear-gradient(
-    130deg,
-    color-mix(in oklab, var(--auth-accent) 90%, black) 0%,
-    color-mix(in oklab, var(--auth-secondary) 82%, var(--auth-accent)) 72%,
-    color-mix(in oklab, var(--auth-warm) 74%, var(--auth-secondary)) 100%
-  );
-  box-shadow:
-    0 18px 30px -18px color-mix(in oklab, var(--auth-secondary) 45%, transparent),
-    0 1px 0 rgba(255, 255, 255, 0.25) inset;
-}
-
-.auth-logo-image {
-  height: 100%;
-  width: 100%;
-  object-fit: contain;
-  border-radius: 0.75rem;
-}
-
 .auth-kicker {
   font-size: 0.8rem;
   font-weight: 700;
