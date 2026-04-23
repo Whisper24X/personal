@@ -123,7 +123,7 @@ const isRecentTaskBlinking = (status: Task['status']) => {
                   class="size-full object-cover object-center"
                 />
               </div>
-              <span class="truncate font-semibold">{{ appSettings.appName }}</span>
+              <span class="sidebar-brand-wordmark truncate">{{ appSettings.appName }}</span>
             </RouterLink>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -372,5 +372,23 @@ const isRecentTaskBlinking = (status: Task['status']) => {
   .sidebar-task-status-dot-running {
     animation: none;
   }
+}
+
+.sidebar-brand-wordmark {
+  font-family:
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    "Source Han Sans SC",
+    "Noto Sans CJK SC",
+    var(--font-sans);
+  font-size: 1.06rem;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.08em;
+  color: color-mix(in oklab, var(--sidebar-primary) 78%, var(--sidebar-foreground));
+  text-shadow:
+    0 1px 0 color-mix(in oklab, var(--sidebar) 72%, white),
+    0 2px 8px color-mix(in oklab, var(--sidebar-primary) 22%, transparent);
 }
 </style>
