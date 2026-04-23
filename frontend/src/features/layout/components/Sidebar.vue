@@ -116,10 +116,12 @@ const isRecentTaskBlinking = (status: Task['status']) => {
         <SidebarMenuItem>
           <SidebarMenuButton size="lg" as-child>
             <RouterLink to="/home" class="flex items-center gap-2 overflow-hidden">
-              <div
-                class="flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
-              >
-                <img :src="logoSrc" alt="" class="size-6 object-contain" />
+              <div class="size-8 shrink-0 overflow-hidden rounded-lg bg-sidebar-primary">
+                <img
+                  :src="logoSrc"
+                  alt="葱搭"
+                  class="size-full object-cover object-center"
+                />
               </div>
               <span class="truncate font-semibold">{{ appSettings.appName }}</span>
             </RouterLink>

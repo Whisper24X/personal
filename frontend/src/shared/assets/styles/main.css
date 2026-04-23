@@ -16,6 +16,10 @@
   :root {
     --grid-line: color-mix(in oklab, var(--border) 65%, transparent);
     --app-viewport-height: 100vh;
+    /* 登录 .brand-logo-badge 内 SVG 圆角；徽章见 @layer components */
+    --brand-logo-img-radius: 0.75rem;
+    --brand-logo-badge-size: 3.2rem;
+    --brand-logo-badge-pad: 0.25rem;
   }
 
   html,
@@ -141,6 +145,47 @@
 
   button {
     @apply border-border outline-ring/50 cursor-pointer;
+  }
+}
+
+@layer components {
+  /**
+   * 品牌 Logo 容器：与登录页原 auth-logo-badge 视觉一致，供侧栏 / 登录等复用。
+   */
+  .brand-logo-badge {
+    --brand-accent: #0f766e;
+    --brand-secondary: #2563eb;
+    --brand-warm: #f59e0b;
+
+    display: grid;
+    height: var(--brand-logo-badge-size);
+    width: var(--brand-logo-badge-size);
+    place-items: center;
+    padding: var(--brand-logo-badge-pad);
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid color-mix(in oklab, white 34%, transparent);
+    background: linear-gradient(
+      130deg,
+      color-mix(in oklab, var(--brand-accent) 90%, black) 0%,
+      color-mix(in oklab, var(--brand-secondary) 82%, var(--brand-accent)) 72%,
+      color-mix(in oklab, var(--brand-warm) 74%, var(--brand-secondary)) 100%
+    );
+    box-shadow:
+      0 18px 30px -18px color-mix(in oklab, var(--brand-secondary) 45%, transparent),
+      0 1px 0 rgba(255, 255, 255, 0.25) inset;
+  }
+
+  .brand-logo-image {
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+    border-radius: var(--brand-logo-img-radius);
+  }
+
+  html[data-theme-color='mono'] .brand-logo-badge {
+    background: var(--primary);
+    box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 58%, transparent);
   }
 }
 
