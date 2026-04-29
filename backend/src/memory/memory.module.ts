@@ -1,5 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { GitModule } from '../git/git.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { RelationalProjectPersistenceModule } from '../projects/infrastructure/persistence/relational/relational-persistence.module';
 import { ProjectWorkspaceModule } from '../project-workspace/project-workspace.module';
@@ -28,6 +29,7 @@ import { ProjectMemoryInternalDocsService } from './project-memory-internal-docs
 @Module({
   imports: [
     TypeOrmModule.forFeature([MemoryIngestJobEntity, MemoryFactSignalEntity]),
+    GitModule,
     RelationalTaskPersistenceModule,
     RelationalProjectPersistenceModule,
     ProjectWorkspaceModule,

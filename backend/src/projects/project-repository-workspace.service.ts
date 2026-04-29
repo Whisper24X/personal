@@ -129,6 +129,24 @@ export class ProjectRepositoryWorkspaceService {
     });
   }
 
+  /**
+   * Like {@link ensureProjectRepository} but runs `operation` while holding the per-repo
+   * serial lock after sync (e.g. memory ingest follow-up git commit).
+   */
+  async runWithProjectRepositoryReady<T>(
+    project: Project,
+    options: EnsureProjectRepositoryOptions = {},
+    operation: (repositoryRoot: string) => Promise<T>,
+  ): Promise<T> {
+    const repositoryRoot = this.resolveRepositoryRoot(project);
+
+    return this.withRepositorySyncLock(repositoryRoot, async () => {
+      await this.syncProjectRepositoryContent(project, repositoryRoot, options);
+
+      return operation(repositoryRoot);
+    });
+  }
+
   async syncRunnerConfigBackup(
     project: Project,
     repositoryRoot?: string,

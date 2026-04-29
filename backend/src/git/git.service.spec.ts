@@ -561,4 +561,108 @@ describe('GitService', () => {
       ),
     ).rejects.toThrow(ConflictException);
   });
+
+  describe('commitRelativePathsInRepoRootIfDirty', () => {
+    it('should no-op when relativePaths is empty', async () => {
+      const { service } = createGitService();
+
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+
+      await service.commitRelativePathsInRepoRootIfDirty(
+        '/tmp/repo',
+        [],
+        '对话知识沉淀',
+      );
+
+      expect(runCommandSpy).not.toHaveBeenCalled();
+    });
+
+    it('should no-op when staged index is empty after add', async () => {
+      const { service } = createGitService();
+
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+      runCommandSpy
+        .mockResolvedValueOnce(createGitCommandResult('')) // git add
+        .mockResolvedValueOnce(createGitCommandResult('')); // diff --cached empty
+
+      await service.commitRelativePathsInRepoRootIfDirty(
+        '/tmp/repo',
+        ['docs/memory'],
+        '对话知识沉淀',
+      );
+
+      expect(runCommandSpy).toHaveBeenCalledTimes(2);
+      expect(runCommandSpy).toHaveBeenNthCalledWith(1, [
+        '-C',
+        '/tmp/repo',
+        'add',
+        '--',
+        'docs/memory',
+      ]);
+      expect(runCommandSpy).toHaveBeenNthCalledWith(2, [
+        '-C',
+        '/tmp/repo',
+        'diff',
+        '--cached',
+        '--name-only',
+      ]);
+    });
+
+    it('should commit with memory ingest author when there are staged changes', async () => {
+      const { service } = createGitService();
+
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+      runCommandSpy
+        .mockResolvedValueOnce(createGitCommandResult('')) // add
+        .mockResolvedValueOnce(
+          createGitCommandResult('docs/memory/conventions.md\n'),
+        ) // diff cached
+        .mockResolvedValueOnce(createGitCommandResult('abc1234')); // commit
+
+      await service.commitRelativePathsInRepoRootIfDirty(
+        '/tmp/repo',
+        ['docs/memory'],
+        '对话知识沉淀',
+      );
+
+      expect(runCommandSpy).toHaveBeenCalledTimes(3);
+      expect(runCommandSpy).toHaveBeenNthCalledWith(3, [
+        '-C',
+        '/tmp/repo',
+        '-c',
+        'user.name=ainative-memory',
+        '-c',
+        'user.email=memory@ainative.local',
+        'commit',
+        '-m',
+        '对话知识沉淀',
+      ]);
+    });
+
+    it('should skip unsafe relative paths', async () => {
+      const { service } = createGitService();
+
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+
+      await service.commitRelativePathsInRepoRootIfDirty(
+        '/tmp/repo',
+        ['../etc/passwd'],
+        '对话知识沉淀',
+      );
+
+      expect(runCommandSpy).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -927,6 +927,125 @@ export class GitService {
     }
   }
 
+  private static readonly memoryIngestCommitAuthor = {
+    name: 'ainative-memory',
+    email: 'memory@ainative.local',
+  } as const;
+
+  /**
+   * Worker-safe: stages paths relative to repository root and commits when the index
+   * has changes. Best-effort (logs, no throw). Used after memory ingest writes under docs/memory.
+   */
+  async commitRelativePathsInRepoRootIfDirty(
+    repositoryRoot: string,
+    relativePaths: string[],
+    message: string,
+  ): Promise<void> {
+    const trimmedMessage = message.trim();
+    if (!relativePaths.length || !trimmedMessage) {
+      return;
+    }
+
+    try {
+      const root = path.resolve(repositoryRoot);
+      const safeRelative: string[] = [];
+
+      for (const rawPath of relativePaths) {
+        const trimmed = String(rawPath).trim().replace(/\\/g, '/');
+        if (!trimmed || trimmed.includes('..')) {
+          this.logger.warn(
+            `commitRelativePathsInRepoRootIfDirty: skip unsafe path root=${root} path=${rawPath}`,
+          );
+          continue;
+        }
+
+        const absPath = path.resolve(root, trimmed);
+        const relPath = path.relative(root, absPath);
+        if (!relPath || relPath.startsWith('..') || path.isAbsolute(relPath)) {
+          this.logger.warn(
+            `commitRelativePathsInRepoRootIfDirty: skip path outside repo root=${root} path=${absPath}`,
+          );
+          continue;
+        }
+
+        safeRelative.push(relPath);
+      }
+
+      if (!safeRelative.length) {
+        this.logger.warn(
+          `commitRelativePathsInRepoRootIfDirty: no valid paths under repositoryRoot=${root}`,
+        );
+        return;
+      }
+
+      const addResult = await this.runCommand([
+        '-C',
+        root,
+        'add',
+        '--',
+        ...safeRelative,
+      ]);
+
+      if (!addResult.success) {
+        this.logger.warn(
+          `commitRelativePathsInRepoRootIfDirty: ${this.formatGitFailure('git add', addResult)} repositoryRoot=${root}`,
+        );
+        return;
+      }
+
+      const stagedResult = await this.runCommand([
+        '-C',
+        root,
+        'diff',
+        '--cached',
+        '--name-only',
+      ]);
+
+      if (!stagedResult.success) {
+        this.logger.warn(
+          `commitRelativePathsInRepoRootIfDirty: ${this.formatGitFailure(
+            'git diff --cached',
+            stagedResult,
+          )} repositoryRoot=${root}`,
+        );
+        return;
+      }
+
+      if (!stagedResult.stdout.trim()) {
+        return;
+      }
+
+      const { name: gitName, email: gitEmail } =
+        GitService.memoryIngestCommitAuthor;
+      const commitResult = await this.runCommand([
+        '-C',
+        root,
+        '-c',
+        `user.name=${gitName}`,
+        '-c',
+        `user.email=${gitEmail}`,
+        'commit',
+        '-m',
+        trimmedMessage,
+      ]);
+
+      if (!commitResult.success) {
+        this.logger.warn(
+          `commitRelativePathsInRepoRootIfDirty: ${this.formatGitFailure(
+            'git commit',
+            commitResult,
+          )} repositoryRoot=${root}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `commitRelativePathsInRepoRootIfDirty: unexpected error repositoryRoot=${repositoryRoot} ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   private async resolveProjectContext(
     projectId: string,
     currentUser: JwtPayloadType,

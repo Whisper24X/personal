@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import path from 'path';
+import { GitService } from '../git/git.service';
 import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
 import { ProjectRepositoryWorkspaceService } from '../projects/project-repository-workspace.service';
 import { ProjectMemoryInternalDocsService } from './project-memory-internal-docs.service';
@@ -36,6 +37,7 @@ export class MemoryHostService {
     private readonly ingestRegistry: MemoryIngestRegistry,
     private readonly injectRegistry: MemoryInjectRegistry,
     private readonly agentToolOpenAiLlmCredentials: AgentToolOpenAiCompatibleLlmCredentialsService,
+    private readonly gitService: GitService,
   ) {}
 
   async runIngestJobRow(row: MemoryIngestJobEntity): Promise<void> {
@@ -74,6 +76,33 @@ export class MemoryHostService {
       },
       caps,
     );
+
+    if (snap.memoryIngestDryRun) {
+      return;
+    }
+
+    try {
+      const project = await this.projectRepository.findById(job.projectId);
+      if (!project) {
+        return;
+      }
+
+      await this.projectRepositoryWorkspace.runWithProjectRepositoryReady(
+        project,
+        { syncRemote: false },
+        async (repositoryRoot) => {
+          await this.gitService.commitRelativePathsInRepoRootIfDirty(
+            repositoryRoot,
+            ['docs/memory'],
+            '对话知识沉淀',
+          );
+        },
+      );
+    } catch (e) {
+      this.logger.warn(
+        `memory_ingest_auto_commit_fail ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   async mergeRuntimeConfigForProject(
