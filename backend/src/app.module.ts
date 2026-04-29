@@ -25,6 +25,7 @@ import { ProjectContextModule } from './project-context/project-context.module';
 import { AutomationsModule } from './automations/automations.module';
 import { GitModule } from './git/git.module';
 import { GoalsModule } from './goals/goals.module';
+import { MemoryModule } from './memory/memory.module';
 import { resolveEnvFilePath } from './config/env-file-path';
 import { existsSync } from 'fs';
 
@@ -56,6 +57,7 @@ function resolveI18nPath(): string {
     WorkflowTemplatesModule,
     TasksModule,
     GoalsModule,
+    MemoryModule,
     NotificationsModule,
     SkillsModule,
     McpsModule,

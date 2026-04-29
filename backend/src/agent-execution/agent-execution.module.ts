@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { RelationalBusinessLinePersistenceModule } from '../business-lines/infrastructure/persistence/relational/relational-persistence.module';
 import { ContainersModule } from '../containers/containers.module';
 import { ProjectWorkspaceModule } from '../project-workspace/project-workspace.module';
@@ -10,12 +10,15 @@ import { ControlPlaneAgentExecutionService } from './control-plane-agent-executi
 import { LocalProcessLauncherService } from './local-process-launcher.service';
 import { RunnerAgentExecutionService } from './runner-agent-execution.service';
 import { RunnerEphemeralMcpService } from './runner-ephemeral-mcp.service';
+import { MemoryModule } from '../memory/memory.module';
+import { AgentToolOpenAiCompatibleLlmCredentialsService } from './agent-tool-openai-compatible-llm-credentials.service';
 
 @Module({
   imports: [
     RelationalBusinessLinePersistenceModule,
     ContainersModule,
     ProjectWorkspaceModule,
+    forwardRef(() => MemoryModule),
   ],
   providers: [
     AgentPromptTemplateService,
@@ -26,6 +29,7 @@ import { RunnerEphemeralMcpService } from './runner-ephemeral-mcp.service';
     RunnerEphemeralMcpService,
     AgentCliAdapterRegistry,
     AgentCliSmokeTestService,
+    AgentToolOpenAiCompatibleLlmCredentialsService,
   ],
   exports: [
     AgentPromptTemplateService,
@@ -36,6 +40,7 @@ import { RunnerEphemeralMcpService } from './runner-ephemeral-mcp.service';
     LocalProcessLauncherService,
     AgentCliAdapterRegistry,
     AgentCliSmokeTestService,
+    AgentToolOpenAiCompatibleLlmCredentialsService,
   ],
 })
 export class AgentExecutionModule {}

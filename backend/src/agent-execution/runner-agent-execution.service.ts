@@ -17,6 +17,7 @@ import {
   AgentExecutionStreamCallbacks,
 } from './agent-execution.types';
 import { PromptTemplateRuntimeContext } from './agent-prompt-template.service';
+import { MemoryHostService } from '../memory/memory-host.service';
 
 type ActiveAgentExecution = {
   childProcess: ChildProcess;
@@ -41,6 +42,8 @@ export class RunnerAgentExecutionService {
     private readonly dockerExecProcessLauncher?: DockerExecProcessLauncherService,
     @Optional()
     private readonly isolatedRunnerContainer?: IsolatedRunnerContainerService,
+    @Optional()
+    private readonly memoryHost?: MemoryHostService,
   ) {}
 
   async executeAgentNode({
@@ -506,13 +509,28 @@ export class RunnerAgentExecutionService {
         ...(additionalRunnerEnv ?? {}),
       },
     };
-    const prompt = this.resolvePrompt(
+    let prompt = this.resolvePrompt(
       task,
       node,
       project,
       config,
       runtimeContext,
     );
+    if (this.memoryHost) {
+      const memoryBlock = await this.memoryHost.buildInjectBlock({
+        projectId: project.id,
+        taskId: task.id,
+        nodeId: node.id,
+        taskTitle: task.title,
+        nodeName: node.name,
+        userIntentSummary: (task.prompt ?? '').trim().slice(0, 800),
+        taskPromptExcerpt: task.prompt?.trim().slice(0, 500),
+        recentTurnsSummary: undefined,
+      });
+      if (memoryBlock.trim()) {
+        prompt = `${prompt}\n\n${memoryBlock}`;
+      }
+    }
     await callbacks?.onPrepared?.({
       adapter: config.adapter,
       prompt,

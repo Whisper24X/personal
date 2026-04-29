@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { AgentExecutionModule } from '../agent-execution/agent-execution.module';
 import { ProjectWorkspaceModule } from '../project-workspace/project-workspace.module';
 import { ProjectsController } from './projects.controller';
@@ -20,14 +20,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    AgentExecutionModule,
+    forwardRef(() => AgentExecutionModule),
     ProjectWorkspaceModule,
     RelationalProjectPersistenceModule,
     RelationalTaskPersistenceModule,
     RelationalWorkflowTemplatePersistenceModule,
     ContainersModule,
     UsersModule,
-    BusinessLinesModule,
+    forwardRef(() => BusinessLinesModule),
     AccessModule,
     NotificationsModule,
   ],

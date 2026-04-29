@@ -31,6 +31,7 @@ const createService = () => {
     taskLogService as never,
     containerOrchestration as never,
     goalsService as never,
+    undefined,
   );
 
   return {
@@ -221,6 +222,8 @@ describe('TaskStatusService', () => {
 
     taskRepository.findById.mockResolvedValue({
       id: 'task-1',
+      projectId: 'project-1',
+      businessLineId: 'business-line-1',
       title: 'Task 1',
       createdBy: 'user-1',
       mode: TaskMode.workflow,

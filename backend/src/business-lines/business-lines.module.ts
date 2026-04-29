@@ -1,5 +1,6 @@
 import {
   // do not remove this comment
+  forwardRef,
   Module,
 } from '@nestjs/common';
 import { BusinessLineAgentToolConfigService } from './business-line-agent-tool-config.service';
@@ -28,7 +29,7 @@ import { AgentExecutionModule } from '../agent-execution/agent-execution.module'
     RelationalProjectPersistenceModule,
     UsersModule,
     AccessModule,
-    AgentExecutionModule,
+    forwardRef(() => AgentExecutionModule),
   ],
   controllers: [BusinessLinesController],
   providers: [
