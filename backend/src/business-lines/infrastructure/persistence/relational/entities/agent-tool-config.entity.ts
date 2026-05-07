@@ -15,7 +15,6 @@ import { BusinessLineEntity } from './business-line.entity';
   name: 'agent_cli_configs',
   comment: '业务线工具配置',
 })
-@Index('IDX_agent_cli_config_business_line_id', ['businessLineId'])
 @Index('IDX_agent_cli_config_tool_id', ['toolId'])
 @Index(
   'UQ_agent_cli_config_business_line_tool_name',

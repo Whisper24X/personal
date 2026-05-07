@@ -56,7 +56,7 @@ async function bootstrap() {
       required: false,
       name: configService.getOrThrow('app.headerLanguage', { infer: true }),
       schema: {
-        example: 'en',
+        example: 'zh',
       },
     })
     .build();

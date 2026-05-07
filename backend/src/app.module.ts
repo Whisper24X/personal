@@ -6,6 +6,7 @@ import authConfig from './auth/config/auth.config';
 import appConfig from './config/app.config';
 import path from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HeaderResolver, I18nModule } from 'nestjs-i18n';
 import { TypeOrmConfigService } from './database/typeorm-config.service';
@@ -28,6 +29,7 @@ import { GoalsModule } from './goals/goals.module';
 import { MemoryModule } from './memory/memory.module';
 import { resolveEnvFilePath } from './config/env-file-path';
 import { existsSync } from 'fs';
+import { LocalizedHttpExceptionFilter } from './utils/localized-http-exception.filter';
 
 const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
   useClass: TypeOrmConfigService,
@@ -93,6 +95,12 @@ function resolveI18nPath(): string {
     UsersModule,
     AuthModule,
     HomeModule,
+  ],
+  providers: [
+    {
+      provide: APP_FILTER,
+      useClass: LocalizedHttpExceptionFilter,
+    },
   ],
 })
 export class AppModule {}

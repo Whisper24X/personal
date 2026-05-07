@@ -1,5 +1,5 @@
-import { http } from '@api/shared'
-import { HttpError } from '@api/shared/error'
+import { API_LANGUAGE, API_LANGUAGE_HEADER, http } from '@api/shared'
+import { HttpError, extractHttpErrorMessage } from '@api/shared/error'
 import { STORAGE_KEYS } from '@shared/types/common/storage'
 
 const API_PREFIX = '/api/v1'
@@ -91,6 +91,7 @@ export const openSseStream = async (
     method: 'GET',
     headers: {
       Accept: 'text/event-stream',
+      [API_LANGUAGE_HEADER]: API_LANGUAGE,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     signal: callbacks.signal,
@@ -111,6 +112,7 @@ export const postSseStream = async (
     headers: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
+      [API_LANGUAGE_HEADER]: API_LANGUAGE,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
@@ -125,12 +127,10 @@ const consumeSseResponse = async (
   callbacks: SseCallbacks,
 ) => {
   if (!response.ok || !response.body) {
-    let message = `SSE request failed with status ${response.status}`
+    let message = `SSE 请求失败：${response.status}`
     try {
       const body = await response.json()
-      if (body?.message) {
-        message = typeof body.message === 'string' ? body.message : body.message[0]
-      }
+      message = extractHttpErrorMessage(body, message)
     } catch {
       /* ignore parse error */
     }
@@ -197,7 +197,7 @@ const consumeSseResponse = async (
       return
     }
 
-    callbacks.onError?.(error instanceof Error ? error : new Error('Unknown SSE error'))
+    callbacks.onError?.(error instanceof Error ? error : new Error('未知 SSE 错误'))
   } finally {
     reader.releaseLock()
   }

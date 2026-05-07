@@ -48,7 +48,6 @@ export class WorkflowTemplateEntity extends EntityRelationalHelper {
   })
   projectId?: string | null;
 
-  @Index('IDX_workflow_templates_name')
   @Column({ type: String, length: 120, comment: '模板名称' })
   name: string;
 

@@ -8,7 +8,6 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 @Unique('UQ_project_execution_slots_task', ['taskId'])
 @Index('IDX_project_execution_slots_project', ['projectId'])
 @Index('IDX_project_execution_slots_expires', ['expiresAt'])
-@Index('IDX_project_execution_slots_task', ['taskId'])
 export class ProjectExecutionSlotEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键' })
   id: string;

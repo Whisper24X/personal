@@ -1,7 +1,10 @@
 import { HTTP_STATUS } from './status'
-import { HttpError } from './error'
+import { HttpError, extractHttpErrorMessage } from './error'
 import { STORAGE_KEYS } from '@shared/types/common/storage'
 import { dispatchAuthSessionEvent } from '@shared/utils/auth-session-bridge'
+
+export const API_LANGUAGE_HEADER = 'x-custom-lang'
+export const API_LANGUAGE = 'zh'
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -27,6 +30,7 @@ const buildHeaders = (
 
   return {
     ...(omitJsonContentType ? {} : { 'Content-Type': 'application/json' }),
+    [API_LANGUAGE_HEADER]: API_LANGUAGE,
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...headers,
   }
@@ -60,6 +64,7 @@ const refreshAccessToken = async (requestUrl: string): Promise<string | null> =>
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          [API_LANGUAGE_HEADER]: API_LANGUAGE,
           Authorization: `Bearer ${storedRefreshToken}`,
         },
       })
@@ -89,10 +94,10 @@ const refreshAccessToken = async (requestUrl: string): Promise<string | null> =>
 
 const unwrapResponse = async <T>(response: Response): Promise<T> => {
   if (!response.ok) {
-    let message = `Request failed: ${response.status}`
+    let message = `请求失败：${response.status}`
     if (isJsonResponse(response)) {
-      const body = (await response.json()) as { message?: string }
-      message = body.message ?? message
+      const body = await response.json()
+      message = extractHttpErrorMessage(body, message)
     }
 
     throw new HttpError(message, response.status)

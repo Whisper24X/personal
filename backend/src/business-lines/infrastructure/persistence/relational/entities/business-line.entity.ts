@@ -1,7 +1,6 @@
 import {
   Column,
   CreateDateColumn,
-  DeleteDateColumn,
   Entity,
   Index,
   PrimaryGeneratedColumn,
@@ -17,10 +16,8 @@ export class BusinessLineEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
-  @Index('IDX_business_lines_name')
   @Index('UQ_business_lines_name', {
     unique: true,
-    where: '"deletedAt" IS NULL',
   })
   @Column({ type: String, length: 100, comment: '业务线名称' })
   name: string;
@@ -41,7 +38,4 @@ export class BusinessLineEntity extends EntityRelationalHelper {
 
   @UpdateDateColumn({ comment: '更新时间' })
   updatedAt: Date;
-
-  @DeleteDateColumn({ comment: '软删除时间' })
-  deletedAt: Date | null;
 }

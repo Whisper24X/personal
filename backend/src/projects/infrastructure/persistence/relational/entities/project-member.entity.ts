@@ -22,7 +22,6 @@ export class ProjectMemberEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
-  @Index('IDX_project_members_project_id')
   @Column({ type: 'uuid', comment: '关联项目ID' })
   projectId: string;
 

@@ -147,6 +147,17 @@ export class BusinessLineLocalAssetsService {
     await fs.rm(directoryToRemove, { recursive: true, force: true });
   }
 
+  async removeBusinessLineLocalAssets(businessLineId: string): Promise<void> {
+    const dataRoot = path.resolve(resolveAinativeDataRootDir());
+    const businessLineRoot = path.resolve(dataRoot, businessLineId);
+
+    if (!this.isPathWithin(dataRoot, businessLineRoot)) {
+      throw new BadRequestException('Invalid business line asset path');
+    }
+
+    await fs.rm(businessLineRoot, { recursive: true, force: true });
+  }
+
   async findLocalMcps(businessLineId: string): Promise<Mcp[]> {
     const mcps = await loadBusinessLineLocalMcps(businessLineId);
 

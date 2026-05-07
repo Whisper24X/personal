@@ -5,7 +5,7 @@ import { BusinessLine } from '../../domain/business-line';
 
 export abstract class BusinessLineRepository {
   abstract create(
-    data: Omit<BusinessLine, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+    data: Omit<BusinessLine, 'id' | 'createdAt' | 'updatedAt'>,
   ): Promise<BusinessLine>;
 
   abstract findAllWithPagination({

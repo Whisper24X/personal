@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { BusinessLineMemberRole } from './dto/business-line-member-role.enum';
@@ -8,13 +8,17 @@ import { BusinessLine } from './domain/business-line';
 import { BusinessLineMemberRepository } from './infrastructure/persistence/business-line-member.repository';
 import { BusinessLineRepository } from './infrastructure/persistence/business-line.repository';
 import { BusinessLineRoleCatalogService } from './business-line-role-catalog.service';
+import { BusinessLineLocalAssetsService } from './business-line-local-assets.service';
 
 @Injectable()
 export class BusinessLineLifecycleService {
+  private readonly logger = new Logger(BusinessLineLifecycleService.name);
+
   constructor(
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
     private readonly businessLineRoleCatalogService: BusinessLineRoleCatalogService,
+    private readonly businessLineLocalAssetsService: BusinessLineLocalAssetsService,
   ) {}
 
   async create(
@@ -106,8 +110,20 @@ export class BusinessLineLifecycleService {
     });
   }
 
-  remove(id: BusinessLine['id']): Promise<void> {
-    return this.businessLineRepository.remove(id);
+  async remove(id: BusinessLine['id']): Promise<void> {
+    await this.businessLineRepository.remove(id);
+
+    try {
+      await this.businessLineLocalAssetsService.removeBusinessLineLocalAssets(
+        id,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown local asset error';
+      this.logger.warn(
+        `Failed to remove local assets for business line ${id}: ${message}`,
+      );
+    }
   }
 
   private async findBusinessLinesForUser(

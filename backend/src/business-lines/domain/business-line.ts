@@ -33,7 +33,4 @@ export class BusinessLine {
 
   @ApiProperty()
   updatedAt: Date;
-
-  @ApiProperty()
-  deletedAt: Date | null;
 }

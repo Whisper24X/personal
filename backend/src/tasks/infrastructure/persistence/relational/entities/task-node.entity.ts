@@ -27,7 +27,6 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
-  @Index('IDX_task_nodes_task_id')
   @Column({ type: 'uuid', comment: '关联任务ID' })
   taskId: string;
 

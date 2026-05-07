@@ -10,7 +10,6 @@ export class BusinessLineMapper {
     domainEntity.defaultAgentCliToolId = raw.defaultAgentCliToolId;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
-    domainEntity.deletedAt = raw.deletedAt;
 
     return domainEntity;
   }
@@ -26,7 +25,6 @@ export class BusinessLineMapper {
       domainEntity.defaultAgentCliToolId;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
-    persistenceEntity.deletedAt = domainEntity.deletedAt;
 
     return persistenceEntity;
   }

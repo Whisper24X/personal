@@ -25,7 +25,6 @@ export class BusinessLineMemberEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
-  @Index('IDX_business_line_member_business_line_id')
   @Column({ type: 'uuid', comment: '关联业务线ID' })
   businessLineId: string;
 
