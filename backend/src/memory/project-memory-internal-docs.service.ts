@@ -5,6 +5,7 @@ import { Project } from '../projects/domain/project';
 import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
 import { ProjectDocsService } from '../projects/project-docs.service';
 import { ProjectRepositoryWorkspaceService } from '../projects/project-repository-workspace.service';
+import { CANONICAL_MEMORY_MARKDOWN_FILES } from './memory-path-canonical.util';
 
 @Injectable()
 export class ProjectMemoryInternalDocsService {
@@ -18,6 +19,28 @@ export class ProjectMemoryInternalDocsService {
     const n = this.projectDocsService.normalizeProjectDocPath(relativePath);
     if (!n.startsWith('memory/')) {
       throw new BadRequestException('memory write only under docs/memory/');
+    }
+    const rest = n.slice('memory/'.length);
+    if (!rest || rest.includes('..')) {
+      throw new BadRequestException('invalid memory relative path');
+    }
+    if (rest.includes('/') || rest.includes(path.sep)) {
+      throw new BadRequestException(
+        'memory doc must be a single file directly under docs/memory/',
+      );
+    }
+    if (rest === '_routing.yaml') {
+      return n;
+    }
+    if (!rest.endsWith('.md')) {
+      throw new BadRequestException(
+        'memory doc must be *.md under memory/ or memory/_routing.yaml',
+      );
+    }
+    if (!CANONICAL_MEMORY_MARKDOWN_FILES.has(rest)) {
+      throw new BadRequestException(
+        `memory markdown file not allowed: ${rest}`,
+      );
     }
     return n;
   }

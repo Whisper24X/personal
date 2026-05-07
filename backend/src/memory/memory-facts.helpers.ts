@@ -1,17 +1,8 @@
-import type { MemoryFact, MemoryFactCategory } from './memory.types';
+import type { MemoryFact } from './memory.types';
 import type { MemoryRuntimeConfigSnapshot } from './memory-runtime.config';
+import { normalizeSuggestedMemoryMarkdownPath } from './memory-path-canonical.util';
 
-export function mapCategoryToMemoryPath(category: MemoryFactCategory): string {
-  const m: Record<MemoryFactCategory, string> = {
-    preference: 'memory/preferences.md',
-    convention: 'memory/conventions.md',
-    decision: 'memory/decisions.md',
-    incident: 'memory/incidents.md',
-    glossary: 'memory/glossary.md',
-    episodic: 'memory/decisions.md',
-  };
-  return m[category];
-}
+export { mapCategoryToMemoryPath } from './memory-path-canonical.util';
 
 export function normalizeExtractedFacts(
   raw: MemoryFact[],
@@ -31,9 +22,7 @@ export function normalizeExtractedFacts(
         ? `${f.text.slice(0, config.factMaxChars)}…`
         : f.text;
     const cat = f.category ?? 'convention';
-    const path = f.suggested_path?.startsWith('memory/')
-      ? f.suggested_path
-      : mapCategoryToMemoryPath(cat);
+    const path = normalizeSuggestedMemoryMarkdownPath(f.suggested_path, cat);
     withPath.push({
       ...f,
       text,

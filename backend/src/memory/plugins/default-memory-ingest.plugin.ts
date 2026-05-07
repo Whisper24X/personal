@@ -8,6 +8,7 @@ import { MemoryPromotionService } from '../memory-promotion.service';
 import { MemoryTranscriptService } from '../memory-transcript.service';
 import { ProjectMemoryInternalDocsService } from '../project-memory-internal-docs.service';
 import { normalizeExtractedFacts } from '../memory-facts.helpers';
+import { normalizeMemoryPatchPathsFromFacts } from '../memory-path-canonical.util';
 import type { HostCapabilities } from '../memory.types';
 import type { MemoryIngestPlugin } from '../memory.types';
 import type { MemoryFact } from '../memory.types';
@@ -26,6 +27,9 @@ const SEED_BY_PATH: Record<string, string> = {
 };
 
 const DEFAULT_MEMORY_DOC_SEED = `# \n\n## 团队沉淀\n\n`;
+
+const ALLOWED_MEMORY_PATH_HINT =
+  'memory/README.md | memory/preferences.md | memory/conventions.md | memory/decisions.md | memory/incidents.md | memory/glossary.md | memory/episodic.md';
 
 /** Exported for unit tests — coerces empty/whitespace reads to the path seed. */
 export function resolveMemoryMarkdownForPatch(
@@ -109,6 +113,12 @@ export class DefaultMemoryIngestPlugin implements MemoryIngestPlugin {
     let patches: MemoryPatch[] = [];
     try {
       patches = await this.buildPatches(caps, job, facts);
+      const { normalized, pathsCoercedCount } =
+        normalizeMemoryPatchPathsFromFacts(patches, facts);
+      patches = normalized;
+      for (let i = 0; i < pathsCoercedCount; i += 1) {
+        caps.metrics.increment('memory_patch_path_normalized_total');
+      }
     } catch (e) {
       caps.logger.error(
         `memory_llm_patches_fail ${e instanceof Error ? e.message : String(e)}`,
@@ -132,9 +142,7 @@ export class DefaultMemoryIngestPlugin implements MemoryIngestPlugin {
       return;
     }
 
-    const byPath = groupPatchesByPath(
-      patches.filter((p) => p.path.startsWith('memory/')),
-    );
+    const byPath = groupPatchesByPath(patches);
     for (const relPath of byPath.keys()) {
       await this.internalDocs.ensureFileExists(
         job.projectId,
@@ -142,6 +150,8 @@ export class DefaultMemoryIngestPlugin implements MemoryIngestPlugin {
         SEED_BY_PATH[relPath] ?? DEFAULT_MEMORY_DOC_SEED,
       );
     }
+
+    const pendingWrites = new Map<string, string>();
 
     for (const [relPath, plist] of byPath) {
       const raw = await caps.readDoc({
@@ -157,15 +167,21 @@ export class DefaultMemoryIngestPlugin implements MemoryIngestPlugin {
         );
         if (!ok && cfg.patchStrategy === 'all_or_nothing') {
           caps.metrics.increment('memory_patch_apply_errors_total');
+          caps.logger.warn(
+            `memory_ingest_all_or_nothing_abort path=${relPath} dedup=${patch.dedup_key}`,
+          );
           return;
         }
         current = next;
       }
-      const r = redactMemoryText(current);
+      pendingWrites.set(relPath, redactMemoryText(current));
+    }
+
+    for (const [relPath, content] of pendingWrites) {
       await caps.writeDoc({
         projectId: job.projectId,
         relativePath: relPath,
-        content: r,
+        content,
         mode: 'update',
       });
     }
@@ -185,7 +201,7 @@ export class DefaultMemoryIngestPlugin implements MemoryIngestPlugin {
       'Output a single JSON object: { "facts": [ ... ] } only.',
       'Each fact: category (preference|convention|decision|incident|glossary|episodic),',
       'text (short, Chinese), confidence 0-1, dedup_key (stable slug, ascii),',
-      'suggested_path under memory/*.md, optional suggested_heading.',
+      `suggested_path must be one of: ${ALLOWED_MEMORY_PATH_HINT} — use only these exact paths (single file under memory/, no subfolders); optional suggested_heading.`,
     ].join(' ');
     const user = JSON.stringify({ candidates });
     const res = await caps.completeJson({
@@ -202,9 +218,7 @@ export class DefaultMemoryIngestPlugin implements MemoryIngestPlugin {
     job: import('../memory.types').MemoryIngestionJob,
     facts: MemoryFact[],
   ): Promise<MemoryPatch[]> {
-    const paths = Array.from(
-      new Set(facts.map((f) => f.suggested_path)),
-    ).filter((p) => p.startsWith('memory/'));
+    const paths = Array.from(new Set(facts.map((f) => f.suggested_path)));
     const fileBits: string[] = [];
     for (const p of paths) {
       if (!SEED_BY_PATH[p]) {
@@ -223,9 +237,10 @@ export class DefaultMemoryIngestPlugin implements MemoryIngestPlugin {
     }
     const system = [
       'You format facts into markdown patches as JSON: { "patches": [ ... ] } only.',
-      'Each patch: path (memory/...md), heading_anchor (exact ## line or title),',
-      'op: add|replace|delete, body_md (markdown, short), dedup_key (same as fact).',
-      'Use op=add to append a bullet or paragraph under the section.',
+      `Each patch path must be one of: ${ALLOWED_MEMORY_PATH_HINT} — flat paths only.`,
+      'heading_anchor MUST be exactly the line: ## 团队沉淀 (matches the seed files; do not use the file H1 title as anchor).',
+      'Fields: heading_anchor (exact ## 团队沉淀), op: add|replace|delete, body_md (markdown, short), dedup_key (same as fact).',
+      'Use op=add to append a bullet or paragraph under that section.',
     ].join(' ');
     const user = [
       `taskId=${job.taskId}`,

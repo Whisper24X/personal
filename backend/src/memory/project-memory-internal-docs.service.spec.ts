@@ -90,5 +90,19 @@ describe('ProjectMemoryInternalDocsService', () => {
       );
       await expect(fs.readFile(abs, 'utf-8')).resolves.toBe(existing);
     });
+
+    it('should reject filenames outside the canonical whitelist', async () => {
+      const seed = '# seed\n\n## 团队沉淀\n\n';
+      await expect(
+        service.ensureFileExists('proj-1', 'memory/custom.md', seed),
+      ).rejects.toThrow('not allowed');
+    });
+
+    it('should reject nested paths under memory', async () => {
+      const seed = '# seed\n\n## 团队沉淀\n\n';
+      await expect(
+        service.ensureFileExists('proj-1', 'memory/episodic/foo.md', seed),
+      ).rejects.toThrow('single file');
+    });
   });
 });
