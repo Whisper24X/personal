@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
@@ -11,6 +16,10 @@ import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repo
 import { TaskLogService } from './task-log.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 import { TaskGoalService } from './task-goal.service';
+import {
+  MEMORY_INGEST_ENQUEUE,
+  type MemoryIngestEnqueuePort,
+} from '../contracts/memory-ingest-enqueue.port';
 
 @Injectable()
 export class TaskStatusService {
@@ -21,6 +30,9 @@ export class TaskStatusService {
     private readonly taskLogService: TaskLogService,
     private readonly containerOrchestration: ContainerOrchestrationService,
     private readonly taskGoalService: TaskGoalService,
+    @Optional()
+    @Inject(MEMORY_INGEST_ENQUEUE)
+    private readonly memoryIngestEnqueue?: MemoryIngestEnqueuePort,
   ) {}
 
   async recalculateTaskStatus(taskId: string): Promise<void> {
@@ -79,6 +91,22 @@ export class TaskStatusService {
       status,
       finishedAt: status === TaskStatus.done ? new Date() : null,
     });
+
+    if (
+      status === TaskStatus.done &&
+      previousStatus !== TaskStatus.done &&
+      this.memoryIngestEnqueue
+    ) {
+      const t = await this.taskRepository.findById(task.id);
+      if (t) {
+        const key = `memory:ingest:v1:${t.id}:${(t.finishedAt ?? new Date()).toISOString()}`;
+        void this.memoryIngestEnqueue.enqueueAfterTaskDone({
+          projectId: t.projectId,
+          taskId: t.id,
+          idempotencyKey: key,
+        });
+      }
+    }
 
     await this.taskGoalService.syncPlanSubTaskStatusFromTask(task.id, status);
 

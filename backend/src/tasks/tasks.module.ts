@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AgentExecutionModule } from '../agent-execution/agent-execution.module';
 import { ProjectWorkspaceModule } from '../project-workspace/project-workspace.module';
@@ -35,15 +35,17 @@ import { TaskEnvironmentService } from './application/task-environment.service';
 import { RelationalGoalPersistenceModule } from '../goals/infrastructure/persistence/relational/relational-persistence.module';
 import { TaskGoalService } from './application/task-goal.service';
 import { TaskProvisioningService } from './application/task-provisioning.service';
+import { MemoryModule } from '../memory/memory.module';
 
 @Module({
   imports: [
-    AgentExecutionModule,
+    forwardRef(() => MemoryModule),
+    forwardRef(() => AgentExecutionModule),
     ProjectWorkspaceModule,
     RelationalTaskPersistenceModule,
     RelationalGoalPersistenceModule,
     ContainersModule,
-    ProjectsModule,
+    forwardRef(() => ProjectsModule),
     WorkflowTemplatesModule,
     NotificationsModule,
     RelationalBusinessLinePersistenceModule,
@@ -81,6 +83,7 @@ import { TaskProvisioningService } from './application/task-provisioning.service
     TasksService,
     TaskRuntimeService,
     TaskProvisioningService,
+    TaskOutputService,
     RelationalTaskPersistenceModule,
   ],
 })
