@@ -79,7 +79,7 @@ describe('LocalizedHttpExceptionFilter', () => {
     moduleRef = await Test.createTestingModule({
       imports: [
         I18nModule.forRoot({
-          fallbackLanguage: 'en',
+          fallbackLanguage: 'zh',
           loaderOptions: { path: path.join(__dirname, '..', 'i18n') },
           resolvers: [new HeaderResolver(['x-custom-lang'])],
         }),

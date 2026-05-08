@@ -1,10 +1,11 @@
 import { HTTP_STATUS } from './status'
 import { HttpError, extractHttpErrorMessage } from './error'
+import { defaultApiLanguage } from '@shared/locales'
 import { STORAGE_KEYS } from '@shared/types/common/storage'
 import { dispatchAuthSessionEvent } from '@shared/utils/auth-session-bridge'
 
 export const API_LANGUAGE_HEADER = 'x-custom-lang'
-export const API_LANGUAGE = 'zh'
+export const API_LANGUAGE = defaultApiLanguage
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
