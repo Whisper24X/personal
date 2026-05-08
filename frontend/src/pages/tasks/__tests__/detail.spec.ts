@@ -1636,7 +1636,7 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).not.toContain('Execution')
   })
 
-  it('keeps reply box but hides header actions', async () => {
+  it('keeps reply box disabled before task starts and hides header actions', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -1657,7 +1657,10 @@ describe('TaskDetailView toasts', () => {
     await flushPromises()
 
     expect(wrapper.find('textarea').exists()).toBe(true)
-    expect(wrapper.find('textarea').attributes('placeholder')).toBe('补充指令或继续提问...')
+    expect(wrapper.find('textarea').attributes('placeholder')).toBe(
+      '任务尚未开始，请先执行后再回复...',
+    )
+    expect(wrapper.find('textarea').attributes('disabled')).toBeDefined()
     expect(wrapper.find('button[aria-label="请输入回复后发送"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('Reply')
     expect(wrapper.text()).not.toContain('停止执行')
