@@ -265,14 +265,12 @@ export class TaskEnvironmentService {
       });
     }
 
-    if (container?.containerId) {
+    if (container?.containerId && container.paused) {
       return this.buildDto({
-        status: TaskEnvironmentStatus.starting,
-        stage:
-          latestEnvironmentEvent?.stage === TaskEnvironmentStage.slotClaiming
-            ? TaskEnvironmentStage.slotClaiming
-            : TaskEnvironmentStage.containerStarting,
-        message: latestEnvironmentEvent?.message ?? '执行环境启动中',
+        status: TaskEnvironmentStatus.notStarted,
+        stage: TaskEnvironmentStage.workspacePreparing,
+        message:
+          '执行容器当前为暂停状态，请点击「启动环境」恢复运行（无需重新创建容器）',
         updatedAt:
           latestEnvironmentEvent?.createdAt ?? task.updatedAt ?? new Date(),
         runtime: {
@@ -280,8 +278,25 @@ export class TaskEnvironmentService {
           containerId: container.containerId,
         },
         preview: this.buildPreview({
-          environmentStatus: TaskEnvironmentStatus.starting,
-          previewUrl: container.accessMetadata?.previewUrl ?? null,
+          environmentStatus: TaskEnvironmentStatus.notStarted,
+          previewEnabled,
+        }),
+      });
+    }
+
+    if (container?.containerId) {
+      return this.buildDto({
+        status: TaskEnvironmentStatus.notStarted,
+        stage: TaskEnvironmentStage.workspacePreparing,
+        message: '检测到执行容器未运行，请点击「启动环境」重新拉起执行环境',
+        updatedAt:
+          latestEnvironmentEvent?.createdAt ?? task.updatedAt ?? new Date(),
+        runtime: {
+          gitWorktree: task.gitWorktree ?? null,
+          containerId: container.containerId,
+        },
+        preview: this.buildPreview({
+          environmentStatus: TaskEnvironmentStatus.notStarted,
           previewEnabled,
         }),
       });

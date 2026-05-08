@@ -536,6 +536,193 @@ describe('ContainerOrchestrationService', () => {
     );
   });
 
+  it('should unpause a paused runner container and reuse it when the image matches', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue('linux/amd64'),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getPreviewBridgeScriptUrl: jest.fn().mockReturnValue(null),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const pausedInspection = {
+      id: 'container-paused',
+      status: 'paused',
+      running: false,
+      paused: true,
+      image: 'ainative/runner:fresh',
+      platform: 'linux/amd64',
+      publishedPorts: [
+        {
+          hostIp: '0.0.0.0',
+          hostPort: 38080,
+          containerPort: 4173,
+        },
+      ],
+    };
+    const runningInspection = {
+      ...pausedInspection,
+      status: 'running',
+      running: true,
+      paused: false,
+    };
+    const isolatedRunner = {
+      inspect: jest
+        .fn()
+        .mockResolvedValueOnce(pausedInspection)
+        .mockResolvedValueOnce(runningInspection),
+      unpause: jest.fn().mockResolvedValue(undefined),
+      remove: jest.fn(),
+      run: jest.fn(),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
+    };
+    const slotRepository = {
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      findByTaskId: jest.fn().mockResolvedValue(null),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+      {} as never,
+      createRunnerOrchestration() as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    const result = await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress) as never,
+      project: createProject() as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(isolatedRunner.unpause).toHaveBeenCalledWith('ainative-task-task-1');
+    expect(isolatedRunner.inspect).toHaveBeenCalledTimes(2);
+    expect(isolatedRunner.run).not.toHaveBeenCalled();
+    expect(result.containerId).toBe('container-paused');
+  });
+
+  it('should remove a non-running runner container before recreating it', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue('linux/amd64'),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('192.168.50.8'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(4173),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getPreviewBridgeScriptUrl: jest.fn().mockReturnValue(null),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue({
+        id: 'container-exited',
+        status: 'exited',
+        running: false,
+        paused: false,
+        image: 'ainative/runner:fresh',
+        platform: 'linux/amd64',
+        publishedPorts: [],
+      }),
+      remove: jest.fn().mockResolvedValue(undefined),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-new',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 4173,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:fresh'),
+    };
+    const slotRepository = {
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+      {} as never,
+      createRunnerOrchestration() as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    const result = await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress) as never,
+      project: createProject() as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(isolatedRunner.remove).toHaveBeenCalledWith('ainative-task-task-1');
+    expect(isolatedRunner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        containerName: 'ainative-task-task-1',
+        image: 'ainative/runner:fresh',
+      }),
+    );
+    expect(result.containerId).toBe('container-new');
+  });
+
   it('should replace a running host-network container and persist derived preview metadata', async () => {
     const config = {
       isDockerMode: jest.fn().mockReturnValue(true),

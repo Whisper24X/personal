@@ -87,7 +87,19 @@ export class ContainerOrchestrationService
     const startTimeoutMs = this.config.getRunnerStartTimeoutMs(project);
     const runnerImage =
       await this.projectRunnerImageService.resolveRunnerImage(project);
-    const existing = await this.isolatedRunner.inspect(containerName);
+    let existing = await this.isolatedRunner.inspect(containerName);
+    if (existing?.paused) {
+      this.logger.log(
+        `runner_container_unpause ${JSON.stringify({
+          taskId: task.id,
+          projectId: task.projectId,
+          containerName,
+          containerId: existing.id,
+        })}`,
+      );
+      await this.isolatedRunner.unpause(containerName);
+      existing = await this.isolatedRunner.inspect(containerName);
+    }
     this.logger.log(
       `ensure_runner_container ${JSON.stringify({
         taskId: task.id,
@@ -208,8 +220,11 @@ export class ContainerOrchestrationService
             projectId: task.projectId,
             containerName,
             existing,
+            action: 'remove_before_recreate',
           })}`,
         );
+        await this.isolatedRunner.remove(containerName);
+        existing = null;
       } else if (existing?.running) {
         this.logger.warn(
           `runner_container_replaced ${JSON.stringify({
@@ -291,6 +306,7 @@ export class ContainerOrchestrationService
   }): Promise<{
     containerId: string;
     running: boolean;
+    paused: boolean;
     accessMetadata: SlotAccessMetadata | null;
   } | null> {
     const inspection = await this.isolatedRunner.inspect(
@@ -323,6 +339,7 @@ export class ContainerOrchestrationService
     return {
       containerId: inspection.id,
       running: inspection.running,
+      paused: inspection.paused,
       accessMetadata: this.buildAccessMetadata({
         project: params.project,
         runtimeExposure,

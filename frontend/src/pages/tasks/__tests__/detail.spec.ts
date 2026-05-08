@@ -253,6 +253,48 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.findComponent({ name: 'TaskDetailExecutionPanel' }).exists()).toBe(false)
   })
 
+  it('does not show the start button spinner for a persisted starting snapshot', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'starting',
+      stage: 'container_starting',
+      stageLabel: '启动执行容器',
+      message: '执行环境启动中',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: {
+        containerId: 'container-1',
+      },
+      preview: {
+        status: 'provisioning',
+        url: null,
+      },
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+        {
+          key: 'container_starting',
+          label: '启动执行容器',
+          status: 'in_progress',
+          message: '执行环境启动中',
+        },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'TaskEnvironmentGate' }).exists()).toBe(true)
+    expect(wrapper.find('.environment-button-spinner').exists()).toBe(false)
+  })
+
   it('opens delete dialog from environment gate and removes the task', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

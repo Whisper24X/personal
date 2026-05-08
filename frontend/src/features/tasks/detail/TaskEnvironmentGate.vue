@@ -49,6 +49,7 @@ const statusClass = computed(() => {
 })
 
 const isStarting = computed(() => props.environment?.status === 'starting')
+const isStartActionLoading = computed(() => props.actionLoading)
 const shouldShowStatusBadge = computed(() => props.environment?.status !== 'failed')
 const shouldShowSteps = computed(() => {
   return props.environment?.status === 'starting' || props.environment?.status === 'failed'
@@ -197,7 +198,7 @@ const primaryActionLabel = computed(() => {
                 :disabled="!props.canStart || props.actionLoading"
                 @click="emit('start')"
               >
-                <span v-if="isStarting" class="environment-button-spinner mr-2" />
+                <span v-if="isStartActionLoading" class="environment-button-spinner mr-2" />
                 {{ primaryActionLabel }}
               </button>
               <button
@@ -324,7 +325,14 @@ const primaryActionLabel = computed(() => {
                     启动当前任务的独立执行容器
                   </div>
                   <p class="text-sm leading-7 text-muted-foreground sm:text-[15px]">
-                    主操作固定在页面顶部。点击启动后，当前区域会直接切换成实时启动舞台，展示任务工作区准备、资源分配、容器拉起和环境就绪过程。
+                    <template
+                      v-if="props.environment?.status === 'not_started' && props.environment?.message"
+                    >
+                      {{ props.environment.message }}
+                    </template>
+                    <template v-else>
+                      主操作固定在页面顶部。点击启动后，当前区域会直接切换成实时启动舞台，展示任务工作区准备、资源分配、容器拉起和环境就绪过程。
+                    </template>
                   </p>
                 </div>
 

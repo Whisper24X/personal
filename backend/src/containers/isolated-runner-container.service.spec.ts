@@ -206,4 +206,49 @@ describe('IsolatedRunnerContainerService', () => {
       }),
     );
   });
+
+  it('should report docker paused containers as not running', async () => {
+    const service = new IsolatedRunnerContainerService();
+    (service as any).execDockerCapture = jest
+      .fn()
+      .mockImplementation((args: string[]) => {
+        if (args[0] === 'inspect') {
+          return Promise.resolve(
+            JSON.stringify({
+              Id: 'container-paused',
+              Image: 'sha256:image-id',
+              State: {
+                Status: 'paused',
+                Running: true,
+                Paused: true,
+              },
+              Config: {
+                Image: 'ainative/runner:latest',
+              },
+              NetworkSettings: {
+                Ports: {},
+              },
+            }),
+          );
+        }
+
+        if (args[0] === 'image') {
+          return Promise.resolve('linux/amd64\n');
+        }
+
+        return Promise.reject(
+          new Error(`unexpected docker args: ${args.join(' ')}`),
+        );
+      });
+
+    await expect(service.inspect('ainative-task-task-1')).resolves.toEqual(
+      expect.objectContaining({
+        id: 'container-paused',
+        status: 'paused',
+        running: false,
+        paused: true,
+        image: 'ainative/runner:latest',
+      }),
+    );
+  });
 });

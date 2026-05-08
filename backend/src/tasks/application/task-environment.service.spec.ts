@@ -155,6 +155,7 @@ describe('TaskEnvironmentService', () => {
       .mockResolvedValueOnce({
         containerId: 'container-1',
         running: true,
+        paused: false,
         accessMetadata: null,
       });
     projectExecutionSlotRepository.claimSlotWithinLimit.mockResolvedValue(
@@ -271,6 +272,46 @@ describe('TaskEnvironmentService', () => {
     expect(result.status).toBe(TaskEnvironmentStatus.stopped);
     expect(result.stage).toBe(TaskEnvironmentStage.stopped);
     expect(result.message).toBe('执行环境已释放');
+  });
+
+  it('should report not_started when the runner container exists but is paused', async () => {
+    const { service, task, containerOrchestration, taskLogRepository } =
+      createService();
+    const currentUser = createCurrentUser();
+
+    taskLogRepository.findLatestByTaskId.mockResolvedValue([]);
+    containerOrchestration.inspectTaskContainer.mockResolvedValue({
+      containerId: 'cid-paused',
+      running: false,
+      paused: true,
+      accessMetadata: null,
+    });
+
+    const result = await service.getEnvironment(task.id, currentUser as never);
+
+    expect(result.status).toBe(TaskEnvironmentStatus.notStarted);
+    expect(result.message).toContain('暂停');
+    expect(result.runtime?.containerId).toBe('cid-paused');
+  });
+
+  it('should report not_started when the runner container exists but is not running', async () => {
+    const { service, task, containerOrchestration, taskLogRepository } =
+      createService();
+    const currentUser = createCurrentUser();
+
+    taskLogRepository.findLatestByTaskId.mockResolvedValue([]);
+    containerOrchestration.inspectTaskContainer.mockResolvedValue({
+      containerId: 'cid-exited',
+      running: false,
+      paused: false,
+      accessMetadata: null,
+    });
+
+    const result = await service.getEnvironment(task.id, currentUser as never);
+
+    expect(result.status).toBe(TaskEnvironmentStatus.notStarted);
+    expect(result.message).toContain('未运行');
+    expect(result.runtime?.containerId).toBe('cid-exited');
   });
 
   it('should allow environment termination when task status is in_progress but no node is running', async () => {

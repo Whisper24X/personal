@@ -10,6 +10,7 @@ export type ContainerInspectResult = {
   id: string;
   status: string;
   running: boolean;
+  paused: boolean;
   image: string | null;
   platform: string | null;
   publishedPorts: PublishedPortMapping[];
@@ -225,6 +226,10 @@ export class IsolatedRunnerContainerService {
     await this.removeManagedVolumesByContainerName(containerName);
   }
 
+  async unpause(containerRef: string): Promise<void> {
+    await this.execDocker(['unpause', containerRef]);
+  }
+
   async inspect(containerName: string): Promise<ContainerInspectResult | null> {
     try {
       const json = await this.execDockerCapture([
@@ -236,7 +241,7 @@ export class IsolatedRunnerContainerService {
       const parsed = JSON.parse(json) as {
         Id?: string;
         Image?: string;
-        State?: { Status?: string; Running?: boolean };
+        State?: { Status?: string; Running?: boolean; Paused?: boolean };
         Config?: { Image?: string };
         NetworkSettings?: {
           Ports?: Record<
@@ -246,8 +251,9 @@ export class IsolatedRunnerContainerService {
         };
       };
       const id = parsed.Id ?? '';
-      const running = parsed.State?.Running === true;
       const status = parsed.State?.Status ?? 'unknown';
+      const paused = parsed.State?.Paused === true || status === 'paused';
+      const running = parsed.State?.Running === true && !paused;
       const imageId = parsed.Image?.trim() ?? '';
       if (!id) {
         return null;
@@ -256,6 +262,7 @@ export class IsolatedRunnerContainerService {
         id,
         status,
         running,
+        paused,
         image: parsed.Config?.Image?.trim() || null,
         platform: await this.resolveImagePlatform(imageId),
         publishedPorts: this.parsePublishedPorts(parsed.NetworkSettings?.Ports),
