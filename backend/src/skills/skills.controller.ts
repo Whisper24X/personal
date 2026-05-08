@@ -43,6 +43,7 @@ import { SkillContentDto } from './dto/skill-content.dto';
 import { CopyBusinessLineSkillDto } from './dto/copy-business-line-skill.dto';
 import { UploadProjectLocalSkillDto } from './dto/upload-project-local-skill.dto';
 import { ProjectLocalSkillResultDto } from './dto/project-local-skill-result.dto';
+import { PROJECT_SKILL_PROVIDER_VALUES } from '../utils/local-agent-catalog';
 
 @ApiTags('Skills')
 @ApiBearerAuth()
@@ -80,7 +81,7 @@ export class SkillsController {
         },
         provider: {
           type: 'string',
-          enum: ['codex', 'cursor', 'curso', 'gemini', 'opencode', 'claude'],
+          enum: [...PROJECT_SKILL_PROVIDER_VALUES],
         },
         file: {
           type: 'string',

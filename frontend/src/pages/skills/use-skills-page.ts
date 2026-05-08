@@ -139,6 +139,10 @@ const resolveProviderKey = (item: Skill) => {
     return 'claude'
   }
 
+  if (sourcePath.includes('.agents/skills')) {
+    return 'agents'
+  }
+
   return 'project'
 }
 

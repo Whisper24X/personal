@@ -5,6 +5,7 @@ import type { ProjectSkillProvider } from '@/types/api/skills'
 const ALLOWED_EXTENSIONS = new Set(['.zip'])
 
 const PROJECT_SKILL_PROVIDER_ORDER: ProjectSkillProvider[] = [
+  'agents',
   'cursor',
   'gemini',
   'opencode',
@@ -12,6 +13,7 @@ const PROJECT_SKILL_PROVIDER_ORDER: ProjectSkillProvider[] = [
   'codex',
 ]
 const PROJECT_SKILL_PROVIDER_LABELS: Record<string, string> = {
+  agents: '.agents/skills',
   codex: 'Codex',
   cursor: 'Cursor',
   curso: 'Cursor',
@@ -19,6 +21,9 @@ const PROJECT_SKILL_PROVIDER_LABELS: Record<string, string> = {
   opencode: 'OpenCode',
   claude: 'Claude Code',
 }
+
+/** 打开弹窗 / 重置 /「取消全选」时的默认勾选（与列表顺序：先有 .agents/skills，再有 Claude Code） */
+const DEFAULT_UPLOAD_SKILL_PROVIDERS: ProjectSkillProvider[] = ['agents', 'claude']
 
 const props = withDefaults(
   defineProps<{
@@ -38,13 +43,13 @@ const emit = defineEmits<{
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
-const selectedProviders = ref<ProjectSkillProvider[]>(['cursor'])
+const selectedProviders = ref<ProjectSkillProvider[]>([...DEFAULT_UPLOAD_SKILL_PROVIDERS])
 const dragActive = ref(false)
 const validationMessage = ref('')
 
 const resetState = () => {
   selectedFile.value = null
-  selectedProviders.value = ['cursor']
+  selectedProviders.value = [...DEFAULT_UPLOAD_SKILL_PROVIDERS]
   dragActive.value = false
   validationMessage.value = ''
   if (fileInputRef.value) {
@@ -57,7 +62,7 @@ const selectAllProviders = () => {
 }
 
 const clearAllProviders = () => {
-  selectedProviders.value = ['cursor']
+  selectedProviders.value = [...DEFAULT_UPLOAD_SKILL_PROVIDERS]
 }
 
 const close = () => {

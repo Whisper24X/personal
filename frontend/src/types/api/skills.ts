@@ -48,6 +48,7 @@ export type SkillFile = {
 }
 
 export type ProjectSkillProvider =
+  | 'agents'
   | 'codex'
   | 'cursor'
   | 'curso'

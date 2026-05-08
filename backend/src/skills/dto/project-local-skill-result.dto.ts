@@ -1,4 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  PROJECT_SKILL_PROVIDER_VALUES,
+  type ProjectSkillProvider,
+} from '../../utils/local-agent-catalog';
 
 export class ProjectLocalSkillResultDto {
   @ApiProperty({ type: String })
@@ -12,7 +16,7 @@ export class ProjectLocalSkillResultDto {
 
   @ApiProperty({
     type: String,
-    enum: ['codex', 'cursor', 'curso', 'gemini', 'opencode', 'claude'],
+    enum: PROJECT_SKILL_PROVIDER_VALUES,
   })
-  provider: 'codex' | 'cursor' | 'curso' | 'gemini' | 'opencode' | 'claude';
+  provider: ProjectSkillProvider;
 }

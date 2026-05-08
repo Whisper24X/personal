@@ -36,12 +36,24 @@ export type LocalMcpItem = {
 };
 
 export type ProjectSkillProvider =
+  | 'agents'
   | 'codex'
   | 'cursor'
   | 'curso'
   | 'gemini'
   | 'opencode'
   | 'claude';
+
+/** Values accepted by Skills API (`provider` on copy/upload) and persisted on results; keep in sync with `ProjectSkillProvider`. */
+export const PROJECT_SKILL_PROVIDER_VALUES: readonly ProjectSkillProvider[] = [
+  'agents',
+  'cursor',
+  'gemini',
+  'opencode',
+  'claude',
+  'codex',
+  'curso',
+];
 export type ProjectMcpProvider =
   | 'cursor'
   | 'gemini'
@@ -50,6 +62,7 @@ export type ProjectMcpProvider =
   | 'codex';
 
 const PROJECT_SKILL_ROOTS = [
+  '.agents',
   '.codex',
   '.cursor',
   '.curso',
@@ -423,6 +436,7 @@ const isSupportedProjectSkillProvider = (
   provider: string,
 ): provider is ProjectSkillProvider => {
   return (
+    provider === 'agents' ||
     provider === 'codex' ||
     provider === 'cursor' ||
     provider === 'curso' ||
@@ -450,6 +464,7 @@ export const resolveProjectSkillRootForWrite = async (
     normalizeText(preferredProvider)?.toLowerCase() ?? '';
   const existingProviders: ProjectSkillProvider[] = [];
   const providerOrder: ProjectSkillProvider[] = [
+    'agents',
     'cursor',
     'gemini',
     'opencode',
