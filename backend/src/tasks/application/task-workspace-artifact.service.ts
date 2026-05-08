@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { spawn } from 'child_process';
@@ -20,6 +21,11 @@ import {
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskAccessService } from './task-access.service';
 import { TaskRuntimeService } from '../task-runtime.service';
+import {
+  resolveV2Convention,
+  validateNodeArtifacts,
+  type ArtifactValidationResult,
+} from './v2-workflow-node-conventions';
 
 type GitExecutionResult = {
   success: boolean;
@@ -61,6 +67,7 @@ type ResolvedArtifactContext = {
 
 @Injectable()
 export class TaskWorkspaceArtifactService {
+  private readonly logger = new Logger(TaskWorkspaceArtifactService.name);
   private readonly defaultGitTimeoutMs = 90_000;
   private readonly maxTextPreviewBytes = 256 * 1024;
   private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
@@ -259,6 +266,37 @@ export class TaskWorkspaceArtifactService {
     node: TaskNode | null;
     worktreePath: string;
   }): Promise<boolean> {
+    const result = await this.validateArtifactsForNode(input);
+    return result.valid;
+  }
+
+  async validateArtifactsForNode(input: {
+    task: Task;
+    node: TaskNode | null;
+    worktreePath: string;
+  }): Promise<ArtifactValidationResult> {
+    const nodeName = input.node?.name?.trim() ?? '';
+    const gitBranch = input.task.gitBranch?.trim() ?? '';
+    const convention = nodeName ? resolveV2Convention(nodeName) : undefined;
+
+    if (convention && gitBranch) {
+      const result = await validateNodeArtifacts(
+        convention,
+        input.worktreePath,
+        gitBranch,
+      );
+      this.logger.log(
+        `v2_artifact_validation ${JSON.stringify({
+          nodeName,
+          gitBranch,
+          valid: result.valid,
+          missing: result.missingArtifacts,
+          thin: result.thinArtifacts,
+        })}`,
+      );
+      return result;
+    }
+
     const source = this.resolveArtifactSource({
       task: input.task,
       targetNode: input.node,
@@ -268,7 +306,13 @@ export class TaskWorkspaceArtifactService {
       source,
     });
 
-    return files.length > 0;
+    return {
+      mode: 'legacy-git-diff',
+      valid: files.length > 0,
+      artifacts: [],
+      missingArtifacts: [],
+      thinArtifacts: [],
+    };
   }
 
   private async resolveTaskWorkspaceContext(

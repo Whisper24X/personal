@@ -21,6 +21,10 @@ import { AgentExecutionConfig } from './agent-execution.types';
 import { parseRunnerWorkingSubdirectoryFromConfigJson } from './parse-runner-working-subdirectory';
 import { rewriteRunnerWorktreeAbsolutePaths } from './runner-platform-mcp-augmentation';
 import { computeRunnerContainerCwd } from './runner-container-cwd';
+import {
+  resolveV2Convention,
+  buildDependencyStatusReport,
+} from '../tasks/application/v2-workflow-node-conventions';
 
 type AgentAdapter = AgentCliAdapterId;
 type RunnerConfigInput = AgentCliRunnerConfigInput;
@@ -226,6 +230,7 @@ export class AgentExecutionConfigResolverService {
       'adapter' | 'agentToolConfigId' | 'agentToolConfigName'
     >,
     runtimeContext?: PromptTemplateRuntimeContext,
+    dependencyStatusReportText?: string,
   ): string {
     const input =
       node.input && typeof node.input === 'object'
@@ -271,16 +276,60 @@ export class AgentExecutionConfigResolverService {
         })
       : '';
 
+    const depReport = dependencyStatusReportText?.trim() ?? '';
+
     if (
       renderedPendingUserMessage &&
       this.normalizeOptionalString(node.agentCliSessionId)
     ) {
-      return renderedPendingUserMessage;
+      return [depReport, renderedPendingUserMessage]
+        .filter(Boolean)
+        .join('\n\n');
     }
 
-    return [renderedNodePrompt, renderedPendingUserMessage]
+    return [renderedNodePrompt, depReport, renderedPendingUserMessage]
       .filter(Boolean)
       .join('\n\n');
+  }
+
+  async buildDependencyStatusReportForNode(
+    task: Task,
+    node: TaskNode,
+    runtimeContext?: PromptTemplateRuntimeContext,
+  ): Promise<string> {
+    const nodeName = node.name?.trim() ?? '';
+    const convention = nodeName ? resolveV2Convention(nodeName) : undefined;
+    if (!convention || convention.dependencies.length === 0) {
+      return '';
+    }
+
+    const gitBranch = task.gitBranch?.trim() ?? '';
+    if (!gitBranch) {
+      return '';
+    }
+
+    const worktreePath =
+      this.normalizeOptionalString(runtimeContext?.gitWorktreePath) ?? '';
+    if (!worktreePath) {
+      return '';
+    }
+
+    try {
+      const report = await buildDependencyStatusReport(
+        convention,
+        worktreePath,
+        gitBranch,
+      );
+      return report.reportText;
+    } catch (error) {
+      this.logger.warn(
+        `dependency_status_report_failed ${JSON.stringify({
+          nodeName,
+          error: error instanceof Error ? error.message : 'unknown',
+        })}`,
+      );
+      return '';
+    }
   }
 
   extractAgentSessionId(content: string): string | null {

@@ -33,6 +33,7 @@ import { TaskStatusService } from './task-status.service';
 import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 import { TaskWorkspaceArtifactService } from './task-workspace-artifact.service';
+import type { ArtifactValidationResult } from './v2-workflow-node-conventions';
 
 @Injectable()
 export class TaskNodeExecutionService {
@@ -78,7 +79,7 @@ export class TaskNodeExecutionService {
     @Inject(TaskWorkspaceArtifactService)
     private readonly taskWorkspaceArtifactService?: Pick<
       TaskWorkspaceArtifactService,
-      'hasArtifactsForNode'
+      'hasArtifactsForNode' | 'validateArtifactsForNode'
     >,
     @Optional()
     private readonly runnerEphemeralMcpService?: RunnerEphemeralMcpService,
@@ -489,6 +490,14 @@ export class TaskNodeExecutionService {
           loopJson: loopResult.loopJson,
           pendingApproval: loopResult.pendingApproval,
           pendingArtifact: loopResult.pendingArtifact,
+          ...(loopResult.artifactValidation
+            ? {
+                artifactValidationMode: loopResult.artifactValidation.mode,
+                missingArtifacts:
+                  loopResult.artifactValidation.missingArtifacts,
+                thinArtifacts: loopResult.artifactValidation.thinArtifacts,
+              }
+            : {}),
           earlyExitCompleted: loopResult.earlyExitCompleted,
           earlyExitReason: loopResult.earlyExitReason,
           earlyExitSourceFile: loopResult.earlyExitSourceFile,
@@ -827,6 +836,7 @@ export class TaskNodeExecutionService {
     queuedNextLoop: boolean;
     pendingApproval: boolean;
     pendingArtifact: boolean;
+    artifactValidation: ArtifactValidationResult | null;
     earlyExitCompleted: boolean;
     earlyExitReason: string | null;
     earlyExitSourceFile: string | null;
@@ -839,21 +849,28 @@ export class TaskNodeExecutionService {
       loopCount: Math.max(currentLoop.loopCount + 1, 1),
       maxLoops: currentLoop.maxLoops,
     };
-    // 下一轮是否排队：默认按次数控制；若 marker 判定完成则提前退出
     const queuedByLoopCount = nextLoopJson.loopCount < nextLoopJson.maxLoops;
     const queuedNextLoop =
       queuedByLoopCount && !(earlyExitDecision?.completed ?? false);
     const pendingApproval =
       !queuedNextLoop && this.taskConfigResolver.readNodeRequiresApproval(node);
-    const pendingArtifact =
+
+    let pendingArtifact = false;
+    let artifactValidation: ArtifactValidationResult | null = null;
+
+    if (
       !queuedNextLoop &&
       !pendingApproval &&
-      (this.taskConfigResolver.readNodeRequiresArtifact?.(node) ?? false) &&
-      !(await this.hasArtifactsForNode({
+      (this.taskConfigResolver.readNodeRequiresArtifact?.(node) ?? false)
+    ) {
+      artifactValidation = await this.validateArtifactsForNode({
         task,
         node,
         worktreePath: artifactWorktreePath ?? null,
-      }));
+      });
+      pendingArtifact = !artifactValidation.valid;
+    }
+
     const status = queuedNextLoop
       ? TaskNodeStatus.todo
       : pendingApproval || pendingArtifact
@@ -903,13 +920,14 @@ export class TaskNodeExecutionService {
       queuedNextLoop,
       pendingApproval,
       pendingArtifact,
+      artifactValidation,
       earlyExitCompleted: earlyExitDecision?.completed ?? false,
       earlyExitReason: earlyExitDecision?.reason ?? null,
       earlyExitSourceFile: earlyExitDecision?.sourceFile ?? null,
     };
   }
 
-  private async hasArtifactsForNode({
+  private async validateArtifactsForNode({
     task,
     node,
     worktreePath,
@@ -917,16 +935,38 @@ export class TaskNodeExecutionService {
     task: Task;
     node: TaskNode;
     worktreePath: string | null;
-  }): Promise<boolean> {
+  }): Promise<ArtifactValidationResult> {
     if (!worktreePath || !this.taskWorkspaceArtifactService) {
-      return false;
+      return {
+        mode: 'legacy-git-diff',
+        valid: false,
+        artifacts: [],
+        missingArtifacts: [],
+        thinArtifacts: [],
+      };
     }
 
-    return this.taskWorkspaceArtifactService.hasArtifactsForNode({
-      task,
-      node,
-      worktreePath,
-    });
+    if (this.taskWorkspaceArtifactService.validateArtifactsForNode) {
+      return this.taskWorkspaceArtifactService.validateArtifactsForNode({
+        task,
+        node,
+        worktreePath,
+      });
+    }
+
+    const hasArtifacts =
+      await this.taskWorkspaceArtifactService.hasArtifactsForNode({
+        task,
+        node,
+        worktreePath,
+      });
+    return {
+      mode: 'legacy-git-diff',
+      valid: hasArtifacts,
+      artifacts: [],
+      missingArtifacts: [],
+      thinArtifacts: [],
+    };
   }
 
   private async resolveEarlyExitDecision({
