@@ -15,7 +15,7 @@ const TEMPLATE_DESCRIPTION =
 const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   {
     nodeOrder: 1,
-    name: 'Brainstorm',
+    name: '需求澄清',
     type: WorkflowNodeType.agent,
     requiresApproval: true,
     requiresArtifact: true,
@@ -50,7 +50,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 2,
-    name: 'WriteMRD',
+    name: 'MRD文档',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
     requiresArtifact: true,
@@ -77,7 +77,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 3,
-    name: 'WritePRD',
+    name: '产品需求文档',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
     requiresArtifact: true,
@@ -104,7 +104,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 4,
-    name: 'GeneratePrototype',
+    name: '原型图',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
     requiresArtifact: true,
@@ -132,7 +132,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 5,
-    name: 'WriteTest',
+    name: '测试用例',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
     requiresArtifact: true,
@@ -160,7 +160,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 6,
-    name: 'WriteDesign',
+    name: '系统架构文档',
     type: WorkflowNodeType.agent,
     requiresApproval: true,
     requiresArtifact: true,
@@ -189,7 +189,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 7,
-    name: 'ProjectManager',
+    name: '任务拆分',
     type: WorkflowNodeType.agent,
     requiresApproval: true,
     requiresArtifact: true,
@@ -218,7 +218,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 8,
-    name: 'WriteCode',
+    name: '代码生成',
     type: WorkflowNodeType.agent,
     requiresApproval: true,
     requiresArtifact: true,
@@ -264,7 +264,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 9,
-    name: 'ImproveCode',
+    name: '代码改进',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
     requiresArtifact: true,
@@ -312,7 +312,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 10,
-    name: 'DocumentChanges',
+    name: '变更确认',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
     input: {
@@ -339,7 +339,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 11,
-    name: 'TESTPathGuide',
+    name: '测试用例改善',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
     input: {
@@ -368,7 +368,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   },
   {
     nodeOrder: 12,
-    name: 'TESTPlaywright',
+    name: '自动测试',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
     input: {
