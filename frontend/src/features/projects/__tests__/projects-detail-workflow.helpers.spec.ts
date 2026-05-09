@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentToolConfig } from '@/api/business-lines'
 import type { WorkflowTemplateNode } from '@/types/api/workflow'
+import type { ProjectDetailSupportedCliToolId, WorkflowTemplateNodeForm } from '../projects-detail-workflow.types'
 import {
+  buildWorkflowNodesForSubmit,
   validateBusinessLineWorkflowTemplateForProjectCopy,
   validateWorkflowNodesPlain,
 } from '../projects-detail-workflow.helpers'
-import type { ProjectDetailSupportedCliToolId } from '../projects-detail-workflow.types'
 
 describe('validateBusinessLineWorkflowTemplateForProjectCopy', () => {
   const codexToolId = 'codex' as ProjectDetailSupportedCliToolId
@@ -106,5 +107,41 @@ describe('validateBusinessLineWorkflowTemplateForProjectCopy', () => {
     })
 
     expect(msg).toContain('Agent CLI 配置')
+  })
+})
+
+describe('buildWorkflowNodesForSubmit / loop + marker validation', () => {
+  const codexToolId = 'codex' as ProjectDetailSupportedCliToolId
+  const configuredSet = new Set<ProjectDetailSupportedCliToolId>([codexToolId])
+
+  it('does not put stale maxLoops into input when loop is disabled (avoids false marker validation)', () => {
+    const formNodes: WorkflowTemplateNodeForm[] = [
+      {
+        nodeOrder: 1,
+        name: 'step-1',
+        type: 'agent',
+        requiresApproval: true,
+        requiresArtifact: false,
+        maxLoops: 3,
+        input: {
+          prompt: '',
+          agentCliId: codexToolId,
+          agentCliConfigId: 'cfg-1',
+          loopEnabled: false,
+          earlyExitMarkerEnabled: true,
+          earlyExitMarkerFileName: '',
+        },
+      },
+    ]
+
+    const built = buildWorkflowNodesForSubmit(formNodes)
+    expect(built[0]?.input?.maxLoops).toBeUndefined()
+
+    const msg = validateWorkflowNodesPlain(built, {
+      configuredCliToolIdSet: configuredSet,
+      hasConfiguredCliTools: true,
+    })
+    expect(msg).not.toContain('Marker')
+    expect(msg).toBe('')
   })
 })

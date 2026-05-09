@@ -107,12 +107,11 @@ export function useGoalDetailPrd(options: UseGoalDetailPrdOptions) {
   }
 
   watch(
-    () =>
-      [
-        options.tab.value,
-        options.detail.value?.goal.prdDocPath,
-        options.detail.value?.goal.projectId,
-      ] as const,
+    [
+      () => options.tab.value,
+      () => options.detail.value?.goal.prdDocPath?.trim() ?? '',
+      () => options.detail.value?.goal.projectId ?? '',
+    ],
     () => {
       if (options.tab.value === 'prd' && options.detail.value?.goal.prdDocPath?.trim()) {
         void loadPrdPreview()

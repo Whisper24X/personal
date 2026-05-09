@@ -171,8 +171,17 @@ export function useBlmWorkflowTemplates(
     input: WorkflowTemplateNodeInput | WorkflowTemplateNodeInputForm | undefined,
     configuredTools: Array<{ id: SupportedCliToolId; label: string }>,
     configsByTool: Partial<Record<SupportedCliToolId, AgentToolConfig[]>>,
+    options?: { preserveEmptyAgentCli?: boolean },
   ): WorkflowTemplateNodeInputForm => {
     const nextInput = normalizeWorkflowNodeInput(input)
+    if (options?.preserveEmptyAgentCli && !nextInput.agentCliId) {
+      return {
+        ...nextInput,
+        agentCliId: '',
+        agentCliConfigId: '',
+      }
+    }
+
     const agentCliId = resolvePreferredAgentCliToolId({
       currentToolId: nextInput.agentCliId as SupportedCliToolId | '',
       defaultToolId: lineDetail.value?.defaultAgentCliToolId,
@@ -269,7 +278,11 @@ export function useBlmWorkflowTemplates(
       ...node,
       input: {
         ...serializeWorkflowNodeInput(node.input),
-        ...(node.maxLoops !== undefined && node.maxLoops > 1 ? { maxLoops: node.maxLoops } : {}),
+        ...(node.input.loopEnabled &&
+        node.maxLoops !== undefined &&
+        node.maxLoops > 1
+          ? { maxLoops: node.maxLoops }
+          : {}),
       },
     }))
   }
@@ -344,7 +357,9 @@ export function useBlmWorkflowTemplates(
         workflowCreateForm.value.nodes.map((node) => {
           return {
             ...node,
-            input: resolveWorkflowNodeInputByContext(node.input, configuredTools, groupedConfigs),
+            input: resolveWorkflowNodeInputByContext(node.input, configuredTools, groupedConfigs, {
+              preserveEmptyAgentCli: workflowTemplateModalMode.value === 'edit',
+            }),
           }
         }),
       )
