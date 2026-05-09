@@ -174,7 +174,11 @@ export function buildWorkflowNodesForSubmit(
     ...node,
     input: {
       ...serializeWorkflowNodeInput(node.input),
-      ...(node.maxLoops !== undefined && node.maxLoops > 1 ? { maxLoops: node.maxLoops } : {}),
+      ...(node.input.loopEnabled &&
+      node.maxLoops !== undefined &&
+      node.maxLoops > 1
+        ? { maxLoops: node.maxLoops }
+        : {}),
     },
   }))
 }

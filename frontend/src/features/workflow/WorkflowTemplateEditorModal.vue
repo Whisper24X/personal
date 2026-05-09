@@ -50,6 +50,16 @@ const activeWorkflowCreateNode = computed(
   () => form.value.nodes[workflowEditorActiveNodeIndex.value] ?? null,
 )
 
+function onWorkflowLoopEnabledChange() {
+  const node = form.value.nodes[workflowEditorActiveNodeIndex.value]
+  if (!node || node.input.loopEnabled) {
+    return
+  }
+  node.maxLoops = 1
+  node.input.earlyExitMarkerFileName = ''
+  node.input.earlyExitMarkerEnabled = false
+}
+
 const emit = defineEmits<{
   close: []
   submit: []
@@ -195,6 +205,7 @@ const emit = defineEmits<{
                         v-model="activeWorkflowCreateNode.input.loopEnabled"
                         type="checkbox"
                         class="h-4 w-4"
+                        @change="onWorkflowLoopEnabledChange"
                       />
                       循环
                     </label>
