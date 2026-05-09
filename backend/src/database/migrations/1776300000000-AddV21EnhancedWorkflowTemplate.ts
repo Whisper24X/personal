@@ -8,9 +8,9 @@ import {
   normalizeWorkflowTemplateNodes,
 } from '../../workflow-templates/workflow-template-nodes.util';
 
-const TEMPLATE_NAME = 'V2.1 增强工作流';
+const TEMPLATE_NAME = '新工作流模版';
 const TEMPLATE_DESCRIPTION =
-  '带上下文继承、产物自检、渐进自主协议的增强版默认工作流（V2.1）';
+  '带上下文继承、产物自检、渐进自主协议的增强版默认工作流';
 
 const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
   {
@@ -180,7 +180,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
 
 **上下文继承**：先读取 \`docs/{{gitBranch}}/context-snapshot.md\`。对 missing 或 thin 的上游文件，从 context-snapshot 和 {{taskPrompt}} 推导补全，做最小必要假设并标注来源。
 
-**提问要求（Tier 2）**：仅在遇到阻断性未知（如技术架构选型、关键取舍）时允许提问，附带选项和 AI 推荐。其他不确定性自行决策，记录在"AI 决策记录"小节中。
+**提问要求（Tier 3）**：禁止向用户提问。所有技术架构选型与取舍自行决策，基于仓库现有实现和行业最佳实践选择最合理方案，记录在"AI 决策记录"小节中，标注决策依据与备选方案。
 
 **产物自检**：完成后确认 \`docs/{{gitBranch}}/DESIGN.md\` 存在且内容有效（非空、包含至少 2 个二级标题）。不通过则重新生成。
 
@@ -209,7 +209,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
 
 **上下文继承**：先读取 \`docs/{{gitBranch}}/context-snapshot.md\`。对 missing 或 thin 的上游文件，从 context-snapshot 和 {{taskPrompt}} 推导补全，做最小必要假设并标注来源。
 
-**提问要求（Tier 2）**：仅在遇到阻断性未知（如任务拆分粒度、优先级冲突）时允许提问，附带选项和 AI 推荐。其他不确定性自行决策。
+**提问要求（Tier 3）**：禁止向用户提问。任务拆分粒度与优先级自行决策，基于 PRD 和 DESIGN 文档的描述选择最合理方案，记录在产物中。
 
 **产物自检**：完成后确认 \`docs/{{gitBranch}}/openspecValidatorReport.md\` 存在且内容有效。不通过则重新生成。
 
@@ -315,6 +315,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
     name: '变更确认',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
+    requiresArtifact: true,
     input: {
       prompt: `使用 \`code-doc\` 技能，扫描「相对基线（gitBaseBranch）已提交到当前分支的改动（BASE...HEAD）」与「当前工作区未提交改动」的并集，按技能内模板生成接口变更清单与功能变更测试清单。
 
@@ -335,6 +336,8 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
 **提问要求（Tier 3）**：禁止向用户提问。
 
 **产物自检**：完成后确认 \`docs/{{gitBranch}}/apiChanges.md\` 和 \`docs/{{gitBranch}}/moduleChanges.md\` 存在且内容有效。`,
+      loopEnabled: true,
+      maxLoops: 2,
     },
   },
   {
@@ -342,6 +345,7 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
     name: '测试用例改善',
     type: WorkflowNodeType.agent,
     requiresApproval: false,
+    requiresArtifact: true,
     input: {
       prompt: `使用 \`path-guide\` 技能，在部署完成后将测试用例升级为「自动化就绪」：读取 PRD、扫描管理后台前端源码，并原地更新 \`docs/{{gitBranch}}/TEST.md\`（不另生成独立用例文件）。
 
@@ -364,6 +368,8 @@ const V21_WORKFLOW_NODES: WorkflowTemplateNodeDto[] = [
 **上下文继承**：先读取 \`docs/{{gitBranch}}/context-snapshot.md\`。对 missing 或 thin 的上游文件，从 context-snapshot 和 {{taskPrompt}} 推导补全。
 
 **提问要求（Tier 3）**：禁止向用户提问。所有假设必须单独列在「假设与待确认项」中，不得混入正式用例结论。`,
+      loopEnabled: true,
+      maxLoops: 2,
     },
   },
   {

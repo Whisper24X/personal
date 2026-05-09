@@ -163,7 +163,6 @@ export class RunnerAgentExecutionService {
       'adapter' | 'agentToolConfigId' | 'agentToolConfigName'
     >,
     runtimeContext?: PromptTemplateRuntimeContext,
-    dependencyStatusReportText?: string,
   ): string {
     return this.configResolver.resolvePrompt(
       task,
@@ -171,7 +170,6 @@ export class RunnerAgentExecutionService {
       project,
       config,
       runtimeContext,
-      dependencyStatusReportText,
     );
   }
 
@@ -511,19 +509,12 @@ export class RunnerAgentExecutionService {
         ...(additionalRunnerEnv ?? {}),
       },
     };
-    const depReportText =
-      await this.configResolver.buildDependencyStatusReportForNode(
-        task,
-        node,
-        runtimeContext,
-      );
     let prompt = this.resolvePrompt(
       task,
       node,
       project,
       config,
       runtimeContext,
-      depReportText,
     );
     if (this.memoryHost) {
       const memoryBlock = await this.memoryHost.buildInjectBlock({
