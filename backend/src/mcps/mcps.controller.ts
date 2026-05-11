@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Query,
   Request,
@@ -32,6 +33,16 @@ import { ImportProjectLocalMcpsResultDto } from './dto/import-project-local-mcps
 import { RemoveProjectLocalMcpDto } from './dto/remove-project-local-mcp.dto';
 import { TestProjectLocalMcpDto } from './dto/test-project-local-mcp.dto';
 import { LocalMcpProbeResultDto } from '../business-lines/dto/local-mcp-probe-result.dto';
+import {
+  DisconnectProjectMcpOAuthProviderDto,
+  ListProjectMcpOAuthProvidersDto,
+  ProjectMcpOAuthLoginSessionDto,
+  ProjectMcpOAuthProviderDto,
+  ProjectMcpOAuthRelayResultDto,
+  RelayProjectMcpOAuthCallbackDto,
+  StartProjectMcpOAuthLoginDto,
+} from './dto/project-mcp-oauth.dto';
+import { ProjectMcpOAuthService } from './project-mcp-oauth.service';
 
 @ApiTags('MCPs')
 @ApiBearerAuth()
@@ -41,7 +52,10 @@ import { LocalMcpProbeResultDto } from '../business-lines/dto/local-mcp-probe-re
   version: '1',
 })
 export class McpsController {
-  constructor(private readonly mcpsService: McpsService) {}
+  constructor(
+    private readonly mcpsService: McpsService,
+    private readonly projectMcpOAuthService: ProjectMcpOAuthService,
+  ) {}
 
   @Get()
   @ApiOkResponse({ type: InfinityPaginationResponse(Mcp) })
@@ -114,5 +128,59 @@ export class McpsController {
     @Query() query: RemoveProjectLocalMcpDto,
   ): Promise<void> {
     return this.mcpsService.removeProjectLocalMcp(query, request.user);
+  }
+
+  @Get('project-oauth/providers')
+  @ApiOkResponse({ type: [ProjectMcpOAuthProviderDto] })
+  @HttpCode(HttpStatus.OK)
+  listProjectOAuthProviders(
+    @Request() request,
+    @Query() query: ListProjectMcpOAuthProvidersDto,
+  ): Promise<ProjectMcpOAuthProviderDto[]> {
+    return this.projectMcpOAuthService.listProviders(
+      query.projectId,
+      request.user,
+    );
+  }
+
+  @Post('project-oauth/:provider/start-login')
+  @ApiOkResponse({ type: ProjectMcpOAuthLoginSessionDto })
+  @HttpCode(HttpStatus.OK)
+  startProjectOAuthLogin(
+    @Request() request,
+    @Param('provider') provider: string,
+    @Body() body: StartProjectMcpOAuthLoginDto,
+  ): Promise<ProjectMcpOAuthLoginSessionDto> {
+    return this.projectMcpOAuthService.startLogin(provider, body, request.user);
+  }
+
+  @Post('project-oauth/:provider/relay-callback')
+  @ApiOkResponse({ type: ProjectMcpOAuthRelayResultDto })
+  @HttpCode(HttpStatus.OK)
+  relayProjectOAuthCallback(
+    @Request() request,
+    @Param('provider') provider: string,
+    @Body() body: RelayProjectMcpOAuthCallbackDto,
+  ): Promise<ProjectMcpOAuthRelayResultDto> {
+    return this.projectMcpOAuthService.relayCallback(
+      provider,
+      body,
+      request.user,
+    );
+  }
+
+  @Delete('project-oauth/:provider')
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  disconnectProjectOAuthProvider(
+    @Request() request,
+    @Param('provider') provider: string,
+    @Query() query: DisconnectProjectMcpOAuthProviderDto,
+  ): Promise<void> {
+    return this.projectMcpOAuthService.disconnect(
+      provider,
+      query,
+      request.user,
+    );
   }
 }

@@ -101,31 +101,158 @@ const vm = useMcpPage()
       </div>
     </section>
 
-    <section
-      v-if="!vm.activeProjectId"
-      class="panel-card p-6 text-sm text-muted-foreground"
-    >
+    <section v-if="!vm.activeProjectId" class="panel-card p-6 text-sm text-muted-foreground">
       请先在左侧选择项目后再查看 MCP。
     </section>
 
-    <section v-else-if="vm.loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
+    <section v-if="vm.activeProjectId" class="panel-card p-5">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="text-sm font-semibold">OAuth MCP 授权</p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            按项目复用 Agent CLI 原生登录凭据。授权完成后浏览器显示 127.0.0.1 无法访问是预期行为。
+          </p>
+        </div>
+        <button
+          type="button"
+          class="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted/50"
+          :disabled="vm.loadingOAuthProviders"
+          @click="void vm.loadProjectOAuthProviders()"
+        >
+          {{ vm.loadingOAuthProviders ? '刷新中…' : '刷新授权状态' }}
+        </button>
+      </div>
 
-    <section v-else class="space-y-4">
-      <article
-        v-if="!vm.hasAnyProjectMcp"
-        class="panel-card p-6 text-sm text-muted-foreground"
+      <div v-if="vm.oauthProviders.length > 0" class="mt-4 grid gap-3 lg:grid-cols-2">
+        <article
+          v-for="provider in vm.oauthProviders"
+          :key="provider.provider"
+          class="rounded-xl border border-border bg-background/70 p-4"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold">{{ provider.displayName }}</p>
+              <p class="mt-1 break-all text-xs text-muted-foreground">
+                {{ provider.upstreamMcpUrl }}
+              </p>
+            </div>
+            <span
+              class="rounded-full px-2 py-1 text-[10px] font-semibold"
+              :class="
+                provider.status === 'connected'
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-muted text-muted-foreground'
+              "
+            >
+              {{
+                provider.status === 'connected'
+                  ? '已授权'
+                  : provider.status === 'pending'
+                    ? '授权中'
+                    : '未授权'
+              }}
+            </span>
+          </div>
+
+          <p v-if="provider.hint" class="mt-3 text-xs text-muted-foreground">
+            {{ provider.hint }}
+          </p>
+          <p v-if="provider.lastError" class="mt-2 text-xs text-destructive">
+            {{ provider.lastError }}
+          </p>
+
+          <div class="mt-4 grid gap-2 sm:grid-cols-3">
+            <button
+              v-for="state in provider.cliStates"
+              :key="state.cli"
+              type="button"
+              class="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="vm.authorizingOAuthProviderCli === `${provider.provider}:${state.cli}`"
+              @click="void vm.startProjectOAuthLogin(provider, state.cli)"
+            >
+              {{
+                vm.authorizingOAuthProviderCli === `${provider.provider}:${state.cli}`
+                  ? '启动中…'
+                  : `授权 ${vm.getOAuthCliLabel(state.cli)}`
+              }}
+              <span class="mt-1 block text-[10px] font-normal text-muted-foreground">
+                {{
+                  state.status === 'connected'
+                    ? '已连接'
+                    : state.status === 'pending'
+                      ? '等待中'
+                      : '未连接'
+                }}
+              </span>
+            </button>
+          </div>
+        </article>
+      </div>
+      <p v-else class="mt-4 text-sm text-muted-foreground">
+        {{
+          vm.loadingOAuthProviders ? '加载 OAuth MCP provider…' : '暂无可授权的 OAuth MCP provider'
+        }}
+      </p>
+
+      <div
+        v-if="vm.activeOAuthSession"
+        class="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4"
       >
+        <p class="text-sm font-semibold">完成 {{ vm.activeOAuthSession.provider }} 授权</p>
+        <p class="mt-2 text-xs text-muted-foreground">
+          点击打开授权页面并完成授权。浏览器跳到 127.0.0.1 失败页后，复制地址栏完整
+          URL，回到这里读取剪贴板或手动粘贴。
+        </p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-md"
+            @click="vm.openOAuthAuthorizationUrl"
+          >
+            打开授权页面
+          </button>
+          <button
+            type="button"
+            class="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted/50"
+            @click="void vm.readClipboardForOAuthCallback()"
+          >
+            读取剪贴板
+          </button>
+        </div>
+        <textarea
+          v-model="vm.oauthCallbackUrl"
+          class="mt-3 h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+          placeholder="粘贴 http://127.0.0.1:<port>/callback?code=...&state=..."
+        />
+        <button
+          type="button"
+          class="mt-3 h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="vm.relayingOAuthCallback"
+          @click="void vm.relayProjectOAuthCallback()"
+        >
+          {{ vm.relayingOAuthCallback ? '完成中…' : '完成登录' }}
+        </button>
+      </div>
+    </section>
+
+    <section
+      v-if="vm.activeProjectId && vm.loading"
+      class="panel-card p-6 text-sm text-muted-foreground"
+    >
+      加载中...
+    </section>
+
+    <section v-else-if="vm.activeProjectId" class="space-y-4">
+      <article v-if="!vm.hasAnyProjectMcp" class="panel-card p-6 text-sm text-muted-foreground">
         当前项目没有可读取的 MCP 本地配置。
       </article>
 
-      <article
-        v-for="group in vm.groupedProjectMcps"
-        :key="group.id"
-        class="panel-card p-4"
-      >
+      <article v-for="group in vm.groupedProjectMcps" :key="group.id" class="panel-card p-4">
         <div class="flex items-center justify-between gap-2">
           <p class="text-sm font-semibold">{{ group.label }}</p>
-          <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+          <span
+            class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground"
+          >
             {{ group.serverCount }} 项
           </span>
         </div>
@@ -140,17 +267,21 @@ const vm = useMcpPage()
             </span>
             <select
               class="h-9 max-w-full min-w-[200px] flex-1 rounded-lg border border-border bg-background px-2 text-xs text-foreground md:max-w-md"
-              :disabled="vm.loading || vm.filterAgentToolConfigsForMcpProvider(group.id, vm.allAgentToolConfigs).length === 0"
+              :disabled="
+                vm.loading ||
+                vm.filterAgentToolConfigsForMcpProvider(group.id, vm.allAgentToolConfigs).length ===
+                  0
+              "
               :value="vm.getProbeAgentToolConfigId(group.id)"
               @change="
-                vm.setProbeAgentToolConfigId(
-                  group.id,
-                  ($event.target as HTMLSelectElement).value,
-                )
+                vm.setProbeAgentToolConfigId(group.id, ($event.target as HTMLSelectElement).value)
               "
             >
               <option
-                v-for="cfg in vm.filterAgentToolConfigsForMcpProvider(group.id, vm.allAgentToolConfigs)"
+                v-for="cfg in vm.filterAgentToolConfigsForMcpProvider(
+                  group.id,
+                  vm.allAgentToolConfigs,
+                )"
                 :key="cfg.id"
                 :value="cfg.id"
               >
@@ -158,16 +289,17 @@ const vm = useMcpPage()
               </option>
             </select>
             <p
-              v-if="!vm.loading && vm.filterAgentToolConfigsForMcpProvider(group.id, vm.allAgentToolConfigs).length === 0"
+              v-if="
+                !vm.loading &&
+                vm.filterAgentToolConfigsForMcpProvider(group.id, vm.allAgentToolConfigs).length ===
+                  0
+              "
               class="w-full text-xs text-amber-700 dark:text-amber-400"
             >
               请先在业务线「Agent CLI」中为 {{ group.label }} 创建对应类型的配置后再探测。
             </p>
           </template>
-          <p
-            v-else
-            class="w-full text-xs text-amber-700 dark:text-amber-400"
-          >
+          <p v-else class="w-full text-xs text-amber-700 dark:text-amber-400">
             该 MCP 来源无法匹配 Agent CLI 探测类型，「测试」已禁用。
           </p>
         </div>
@@ -193,7 +325,9 @@ const vm = useMcpPage()
                 </div>
               </div>
 
-              <p class="mt-3 break-all font-mono text-[10px] text-muted-foreground">{{ vm.resolveSourcePath(item) || '-' }}</p>
+              <p class="mt-3 break-all font-mono text-[10px] text-muted-foreground">
+                {{ vm.resolveSourcePath(item) || '-' }}
+              </p>
             </div>
             <button
               type="button"
@@ -381,10 +515,27 @@ const vm = useMcpPage()
                 type="button"
                 class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="删除 MCP"
-                :disabled="vm.loadingMcpJsonPreview || vm.savingMcpJsonPreview || vm.removingProjectMcpId === vm.mcpJsonPreviewItem.id"
-                @click="vm.mcpJsonPreviewItem && void vm.removeProjectLocalMcp(vm.mcpJsonPreviewItem)"
+                :disabled="
+                  vm.loadingMcpJsonPreview ||
+                  vm.savingMcpJsonPreview ||
+                  vm.removingProjectMcpId === vm.mcpJsonPreviewItem.id
+                "
+                @click="
+                  vm.mcpJsonPreviewItem && void vm.removeProjectLocalMcp(vm.mcpJsonPreviewItem)
+                "
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
                   <path d="M3 6h18" />
                   <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
                   <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
@@ -396,7 +547,12 @@ const vm = useMcpPage()
               <button
                 type="button"
                 class="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="vm.loadingMcpJsonPreview || vm.savingMcpJsonPreview || !vm.mcpJsonPreviewDraft || !vm.mcpJsonPreviewProvider"
+                :disabled="
+                  vm.loadingMcpJsonPreview ||
+                  vm.savingMcpJsonPreview ||
+                  !vm.mcpJsonPreviewDraft ||
+                  !vm.mcpJsonPreviewProvider
+                "
                 @click="void vm.saveMcpJsonPreview()"
               >
                 {{ vm.savingMcpJsonPreview ? '保存中...' : '保存' }}
@@ -426,17 +582,24 @@ const vm = useMcpPage()
             </div>
           </header>
           <div class="space-y-3 px-4 py-4">
-            <p v-if="vm.loadingMcpJsonPreview" class="text-sm text-muted-foreground">加载配置中...</p>
+            <p v-if="vm.loadingMcpJsonPreview" class="text-sm text-muted-foreground">
+              加载配置中...
+            </p>
             <div v-else class="space-y-3">
               <div>
-                <label class="mb-1 block text-xs font-medium text-muted-foreground">JSON 配置</label>
+                <label class="mb-1 block text-xs font-medium text-muted-foreground"
+                  >JSON 配置</label
+                >
                 <textarea
                   v-model="vm.mcpJsonPreviewDraft"
                   class="min-h-[48vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
                 />
               </div>
             </div>
-            <p v-if="!vm.loadingMcpJsonPreview && vm.mcpJsonPreviewError" class="text-sm text-destructive">
+            <p
+              v-if="!vm.loadingMcpJsonPreview && vm.mcpJsonPreviewError"
+              class="text-sm text-destructive"
+            >
               {{ vm.mcpJsonPreviewError }}
             </p>
           </div>
