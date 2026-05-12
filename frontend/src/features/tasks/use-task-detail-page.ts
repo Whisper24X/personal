@@ -227,6 +227,22 @@ const currentFailedNode = computed(() => {
   return sortedNodes.value.find((node) => node.status === 'failed') ?? null
 })
 
+const currentTodoNode = computed(() => {
+  return sortedNodes.value.find((node) => node.status === 'todo') ?? null
+})
+
+const replyFallbackDoneNode = computed(() => {
+  const doneNodes = sortedNodes.value.filter((node) => node.status === 'done')
+  const nodesWithSession = doneNodes.filter((node) => node.agentCliSessionId?.trim())
+  const candidates = nodesWithSession.length > 0 ? nodesWithSession : doneNodes
+
+  return [...candidates].sort((left, right) => right.nodeOrder - left.nodeOrder)[0] ?? null
+})
+
+const currentReplyTargetNode = computed(() => {
+  return currentFailedNode.value ?? currentReviewNode.value ?? currentTodoNode.value ?? replyFallbackDoneNode.value
+})
+
 const currentActionNode = computed(() => {
   if (
     selectedWorkflowNode.value &&
@@ -280,6 +296,10 @@ const hasInReviewNode = computed(() => {
 
 const hasFailedNode = computed(() => {
   return sortedNodes.value.some((node) => node.status === 'failed')
+})
+
+const canContinueReplyTargetNode = computed(() => {
+  return Boolean(currentReplyTargetNode.value?.agentCliSessionId?.trim())
 })
 
 const canExecute = computed(() => {
@@ -395,6 +415,7 @@ const replyDisabled = computed(() => {
     !task.value ||
     actionLoading.value ||
     isCliRunning.value ||
+    !canContinueReplyTargetNode.value ||
     task.value.status === 'todo' ||
     task.value.status === 'done'
   )
@@ -406,6 +427,10 @@ const replyPlaceholder = computed(() => {
   }
 
   if (hasFailedNode.value) {
+    if (!canContinueReplyTargetNode.value) {
+      return '当前失败节点无法继续对话，请重置后重新执行...'
+    }
+
     return '补充说明后将继续执行失败节点...'
   }
 
@@ -415,6 +440,10 @@ const replyPlaceholder = computed(() => {
 
   if (isCliRunning.value) {
     return '任务执行中，暂不可回复...'
+  }
+
+  if (!canContinueReplyTargetNode.value) {
+    return '当前节点无法继续对话，请重置后重新执行...'
   }
 
   return '补充指令或继续提问...'

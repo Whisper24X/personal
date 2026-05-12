@@ -99,6 +99,17 @@ export class TaskInteractionService {
       throw new ConflictException('Reply message cannot be empty');
     }
 
+    const replyTargetNode = await this.resolveReplyTargetNode(task.id);
+    if (
+      !this.taskConfigResolver.normalizeOptionalString(
+        replyTargetNode.agentCliSessionId,
+      )
+    ) {
+      throw new ConflictException(
+        'Task reply cannot continue without agent session',
+      );
+    }
+
     await this.taskLogService.appendLog({
       taskId: task.id,
       taskNodeId: null,
@@ -111,14 +122,8 @@ export class TaskInteractionService {
       },
     });
 
-    const failedNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus(
-      {
-        taskId: task.id,
-        status: TaskNodeStatus.failed,
-      },
-    );
-    if (failedNode) {
-      await this.taskNodeRepository.update(failedNode.id, {
+    if (replyTargetNode.status === TaskNodeStatus.failed) {
+      await this.taskNodeRepository.update(replyTargetNode.id, {
         status: TaskNodeStatus.todo,
         finishedAt: null,
         runtimeJson:
@@ -129,78 +134,50 @@ export class TaskInteractionService {
 
       await this.taskLogService.appendLog({
         taskId: task.id,
-        taskNodeId: failedNode.id,
+        taskNodeId: replyTargetNode.id,
         level: TaskLogLevel.info,
         message: 'Failed node moved back to todo by reply',
         payload: {
-          nodeOrder: failedNode.nodeOrder,
+          nodeOrder: replyTargetNode.nodeOrder,
           repliedBy: currentUser.sub,
         },
       });
+    } else if (replyTargetNode.status === TaskNodeStatus.inReview) {
+      await this.taskNodeRepository.update(replyTargetNode.id, {
+        status: TaskNodeStatus.todo,
+        finishedAt: null,
+        runtimeJson:
+          this.taskConfigResolver.buildPendingReplyRuntimeJson(
+            normalizedMessage,
+          ),
+      });
+
+      await this.taskLogService.appendLog({
+        taskId: task.id,
+        taskNodeId: replyTargetNode.id,
+        level: TaskLogLevel.info,
+        message: 'In-review node moved back to todo by reply',
+        payload: {
+          nodeOrder: replyTargetNode.nodeOrder,
+          repliedBy: currentUser.sub,
+        },
+      });
+    } else if (replyTargetNode.status === TaskNodeStatus.todo) {
+      await this.taskNodeRepository.update(replyTargetNode.id, {
+        runtimeJson:
+          this.taskConfigResolver.buildPendingReplyRuntimeJson(
+            normalizedMessage,
+          ),
+      });
     } else {
-      const inReviewNode =
-        await this.taskNodeRepository.findFirstByTaskIdAndStatus({
-          taskId: task.id,
-          status: TaskNodeStatus.inReview,
-        });
-      if (inReviewNode) {
-        await this.taskNodeRepository.update(inReviewNode.id, {
-          status: TaskNodeStatus.todo,
-          finishedAt: null,
-          runtimeJson:
-            this.taskConfigResolver.buildPendingReplyRuntimeJson(
-              normalizedMessage,
-            ),
-        });
-
-        await this.taskLogService.appendLog({
-          taskId: task.id,
-          taskNodeId: inReviewNode.id,
-          level: TaskLogLevel.info,
-          message: 'In-review node moved back to todo by reply',
-          payload: {
-            nodeOrder: inReviewNode.nodeOrder,
-            repliedBy: currentUser.sub,
-          },
-        });
-      } else {
-        const todoNode =
-          await this.taskNodeRepository.findFirstByTaskIdAndStatus({
-            taskId: task.id,
-            status: TaskNodeStatus.todo,
-          });
-
-        if (todoNode) {
-          await this.taskNodeRepository.update(todoNode.id, {
-            runtimeJson:
-              this.taskConfigResolver.buildPendingReplyRuntimeJson(
-                normalizedMessage,
-              ),
-          });
-        } else {
-          const fallbackNodes =
-            await this.taskNodeRepository.findByTaskIdAndStatus({
-              taskId: task.id,
-              status: TaskNodeStatus.done,
-            });
-          const fallbackNode = this.selectReplyFallbackNode(fallbackNodes);
-
-          if (!fallbackNode) {
-            throw new ConflictException(
-              'No node available for reply execution',
-            );
-          }
-
-          await this.taskNodeRepository.update(fallbackNode.id, {
-            status: TaskNodeStatus.todo,
-            finishedAt: null,
-            runtimeJson:
-              this.taskConfigResolver.buildPendingReplyRuntimeJson(
-                normalizedMessage,
-              ),
-          });
-        }
-      }
+      await this.taskNodeRepository.update(replyTargetNode.id, {
+        status: TaskNodeStatus.todo,
+        finishedAt: null,
+        runtimeJson:
+          this.taskConfigResolver.buildPendingReplyRuntimeJson(
+            normalizedMessage,
+          ),
+      });
     }
 
     task = await this.markTaskStartedIfNeeded(task);
@@ -220,6 +197,46 @@ export class TaskInteractionService {
     await this.taskSchedulerService.triggerDispatch();
 
     return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
+  private async resolveReplyTargetNode(taskId: Task['id']): Promise<TaskNode> {
+    const failedNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus(
+      {
+        taskId,
+        status: TaskNodeStatus.failed,
+      },
+    );
+    if (failedNode) {
+      return failedNode;
+    }
+
+    const inReviewNode =
+      await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+        taskId,
+        status: TaskNodeStatus.inReview,
+      });
+    if (inReviewNode) {
+      return inReviewNode;
+    }
+
+    const todoNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+      taskId,
+      status: TaskNodeStatus.todo,
+    });
+    if (todoNode) {
+      return todoNode;
+    }
+
+    const fallbackNodes = await this.taskNodeRepository.findByTaskIdAndStatus({
+      taskId,
+      status: TaskNodeStatus.done,
+    });
+    const fallbackNode = this.selectReplyFallbackNode(fallbackNodes);
+    if (fallbackNode) {
+      return fallbackNode;
+    }
+
+    throw new ConflictException('No node available for reply execution');
   }
 
   async execute(

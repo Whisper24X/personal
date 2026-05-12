@@ -32,8 +32,19 @@ const titleClass = computed(() => {
 const titleText = computed(() => {
   return isFailed.value ? '节点执行失败' : '节点待审批'
 })
+const nodeCanContinue = computed(() => {
+  return Boolean(props.node?.agentCliSessionId?.trim())
+})
 const helperText = computed(() => {
-  return isFailed.value ? '可补充回复继续执行，也可以从更多操作重置节点。' : '请确认节点结果后再继续。'
+  if (!isFailed.value) {
+    return nodeCanContinue.value
+      ? '请确认节点结果后再继续。'
+      : '当前节点无法继续对话，请先确认节点结果。'
+  }
+
+  return nodeCanContinue.value
+    ? '可补充回复继续执行，也可以从更多操作重置节点。'
+    : '当前失败节点无法继续对话，请重置后重新执行。'
 })
 </script>
 

@@ -202,6 +202,7 @@
     "notFound": "任务不存在",
     "replyMessageEmpty": "回复内容不能为空",
     "repeatRequiresDoneOrInReview": "任务完成或存在待审核节点时才能重复执行",
+    "replyCannotContinueWithoutSession": "当前节点没有可恢复会话，无法继续对话，请重置后重新执行",
     "resetNodeInvalidStatus": "只有已完成、待审核或失败节点可以重置",
     "resetSnapshotUnavailable": "任务节点缺少执行快照，无法重置",
     "runtimeInitFailed": "任务运行环境初始化失败",

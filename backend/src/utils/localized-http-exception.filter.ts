@@ -247,6 +247,10 @@ const LEGACY_MESSAGE_KEYS = new Map<string, string>([
     'errors.task.configAgentCliIdRequired',
   ],
   [
+    'Task reply cannot continue without agent session',
+    'errors.task.replyCannotContinueWithoutSession',
+  ],
+  [
     'Task has failed node and cannot accept reply',
     'errors.task.failedNodeCannotReply',
   ],

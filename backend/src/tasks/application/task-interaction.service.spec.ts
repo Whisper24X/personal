@@ -93,6 +93,9 @@ const createService = (taskOverrides: Record<string, unknown> = {}) => {
     }),
   };
   const taskConfigResolver = {
+    normalizeOptionalString: jest.fn().mockImplementation((value) => {
+      return typeof value === 'string' && value.trim() ? value.trim() : null;
+    }),
     buildPendingReplyRuntimeJson: jest
       .fn()
       .mockImplementation((message: string) => ({
@@ -325,8 +328,14 @@ describe('TaskInteractionService', () => {
     );
   });
 
-  it('should fall back to the latest done node when no cli session exists', async () => {
-    const { service, taskNodeRepository, taskConfigResolver } = createService({
+  it('should reject done-node reply when no cli session exists', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
       status: TaskStatus.inReview,
     });
     const currentUser = createCurrentUser();
@@ -348,18 +357,18 @@ describe('TaskInteractionService', () => {
       latestDoneNode,
     ]);
 
-    await service.reply(
-      'task-1',
-      { message: 'Please continue' } as never,
-      currentUser as never,
-    );
+    await expect(
+      service.reply(
+        'task-1',
+        { message: 'Please continue' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('Task reply cannot continue without agent session');
 
-    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-2', {
-      status: TaskStatus.todo,
-      finishedAt: null,
-      runtimeJson:
-        taskConfigResolver.buildPendingReplyRuntimeJson('Please continue'),
-    });
+    expect(taskLogService.appendLog).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).not.toHaveBeenCalled();
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
   });
 
   it('should persist the raw reply template before execution-time rendering', async () => {
@@ -371,6 +380,7 @@ describe('TaskInteractionService', () => {
     const todoNode = createNode({
       id: 'node-todo',
       status: TaskStatus.todo,
+      agentCliSessionId: 'session-todo',
     });
 
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
@@ -443,6 +453,7 @@ describe('TaskInteractionService', () => {
       id: 'node-failed',
       status: TaskNodeStatus.failed,
       nodeOrder: 2,
+      agentCliSessionId: 'session-failed',
     });
 
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
@@ -476,6 +487,78 @@ describe('TaskInteractionService', () => {
       'task-1',
       currentUser,
     );
+  });
+
+  it('should reject failed node reply when no agent session is available', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inProgress,
+    });
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      createNode({
+        id: 'node-failed',
+        status: TaskNodeStatus.failed,
+        nodeOrder: 2,
+        agentCliSessionId: null,
+      }),
+    );
+
+    await expect(
+      service.reply(
+        'task-1',
+        { message: 'Please continue' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('Task reply cannot continue without agent session');
+
+    expect(taskLogService.appendLog).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).not.toHaveBeenCalled();
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should reject in-review node reply when no agent session is available', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inReview,
+    });
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findFirstByTaskIdAndStatus
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        createNode({
+          id: 'node-review',
+          status: TaskNodeStatus.inReview,
+          nodeOrder: 2,
+          agentCliSessionId: null,
+        }),
+      );
+
+    await expect(
+      service.reply(
+        'task-1',
+        { message: 'Please continue' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('Task reply cannot continue without agent session');
+
+    expect(taskLogService.appendLog).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).not.toHaveBeenCalled();
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
   });
 
   it('should cancel a running node without overwriting existing output jsonl', async () => {

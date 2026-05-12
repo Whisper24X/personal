@@ -94,6 +94,7 @@ export type TaskNode = {
   agentCliId?: string | null
   agentCliConfigId?: string | null
   agentClioutput?: string | null
+  agentCliSessionId?: string | null
   configJson?: TaskNodeConfig | null
   loopJson?: TaskLoopConfig | null
   runtimeJson?: {
