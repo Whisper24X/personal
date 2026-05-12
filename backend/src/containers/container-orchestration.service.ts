@@ -593,7 +593,10 @@ export class ContainerOrchestrationService
           command: this.config.usesSandboxEntrypoint(params.project)
             ? ['/usr/local/bin/ainative-runner-entrypoint']
             : ['sleep', 'infinity'],
-          sharedVolumeMounts: runnerConfig?.runtime.sharedVolumes ?? [],
+          sharedVolumeMounts: [
+            ...(runnerConfig?.runtime.sharedVolumes ?? []),
+            ...this.buildProjectOAuthCredentialVolumeMounts(params.project.id),
+          ],
           managedVolumeMounts: this.buildManagedVolumeMounts({
             task: params.task,
             containerName: params.containerName,
@@ -657,6 +660,18 @@ export class ContainerOrchestrationService
         'ainative.mount-target': target,
       },
     }));
+  }
+
+  private buildProjectOAuthCredentialVolumeMounts(projectId: string): {
+    name: string;
+    target: string;
+  }[] {
+    return [
+      {
+        name: `ainative-project-${projectId}-oauth-mcp-credentials`,
+        target: '/root',
+      },
+    ];
   }
 
   private buildManagedVolumeName(

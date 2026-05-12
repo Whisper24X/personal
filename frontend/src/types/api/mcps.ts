@@ -12,12 +12,7 @@ export type Mcp = {
   updatedAt?: string
 }
 
-export type ProjectLocalMcpProvider =
-  | 'cursor'
-  | 'gemini'
-  | 'opencode'
-  | 'claude-code'
-  | 'codex'
+export type ProjectLocalMcpProvider = 'cursor' | 'gemini' | 'opencode' | 'claude-code' | 'codex'
 
 export type ProjectLocalMcpConfig = {
   name: string
@@ -57,4 +52,38 @@ export type LocalMcpProbeResult = {
   message?: string
   stderrPreview?: string
   warnings?: string[]
+}
+
+export type ProjectMcpOAuthCli = 'codex' | 'cursor'
+
+export type ProjectMcpOAuthCliState = {
+  cli: ProjectMcpOAuthCli
+  status: 'connected' | 'disconnected' | 'pending' | 'error'
+  lastLoginAt?: string | null
+}
+
+export type ProjectMcpOAuthProvider = {
+  provider: string
+  displayName: string
+  upstreamMcpUrl: string
+  status: 'connected' | 'disconnected' | 'pending' | 'error'
+  hint?: string | null
+  lastError?: string | null
+  cliStates: ProjectMcpOAuthCliState[]
+}
+
+export type ProjectMcpOAuthLoginSession = {
+  sessionId: string
+  provider: string
+  cli: ProjectMcpOAuthCli
+  status: 'pending' | 'relayed' | 'succeeded' | 'failed' | 'timed_out'
+  authorizationUrl?: string | null
+  errorMessage?: string | null
+  expiresAt: string
+}
+
+export type ProjectMcpOAuthRelayResult = {
+  ok: boolean
+  status: 'relayed' | 'succeeded' | 'failed'
+  message?: string | null
 }

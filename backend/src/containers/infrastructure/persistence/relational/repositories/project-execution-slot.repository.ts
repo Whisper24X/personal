@@ -117,6 +117,22 @@ export class ProjectExecutionSlotRepository {
     return entity ? ProjectExecutionSlotMapper.toDomain(entity) : null;
   }
 
+  async findActiveWithContainerByProjectId(
+    projectId: string,
+    now = new Date(),
+  ): Promise<ProjectExecutionSlot | null> {
+    const entity = await this.repo
+      .createQueryBuilder('slot')
+      .where('slot.projectId = :projectId', { projectId })
+      .andWhere('slot.expiresAt >= :now', { now })
+      .andWhere('slot.containerId IS NOT NULL')
+      .orderBy('slot.heartbeatAt', 'DESC', 'NULLS LAST')
+      .addOrderBy('slot.claimedAt', 'DESC')
+      .getOne();
+
+    return entity ? ProjectExecutionSlotMapper.toDomain(entity) : null;
+  }
+
   async findExpiredSlots(now: Date): Promise<ProjectExecutionSlot[]> {
     const entities = await this.repo
       .createQueryBuilder('slot')
