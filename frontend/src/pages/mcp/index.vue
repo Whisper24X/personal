@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { McpJsonImportModal } from '@features/business-lines'
+import OAuthMcpAuthorizationPanel from './OAuthMcpAuthorizationPanel.vue'
 import { useMcpPage } from './use-mcp-page'
 
 defineOptions({
@@ -11,7 +12,46 @@ const vm = useMcpPage()
 
 <template>
   <div class="space-y-6 fade-up">
-    <section class="panel-card p-5">
+    <section v-if="!vm.activeProjectId" class="panel-card p-6 text-sm text-muted-foreground">
+      请先在左侧选择项目后再查看 MCP。
+    </section>
+
+    <section v-if="vm.activeProjectId" class="panel-card p-2">
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+          :class="
+            vm.activeMcpTab === 'local'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          "
+          @click="vm.setMcpTab('local')"
+        >
+          本地 MCP
+        </button>
+        <button
+          type="button"
+          class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+          :class="
+            vm.activeMcpTab === 'oauth'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          "
+          @click="vm.setMcpTab('oauth')"
+        >
+          OAuth 授权
+        </button>
+      </div>
+    </section>
+
+    <OAuthMcpAuthorizationPanel
+      v-if="vm.activeProjectId && vm.activeMcpTab === 'oauth'"
+      :vm="vm"
+      @update:oauth-callback-url="vm.oauthCallbackUrl = $event"
+    />
+
+    <section v-if="vm.activeProjectId && vm.activeMcpTab === 'local'" class="panel-card p-5">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex flex-1 flex-wrap items-center gap-2">
           <input
@@ -101,148 +141,14 @@ const vm = useMcpPage()
       </div>
     </section>
 
-    <section v-if="!vm.activeProjectId" class="panel-card p-6 text-sm text-muted-foreground">
-      请先在左侧选择项目后再查看 MCP。
-    </section>
-
-    <section v-if="vm.activeProjectId" class="panel-card p-5">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-sm font-semibold">OAuth MCP 授权</p>
-          <p class="mt-1 text-xs text-muted-foreground">
-            按项目复用 Agent CLI 原生登录凭据。授权完成后浏览器显示 127.0.0.1 无法访问是预期行为。
-          </p>
-        </div>
-        <button
-          type="button"
-          class="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted/50"
-          :disabled="vm.loadingOAuthProviders"
-          @click="void vm.loadProjectOAuthProviders()"
-        >
-          {{ vm.loadingOAuthProviders ? '刷新中…' : '刷新授权状态' }}
-        </button>
-      </div>
-
-      <div v-if="vm.oauthProviders.length > 0" class="mt-4 grid gap-3 lg:grid-cols-2">
-        <article
-          v-for="provider in vm.oauthProviders"
-          :key="provider.provider"
-          class="rounded-xl border border-border bg-background/70 p-4"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-sm font-semibold">{{ provider.displayName }}</p>
-              <p class="mt-1 break-all text-xs text-muted-foreground">
-                {{ provider.upstreamMcpUrl }}
-              </p>
-            </div>
-            <span
-              class="rounded-full px-2 py-1 text-[10px] font-semibold"
-              :class="
-                provider.status === 'connected'
-                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-muted text-muted-foreground'
-              "
-            >
-              {{
-                provider.status === 'connected'
-                  ? '已授权'
-                  : provider.status === 'pending'
-                    ? '授权中'
-                    : '未授权'
-              }}
-            </span>
-          </div>
-
-          <p v-if="provider.hint" class="mt-3 text-xs text-muted-foreground">
-            {{ provider.hint }}
-          </p>
-          <p v-if="provider.lastError" class="mt-2 text-xs text-destructive">
-            {{ provider.lastError }}
-          </p>
-
-          <div class="mt-4 grid gap-2 sm:grid-cols-3">
-            <button
-              v-for="state in provider.cliStates"
-              :key="state.cli"
-              type="button"
-              class="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="vm.authorizingOAuthProviderCli === `${provider.provider}:${state.cli}`"
-              @click="void vm.startProjectOAuthLogin(provider, state.cli)"
-            >
-              {{
-                vm.authorizingOAuthProviderCli === `${provider.provider}:${state.cli}`
-                  ? '启动中…'
-                  : `授权 ${vm.getOAuthCliLabel(state.cli)}`
-              }}
-              <span class="mt-1 block text-[10px] font-normal text-muted-foreground">
-                {{
-                  state.status === 'connected'
-                    ? '已连接'
-                    : state.status === 'pending'
-                      ? '等待中'
-                      : '未连接'
-                }}
-              </span>
-            </button>
-          </div>
-        </article>
-      </div>
-      <p v-else class="mt-4 text-sm text-muted-foreground">
-        {{
-          vm.loadingOAuthProviders ? '加载 OAuth MCP provider…' : '暂无可授权的 OAuth MCP provider'
-        }}
-      </p>
-
-      <div
-        v-if="vm.activeOAuthSession"
-        class="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4"
-      >
-        <p class="text-sm font-semibold">完成 {{ vm.activeOAuthSession.provider }} 授权</p>
-        <p class="mt-2 text-xs text-muted-foreground">
-          点击打开授权页面并完成授权。浏览器跳到 127.0.0.1 失败页后，复制地址栏完整
-          URL，回到这里读取剪贴板或手动粘贴。
-        </p>
-        <div class="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-md"
-            @click="vm.openOAuthAuthorizationUrl"
-          >
-            打开授权页面
-          </button>
-          <button
-            type="button"
-            class="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted/50"
-            @click="void vm.readClipboardForOAuthCallback()"
-          >
-            读取剪贴板
-          </button>
-        </div>
-        <textarea
-          v-model="vm.oauthCallbackUrl"
-          class="mt-3 h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-          placeholder="粘贴 http://127.0.0.1:<port>/callback?code=...&state=..."
-        />
-        <button
-          type="button"
-          class="mt-3 h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="vm.relayingOAuthCallback"
-          @click="void vm.relayProjectOAuthCallback()"
-        >
-          {{ vm.relayingOAuthCallback ? '完成中…' : '完成登录' }}
-        </button>
-      </div>
-    </section>
-
     <section
-      v-if="vm.activeProjectId && vm.loading"
+      v-if="vm.activeProjectId && vm.activeMcpTab === 'local' && vm.loading"
       class="panel-card p-6 text-sm text-muted-foreground"
     >
       加载中...
     </section>
 
-    <section v-else-if="vm.activeProjectId" class="space-y-4">
+    <section v-else-if="vm.activeProjectId && vm.activeMcpTab === 'local'" class="space-y-4">
       <article v-if="!vm.hasAnyProjectMcp" class="panel-card p-6 text-sm text-muted-foreground">
         当前项目没有可读取的 MCP 本地配置。
       </article>

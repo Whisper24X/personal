@@ -160,6 +160,12 @@ export class ProjectMcpOAuthService {
     );
 
     try {
+      await this.prepareLoginConfig({
+        containerRef: slot.containerId,
+        cli: dto.cli,
+        provider: definition.provider,
+        upstreamMcpUrl: definition.upstreamMcpUrl,
+      });
       const active = this.spawnLoginProcess({
         containerRef: slot.containerId,
         command,
@@ -350,7 +356,7 @@ export class ProjectMcpOAuthService {
         cleanup();
         reject(
           new Error(
-            `OAuth login process exited before authorization URL (code=${code ?? 'unknown'})`,
+            `OAuth login process exited before authorization URL (code=${code ?? 'unknown'}): ${this.buildProcessDiagnostic(active)}`,
           ),
         );
       };
@@ -367,6 +373,50 @@ export class ProjectMcpOAuthService {
       check();
       timer.unref?.();
     });
+  }
+
+  private async prepareLoginConfig(input: {
+    containerRef: string;
+    cli: OAuthMcpCli;
+    provider: string;
+    upstreamMcpUrl: string;
+  }): Promise<void> {
+    if (input.cli !== 'codex') {
+      return;
+    }
+
+    const serverKey = this.toTomlBareKey(input.provider);
+    const script = [
+      'set -e',
+      'export HOME=/root',
+      'mkdir -p "$HOME/.codex"',
+      'touch "$HOME/.codex/config.toml"',
+      `if ! grep -Eq '^\\s*\\[mcp_servers\\.${this.escapeGrepRegex(serverKey)}\\]\\s*$' "$HOME/.codex/config.toml"; then`,
+      `  printf '\\n[mcp_servers.${serverKey}]\\nurl = ${this.toTomlString(input.upstreamMcpUrl)}\\n' >> "$HOME/.codex/config.toml"`,
+      'fi',
+    ].join('\n');
+
+    try {
+      await execFileAsync(
+        'docker',
+        [
+          'exec',
+          '-w',
+          this.containerConfig.getRunnerWorkspace(),
+          '-e',
+          'HOME=/root',
+          input.containerRef,
+          'bash',
+          '-lc',
+          script,
+        ],
+        { timeout: 10_000 },
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to prepare Codex MCP config: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private attachLoginExitHandler(input: {
@@ -505,6 +555,13 @@ export class ProjectMcpOAuthService {
     return match?.[0] ?? null;
   }
 
+  private buildProcessDiagnostic(active: ActiveLoginProcess): string {
+    const output = [active.stderr.trim(), active.stdout.trim()]
+      .filter(Boolean)
+      .join('\n');
+    return this.truncate(output || 'no stdout/stderr captured', 1500);
+  }
+
   private parseAuthorizationUrl(url: string): {
     state: string | null;
     callbackPort: number | null;
@@ -600,6 +657,21 @@ export class ProjectMcpOAuthService {
 
   private buildCredentialVolumeName(projectId: string): string {
     return `ainative-project-${projectId}-oauth-mcp-credentials`;
+  }
+
+  private toTomlBareKey(value: string): string {
+    if (/^[A-Za-z0-9_-]+$/.test(value)) {
+      return value;
+    }
+    return this.toTomlString(value);
+  }
+
+  private toTomlString(value: string): string {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+
+  private escapeGrepRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private truncate(value: string, max: number): string {

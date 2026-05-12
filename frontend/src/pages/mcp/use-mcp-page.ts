@@ -1,6 +1,6 @@
 import type { ComponentPublicInstance } from 'vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@app/composables/useMessage'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
 import { mcpsApi } from '@/api/mcps'
@@ -37,10 +37,13 @@ type ProviderGroup = {
   servers: Mcp[]
 }
 
+type McpPageTab = 'local' | 'oauth'
+
 export type McpPageContext = ReturnType<typeof useMcpPage>
 
 export function useMcpPage() {
   const route = useRoute()
+  const router = useRouter()
   const message = useMessage()
 
   const loading = ref(false)
@@ -85,6 +88,7 @@ export function useMcpPage() {
   const activeOAuthSession = ref<ProjectMcpOAuthLoginSession | null>(null)
   const oauthCallbackUrl = ref('')
   const relayingOAuthCallback = ref(false)
+  const activeMcpTab = ref<McpPageTab>('local')
 
   const OAUTH_CLI_LABEL_MAP: Record<ProjectMcpOAuthCli, string> = {
     codex: 'Codex',
@@ -115,6 +119,30 @@ export function useMcpPage() {
   const activeProjectId = computed(() => {
     return normalizeRouteParam(route.query.projectId) || resolveStoredProjectId()
   })
+
+  const normalizeMcpTab = (value: unknown): McpPageTab => {
+    return normalizeRouteParam(value) === 'oauth' ? 'oauth' : 'local'
+  }
+
+  const setMcpTab = (tab: McpPageTab) => {
+    activeMcpTab.value = tab
+    closeAddMenu()
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const nextQuery = { ...route.query }
+    if (tab === 'oauth') {
+      nextQuery.tab = 'oauth'
+    } else {
+      delete nextQuery.tab
+    }
+
+    void router.replace({
+      query: nextQuery,
+    })
+  }
 
   const resolveMetadataField = (
     payload: Record<string, unknown> | null | undefined,
@@ -937,6 +965,14 @@ export function useMcpPage() {
   }
 
   watch(
+    () => route.query.tab,
+    (tab) => {
+      activeMcpTab.value = normalizeMcpTab(tab)
+    },
+    { immediate: true },
+  )
+
+  watch(
     () => activeProjectId.value,
     async () => {
       closeAddMenu()
@@ -984,12 +1020,14 @@ export function useMcpPage() {
   return reactive({
     PROJECT_PROVIDER_ORDER,
     PROVIDER_LABEL_MAP,
+    activeMcpTab,
     activeOAuthSession,
     projectContextRequestToken,
     authorizingOAuthProviderCli,
     selectAllCopyMcpProviders,
     loadProjectOAuthProviders,
     loadingOAuthProviders,
+    setMcpTab,
     submitCopyBusinessLineMcp,
     openOAuthAuthorizationUrl,
     readClipboardForOAuthCallback,
