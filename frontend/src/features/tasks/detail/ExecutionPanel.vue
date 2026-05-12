@@ -2,6 +2,11 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { TaskMessage, TaskStatus } from '@/types/api/tasks'
 import CliLogRenderer from './cli/CliLogRenderer.vue'
+import {
+  normalizeAgentWorkspaceFileHref,
+  resolveTaskNodeIdForArtifactLink,
+  type OpenArtifactFilePayload,
+} from '../task-artifact-links'
 
 defineOptions({
   name: 'TaskDetailExecutionPanel',
@@ -17,6 +22,10 @@ const props = defineProps<{
   streamConnected: boolean
   messages: TaskMessage[]
   formatDate: (value?: string) => string
+}>()
+
+const emit = defineEmits<{
+  openArtifactFile: [payload: OpenArtifactFilePayload]
 }>()
 
 const scrollContainer = ref<HTMLDivElement | null>(null)
@@ -39,6 +48,53 @@ const scrollToBottom = () => {
   el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   userScrolledUp.value = false
   showScrollButton.value = false
+}
+
+const waitForNextFrame = () =>
+  new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve())
+  })
+
+const findClickedAnchor = (event: MouseEvent): HTMLAnchorElement | null => {
+  if (!(event.target instanceof Element)) return null
+  const anchor = event.target.closest<HTMLAnchorElement>('a[href]')
+  if (!anchor || !scrollContainer.value?.contains(anchor)) return null
+  return anchor
+}
+
+const restoreAnchorScrollPosition = async (anchor: HTMLAnchorElement, previousTop: number) => {
+  await nextTick()
+  await waitForNextFrame()
+
+  const el = scrollContainer.value
+  if (!el || !el.contains(anchor)) return
+
+  const nextTop = anchor.getBoundingClientRect().top - el.getBoundingClientRect().top
+  el.scrollTop += nextTop - previousTop
+  checkScroll()
+}
+
+const handleContentClick = (event: MouseEvent) => {
+  if (event.defaultPrevented || event.button !== 0) return
+
+  const anchor = findClickedAnchor(event)
+  if (!anchor) return
+
+  const artifactPath =
+    normalizeAgentWorkspaceFileHref(anchor.getAttribute('href')) ??
+    normalizeAgentWorkspaceFileHref(anchor.href)
+  if (!artifactPath) return
+
+  event.preventDefault()
+  const el = scrollContainer.value
+  if (!el) return
+
+  const previousTop = anchor.getBoundingClientRect().top - el.getBoundingClientRect().top
+  emit('openArtifactFile', {
+    path: artifactPath,
+    taskNodeId: resolveTaskNodeIdForArtifactLink(props.messages, artifactPath),
+  })
+  void restoreAnchorScrollPosition(anchor, previousTop)
 }
 
 watch(
@@ -88,7 +144,11 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div ref="scrollContainer" class="relative min-h-0 flex-1 overflow-y-auto px-5 py-5">
+    <div
+      ref="scrollContainer"
+      class="relative min-h-0 flex-1 overflow-y-auto px-5 py-5"
+      @click="handleContentClick"
+    >
       <div v-if="props.loading" class="flex h-full items-center justify-center text-sm text-muted-foreground">加载执行内容中...</div>
 
       <template v-else>

@@ -37,6 +37,7 @@ import {
   logMessageMatchesAny,
   mapLogToMessage,
 } from '@features/tasks/task-detail-log.helpers'
+import type { OpenArtifactFilePayload } from '@features/tasks/task-artifact-links'
 import type { TaskEditFormValue } from '@features/tasks/detail/TaskDialogs.vue'
 
 export type TaskDetailPageContext = ReturnType<typeof useTaskDetailPage>
@@ -1235,6 +1236,19 @@ const handleSelectWorkflowNode = (nodeId: string) => {
   selectedWorkflowNodeId.value = nodeId
 }
 
+const handleOpenArtifactFile = (payload: OpenArtifactFilePayload) => {
+  const path = payload.path.trim()
+  if (!path) return
+
+  if (payload.taskNodeId?.trim()) {
+    selectedWorkflowNodeId.value = payload.taskNodeId.trim()
+  }
+
+  artifactFilePath.value = path
+  artifactOpenNonce.value += 1
+  isRightPanelVisible.value = true
+}
+
 const resolveAutoSelectedWorkflowNodeId = (nodes: TaskNode[]) => {
   const sortedByOrder = [...nodes].sort((left, right) => left.nodeOrder - right.nodeOrder)
   const findLastNodeIdByStatus = (status: TaskNode['status']) => {
@@ -1523,6 +1537,7 @@ return reactive({
     flushPendingStreamLogs,
     formatDate,
     getLastLogCursor,
+    handleOpenArtifactFile,
     handleReply,
     handleSelectWorkflowNode,
     hasButtonAccess,

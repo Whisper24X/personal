@@ -129,6 +129,7 @@ const workflowCardRef = toRef(vm, 'workflowCardRef')
               :stream-connected="vm.streamConnected"
               :messages="vm.executionMessages"
               :format-date="vm.formatDate"
+              @open-artifact-file="vm.handleOpenArtifactFile"
             />
 
             <ReplyCard
