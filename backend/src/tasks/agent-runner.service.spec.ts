@@ -1969,6 +1969,70 @@ describe('AgentRunnerService', () => {
     expect(result.clearPreviousSessionId).toBeUndefined();
   });
 
+  it('should not fallback to a fresh prompt when a follow-up resume fails', async () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    jest.spyOn(serviceAny, 'resolveRunnerConfig').mockResolvedValue({
+      adapter: 'codex',
+      command: 'codex',
+      args: ['exec', '--json', '--skip-git-repo-check', '-'],
+      cwd: '/tmp/worktree',
+      env: {},
+    });
+    jest.spyOn(serviceAny, 'resolvePrompt').mockReturnValue('continue prompt');
+    jest
+      .spyOn(serviceAny, 'resolveContainerExecRefForTask')
+      .mockResolvedValue(null);
+    const runWithConfig = jest
+      .spyOn(serviceAny, 'runWithConfig')
+      .mockResolvedValueOnce({
+        success: false,
+        interrupted: false,
+        exitCode: 1,
+        signal: null,
+        command: 'codex',
+        args: [
+          'exec',
+          'resume',
+          '--json',
+          '--skip-git-repo-check',
+          'thread-1',
+          '-',
+        ],
+        cwd: '/tmp/worktree',
+        durationMs: 120,
+        stdout: '',
+        stderr:
+          'Error: thread/resume: thread/resume failed: no rollout found for thread id thread-1',
+        prompt: 'continue prompt',
+        sessionId: null,
+      });
+
+    const result = await service.executeAgentNode({
+      task: createTask(),
+      node: {
+        ...createNode(),
+        agentCliSessionId: 'thread-1',
+        runtimeJson: {
+          pendingUserMessage: '继续',
+        },
+      },
+      project: createProject({
+        agentAdapter: 'codex',
+      }),
+    });
+
+    expect(runWithConfig).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      success: false,
+      prompt: 'continue prompt',
+      clearPreviousSessionId: true,
+    });
+  });
+
   it('should use rendered follow-up message only when resuming an existing cli session', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,

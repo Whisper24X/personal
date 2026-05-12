@@ -2381,7 +2381,7 @@ describe('TaskDetailView toasts', () => {
     })
   })
 
-  it('shows failed workflow node actions and retries the failed node', async () => {
+  it('allows replying when a workflow node failed', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -2417,6 +2417,7 @@ describe('TaskDetailView toasts', () => {
           status: 'failed',
           agentCliId: 'codex',
           agentCliConfigId: 'cfg-2',
+          agentCliSessionId: 'session-failed',
         },
         {
           id: 'node-3',
@@ -2431,7 +2432,7 @@ describe('TaskDetailView toasts', () => {
     }
 
     tasksApi.detailWithNodes.mockResolvedValueOnce(failedDetail)
-    tasksApi.resetNode.mockResolvedValueOnce({
+    tasksApi.reply.mockResolvedValueOnce({
       ...failedDetail,
       task: {
         ...failedDetail.task,
@@ -2464,7 +2465,7 @@ describe('TaskDetailView toasts', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('节点执行失败')
-    expect(wrapper.text()).toContain('请先重置后再继续执行。')
+    expect(wrapper.text()).toContain('可补充回复继续执行，也可以从更多操作重置节点。')
 
     const failedNodeButton = wrapper
       .findAll('button')
@@ -2472,8 +2473,8 @@ describe('TaskDetailView toasts', () => {
     expect(failedNodeButton?.classes()).toContain('ring-2')
 
     const replyTextarea = wrapper.get('textarea[aria-label="回复内容"]')
-    expect((replyTextarea.element as HTMLTextAreaElement).disabled).toBe(true)
-    expect(replyTextarea.attributes('placeholder')).toBe('节点执行失败，请先重置...')
+    expect((replyTextarea.element as HTMLTextAreaElement).disabled).toBe(false)
+    expect(replyTextarea.attributes('placeholder')).toBe('补充说明后将继续执行失败节点...')
 
     const buttonTexts = wrapper.findAll('button').map((button) => button.text().trim()).filter(Boolean)
     expect(buttonTexts).not.toContain('重试')
@@ -2487,14 +2488,79 @@ describe('TaskDetailView toasts', () => {
       .findAll('button')
       .find((button) => button.text().trim() === '重置')
     expect(resetButton).toBeTruthy()
-    await resetButton?.trigger('click')
+
+    await replyTextarea.setValue('Please continue')
+    await wrapper.get('button[aria-label="发送回复"]').trigger('click')
     await flushPromises()
 
     const messageStore = useMessageStore()
     expect(messageStore.items).toHaveLength(0)
-    expect(tasksApi.resetNode).toHaveBeenCalledWith('task-1', {
-      nodeId: 'node-2',
+    expect(tasksApi.reply).toHaveBeenCalledWith('task-1', {
+      message: 'Please continue',
     })
+  })
+
+  it('keeps reply disabled for failed workflow node without an agent session', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        status: 'in_progress',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Completed node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          name: 'Failed node',
+          status: 'failed',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-2',
+          agentCliSessionId: null,
+        },
+      ],
+    } satisfies TaskDetail)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('当前失败节点无法继续对话，请重置后重新执行。')
+    const replyTextarea = wrapper.get('textarea[aria-label="回复内容"]')
+    expect((replyTextarea.element as HTMLTextAreaElement).disabled).toBe(true)
+    expect(replyTextarea.attributes('placeholder')).toBe('当前失败节点无法继续对话，请重置后重新执行...')
   })
 
   it('completes workflow task via complete API when in review and all nodes done', async () => {

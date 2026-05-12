@@ -89,6 +89,19 @@ export class RunnerAgentExecutionService {
     );
 
     if (
+      this.shouldClearCodexInvalidFollowUpResume({
+        node,
+        config: preparedExecution.config,
+        result: firstResult,
+      })
+    ) {
+      return {
+        ...firstResult,
+        clearPreviousSessionId: true,
+      };
+    }
+
+    if (
       !this.shouldFallbackCodexInvalidResume({
         node,
         config: preparedExecution.config,
@@ -556,6 +569,31 @@ export class RunnerAgentExecutionService {
       config.adapter !== 'codex' ||
       !config.args.includes('resume') ||
       !this.normalizeOptionalString(node.agentCliSessionId) ||
+      this.hasPendingUserMessage(node) ||
+      result.success ||
+      result.interrupted
+    ) {
+      return false;
+    }
+
+    const diagnostic = `${result.stderr}\n${result.errorMessage ?? ''}`;
+    return this.isInvalidCodexResumeError(diagnostic);
+  }
+
+  private shouldClearCodexInvalidFollowUpResume({
+    node,
+    config,
+    result,
+  }: {
+    node: TaskNode;
+    config: AgentExecutionConfig;
+    result: AgentExecutionResult;
+  }): boolean {
+    if (
+      config.adapter !== 'codex' ||
+      (!config.args.includes('resume') && !result.args.includes('resume')) ||
+      !this.normalizeOptionalString(node.agentCliSessionId) ||
+      !this.hasPendingUserMessage(node) ||
       result.success ||
       result.interrupted
     ) {
@@ -616,6 +654,21 @@ export class RunnerAgentExecutionService {
 
     const normalized = value.trim();
     return normalized || null;
+  }
+
+  private hasPendingUserMessage(node: TaskNode): boolean {
+    const runtime =
+      node.runtimeJson && typeof node.runtimeJson === 'object'
+        ? (node.runtimeJson as Record<string, unknown>)
+        : {};
+
+    return (
+      this.normalizeOptionalString(
+        typeof runtime.pendingUserMessage === 'string'
+          ? runtime.pendingUserMessage
+          : null,
+      ) !== null
+    );
   }
 
   private consumeStreamChunkLines(

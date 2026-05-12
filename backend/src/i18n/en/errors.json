@@ -202,6 +202,7 @@
     "notFound": "Task not found.",
     "replyMessageEmpty": "Reply message cannot be empty.",
     "repeatRequiresDoneOrInReview": "Task can be repeated only when done or has an in-review node.",
+    "replyCannotContinueWithoutSession": "Current node has no resumable agent session. Reset and run it again.",
     "resetNodeInvalidStatus": "Only done, in-review, or failed node can be reset.",
     "resetSnapshotUnavailable": "Task node cannot be reset because execution snapshot is unavailable.",
     "runtimeInitFailed": "Task runtime initialization failed.",
