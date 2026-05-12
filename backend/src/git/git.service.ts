@@ -21,6 +21,11 @@ import { GitBranchMergeResultDto } from './dto/git-branch-merge-result.dto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectRepositoryWorkspaceService } from '../projects/project-repository-workspace.service';
 
+type GitCommitAuthor = {
+  name: string;
+  email: string;
+};
+
 @Injectable()
 export class GitService {
   private readonly logger = new Logger(GitService.name);
@@ -826,96 +831,14 @@ export class GitService {
         currentUser,
         { syncRemote: false },
         async ({ repositoryRoot }) => {
-          const root = path.resolve(repositoryRoot);
-          const relativePaths: string[] = [];
-
-          for (const rawPath of absolutePaths) {
-            const absPath = path.resolve(String(rawPath).trim());
-            if (!absPath) {
-              continue;
-            }
-
-            const relPath = path.relative(root, absPath);
-            if (
-              !relPath ||
-              relPath.startsWith('..') ||
-              path.isAbsolute(relPath)
-            ) {
-              this.logger.warn(
-                `commitProjectPathsIfDirty: skip path outside repository projectId=${projectId} path=${absPath}`,
-              );
-              continue;
-            }
-
-            relativePaths.push(relPath);
-          }
-
-          if (!relativePaths.length) {
-            this.logger.warn(
-              `commitProjectPathsIfDirty: no valid paths under repository projectId=${projectId}`,
-            );
-            return;
-          }
-
-          const addResult = await this.runCommand([
-            '-C',
-            root,
-            'add',
-            '--',
-            ...relativePaths,
-          ]);
-
-          if (!addResult.success) {
-            this.logger.warn(
-              `commitProjectPathsIfDirty: ${this.formatGitFailure('git add', addResult)} projectId=${projectId}`,
-            );
-            return;
-          }
-
-          const stagedResult = await this.runCommand([
-            '-C',
-            root,
-            'diff',
-            '--cached',
-            '--name-only',
-          ]);
-
-          if (!stagedResult.success) {
-            this.logger.warn(
-              `commitProjectPathsIfDirty: ${this.formatGitFailure(
-                'git diff --cached',
-                stagedResult,
-              )} projectId=${projectId}`,
-            );
-            return;
-          }
-
-          if (!stagedResult.stdout.trim()) {
-            return;
-          }
-
           const gitName = currentUser.username || 'ainative-user';
           const gitEmail = `${currentUser.username || currentUser.sub}@ainative.local`;
-          const commitResult = await this.runCommand([
-            '-C',
-            root,
-            '-c',
-            `user.name=${gitName}`,
-            '-c',
-            `user.email=${gitEmail}`,
-            'commit',
-            '-m',
+          await this.commitPathsInRepositoryRootIfDirty(
+            repositoryRoot,
+            absolutePaths,
             trimmedMessage,
-          ]);
-
-          if (!commitResult.success) {
-            this.logger.warn(
-              `commitProjectPathsIfDirty: ${this.formatGitFailure(
-                'git commit',
-                commitResult,
-              )} projectId=${projectId}`,
-            );
-          }
+            { name: gitName, email: gitEmail },
+          );
         },
       );
     } catch (error) {
@@ -923,6 +846,130 @@ export class GitService {
         `commitProjectPathsIfDirty: unexpected error projectId=${projectId} ${
           error instanceof Error ? error.message : String(error)
         }`,
+      );
+    }
+  }
+
+  async checkoutBranchInRepository(
+    repositoryRoot: string,
+    branchName: string,
+  ): Promise<void> {
+    const normalizedBranchName = this.normalizeAndAssertBranchName(
+      branchName,
+      '分支名',
+    );
+    const checkout = await this.ensureCheckoutLocalBranch(
+      repositoryRoot,
+      normalizedBranchName,
+    );
+    if (!checkout.ok) {
+      throw new BadRequestException(checkout.message);
+    }
+  }
+
+  async commitPathsInRepositoryRootIfDirty(
+    repositoryRoot: string,
+    absolutePaths: string[],
+    message: string,
+    author: GitCommitAuthor,
+  ): Promise<boolean> {
+    const root = path.resolve(repositoryRoot);
+    const trimmedMessage = message.trim();
+    if (!absolutePaths.length || !trimmedMessage) {
+      return false;
+    }
+
+    const relativePaths: string[] = [];
+    for (const rawPath of absolutePaths) {
+      const absPath = path.resolve(String(rawPath).trim());
+      if (!absPath) {
+        continue;
+      }
+
+      const relPath = path.relative(root, absPath);
+      if (!relPath || relPath.startsWith('..') || path.isAbsolute(relPath)) {
+        throw new BadRequestException(`提交路径不在项目仓库内: ${absPath}`);
+      }
+
+      relativePaths.push(relPath);
+    }
+
+    if (!relativePaths.length) {
+      return false;
+    }
+
+    const addResult = await this.runCommand([
+      '-C',
+      root,
+      'add',
+      '--',
+      ...relativePaths,
+    ]);
+    if (!addResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure('暂存文档变更失败', addResult),
+      );
+    }
+
+    const stagedResult = await this.runCommand([
+      '-C',
+      root,
+      'diff',
+      '--cached',
+      '--name-only',
+      '--',
+      ...relativePaths,
+    ]);
+    if (!stagedResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure('读取文档暂存状态失败', stagedResult),
+      );
+    }
+
+    if (!stagedResult.stdout.trim()) {
+      return false;
+    }
+
+    const commitResult = await this.runCommand([
+      '-C',
+      root,
+      '-c',
+      `user.name=${author.name}`,
+      '-c',
+      `user.email=${author.email}`,
+      'commit',
+      '-m',
+      trimmedMessage,
+      '--',
+      ...relativePaths,
+    ]);
+    if (!commitResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure('提交文档变更失败', commitResult),
+      );
+    }
+
+    return true;
+  }
+
+  async pushBranchInRepository(
+    repositoryRoot: string,
+    branchName: string,
+  ): Promise<void> {
+    const normalizedBranchName = this.normalizeAndAssertBranchName(
+      branchName,
+      '分支名',
+    );
+    const pushResult = await this.runCommand([
+      '-C',
+      path.resolve(repositoryRoot),
+      'push',
+      'origin',
+      normalizedBranchName,
+    ]);
+    if (!pushResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(`推送 ${normalizedBranchName} 失败`, pushResult),
       );
     }
   }

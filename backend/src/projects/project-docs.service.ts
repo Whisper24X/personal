@@ -1,5 +1,6 @@
 import { createReadStream } from 'fs';
 import { promises as fs } from 'fs';
+import { spawn } from 'child_process';
 import {
   BadRequestException,
   ConflictException,
@@ -15,6 +16,7 @@ import {
 } from './dto/project-doc.dto';
 import { Project } from './domain/project';
 import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
+import { GoalRepository } from '../goals/infrastructure/persistence/goal.repository';
 
 @Injectable()
 export class ProjectDocsService {
@@ -22,9 +24,13 @@ export class ProjectDocsService {
   private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
   private readonly maxProjectDocFiles = 500;
   private readonly maxProjectDocDepth = 8;
+  private readonly gitCommandTimeoutMs = 60_000;
+  private readonly goalDocPathPattern =
+    /^goals\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/.+$/i;
 
   constructor(
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
+    private readonly goalRepository: GoalRepository,
   ) {}
 
   normalizeProjectDocPath(value: string): string {
@@ -350,6 +356,15 @@ export class ProjectDocsService {
     const stat = await fs.stat(absolutePath).catch(() => null);
 
     if (!stat || !stat.isFile()) {
+      const remoteDoc = await this.readGoalDocFromRemoteIfAvailable(
+        projectId,
+        relativePath,
+        currentUser,
+      );
+      if (remoteDoc) {
+        return remoteDoc;
+      }
+
       throw new NotFoundException('Project doc not found');
     }
 
@@ -358,7 +373,9 @@ export class ProjectDocsService {
       name: path.basename(absolutePath),
       size: stat.size,
       updatedAt: stat.mtime,
-      content: await fs.readFile(absolutePath, 'utf-8'),
+      content: await fs.readFile(absolutePath, 'utf-8').catch(() => {
+        throw new BadRequestException('Project doc exists but cannot be read');
+      }),
     };
   }
 
@@ -460,6 +477,46 @@ export class ProjectDocsService {
     }
 
     return this.readDoc(projectId, relativePath, currentUser);
+  }
+
+  async writeDocInRepositoryRoot(
+    repositoryRoot: string,
+    payload: SaveProjectDocDto,
+  ): Promise<{ relativePath: string; absolutePath: string }> {
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(payload.path);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+    const existing = await fs.stat(absolutePath).catch(() => null);
+    if (existing?.isDirectory()) {
+      throw new ConflictException('Project doc path is a directory');
+    }
+
+    const parentDir = path.dirname(absolutePath);
+    const parentStat = await fs.stat(parentDir).catch(() => null);
+    if (parentStat?.isFile()) {
+      const parentRelative = path
+        .relative(docsRoot, parentDir)
+        .replace(/\\/g, '/');
+      throw new ConflictException(
+        `路径「${parentRelative}」已存在为文件，无法在其下创建子文件。请删除该文件或选择其他路径。`,
+      );
+    }
+
+    await fs.mkdir(parentDir, { recursive: true });
+
+    if (payload.contentBase64 != null && payload.contentBase64 !== '') {
+      await fs.writeFile(
+        absolutePath,
+        Buffer.from(payload.contentBase64, 'base64'),
+      );
+    } else {
+      await fs.writeFile(absolutePath, payload.content ?? '', 'utf-8');
+    }
+
+    return { relativePath, absolutePath };
   }
 
   async updateDoc(
@@ -658,6 +715,148 @@ export class ProjectDocsService {
       }
     }
     return true;
+  }
+
+  private async readGoalDocFromRemoteIfAvailable(
+    projectId: Project['id'],
+    relativePath: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  } | null> {
+    const match = this.goalDocPathPattern.exec(relativePath);
+    if (!match) {
+      return null;
+    }
+
+    const goalId = match[1];
+    const goal = await this.goalRepository.findById(goalId);
+    if (!goal || goal.projectId !== projectId || !goal.gitBranch?.trim()) {
+      return null;
+    }
+
+    const branch = goal.gitBranch.trim();
+    if (!this.isSafeRemoteBranchName(branch)) {
+      return null;
+    }
+
+    return this.projectRepositoryWorkspaceService.runWithProjectRepositoryLock(
+      projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ repositoryRoot }) => {
+        const docsRoot = path.join(repositoryRoot, 'docs');
+        const absolutePath = this.resolveProjectDocAbsolutePath(
+          docsRoot,
+          relativePath,
+        );
+        const stat = await fs.stat(absolutePath).catch(() => null);
+        if (stat?.isFile()) {
+          const content = await fs.readFile(absolutePath, 'utf-8').catch(() => {
+            return null;
+          });
+          if (content != null) {
+            return {
+              path: relativePath,
+              name: path.basename(absolutePath),
+              size: stat.size,
+              updatedAt: stat.mtime,
+              content,
+            };
+          }
+        }
+
+        const showResult = await this.runGitCommand([
+          '-C',
+          repositoryRoot,
+          'show',
+          `refs/remotes/origin/${branch}:docs/${relativePath}`,
+        ]);
+        if (!showResult.success) {
+          return null;
+        }
+
+        await fs
+          .mkdir(path.dirname(absolutePath), { recursive: true })
+          .then(() => fs.writeFile(absolutePath, showResult.stdout, 'utf-8'))
+          .catch(() => undefined);
+
+        const restoredStat = await fs.stat(absolutePath).catch(() => null);
+        return {
+          path: relativePath,
+          name: path.basename(absolutePath),
+          size: restoredStat?.size ?? Buffer.byteLength(showResult.stdout),
+          updatedAt: restoredStat?.mtime ?? new Date(),
+          content: showResult.stdout,
+        };
+      },
+    );
+  }
+
+  private isSafeRemoteBranchName(value: string): boolean {
+    if (
+      !value ||
+      value.length > 200 ||
+      value.includes('..') ||
+      value.includes('//') ||
+      value.startsWith('-') ||
+      value.endsWith('.') ||
+      value.endsWith('/') ||
+      /[\s\x00-\x1f\x7f\\~^:?*]/.test(value) ||
+      value.includes('[')
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private async runGitCommand(
+    args: string[],
+  ): Promise<{ success: boolean; stdout: string; stderr: string }> {
+    return new Promise((resolve) => {
+      const childProcess = spawn('git', args, {
+        env: process.env,
+        stdio: 'pipe',
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      childProcess.stdout?.on('data', (chunk) => {
+        stdout += chunk.toString('utf-8');
+      });
+
+      childProcess.stderr?.on('data', (chunk) => {
+        stderr += chunk.toString('utf-8');
+      });
+
+      const timeoutRef = setTimeout(() => {
+        childProcess.kill('SIGTERM');
+      }, this.gitCommandTimeoutMs);
+
+      childProcess.on('error', (error) => {
+        clearTimeout(timeoutRef);
+        resolve({
+          success: false,
+          stdout: stdout.trimEnd(),
+          stderr: error.message,
+        });
+      });
+
+      childProcess.on('close', (code) => {
+        clearTimeout(timeoutRef);
+        resolve({
+          success: code === 0,
+          stdout: stdout.trimEnd(),
+          stderr: stderr.trimEnd(),
+        });
+      });
+    });
   }
 
   private async pathExists(targetPath: string): Promise<boolean> {

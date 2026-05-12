@@ -147,6 +147,46 @@ export class GoalsService {
     private readonly goalsMetrics: GoalsMetricsService,
   ) {}
 
+  private async persistGoalDocToGit(
+    goal: Goal,
+    currentUser: JwtPayloadType,
+    docPath: string,
+    content: string,
+    commitMessage: string,
+  ): Promise<void> {
+    const branch = goal.gitBranch?.trim();
+    if (!branch) {
+      throw new BadRequestException('需求未配置 Git 分支，无法保存文档');
+    }
+
+    await this.projectsService.runWithProjectRepositoryLock(
+      goal.projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ repositoryRoot }) => {
+        await this.gitService.checkoutBranchInRepository(
+          repositoryRoot,
+          branch,
+        );
+        const { absolutePath } =
+          await this.projectDocsService.writeDocInRepositoryRoot(
+            repositoryRoot,
+            { path: docPath, content },
+          );
+        await this.gitService.commitPathsInRepositoryRootIfDirty(
+          repositoryRoot,
+          [absolutePath],
+          commitMessage,
+          {
+            name: currentUser.username || 'ainative-user',
+            email: `${currentUser.username || currentUser.sub}@ainative.local`,
+          },
+        );
+        await this.gitService.pushBranchInRepository(repositoryRoot, branch);
+      },
+    );
+  }
+
   private async assertGoalAccess(
     goalId: string,
     currentUser: JwtPayloadType,
@@ -515,6 +555,9 @@ export class GoalsService {
     if (!overwrite && goal.prdDocPath) {
       throw new ConflictException('PRD 已存在，如需覆盖请设置 overwrite');
     }
+    if (!goal.gitBranch?.trim()) {
+      throw new BadRequestException('需求未配置 Git 分支，无法生成 PRD');
+    }
     if (
       goal.status !== GoalStatus.draft &&
       goal.status !== GoalStatus.prdGenerated &&
@@ -577,23 +620,13 @@ export class GoalsService {
     }
     this.goalsMetrics.incrementPrdGeneration(true);
 
-    try {
-      await this.projectDocsService.createDoc(
-        goal.projectId,
-        { path: rel, content: markdown },
-        currentUser,
-      );
-    } catch (e) {
-      if (e instanceof ConflictException) {
-        await this.projectDocsService.updateDoc(
-          goal.projectId,
-          { path: rel, content: markdown },
-          currentUser,
-        );
-      } else {
-        throw e;
-      }
-    }
+    await this.persistGoalDocToGit(
+      goal,
+      currentUser,
+      rel,
+      markdown,
+      `docs(goal): generate PRD for ${goalId}`,
+    );
 
     const updated = await this.goalRepository.update(goalId, {
       prdDocPath: rel,
@@ -811,23 +844,13 @@ export class GoalsService {
     }
 
     const planRel = goalTaskPlanRelativePath(goalId);
-    try {
-      await this.projectDocsService.createDoc(
-        goal.projectId,
-        { path: planRel, content: markdown },
-        currentUser,
-      );
-    } catch (e) {
-      if (e instanceof ConflictException) {
-        await this.projectDocsService.updateDoc(
-          goal.projectId,
-          { path: planRel, content: markdown },
-          currentUser,
-        );
-      } else {
-        throw e;
-      }
-    }
+    await this.persistGoalDocToGit(
+      goal,
+      currentUser,
+      planRel,
+      markdown,
+      `docs(goal): generate task plan for ${goalId}`,
+    );
 
     await this.goalRepository.replacePlanItems(goalId, planItems, subTasksFlat);
     const updated = await this.goalRepository.update(goalId, {

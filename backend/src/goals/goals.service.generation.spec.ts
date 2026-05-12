@@ -50,16 +50,34 @@ const createService = () => {
   };
   const projectsService = {
     assertProjectCapability: jest.fn().mockResolvedValue(undefined),
+    runWithProjectRepositoryLock: jest.fn(
+      async (
+        _projectId: string,
+        _currentUser: JwtPayloadType,
+        _options: unknown,
+        operation: (ctx: { repositoryRoot: string }) => Promise<unknown>,
+      ) => operation({ repositoryRoot: '/repo' }),
+    ),
   };
   const projectDocsService = {
     createDoc: jest.fn().mockResolvedValue(undefined),
     updateDoc: jest.fn().mockResolvedValue(undefined),
     readDoc: jest.fn(),
+    writeDocInRepositoryRoot: jest.fn(
+      (_repositoryRoot: string, payload: { path: string }) => ({
+        relativePath: payload.path,
+        absolutePath: `/repo/docs/${payload.path}`,
+      }),
+    ),
   };
   const projectKnowledgeService = {
     executeProjectAgentPrompt: jest.fn(),
   };
-  const gitService = {};
+  const gitService = {
+    checkoutBranchInRepository: jest.fn().mockResolvedValue(undefined),
+    commitPathsInRepositoryRootIfDirty: jest.fn().mockResolvedValue(true),
+    pushBranchInRepository: jest.fn().mockResolvedValue(undefined),
+  };
   const taskRepository = {};
   const taskProvisioningService = {};
   const goalSourceDocsService = {
@@ -89,6 +107,7 @@ const createService = () => {
     projectsService,
     projectDocsService,
     projectKnowledgeService,
+    gitService,
     goalSourceDocsService,
     goalsMetrics,
   };
@@ -105,6 +124,7 @@ describe('GoalsService generation parsing', () => {
       goalRepository,
       projectDocsService,
       projectKnowledgeService,
+      gitService,
       goalsMetrics,
     } = createService();
     const currentUser = createJwt();
@@ -135,10 +155,23 @@ describe('GoalsService generation parsing', () => {
       currentUser,
     );
 
-    expect(projectDocsService.createDoc).toHaveBeenCalledWith(
-      goal.projectId,
+    expect(projectDocsService.writeDocInRepositoryRoot).toHaveBeenCalledWith(
+      '/repo',
       { path: 'goals/goal-1/PRD.md', content: markdown },
-      currentUser,
+    );
+    expect(gitService.checkoutBranchInRepository).toHaveBeenCalledWith(
+      '/repo',
+      goal.gitBranch,
+    );
+    expect(gitService.commitPathsInRepositoryRootIfDirty).toHaveBeenCalledWith(
+      '/repo',
+      ['/repo/docs/goals/goal-1/PRD.md'],
+      'docs(goal): generate PRD for goal-1',
+      { name: 'ainative-user', email: 'user-1@ainative.local' },
+    );
+    expect(gitService.pushBranchInRepository).toHaveBeenCalledWith(
+      '/repo',
+      goal.gitBranch,
     );
     expect(result.markdownLength).toBe(markdown.length);
     expect(goalsMetrics.incrementPrdGeneration).toHaveBeenCalledWith(true);
@@ -150,6 +183,7 @@ describe('GoalsService generation parsing', () => {
       goalRepository,
       projectDocsService,
       projectKnowledgeService,
+      gitService,
       goalsMetrics,
     } = createService();
     const currentUser = createJwt();
@@ -205,10 +239,23 @@ describe('GoalsService generation parsing', () => {
       currentUser,
     );
 
-    expect(projectDocsService.createDoc).toHaveBeenCalledWith(
-      goal.projectId,
+    expect(projectDocsService.writeDocInRepositoryRoot).toHaveBeenCalledWith(
+      '/repo',
       { path: 'goals/goal-1/task-plan.md', content: markdown },
-      currentUser,
+    );
+    expect(gitService.checkoutBranchInRepository).toHaveBeenCalledWith(
+      '/repo',
+      goal.gitBranch,
+    );
+    expect(gitService.commitPathsInRepositoryRootIfDirty).toHaveBeenCalledWith(
+      '/repo',
+      ['/repo/docs/goals/goal-1/task-plan.md'],
+      'docs(goal): generate task plan for goal-1',
+      { name: 'ainative-user', email: 'user-1@ainative.local' },
+    );
+    expect(gitService.pushBranchInRepository).toHaveBeenCalledWith(
+      '/repo',
+      goal.gitBranch,
     );
     expect(goalRepository.replacePlanItems).toHaveBeenCalledWith(
       goal.id,

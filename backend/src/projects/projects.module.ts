@@ -17,12 +17,14 @@ import { ProjectKnowledgeService } from './project-knowledge.service';
 import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
 import { ProjectRepositoryProvisioningService } from './project-repository-provisioning.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RelationalGoalPersistenceModule } from '../goals/infrastructure/persistence/relational/relational-persistence.module';
 
 @Module({
   imports: [
     forwardRef(() => AgentExecutionModule),
     ProjectWorkspaceModule,
     RelationalProjectPersistenceModule,
+    RelationalGoalPersistenceModule,
     RelationalTaskPersistenceModule,
     RelationalWorkflowTemplatePersistenceModule,
     ContainersModule,
