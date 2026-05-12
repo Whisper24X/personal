@@ -395,7 +395,6 @@ const replyDisabled = computed(() => {
     !task.value ||
     actionLoading.value ||
     isCliRunning.value ||
-    hasFailedNode.value ||
     task.value.status === 'todo' ||
     task.value.status === 'done'
   )
@@ -407,7 +406,7 @@ const replyPlaceholder = computed(() => {
   }
 
   if (hasFailedNode.value) {
-    return '节点执行失败，请先重置...'
+    return '补充说明后将继续执行失败节点...'
   }
 
   if (task.value?.status === 'todo') {

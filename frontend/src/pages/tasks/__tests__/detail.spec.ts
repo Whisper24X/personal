@@ -2381,7 +2381,7 @@ describe('TaskDetailView toasts', () => {
     })
   })
 
-  it('shows failed workflow node actions and retries the failed node', async () => {
+  it('allows replying when a workflow node failed', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -2431,7 +2431,7 @@ describe('TaskDetailView toasts', () => {
     }
 
     tasksApi.detailWithNodes.mockResolvedValueOnce(failedDetail)
-    tasksApi.resetNode.mockResolvedValueOnce({
+    tasksApi.reply.mockResolvedValueOnce({
       ...failedDetail,
       task: {
         ...failedDetail.task,
@@ -2464,7 +2464,7 @@ describe('TaskDetailView toasts', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('节点执行失败')
-    expect(wrapper.text()).toContain('请先重置后再继续执行。')
+    expect(wrapper.text()).toContain('可补充回复继续执行，也可以从更多操作重置节点。')
 
     const failedNodeButton = wrapper
       .findAll('button')
@@ -2472,8 +2472,8 @@ describe('TaskDetailView toasts', () => {
     expect(failedNodeButton?.classes()).toContain('ring-2')
 
     const replyTextarea = wrapper.get('textarea[aria-label="回复内容"]')
-    expect((replyTextarea.element as HTMLTextAreaElement).disabled).toBe(true)
-    expect(replyTextarea.attributes('placeholder')).toBe('节点执行失败，请先重置...')
+    expect((replyTextarea.element as HTMLTextAreaElement).disabled).toBe(false)
+    expect(replyTextarea.attributes('placeholder')).toBe('补充说明后将继续执行失败节点...')
 
     const buttonTexts = wrapper.findAll('button').map((button) => button.text().trim()).filter(Boolean)
     expect(buttonTexts).not.toContain('重试')
@@ -2487,13 +2487,15 @@ describe('TaskDetailView toasts', () => {
       .findAll('button')
       .find((button) => button.text().trim() === '重置')
     expect(resetButton).toBeTruthy()
-    await resetButton?.trigger('click')
+
+    await replyTextarea.setValue('Please continue')
+    await wrapper.get('button[aria-label="发送回复"]').trigger('click')
     await flushPromises()
 
     const messageStore = useMessageStore()
     expect(messageStore.items).toHaveLength(0)
-    expect(tasksApi.resetNode).toHaveBeenCalledWith('task-1', {
-      nodeId: 'node-2',
+    expect(tasksApi.reply).toHaveBeenCalledWith('task-1', {
+      message: 'Please continue',
     })
   })
 

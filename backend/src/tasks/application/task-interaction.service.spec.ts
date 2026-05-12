@@ -426,38 +426,56 @@ describe('TaskInteractionService', () => {
     expect(taskLogService.appendLog).not.toHaveBeenCalled();
   });
 
-  it('should reject reply when task still has a failed node', async () => {
+  it('should queue the failed node again when replying after failure', async () => {
     const {
       service,
       taskNodeRepository,
+      taskConfigResolver,
       taskLogService,
       taskStatusService,
       taskSchedulerService,
+      taskQueryService,
     } = createService({
       status: TaskStatus.inProgress,
     });
     const currentUser = createCurrentUser();
+    const failedNode = createNode({
+      id: 'node-failed',
+      status: TaskNodeStatus.failed,
+      nodeOrder: 2,
+    });
 
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
-      createNode({
-        id: 'node-failed',
-        status: TaskNodeStatus.failed,
-        nodeOrder: 2,
-      }),
+      failedNode,
     );
 
-    await expect(
-      service.reply(
-        'task-1',
-        { message: 'Please continue' } as never,
-        currentUser as never,
-      ),
-    ).rejects.toThrow('Task has failed node and cannot accept reply');
+    await service.reply(
+      'task-1',
+      { message: 'Please continue' } as never,
+      currentUser as never,
+    );
 
-    expect(taskLogService.appendLog).not.toHaveBeenCalled();
-    expect(taskNodeRepository.update).not.toHaveBeenCalled();
-    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
-    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-failed', {
+      status: TaskNodeStatus.todo,
+      finishedAt: null,
+      runtimeJson:
+        taskConfigResolver.buildPendingReplyRuntimeJson('Please continue'),
+    });
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        taskNodeId: 'node-failed',
+        message: 'Failed node moved back to todo by reply',
+      }),
+    );
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-1',
+    );
+    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
+    expect(taskQueryService.detailById).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
   });
 
   it('should cancel a running node without overwriting existing output jsonl', async () => {

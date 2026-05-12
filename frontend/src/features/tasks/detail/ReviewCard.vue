@@ -33,7 +33,7 @@ const titleText = computed(() => {
   return isFailed.value ? '节点执行失败' : '节点待审批'
 })
 const helperText = computed(() => {
-  return isFailed.value ? '请先重置后再继续执行。' : '请确认节点结果后再继续。'
+  return isFailed.value ? '可补充回复继续执行，也可以从更多操作重置节点。' : '请确认节点结果后再继续。'
 })
 </script>
 
