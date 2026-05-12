@@ -9,6 +9,7 @@ import type {
   Mcp,
   ProjectLocalMcpProvider,
   ProjectMcpOAuthCli,
+  ProjectMcpOAuthCliState,
   ProjectMcpOAuthLoginSession,
   ProjectMcpOAuthProvider,
 } from '@/types/api/mcps'
@@ -37,9 +38,10 @@ type ProviderGroup = {
   servers: Mcp[]
 }
 
-type McpPageTab = 'local' | 'oauth'
-
 export type McpPageContext = ReturnType<typeof useMcpPage>
+
+const OAUTH_LOCAL_MCP_CLI_SET = new Set<ProjectMcpOAuthCli>(['codex', 'cursor'])
+const LOCAL_MCP_OAUTH_PROVIDER = 'figma'
 
 export function useMcpPage() {
   const route = useRoute()
@@ -88,11 +90,9 @@ export function useMcpPage() {
   const activeOAuthSession = ref<ProjectMcpOAuthLoginSession | null>(null)
   const oauthCallbackUrl = ref('')
   const relayingOAuthCallback = ref(false)
-  const activeMcpTab = ref<McpPageTab>('local')
 
   const OAUTH_CLI_LABEL_MAP: Record<ProjectMcpOAuthCli, string> = {
     codex: 'Codex',
-    claude: 'Claude Code',
     cursor: 'Cursor',
   }
 
@@ -119,30 +119,6 @@ export function useMcpPage() {
   const activeProjectId = computed(() => {
     return normalizeRouteParam(route.query.projectId) || resolveStoredProjectId()
   })
-
-  const normalizeMcpTab = (value: unknown): McpPageTab => {
-    return normalizeRouteParam(value) === 'oauth' ? 'oauth' : 'local'
-  }
-
-  const setMcpTab = (tab: McpPageTab) => {
-    activeMcpTab.value = tab
-    closeAddMenu()
-
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const nextQuery = { ...route.query }
-    if (tab === 'oauth') {
-      nextQuery.tab = 'oauth'
-    } else {
-      delete nextQuery.tab
-    }
-
-    void router.replace({
-      query: nextQuery,
-    })
-  }
 
   const resolveMetadataField = (
     payload: Record<string, unknown> | null | undefined,
@@ -627,6 +603,85 @@ export function useMcpPage() {
     return provider.cliStates.find((state) => state.cli === cli)?.status ?? 'disconnected'
   }
 
+  const resolveLocalMcpOAuthCli = (item: Mcp): ProjectMcpOAuthCli | null => {
+    const sourceProvider = resolveSourceProvider(item)
+    if (!OAUTH_LOCAL_MCP_CLI_SET.has(sourceProvider as ProjectMcpOAuthCli)) {
+      return null
+    }
+
+    return sourceProvider as ProjectMcpOAuthCli
+  }
+
+  const isFigmaLocalMcp = (item: Mcp) => {
+    const candidates = [
+      item.provider ?? '',
+      item.name,
+      resolveMetadataField(item.metadataJson ?? null, 'provider'),
+      resolveMetadataField(item.metadataJson ?? null, 'owner'),
+    ]
+
+    return candidates.some(
+      (candidate) => candidate.trim().toLowerCase() === LOCAL_MCP_OAUTH_PROVIDER,
+    )
+  }
+
+  const getLocalMcpOAuthProvider = (item: Mcp) => {
+    const cli = resolveLocalMcpOAuthCli(item)
+    if (!cli || !isFigmaLocalMcp(item)) {
+      return null
+    }
+
+    return (
+      oauthProviders.value.find((provider) => {
+        return (
+          provider.provider.trim().toLowerCase() === LOCAL_MCP_OAUTH_PROVIDER &&
+          provider.cliStates.some((state) => state.cli === cli)
+        )
+      }) ?? null
+    )
+  }
+
+  const canAuthorizeLocalMcpOAuth = (item: Mcp) => {
+    return Boolean(getLocalMcpOAuthProvider(item))
+  }
+
+  const getLocalMcpOAuthStatus = (item: Mcp): ProjectMcpOAuthCliState['status'] | 'unavailable' => {
+    const provider = getLocalMcpOAuthProvider(item)
+    const cli = resolveLocalMcpOAuthCli(item)
+    if (!provider || !cli) {
+      return 'unavailable'
+    }
+
+    return getOAuthProviderCliStatus(provider, cli)
+  }
+
+  const isAuthorizingLocalMcpOAuth = (item: Mcp) => {
+    const provider = getLocalMcpOAuthProvider(item)
+    const cli = resolveLocalMcpOAuthCli(item)
+    return Boolean(
+      provider && cli && authorizingOAuthProviderCli.value === `${provider.provider}:${cli}`,
+    )
+  }
+
+  const getLocalMcpOAuthButtonLabel = (item: Mcp) => {
+    if (isAuthorizingLocalMcpOAuth(item)) {
+      return '启动中…'
+    }
+
+    return getLocalMcpOAuthStatus(item) === 'connected' ? '已授权' : 'OAuth'
+  }
+
+  const startLocalMcpOAuthLogin = async (item: Mcp) => {
+    const provider = getLocalMcpOAuthProvider(item)
+    const cli = resolveLocalMcpOAuthCli(item)
+    if (!provider || !cli) {
+      message.error('当前 MCP 不支持 OAuth 授权')
+      return
+    }
+
+    await startProjectOAuthLogin(provider, cli)
+  }
+
   const startProjectOAuthLogin = async (
     provider: ProjectMcpOAuthProvider,
     cli: ProjectMcpOAuthCli,
@@ -641,12 +696,17 @@ export function useMcpPage() {
     authorizingOAuthProviderCli.value = key
     oauthCallbackUrl.value = ''
     try {
-      activeOAuthSession.value = await mcpsApi.startProjectOAuthLogin({
+      const session = await mcpsApi.startProjectOAuthLogin({
         projectId,
         provider: provider.provider,
         cli,
       })
-      message.success(`已生成 ${provider.displayName} 授权链接`)
+      activeOAuthSession.value = session.status === 'succeeded' ? null : session
+      message.success(
+        session.status === 'succeeded'
+          ? `${provider.displayName} 已完成授权`
+          : `已生成 ${provider.displayName} 授权链接`,
+      )
       await loadProjectOAuthProviders()
     } catch (error) {
       message.error(toErrorMessage(error, `启动 ${provider.displayName} 授权失败`))
@@ -967,7 +1027,13 @@ export function useMcpPage() {
   watch(
     () => route.query.tab,
     (tab) => {
-      activeMcpTab.value = normalizeMcpTab(tab)
+      if (tab == null) {
+        return
+      }
+
+      const nextQuery = { ...route.query }
+      delete nextQuery.tab
+      void router.replace({ query: nextQuery })
     },
     { immediate: true },
   )
@@ -1020,18 +1086,21 @@ export function useMcpPage() {
   return reactive({
     PROJECT_PROVIDER_ORDER,
     PROVIDER_LABEL_MAP,
-    activeMcpTab,
     activeOAuthSession,
     projectContextRequestToken,
     authorizingOAuthProviderCli,
     selectAllCopyMcpProviders,
     loadProjectOAuthProviders,
     loadingOAuthProviders,
-    setMcpTab,
     submitCopyBusinessLineMcp,
     openOAuthAuthorizationUrl,
     readClipboardForOAuthCallback,
     startProjectOAuthLogin,
+    startLocalMcpOAuthLogin,
+    getLocalMcpOAuthButtonLabel,
+    getLocalMcpOAuthStatus,
+    canAuthorizeLocalMcpOAuth,
+    isAuthorizingLocalMcpOAuth,
     resolveMcpConfigFromDraft,
     getOAuthProviderCliStatus,
     relayProjectOAuthCallback,

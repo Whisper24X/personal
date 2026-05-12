@@ -71,7 +71,7 @@ const getAuthorizeButtonLabel = (
           {{ provider.lastError }}
         </p>
 
-        <div class="mt-4 grid gap-2 sm:grid-cols-3">
+        <div class="mt-4 grid gap-2 sm:grid-cols-2">
           <button
             v-for="state in provider.cliStates"
             :key="state.cli"

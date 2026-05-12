@@ -175,6 +175,24 @@ export class ProjectMcpOAuthService {
         session.id,
         active,
       );
+      if (!authorizationUrl) {
+        this.activeLogins.delete(session.id);
+        const updated = await this.sessionRepo.save({
+          ...session,
+          status: 'succeeded',
+          errorMessage: null,
+        });
+        await this.upsertConnection(project.id, definition.provider, {
+          status: 'connected',
+          credentialVolumeRef: this.buildCredentialVolumeName(project.id),
+          lastError: null,
+          cli: dto.cli,
+          cliStatus: 'connected',
+          cliLastLoginAt: new Date().toISOString(),
+        });
+        return this.toSessionDto(updated);
+      }
+
       const parsed = this.parseAuthorizationUrl(authorizationUrl);
       const updated = await this.sessionRepo.save({
         ...session,
@@ -336,7 +354,7 @@ export class ProjectMcpOAuthService {
   private waitForAuthorizationUrl(
     sessionId: string,
     active: ActiveLoginProcess,
-  ): Promise<string> {
+  ): Promise<string | null> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
@@ -354,6 +372,10 @@ export class ProjectMcpOAuthService {
       };
       const onExit = (code: number | null) => {
         cleanup();
+        if (code === 0) {
+          resolve(null);
+          return;
+        }
         reject(
           new Error(
             `OAuth login process exited before authorization URL (code=${code ?? 'unknown'}): ${this.buildProcessDiagnostic(active)}`,
@@ -381,10 +403,21 @@ export class ProjectMcpOAuthService {
     provider: string;
     upstreamMcpUrl: string;
   }): Promise<void> {
-    if (input.cli !== 'codex') {
-      return;
+    switch (input.cli) {
+      case 'codex':
+        await this.prepareCodexLoginConfig(input);
+        return;
+      case 'cursor':
+        await this.prepareCursorLoginConfig(input);
+        return;
     }
+  }
 
+  private async prepareCodexLoginConfig(input: {
+    containerRef: string;
+    provider: string;
+    upstreamMcpUrl: string;
+  }): Promise<void> {
     const serverKey = this.toTomlBareKey(input.provider);
     const script = [
       'set -e',
@@ -415,6 +448,71 @@ export class ProjectMcpOAuthService {
     } catch (error) {
       throw new Error(
         `Failed to prepare Codex MCP config: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async prepareCursorLoginConfig(input: {
+    containerRef: string;
+    provider: string;
+    upstreamMcpUrl: string;
+  }): Promise<void> {
+    const script = [
+      'set -e',
+      'export HOME=/root',
+      'export PATH="/root/.local/bin:$PATH"',
+      'mkdir -p "$HOME/.cursor"',
+      `node <<'NODE'`,
+      `const fs = require('node:fs');`,
+      `const path = require('node:path');`,
+      `const configPath = path.join(process.env.HOME, '.cursor', 'mcp.json');`,
+      `const provider = process.env.AINATIVE_OAUTH_MCP_PROVIDER;`,
+      `const url = process.env.AINATIVE_OAUTH_MCP_URL;`,
+      `let config = {};`,
+      `try {`,
+      `  config = JSON.parse(fs.readFileSync(configPath, 'utf8') || '{}');`,
+      `} catch {`,
+      `  config = {};`,
+      `}`,
+      `if (!config || typeof config !== 'object' || Array.isArray(config)) {`,
+      `  config = {};`,
+      `}`,
+      `if (!config.mcpServers || typeof config.mcpServers !== 'object' || Array.isArray(config.mcpServers)) {`,
+      `  config.mcpServers = {};`,
+      `}`,
+      `const existing = config.mcpServers[provider];`,
+      `config.mcpServers[provider] = {`,
+      `  ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}),`,
+      `  url,`,
+      `};`,
+      `fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\\n');`,
+      `NODE`,
+      '/root/.local/bin/agent mcp enable "$AINATIVE_OAUTH_MCP_PROVIDER"',
+    ].join('\n');
+
+    try {
+      await execFileAsync(
+        'docker',
+        [
+          'exec',
+          '-w',
+          this.containerConfig.getRunnerWorkspace(),
+          '-e',
+          'HOME=/root',
+          '-e',
+          `AINATIVE_OAUTH_MCP_PROVIDER=${input.provider}`,
+          '-e',
+          `AINATIVE_OAUTH_MCP_URL=${input.upstreamMcpUrl}`,
+          input.containerRef,
+          'bash',
+          '-lc',
+          script,
+        ],
+        { timeout: 10_000 },
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to prepare Cursor MCP config: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

@@ -10,7 +10,7 @@
 
 实施前已经做过两轮验证，结论列在前面以约束方案选型：
 
-- Figma 的 `mcp:connect` OAuth scope **不对一般第三方 OAuth app 开放**，参见 [Figma Forum - mcp:connect scope](https://forum.figma.com/ask-the-community-7/how-to-access-mcp-oauth-scope-mcp-connect-50630)、[Figma Developer Docs - Plans, access, and permissions](https://developers.figma.com/docs/figma-mcp-server/plans-access-and-permissions)。AINative 作为第三方平台不能注册自己的 Figma OAuth client，只能复用 Codex / Claude Code / Cursor 这些 Catalog 客户端的 client_id。
+- Figma 的 `mcp:connect` OAuth scope **不对一般第三方 OAuth app 开放**，参见 [Figma Forum - mcp:connect scope](https://forum.figma.com/ask-the-community-7/how-to-access-mcp-oauth-scope-mcp-connect-50630)、[Figma Developer Docs - Plans, access, and permissions](https://developers.figma.com/docs/figma-mcp-server/plans-access-and-permissions)。AINative 作为第三方平台不能注册自己的 Figma OAuth client，只能复用 Codex / Cursor 这些 Catalog 客户端的 client_id。
 - 在 Codex 里实测把 `mcp_oauth_callback_url` 设为 AINative 公网 URL，Figma OAuth server 直接返回 `Invalid redirect uri`。Codex 客户端在 Figma 注册的 `redirect_uri` 只允许 loopback (`http://127.0.0.1:*`)，AINative 没有渠道修改这个白名单。
 
 ### 方案选型决策
@@ -20,7 +20,7 @@
 具体含义：
 
 - 平台**不**作为任何 provider 的 OAuth client。
-- Agent CLI（Codex / Claude Code / Cursor）继续作为它们已经获 provider 接受的 OAuth client，在 runner 容器内运行原生 `mcp login` 命令。
+- Agent CLI（Codex / Cursor）继续作为它们已经获 provider 接受的 OAuth client，在 runner 容器内运行原生 `mcp login` 命令。
 - 平台只负责把浏览器侧的 callback URL 中转进容器，并把 CLI 写入的凭据持久化到项目级容器卷里。
 - 平台不持有 access token / refresh token，凭据安全责任由 CLI 自身管理。
 
@@ -82,7 +82,7 @@ flowchart TD
   oauthApi -. docker exec .-> runner["Runner Container"]
   runner --> cliLogin["CLI mcp login 进程"]
   cliLogin --> credsVolume
-  task["任务执行"] --> agentCli["Codex / Claude Code / Cursor"]
+  task["任务执行"] --> agentCli["Codex / Cursor"]
   agentCli --> credsVolume
   agentCli --> upstream["Provider Upstream MCP"]
 ```
@@ -99,12 +99,10 @@ type OAuthMcpProviderDefinition = {
 
   cliLogin: {
     codex?: { command: string[]; callbackPort: number }
-    claude?: { command: string[]; callbackPort: number }
     cursor?: { command: string[]; callbackPort: number }
   }
   cliLogout?: {
     codex?: string[]
-    claude?: string[]
     cursor?: string[]
   }
 
@@ -122,13 +120,11 @@ Figma 首发示例：
   upstreamMcpUrl: 'https://mcp.figma.com/mcp',
   cliLogin: {
     codex: { command: ['codex', 'mcp', 'login', 'figma'], callbackPort: 38555 },
-    claude: { command: ['claude', 'mcp', 'add', '--transport', 'http', 'figma', 'https://mcp.figma.com/mcp'], callbackPort: 38556 },
-    cursor: { command: ['agent', 'mcp', 'login', 'figma'], callbackPort: 38557 },
+    cursor: { command: ['/root/.local/bin/agent', 'mcp', 'login', 'figma'], callbackPort: 38557 },
   },
   cliLogout: {
     codex: ['codex', 'mcp', 'logout', 'figma'],
-    claude: ['claude', 'mcp', 'remove', 'figma'],
-    cursor: ['agent', 'mcp', 'logout', 'figma'],
+    cursor: ['/root/.local/bin/agent', 'mcp', 'logout', 'figma'],
   },
 }
 ```
@@ -166,7 +162,7 @@ Figma 首发示例：
 
 - `projectId`
 - `provider`
-- `cliRegistry`：`{ codex?: { lastLoginAt, status }, claude?: { ... }, cursor?: { ... } }`
+- `cliRegistry`：`{ codex?: { lastLoginAt, status }, cursor?: { ... } }`
 - `credentialVolumeRef`：项目级命名卷的引用
 - `authorizedByUserId`：发起最近一次授权的用户
 - `lastError`
@@ -177,7 +173,7 @@ Figma 首发示例：
 - `sessionId`
 - `projectId`
 - `provider`
-- `cli`：本次登录针对的 CLI（codex / claude / cursor）
+- `cli`：本次登录针对的 CLI（codex / cursor）
 - `state`：CLI 输出的 OAuth state（用于 relay 时强校验）
 - `containerExecRef`：CLI login 进程所在容器引用
 - `cliLoginPort`：CLI 监听端口
@@ -233,7 +229,6 @@ ainative-mcp-creds-<projectId>:/home/runner/.ainative-mcp-creds
 
 ```text
 CODEX_HOME=/home/runner/.ainative-mcp-creds/codex
-CLAUDE_*=/home/runner/.ainative-mcp-creds/claude
 CURSOR_*=/home/runner/.ainative-mcp-creds/cursor
 ```
 
@@ -243,14 +238,15 @@ CURSOR_*=/home/runner/.ainative-mcp-creds/cursor
 
 ## Agent CLI 适配
 
-平台**不**为 OAuth MCP provider 注入额外 MCP 配置：
+平台按 CLI 最小需求做登录前准备：
 
-- CLI 自己已经登录，配置由 CLI 自身管理（例如 Codex 写入 `~/.codex/config.toml`、Cursor 写入 `~/.config/cursor`、Claude Code 写入 `~/.claude`，具体路径以挂载卷重定向后的位置为准）。
+- Codex：幂等写入 `~/.codex/config.toml` 的 `[mcp_servers.<provider>]`，再运行 `codex mcp login <provider>`。
+- Cursor：幂等写入 `~/.cursor/mcp.json` 的 `mcpServers.<provider>`，并先运行 `/root/.local/bin/agent mcp enable <provider>` 加入本地 approved list，再运行 `/root/.local/bin/agent mcp login <provider>`。
+- CLI 自己完成登录后，凭据由 CLI 自身管理（例如 Codex 写入 `~/.codex`、Cursor 写入 `~/.cursor` 或其内部凭据目录，具体路径以挂载卷重定向后的位置为准）。
 - 任务执行链路只确保：
   - 凭据卷在 Agent CLI `docker exec` 时已挂载。
   - 环境变量正确指向卷内路径。
-  - 不在 platform 侧重复注入 `mcp_servers.<provider>`，避免覆盖 CLI 自己管的配置。
-- 用户项目仓库内已有同名 MCP 配置时，默认不动，与 CLI 现有合并行为一致。
+- 用户项目仓库内已有同名 MCP 配置时，默认不动；登录前准备只写 CLI HOME 下的全局配置，避免修改业务工作区。
 
 ## 前端入口
 
@@ -261,7 +257,7 @@ CURSOR_*=/home/runner/.ainative-mcp-creds/cursor
 - 「授权 <Provider>」按钮触发 start，页面进入「等待回调」状态，显示 OAuth URL + 操作引导。
 - 显著按钮「读取剪贴板并完成登录」，调用 `navigator.clipboard.readText()` 并 POST 给 `relay-callback`。
 - 兜底文本框，覆盖浏览器禁止剪贴板访问的场景。
-- 显示授权用户、上次登录时间、各 CLI 已登录状态（codex / claude / cursor）。
+- 显示授权用户、上次登录时间、各 CLI 已登录状态（codex / cursor）。
 - 「断开」按钮支持按 CLI 粒度断开或一次断开全部。
 
 前端分层：
@@ -278,9 +274,9 @@ CURSOR_*=/home/runner/.ainative-mcp-creds/cursor
 实施前先证伪以下假设，避免后期返工：
 
 1. ~~Codex `mcp_oauth_callback_url` 指向 AINative 公网 URL 是否被 Figma 接受~~。已验证：返回 `Invalid redirect uri`，不可行；这是选择 native callback relay 的依据之一。
-2. CLI 凭据存储路径是否能通过环境变量重定向：Codex 的 `CODEX_HOME`、Claude Code 的对应变量、Cursor 的对应变量，逐个核对其当前版本的实际行为。
+2. CLI 凭据存储路径是否能通过环境变量重定向：Codex 的 `CODEX_HOME`、Cursor 的对应变量，逐个核对其当前版本的实际行为。
 3. CLI 登录命令在容器后台运行时 stdin/stdout 的可靠性：`codex mcp login` 等命令需要稳定地从 stdout 抓 OAuth URL；必要时改用 file-based 输出或 hook。
-4. CLI 登录命令是否暴露 callback 端口配置：Codex 有 `mcp_oauth_callback_port`，Claude Code、Cursor 是否有等价能力；如果没有，需要其它方式控制 CLI 监听端口（端口预占 + retry，或读取 CLI 启动日志解析端口）。
+4. CLI 登录命令是否暴露 callback 端口配置：Codex 有 `mcp_oauth_callback_port`，Cursor 是否有等价能力；如果没有，需要其它方式控制 CLI 监听端口（端口预占 + retry，或读取 CLI 启动日志解析端口）。
 5. 同项目并发任务对凭据卷的访问是否需要文件锁；不同 CLI 对凭据文件并发写入的容忍度。
 6. runner 镜像现有 Node 环境是否已足够支持登录命令抓 stdout 与 docker exec 协作；不增加镜像依赖。
 7. 浏览器对 `navigator.clipboard.readText()` 的权限要求：用户首次点击触发是否需要二次确认；HTTPS 必备。
@@ -297,7 +293,7 @@ CURSOR_*=/home/runner/.ainative-mcp-creds/cursor
 
 - 项目 MCP 页面显示「OAuth MCP 集成」区域，Figma 卡片可见。
 - 点击「授权 Figma」后能在 Web 上完成整个流程（授权 → 复制回调 URL → 状态变成已授权）。
-- 同项目下分别启动 Codex、Claude Code、Cursor 任务，三者均能通过 `figma` MCP server 访问 Figma 工具。
+- 同项目下分别启动 Codex、Cursor 任务，二者均能通过 `figma` MCP server 访问 Figma 工具。
 - 任意任务日志中不出现 access token 或 refresh token 明文。
 - AINative 数据库与 API 响应中均不包含 token 字段。
 - 「断开授权」后新任务无法访问 Figma MCP；按 CLI 粒度断开时只影响指定 CLI。

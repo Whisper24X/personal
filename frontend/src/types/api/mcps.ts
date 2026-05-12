@@ -54,7 +54,7 @@ export type LocalMcpProbeResult = {
   warnings?: string[]
 }
 
-export type ProjectMcpOAuthCli = 'codex' | 'claude' | 'cursor'
+export type ProjectMcpOAuthCli = 'codex' | 'cursor'
 
 export type ProjectMcpOAuthCliState = {
   cli: ProjectMcpOAuthCli

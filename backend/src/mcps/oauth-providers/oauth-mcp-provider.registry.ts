@@ -13,25 +13,13 @@ const FIGMA_PROVIDER: OAuthMcpProviderDefinition = {
     codex: {
       command: ['codex', 'mcp', 'login', 'figma'],
     },
-    claude: {
-      command: [
-        'claude',
-        'mcp',
-        'add',
-        '--transport',
-        'http',
-        'figma',
-        'https://mcp.figma.com/mcp',
-      ],
-    },
     cursor: {
-      command: ['agent', 'mcp', 'login', 'figma'],
+      command: ['/root/.local/bin/agent', 'mcp', 'login', 'figma'],
     },
   },
   cliLogout: {
     codex: ['codex', 'mcp', 'logout', 'figma'],
-    claude: ['claude', 'mcp', 'remove', 'figma'],
-    cursor: ['agent', 'mcp', 'logout', 'figma'],
+    cursor: ['/root/.local/bin/agent', 'mcp', 'logout', 'figma'],
   },
   statusHints: {
     disconnected:

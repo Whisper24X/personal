@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { McpJsonImportModal } from '@features/business-lines'
-import OAuthMcpAuthorizationPanel from './OAuthMcpAuthorizationPanel.vue'
 import { useMcpPage } from './use-mcp-page'
 
 defineOptions({
@@ -16,42 +15,7 @@ const vm = useMcpPage()
       请先在左侧选择项目后再查看 MCP。
     </section>
 
-    <section v-if="vm.activeProjectId" class="panel-card p-2">
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="rounded-lg px-4 py-2 text-sm font-semibold transition"
-          :class="
-            vm.activeMcpTab === 'local'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          "
-          @click="vm.setMcpTab('local')"
-        >
-          本地 MCP
-        </button>
-        <button
-          type="button"
-          class="rounded-lg px-4 py-2 text-sm font-semibold transition"
-          :class="
-            vm.activeMcpTab === 'oauth'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          "
-          @click="vm.setMcpTab('oauth')"
-        >
-          OAuth 授权
-        </button>
-      </div>
-    </section>
-
-    <OAuthMcpAuthorizationPanel
-      v-if="vm.activeProjectId && vm.activeMcpTab === 'oauth'"
-      :vm="vm"
-      @update:oauth-callback-url="vm.oauthCallbackUrl = $event"
-    />
-
-    <section v-if="vm.activeProjectId && vm.activeMcpTab === 'local'" class="panel-card p-5">
+    <section v-if="vm.activeProjectId" class="panel-card p-5">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex flex-1 flex-wrap items-center gap-2">
           <input
@@ -142,13 +106,13 @@ const vm = useMcpPage()
     </section>
 
     <section
-      v-if="vm.activeProjectId && vm.activeMcpTab === 'local' && vm.loading"
+      v-if="vm.activeProjectId && vm.loading"
       class="panel-card p-6 text-sm text-muted-foreground"
     >
       加载中...
     </section>
 
-    <section v-else-if="vm.activeProjectId && vm.activeMcpTab === 'local'" class="space-y-4">
+    <section v-else-if="vm.activeProjectId" class="space-y-4">
       <article v-if="!vm.hasAnyProjectMcp" class="panel-card p-6 text-sm text-muted-foreground">
         当前项目没有可读取的 MCP 本地配置。
       </article>
@@ -235,14 +199,33 @@ const vm = useMcpPage()
                 {{ vm.resolveSourcePath(item) || '-' }}
               </p>
             </div>
-            <button
-              type="button"
-              class="inline-flex h-8 w-full items-center justify-center rounded-md border border-border bg-background text-xs font-semibold text-foreground transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="!vm.groupProbeTestReady(group.id) || vm.testingProjectMcpId === item.id"
-              @click.stop="void vm.testProjectLocalMcp(item)"
+            <div
+              class="grid gap-2"
+              :class="vm.canAuthorizeLocalMcpOAuth(item) ? 'grid-cols-2' : 'grid-cols-1'"
             >
-              {{ vm.testingProjectMcpId === item.id ? '探测中…' : '测试' }}
-            </button>
+              <button
+                type="button"
+                class="inline-flex h-8 w-full items-center justify-center rounded-md border border-border bg-background text-xs font-semibold text-foreground transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="!vm.groupProbeTestReady(group.id) || vm.testingProjectMcpId === item.id"
+                @click.stop="void vm.testProjectLocalMcp(item)"
+              >
+                {{ vm.testingProjectMcpId === item.id ? '探测中…' : '测试' }}
+              </button>
+              <button
+                v-if="vm.canAuthorizeLocalMcpOAuth(item)"
+                type="button"
+                class="inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                :class="
+                  vm.getLocalMcpOAuthStatus(item) === 'connected'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300'
+                    : 'border-border bg-background text-foreground hover:bg-muted/50'
+                "
+                :disabled="vm.isAuthorizingLocalMcpOAuth(item)"
+                @click.stop="void vm.startLocalMcpOAuthLogin(item)"
+              >
+                {{ vm.getLocalMcpOAuthButtonLabel(item) }}
+              </button>
+            </div>
           </article>
         </div>
 
@@ -253,6 +236,43 @@ const vm = useMcpPage()
           当前来源未发现 MCP 配置
         </div>
       </article>
+    </section>
+
+    <section v-if="vm.activeProjectId && vm.activeOAuthSession" class="panel-card p-5">
+      <p class="text-sm font-semibold">完成 {{ vm.activeOAuthSession.provider }} 授权</p>
+      <p class="mt-2 text-xs text-muted-foreground">
+        点击打开授权页面并完成授权。浏览器跳到 127.0.0.1 失败页后，复制地址栏完整
+        URL，回到这里读取剪贴板或手动粘贴。
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-md"
+          @click="vm.openOAuthAuthorizationUrl"
+        >
+          打开授权页面
+        </button>
+        <button
+          type="button"
+          class="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted/50"
+          @click="void vm.readClipboardForOAuthCallback()"
+        >
+          读取剪贴板
+        </button>
+      </div>
+      <textarea
+        v-model="vm.oauthCallbackUrl"
+        class="mt-3 h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+        placeholder="粘贴 http://127.0.0.1:<port>/callback?code=...&state=..."
+      />
+      <button
+        type="button"
+        class="mt-3 h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="vm.relayingOAuthCallback"
+        @click="void vm.relayProjectOAuthCallback()"
+      >
+        {{ vm.relayingOAuthCallback ? '完成中…' : '完成登录' }}
+      </button>
     </section>
 
     <McpJsonImportModal

@@ -2,11 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
 import { OAuthMcpCli } from '../oauth-providers/oauth-mcp-provider.types';
 
-export const OAUTH_MCP_CLI_VALUES: OAuthMcpCli[] = [
-  'codex',
-  'claude',
-  'cursor',
-];
+export const OAUTH_MCP_CLI_VALUES: OAuthMcpCli[] = ['codex', 'cursor'];
 
 export class ListProjectMcpOAuthProvidersDto {
   @ApiProperty({ type: String })

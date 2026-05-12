@@ -1,4 +1,4 @@
-export type OAuthMcpCli = 'codex' | 'claude' | 'cursor';
+export type OAuthMcpCli = 'codex' | 'cursor';
 
 export type OAuthMcpCliLoginDefinition = {
   command: string[];
@@ -19,6 +19,5 @@ export type OAuthMcpProviderDefinition = {
 
 export const OAUTH_MCP_CLI_LABELS: Record<OAuthMcpCli, string> = {
   codex: 'Codex',
-  claude: 'Claude Code',
   cursor: 'Cursor',
 };

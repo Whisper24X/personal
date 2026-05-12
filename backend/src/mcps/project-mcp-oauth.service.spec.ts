@@ -77,7 +77,6 @@ describe('ProjectMcpOAuthService', () => {
       status: 'disconnected',
     });
     expect(providers[0]?.cliStates.map((item) => item.cli).sort()).toEqual([
-      'claude',
       'codex',
       'cursor',
     ]);
