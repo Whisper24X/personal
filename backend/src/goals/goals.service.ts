@@ -189,61 +189,42 @@ export class GoalsService {
       throw new BadRequestException('需求未配置 Git 分支，无法保存文档');
     }
 
-    await this.gitService.checkoutBranchInRepository(repositoryRoot, branch);
-    await this.gitService.cleanupForeignUntrackedGoalDirs(
+    await this.gitService.runInTemporaryBranchWorktree(
       repositoryRoot,
-      goal.id,
-    );
-    const { absolutePath } =
-      await this.projectDocsService.writeDocInRepositoryRoot(repositoryRoot, {
-        path: docPath,
-        content,
-      });
-    const committed = await this.gitService.commitPathsInRepositoryRootIfDirty(
-      repositoryRoot,
-      [absolutePath],
-      commitMessage,
-      {
-        name: currentUser.username || 'ainative-user',
-        email: `${currentUser.username || currentUser.sub}@ainative.local`,
-      },
-    );
-    if (!committed) {
-      const status = await this.gitService.readStatusForPathsInRepositoryRoot(
-        repositoryRoot,
-        [absolutePath],
-      );
-      if (status) {
-        throw new BadRequestException(
-          `文档已写入但未能生成提交，请清理工作区后重试: ${status}`,
-        );
-      }
-    }
-    await this.gitService.pushBranchInRepository(repositoryRoot, branch);
-  }
-
-  private async prepareGoalBranchForRead(
-    goal: Goal,
-    currentUser: JwtPayloadType,
-  ): Promise<void> {
-    const branch = goal.gitBranch?.trim();
-    if (!branch) {
-      return;
-    }
-
-    await this.projectsService.runWithProjectRepositoryLock(
-      goal.projectId,
-      currentUser,
-      { syncRemote: true },
-      async ({ repositoryRoot }) => {
-        await this.gitService.checkoutBranchInRepository(
-          repositoryRoot,
-          branch,
-        );
+      branch,
+      async (worktreeRoot) => {
         await this.gitService.cleanupForeignUntrackedGoalDirs(
-          repositoryRoot,
+          worktreeRoot,
           goal.id,
         );
+        const { absolutePath } =
+          await this.projectDocsService.writeDocInRepositoryRoot(worktreeRoot, {
+            path: docPath,
+            content,
+          });
+        const committed =
+          await this.gitService.commitPathsInRepositoryRootIfDirty(
+            worktreeRoot,
+            [absolutePath],
+            commitMessage,
+            {
+              name: currentUser.username || 'ainative-user',
+              email: `${currentUser.username || currentUser.sub}@ainative.local`,
+            },
+          );
+        if (!committed) {
+          const status =
+            await this.gitService.readStatusForPathsInRepositoryRoot(
+              worktreeRoot,
+              [absolutePath],
+            );
+          if (status) {
+            throw new BadRequestException(
+              `文档已写入但未能生成提交，请清理工作区后重试: ${status}`,
+            );
+          }
+        }
+        await this.gitService.pushRepositoryHeadToBranch(worktreeRoot, branch);
       },
     );
   }
@@ -457,7 +438,6 @@ export class GoalsService {
     currentUser: JwtPayloadType,
   ): Promise<GoalDetailDto> {
     const goal = await this.assertGoalAccess(id, currentUser);
-    await this.prepareGoalBranchForRead(goal, currentUser);
 
     const [sourceDocs, planItems, tasks, deps] = await Promise.all([
       this.goalRepository.listSourceDocs(id),
@@ -657,18 +637,8 @@ export class GoalsService {
         goal.projectId,
         currentUser,
         { syncRemote: true },
-        async ({ project, repositoryRoot }) => {
-          await this.gitService.checkoutBranchInRepository(
-            repositoryRoot,
-            goal.gitBranch!.trim(),
-          );
-          await this.gitService.cleanupForeignUntrackedGoalDirs(
-            repositoryRoot,
-            goalId,
-          );
-
-          return { project, repositoryRoot };
-        },
+        async ({ project, repositoryRoot }) =>
+          await Promise.resolve({ project, repositoryRoot }),
       );
 
     for (let attempt = 1; attempt <= PRD_MAX_ATTEMPTS; attempt++) {
@@ -779,25 +749,22 @@ export class GoalsService {
         currentUser,
         { syncRemote: true },
         async ({ project, repositoryRoot }) => {
-          await this.gitService.checkoutBranchInRepository(
+          const prdContent = await this.gitService.runInTemporaryBranchWorktree(
             repositoryRoot,
             goal.gitBranch!.trim(),
+            async (worktreeRoot) => {
+              try {
+                const doc =
+                  await this.projectDocsService.readDocInRepositoryRoot(
+                    worktreeRoot,
+                    goal.prdDocPath!,
+                  );
+                return doc.content;
+              } catch {
+                throw new BadRequestException('无法读取 PRD 文件');
+              }
+            },
           );
-          await this.gitService.cleanupForeignUntrackedGoalDirs(
-            repositoryRoot,
-            goalId,
-          );
-
-          let prdContent = '';
-          try {
-            const doc = await this.projectDocsService.readDocInRepositoryRoot(
-              repositoryRoot,
-              goal.prdDocPath!,
-            );
-            prdContent = doc.content;
-          } catch {
-            throw new BadRequestException('无法读取 PRD 文件');
-          }
 
           return { project, repositoryRoot, prdContent };
         },

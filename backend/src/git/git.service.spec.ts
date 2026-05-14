@@ -244,10 +244,14 @@ describe('GitService', () => {
 
     const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
     runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/current')) // current branch before implicit checkout
       .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse local feature/base
       .mockResolvedValueOnce(createGitCommandResult('')) // checkout feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse origin/feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // local contains origin/feature/base
       .mockResolvedValueOnce(createGitCommandResult('')) // status porcelain empty
-      .mockResolvedValueOnce(createGitCommandResult('')); // branch goal/plan-x
+      .mockResolvedValueOnce(createGitCommandResult('')) // branch goal/plan-x
+      .mockResolvedValueOnce(createGitCommandResult('')); // restore feature/current
 
     const result = await service.createBranch(
       'project-1',
@@ -263,28 +267,118 @@ describe('GitService', () => {
       '-C',
       '/tmp/project-repo',
       'rev-parse',
+      '--abbrev-ref',
+      'HEAD',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(2, [
+      '-C',
+      '/tmp/project-repo',
+      'rev-parse',
       '--verify',
       'refs/heads/feature/base',
     ]);
-    expect(runCommandSpy).toHaveBeenNthCalledWith(2, [
+    expect(runCommandSpy).toHaveBeenNthCalledWith(3, [
       '-C',
       '/tmp/project-repo',
       'checkout',
       'feature/base',
     ]);
-    expect(runCommandSpy).toHaveBeenNthCalledWith(3, [
+    expect(runCommandSpy).toHaveBeenNthCalledWith(4, [
+      '-C',
+      '/tmp/project-repo',
+      'rev-parse',
+      '--verify',
+      'refs/remotes/origin/feature/base',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(5, [
+      '-C',
+      '/tmp/project-repo',
+      'merge-base',
+      '--is-ancestor',
+      'refs/remotes/origin/feature/base',
+      'refs/heads/feature/base',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(6, [
       '-C',
       '/tmp/project-repo',
       'status',
       '--porcelain',
       '--untracked-files=all',
     ]);
-    expect(runCommandSpy).toHaveBeenNthCalledWith(4, [
+    expect(runCommandSpy).toHaveBeenNthCalledWith(7, [
       '-C',
       '/tmp/project-repo',
       'branch',
       'goal/plan-x',
     ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(8, [
+      '-C',
+      '/tmp/project-repo',
+      'checkout',
+      'feature/current',
+    ]);
+  });
+
+  it('should not restore branch when already on requirement branch', async () => {
+    const { service } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/base')) // current branch
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse local feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // checkout feature/base
+      .mockResolvedValueOnce(
+        createGitCommandResult('', { success: false, stderr: 'missing' }),
+      )
+      .mockResolvedValueOnce(createGitCommandResult('')) // status porcelain empty
+      .mockResolvedValueOnce(createGitCommandResult('')); // branch goal/plan-x
+
+    const result = await service.createBranch(
+      'project-1',
+      'goal/plan-x',
+      'feature/base',
+      createCurrentUser(),
+      { prepareRequirementBranchWorkingTree: true },
+    );
+
+    expect(result).toEqual({ success: true, branch: 'goal/plan-x' });
+    expect(runCommandSpy).toHaveBeenCalledTimes(6);
+    expect(runCommandSpy).not.toHaveBeenCalledWith([
+      '-C',
+      '/tmp/project-repo',
+      'checkout',
+      'feature/current',
+    ]);
+  });
+
+  it('should report restore failure after creating plan branch', async () => {
+    const { service } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/current')) // current branch
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse local feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // checkout feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse origin/feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // local contains origin/feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // status porcelain empty
+      .mockResolvedValueOnce(createGitCommandResult('')) // branch goal/plan-x
+      .mockResolvedValueOnce(
+        createGitCommandResult('', {
+          success: false,
+          stderr: 'checkout blocked',
+        }),
+      );
+
+    await expect(
+      service.createBranch(
+        'project-1',
+        'goal/plan-x',
+        'feature/base',
+        createCurrentUser(),
+        { prepareRequirementBranchWorkingTree: true },
+      ),
+    ).rejects.toThrow(/恢复到原分支 feature\/current 失败.*checkout blocked/s);
   });
 
   it('should auto-commit dirty requirement branch before creating plan branch when prepareRequirementBranchWorkingTree', async () => {
@@ -292,6 +386,9 @@ describe('GitService', () => {
 
     const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
     runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/current'))
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(createGitCommandResult(''))
       .mockResolvedValueOnce(createGitCommandResult(''))
       .mockResolvedValueOnce(createGitCommandResult(''))
       .mockResolvedValueOnce(createGitCommandResult(' M tracked.txt\n'))
@@ -299,6 +396,7 @@ describe('GitService', () => {
       .mockResolvedValueOnce(
         createGitCommandResult('[feature/base abc1234] chore(goal): msg\n'),
       )
+      .mockResolvedValueOnce(createGitCommandResult(''))
       .mockResolvedValueOnce(createGitCommandResult(''));
 
     await service.createBranch(
@@ -309,13 +407,13 @@ describe('GitService', () => {
       { prepareRequirementBranchWorkingTree: true },
     );
 
-    expect(runCommandSpy).toHaveBeenNthCalledWith(4, [
+    expect(runCommandSpy).toHaveBeenNthCalledWith(7, [
       '-C',
       '/tmp/project-repo',
       'add',
       '-A',
     ]);
-    expect(runCommandSpy).toHaveBeenNthCalledWith(5, [
+    expect(runCommandSpy).toHaveBeenNthCalledWith(8, [
       '-C',
       '/tmp/project-repo',
       '-c',
@@ -326,11 +424,104 @@ describe('GitService', () => {
       '-m',
       'chore(goal): auto-commit before plan branch goal/plan-x',
     ]);
-    expect(runCommandSpy).toHaveBeenNthCalledWith(6, [
+    expect(runCommandSpy).toHaveBeenNthCalledWith(9, [
       '-C',
       '/tmp/project-repo',
       'branch',
       'goal/plan-x',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(10, [
+      '-C',
+      '/tmp/project-repo',
+      'checkout',
+      'feature/current',
+    ]);
+  });
+
+  it('should fast-forward requirement branch before creating plan branch when local is behind remote', async () => {
+    const { service } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/current'))
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse local feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // checkout feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse origin/feature/base
+      .mockResolvedValueOnce(
+        createGitCommandResult('', { success: false, stderr: 'not ancestor' }),
+      )
+      .mockResolvedValueOnce(createGitCommandResult('')) // remote contains local
+      .mockResolvedValueOnce(createGitCommandResult('Fast-forward'))
+      .mockResolvedValueOnce(createGitCommandResult('')) // status porcelain empty
+      .mockResolvedValueOnce(createGitCommandResult('')) // branch goal/plan-x
+      .mockResolvedValueOnce(createGitCommandResult('')); // restore feature/current
+
+    await service.createBranch(
+      'project-1',
+      'goal/plan-x',
+      'feature/base',
+      createCurrentUser(),
+      { prepareRequirementBranchWorkingTree: true },
+    );
+
+    expect(runCommandSpy).toHaveBeenNthCalledWith(7, [
+      '-C',
+      '/tmp/project-repo',
+      'merge',
+      '--ff-only',
+      'refs/remotes/origin/feature/base',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(9, [
+      '-C',
+      '/tmp/project-repo',
+      'branch',
+      'goal/plan-x',
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(10, [
+      '-C',
+      '/tmp/project-repo',
+      'checkout',
+      'feature/current',
+    ]);
+  });
+
+  it('should reject plan branch creation when requirement branch diverged from remote', async () => {
+    const { service } = createGitService();
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/current'))
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse local feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // checkout feature/base
+      .mockResolvedValueOnce(createGitCommandResult('')) // rev-parse origin/feature/base
+      .mockResolvedValueOnce(
+        createGitCommandResult('', { success: false, stderr: 'not ancestor' }),
+      )
+      .mockResolvedValueOnce(
+        createGitCommandResult('', { success: false, stderr: 'not ancestor' }),
+      )
+      .mockResolvedValueOnce(createGitCommandResult(''));
+
+    await expect(
+      service.createBranch(
+        'project-1',
+        'goal/plan-x',
+        'feature/base',
+        createCurrentUser(),
+        { prepareRequirementBranchWorkingTree: true },
+      ),
+    ).rejects.toThrow(/已分叉/);
+    expect(runCommandSpy).not.toHaveBeenCalledWith([
+      '-C',
+      '/tmp/project-repo',
+      'branch',
+      'goal/plan-x',
+    ]);
+    expect(runCommandSpy).toHaveBeenLastCalledWith([
+      '-C',
+      '/tmp/project-repo',
+      'checkout',
+      'feature/current',
     ]);
   });
 
@@ -339,12 +530,14 @@ describe('GitService', () => {
 
     const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
     runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/current'))
       .mockResolvedValueOnce(
         createGitCommandResult('', { success: false, stderr: 'fatal: Needed' }),
       ) // rev-parse local
       .mockResolvedValueOnce(
         createGitCommandResult('', { success: false, stderr: 'fatal: Needed' }),
-      ); // rev-parse remote
+      ) // rev-parse remote
+      .mockResolvedValueOnce(createGitCommandResult(''));
 
     await expect(
       service.createBranch(
@@ -362,6 +555,9 @@ describe('GitService', () => {
 
     const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
     runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/current'))
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(createGitCommandResult(''))
       .mockResolvedValueOnce(createGitCommandResult(''))
       .mockResolvedValueOnce(createGitCommandResult(''))
       .mockResolvedValueOnce(createGitCommandResult(' M x\n'))
@@ -371,7 +567,8 @@ describe('GitService', () => {
           success: false,
           stderr: 'pre-commit hook failed',
         }),
-      );
+      )
+      .mockResolvedValueOnce(createGitCommandResult(''));
 
     await expect(
       service.createBranch(
@@ -563,6 +760,244 @@ describe('GitService', () => {
         createCurrentUser(),
       ),
     ).rejects.toThrow(ConflictException);
+  });
+
+  describe('mergeBranchIntoBase', () => {
+    it('should merge in a temporary worktree without checking out the main repository', async () => {
+      const { service } = createGitService();
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+      runCommandSpy
+        .mockResolvedValueOnce(createGitCommandResult('base-sha'))
+        .mockResolvedValueOnce(createGitCommandResult('head-sha'))
+        .mockResolvedValueOnce(createGitCommandResult(''))
+        .mockResolvedValueOnce(
+          createGitCommandResult('Merge made by recursive.'),
+        )
+        .mockResolvedValueOnce(createGitCommandResult('pushed'))
+        .mockResolvedValueOnce(createGitCommandResult(''));
+
+      const result = await service.mergeBranchIntoBase(
+        'project-1',
+        'feature/goal',
+        'feature/group',
+        createCurrentUser() as never,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain(
+        '已将「feature/group」合并入「feature/goal」',
+      );
+
+      const addCall = runCommandSpy.mock.calls[2][0] as string[];
+      const tempWorktree = addCall[5];
+      expect(addCall).toEqual([
+        '-C',
+        '/tmp/project-repo',
+        'worktree',
+        'add',
+        '--detach',
+        expect.stringContaining('worktree'),
+        'refs/remotes/origin/feature/goal',
+      ]);
+      expect(runCommandSpy.mock.calls).toEqual([
+        [
+          [
+            '-C',
+            '/tmp/project-repo',
+            'rev-parse',
+            '--verify',
+            'refs/remotes/origin/feature/goal',
+          ],
+        ],
+        [
+          [
+            '-C',
+            '/tmp/project-repo',
+            'rev-parse',
+            '--verify',
+            'refs/heads/feature/group',
+          ],
+        ],
+        [addCall],
+        [['-C', tempWorktree, 'merge', '--no-ff', 'refs/heads/feature/group']],
+        [
+          [
+            '-C',
+            tempWorktree,
+            'push',
+            'origin',
+            'HEAD:refs/heads/feature/goal',
+          ],
+        ],
+        [
+          [
+            '-C',
+            '/tmp/project-repo',
+            'worktree',
+            'remove',
+            '--force',
+            tempWorktree,
+          ],
+        ],
+      ]);
+      expect(
+        runCommandSpy.mock.calls.flatMap((call) => call[0] as string[]),
+      ).not.toContain('checkout');
+    });
+
+    it('should report conflicts from the temporary worktree and clean it up', async () => {
+      const { service } = createGitService();
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+      runCommandSpy
+        .mockResolvedValueOnce(createGitCommandResult('base-sha'))
+        .mockResolvedValueOnce(createGitCommandResult('head-sha'))
+        .mockResolvedValueOnce(createGitCommandResult(''))
+        .mockResolvedValueOnce(
+          createGitCommandResult('', {
+            success: false,
+            stderr: 'CONFLICT (content): Merge conflict',
+          }),
+        )
+        .mockResolvedValueOnce(createGitCommandResult('src/a.ts\nsrc/b.ts'))
+        .mockResolvedValueOnce(createGitCommandResult(''))
+        .mockResolvedValueOnce(createGitCommandResult(''));
+
+      const result = await service.mergeBranchIntoBase(
+        'project-1',
+        'feature/goal',
+        'feature/group',
+        createCurrentUser() as never,
+      );
+
+      const tempWorktree = (runCommandSpy.mock.calls[2][0] as string[])[5];
+      expect(result).toEqual({
+        success: false,
+        message: expect.stringContaining('合并失败'),
+        conflicts: ['src/a.ts', 'src/b.ts'],
+      });
+      expect(runCommandSpy.mock.calls[4][0]).toEqual([
+        '-C',
+        tempWorktree,
+        'diff',
+        '--name-only',
+        '--diff-filter=U',
+      ]);
+      expect(runCommandSpy.mock.calls[5][0]).toEqual([
+        '-C',
+        tempWorktree,
+        'merge',
+        '--abort',
+      ]);
+      expect(runCommandSpy.mock.calls[6][0]).toEqual([
+        '-C',
+        '/tmp/project-repo',
+        'worktree',
+        'remove',
+        '--force',
+        tempWorktree,
+      ]);
+    });
+  });
+
+  describe('runInTemporaryBranchWorktree', () => {
+    it('should run an operation in a detached temporary branch worktree and clean up', async () => {
+      const { service } = createGitService();
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+      runCommandSpy
+        .mockResolvedValueOnce(createGitCommandResult('branch-sha'))
+        .mockResolvedValueOnce(createGitCommandResult(''))
+        .mockResolvedValueOnce(createGitCommandResult(''));
+
+      const result = await service.runInTemporaryBranchWorktree(
+        '/tmp/project-repo',
+        'feature/goal',
+        (worktreeRoot) => Promise.resolve(`used:${worktreeRoot}`),
+      );
+
+      const addCall = runCommandSpy.mock.calls[1][0] as string[];
+      const tempWorktree = addCall[5];
+      expect(result).toBe(`used:${tempWorktree}`);
+      expect(runCommandSpy.mock.calls).toEqual([
+        [
+          [
+            '-C',
+            '/tmp/project-repo',
+            'rev-parse',
+            '--verify',
+            'refs/remotes/origin/feature/goal',
+          ],
+        ],
+        [
+          [
+            '-C',
+            '/tmp/project-repo',
+            'worktree',
+            'add',
+            '--detach',
+            tempWorktree,
+            'refs/remotes/origin/feature/goal',
+          ],
+        ],
+        [
+          [
+            '-C',
+            '/tmp/project-repo',
+            'worktree',
+            'remove',
+            '--force',
+            tempWorktree,
+          ],
+        ],
+      ]);
+    });
+  });
+
+  describe('pushRepositoryHeadToBranch', () => {
+    it('should push HEAD and refresh the remote-tracking ref', async () => {
+      const { service } = createGitService();
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+      runCommandSpy
+        .mockResolvedValueOnce(createGitCommandResult('pushed'))
+        .mockResolvedValueOnce(createGitCommandResult(''));
+
+      await service.pushRepositoryHeadToBranch(
+        '/tmp/project-repo',
+        'feature/goal',
+      );
+
+      expect(runCommandSpy.mock.calls).toEqual([
+        [
+          [
+            '-C',
+            '/tmp/project-repo',
+            'push',
+            'origin',
+            'HEAD:refs/heads/feature/goal',
+          ],
+        ],
+        [
+          [
+            '-C',
+            '/tmp/project-repo',
+            'update-ref',
+            'refs/remotes/origin/feature/goal',
+            'HEAD',
+          ],
+        ],
+      ]);
+    });
   });
 
   describe('cleanupForeignUntrackedGoalDirs', () => {

@@ -283,6 +283,32 @@ export function useGoalDetailData() {
     }
   }
 
+  function clearPrdGenerationIfSatisfied(id: string): boolean {
+    if (!goalHasPrdWhenAligned.value) {
+      return false
+    }
+    const entry = goalGenerationByGoalId[normalizeGoalGenerationKey(id)]
+    if (entry) {
+      entry.generatingPrd = false
+    }
+    setGoalGenerationPrdPending(id, false)
+    clearGoalGenerationEntryIfIdle(id)
+    return true
+  }
+
+  function clearPlanGenerationIfSatisfied(id: string): boolean {
+    if (!goalHasPlanItemsWhenAligned.value) {
+      return false
+    }
+    const entry = goalGenerationByGoalId[normalizeGoalGenerationKey(id)]
+    if (entry) {
+      entry.generatingPlan = false
+    }
+    setGoalGenerationPlanPending(id, false)
+    clearGoalGenerationEntryIfIdle(id)
+    return true
+  }
+
   async function runGeneratePrd() {
     const goal = detail.value?.goal
     if (!goal?.agentCliId?.trim() || !goal?.agentCliConfigId?.trim()) {
@@ -312,12 +338,7 @@ export function useGoalDetailData() {
       })
       message.success('PRD 已生成')
       await load({ silent: true })
-      const entry = goalGenerationByGoalId[normalizeGoalGenerationKey(id)]
-      if (entry) {
-        entry.generatingPrd = false
-      }
-      setGoalGenerationPrdPending(id, false)
-      clearGoalGenerationEntryIfIdle(id)
+      clearPrdGenerationIfSatisfied(id)
     } catch (e) {
       if (isRequestPreemptedFetchError(e)) {
         /* 刷新/关页会中断 fetch：保留 pending，新页从 storage 恢复后轮询 */
@@ -368,12 +389,7 @@ export function useGoalDetailData() {
       })
       message.success('任务计划已生成')
       await load({ silent: true })
-      const entry = goalGenerationByGoalId[normalizeGoalGenerationKey(id)]
-      if (entry) {
-        entry.generatingPlan = false
-      }
-      setGoalGenerationPlanPending(id, false)
-      clearGoalGenerationEntryIfIdle(id)
+      clearPlanGenerationIfSatisfied(id)
     } catch (e) {
       if (isRequestPreemptedFetchError(e)) {
         return

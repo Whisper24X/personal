@@ -602,25 +602,50 @@ export class TaskRuntimeService {
     gitBaseBranch: string,
   ): Promise<string> {
     const remoteRef = `origin/${gitBaseBranch}`;
-    const remoteVerifyResult = await this.runCommand('git', [
-      '-C',
-      repositoryRoot,
-      'rev-parse',
-      '--verify',
-      remoteRef,
+    const [remoteVerifyResult, localVerifyResult] = await Promise.all([
+      this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'rev-parse',
+        '--verify',
+        remoteRef,
+      ]),
+      this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'rev-parse',
+        '--verify',
+        gitBaseBranch,
+      ]),
     ]);
+
+    if (remoteVerifyResult.success && localVerifyResult.success) {
+      const localContainsRemote = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'merge-base',
+        '--is-ancestor',
+        remoteRef,
+        gitBaseBranch,
+      ]);
+      if (localContainsRemote.success) {
+        return gitBaseBranch;
+      }
+
+      const remoteContainsLocal = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'merge-base',
+        '--is-ancestor',
+        gitBaseBranch,
+        remoteRef,
+      ]);
+      return remoteContainsLocal.success ? remoteRef : gitBaseBranch;
+    }
 
     if (remoteVerifyResult.success) {
       return remoteRef;
     }
-
-    const localVerifyResult = await this.runCommand('git', [
-      '-C',
-      repositoryRoot,
-      'rev-parse',
-      '--verify',
-      gitBaseBranch,
-    ]);
 
     if (localVerifyResult.success) {
       return gitBaseBranch;
