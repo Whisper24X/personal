@@ -379,6 +379,39 @@ export class ProjectDocsService {
     };
   }
 
+  async readDocInRepositoryRoot(
+    repositoryRoot: string,
+    rawDocPath: string,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(rawDocPath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+    const stat = await fs.stat(absolutePath).catch(() => null);
+
+    if (!stat || !stat.isFile()) {
+      throw new NotFoundException('Project doc not found');
+    }
+
+    return {
+      path: relativePath,
+      name: path.basename(absolutePath),
+      size: stat.size,
+      updatedAt: stat.mtime,
+      content: await fs.readFile(absolutePath, 'utf-8').catch(() => {
+        throw new BadRequestException('Project doc exists but cannot be read');
+      }),
+    };
+  }
+
   async uploadProjectDoc(
     projectId: Project['id'],
     rawPath: string,

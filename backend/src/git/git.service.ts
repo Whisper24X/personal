@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { spawn } from 'child_process';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { GitBranchActionResultDto } from './dto/git-branch-action-result.dto';
 import { GitBranchesDto } from './dto/git-branches.dto';
@@ -31,6 +32,8 @@ export class GitService {
   private readonly logger = new Logger(GitService.name);
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly fallbackDefaultBranch = 'main';
+  private readonly goalDocsDirNamePattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
   constructor(
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
@@ -867,6 +870,73 @@ export class GitService {
     }
   }
 
+  async cleanupForeignUntrackedGoalDirs(
+    repositoryRoot: string,
+    keepGoalId: string,
+  ): Promise<void> {
+    const root = path.resolve(repositoryRoot);
+    const keepId = keepGoalId.trim().toLowerCase();
+    const goalsRoot = path.join(root, 'docs', 'goals');
+    const entries = await fs
+      .readdir(goalsRoot, { withFileTypes: true })
+      .catch((error: unknown) => {
+        if (
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 'ENOENT'
+        ) {
+          return [];
+        }
+        throw error;
+      });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const goalDirName = entry.name.trim();
+      if (
+        !this.goalDocsDirNamePattern.test(goalDirName) ||
+        goalDirName.toLowerCase() === keepId
+      ) {
+        continue;
+      }
+
+      const relativePath = `docs/goals/${goalDirName}`;
+      const trackedResult = await this.runCommand([
+        '-C',
+        root,
+        'ls-files',
+        '--',
+        relativePath,
+      ]);
+      if (!trackedResult.success) {
+        throw new BadRequestException(
+          this.formatGitFailure('检查需求文档跟踪状态失败', trackedResult),
+        );
+      }
+      if (trackedResult.stdout.trim()) {
+        continue;
+      }
+
+      const cleanResult = await this.runCommand([
+        '-C',
+        root,
+        'clean',
+        '-fd',
+        '--',
+        relativePath,
+      ]);
+      if (!cleanResult.success) {
+        throw new BadRequestException(
+          this.formatGitFailure('清理未跟踪需求文档失败', cleanResult),
+        );
+      }
+    }
+  }
+
   async commitPathsInRepositoryRootIfDirty(
     repositoryRoot: string,
     absolutePaths: string[],
@@ -950,6 +1020,37 @@ export class GitService {
     }
 
     return true;
+  }
+
+  async readStatusForPathsInRepositoryRoot(
+    repositoryRoot: string,
+    absolutePaths: string[],
+  ): Promise<string> {
+    const root = path.resolve(repositoryRoot);
+    const relativePaths = this.resolveRelativePathsInRepositoryRoot(
+      root,
+      absolutePaths,
+    );
+    if (!relativePaths.length) {
+      return '';
+    }
+
+    const statusResult = await this.runCommand([
+      '-C',
+      root,
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+      '--',
+      ...relativePaths,
+    ]);
+    if (!statusResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure('读取文档工作区状态失败', statusResult),
+      );
+    }
+
+    return statusResult.stdout.trim();
   }
 
   async pushBranchInRepository(
@@ -1283,6 +1384,30 @@ export class GitService {
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean).length;
+  }
+
+  private resolveRelativePathsInRepositoryRoot(
+    repositoryRoot: string,
+    absolutePaths: string[],
+  ): string[] {
+    const root = path.resolve(repositoryRoot);
+    const relativePaths: string[] = [];
+
+    for (const rawPath of absolutePaths) {
+      const absPath = path.resolve(String(rawPath).trim());
+      if (!absPath) {
+        continue;
+      }
+
+      const relPath = path.relative(root, absPath);
+      if (!relPath || relPath.startsWith('..') || path.isAbsolute(relPath)) {
+        throw new BadRequestException(`提交路径不在项目仓库内: ${absPath}`);
+      }
+
+      relativePaths.push(relPath);
+    }
+
+    return relativePaths;
   }
 
   private parseCommits(stdout: string): GitLogDto['commits'] {

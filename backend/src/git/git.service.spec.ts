@@ -1,4 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
 import { GitService } from './git.service';
 
 const createCurrentUser = () => ({
@@ -560,6 +563,111 @@ describe('GitService', () => {
         createCurrentUser(),
       ),
     ).rejects.toThrow(ConflictException);
+  });
+
+  describe('cleanupForeignUntrackedGoalDirs', () => {
+    it('should clean only untracked foreign goal directories', async () => {
+      const { service } = createGitService();
+      const repositoryRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'ainative-git-clean-'),
+      );
+      const keepGoalId = '11111111-1111-4111-8111-111111111111';
+      const foreignGoalId = '22222222-2222-4222-8222-222222222222';
+
+      try {
+        await fs.mkdir(path.join(repositoryRoot, 'docs', 'goals', keepGoalId), {
+          recursive: true,
+        });
+        await fs.mkdir(
+          path.join(repositoryRoot, 'docs', 'goals', foreignGoalId),
+          {
+            recursive: true,
+          },
+        );
+        await fs.mkdir(path.join(repositoryRoot, 'docs', 'goals', 'draft'), {
+          recursive: true,
+        });
+
+        const runCommandSpy = jest.spyOn(
+          service as any,
+          'runCommand',
+        ) as jest.Mock;
+        runCommandSpy
+          .mockResolvedValueOnce(createGitCommandResult(''))
+          .mockResolvedValueOnce(createGitCommandResult(''));
+
+        await service.cleanupForeignUntrackedGoalDirs(
+          repositoryRoot,
+          keepGoalId,
+        );
+
+        expect(runCommandSpy.mock.calls).toEqual([
+          [
+            [
+              '-C',
+              repositoryRoot,
+              'ls-files',
+              '--',
+              `docs/goals/${foreignGoalId}`,
+            ],
+          ],
+          [
+            [
+              '-C',
+              repositoryRoot,
+              'clean',
+              '-fd',
+              '--',
+              `docs/goals/${foreignGoalId}`,
+            ],
+          ],
+        ]);
+      } finally {
+        await fs.rm(repositoryRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('should skip foreign goal directories with tracked files', async () => {
+      const { service } = createGitService();
+      const repositoryRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'ainative-git-clean-'),
+      );
+      const keepGoalId = '11111111-1111-4111-8111-111111111111';
+      const foreignGoalId = '22222222-2222-4222-8222-222222222222';
+
+      try {
+        await fs.mkdir(
+          path.join(repositoryRoot, 'docs', 'goals', foreignGoalId),
+          {
+            recursive: true,
+          },
+        );
+
+        const runCommandSpy = jest.spyOn(
+          service as any,
+          'runCommand',
+        ) as jest.Mock;
+        runCommandSpy.mockResolvedValueOnce(
+          createGitCommandResult(`docs/goals/${foreignGoalId}/PRD.md\n`),
+        );
+
+        await service.cleanupForeignUntrackedGoalDirs(
+          repositoryRoot,
+          keepGoalId,
+        );
+
+        expect(runCommandSpy).toHaveBeenCalledTimes(1);
+        expect(runCommandSpy).toHaveBeenCalledWith([
+          '-C',
+          repositoryRoot,
+          'ls-files',
+          '--',
+          `docs/goals/${foreignGoalId}`,
+        ]);
+      } finally {
+        await fs.rm(repositoryRoot, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('commitRelativePathsInRepoRootIfDirty', () => {
