@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
+import os from 'os';
 import path from 'path';
 import { GitBranchActionResultDto } from './dto/git-branch-action-result.dto';
 import { GitBranchesDto } from './dto/git-branches.dto';
@@ -303,78 +304,96 @@ export class GitService {
       { syncRemote: true },
       async ({ repositoryRoot }) => {
         if (options?.prepareRequirementBranchWorkingTree) {
-          const checkout = await this.ensureCheckoutLocalBranch(
-            repositoryRoot,
-            normalizedFrom,
-          );
-          if (!checkout.ok) {
-            throw new BadRequestException(
-              `无法切换到需求分支：${checkout.message}`,
-            );
-          }
+          const previousBranch =
+            await this.readCurrentLocalBranchIfAvailable(repositoryRoot);
 
-          const statusResult = await this.runCommand([
-            '-C',
-            repositoryRoot,
-            'status',
-            '--porcelain',
-            '--untracked-files=all',
-          ]);
-          if (!statusResult.success) {
-            throw new BadRequestException(
-              this.formatGitFailure('读取需求分支工作区状态失败', statusResult),
+          try {
+            const checkout = await this.ensureCheckoutLocalBranch(
+              repositoryRoot,
+              normalizedFrom,
             );
-          }
-          if (statusResult.stdout.trim()) {
-            const addResult = await this.runCommand([
+            if (!checkout.ok) {
+              throw new BadRequestException(
+                `无法切换到需求分支：${checkout.message}`,
+              );
+            }
+            await this.fastForwardLocalBranchToRemoteIfNeeded(
+              repositoryRoot,
+              normalizedFrom,
+            );
+
+            const statusResult = await this.runCommand([
               '-C',
               repositoryRoot,
-              'add',
-              '-A',
+              'status',
+              '--porcelain',
+              '--untracked-files=all',
             ]);
-            if (!addResult.success) {
+            if (!statusResult.success) {
               throw new BadRequestException(
-                this.formatGitFailure('暂存变更失败', addResult),
+                this.formatGitFailure(
+                  '读取需求分支工作区状态失败',
+                  statusResult,
+                ),
+              );
+            }
+            if (statusResult.stdout.trim()) {
+              const addResult = await this.runCommand([
+                '-C',
+                repositoryRoot,
+                'add',
+                '-A',
+              ]);
+              if (!addResult.success) {
+                throw new BadRequestException(
+                  this.formatGitFailure('暂存变更失败', addResult),
+                );
+              }
+
+              const gitName = currentUser.username || 'ainative-user';
+              const gitEmail = `${currentUser.username || currentUser.sub}@ainative.local`;
+              const commitMsg = `chore(goal): auto-commit before plan branch ${normalizedName}`;
+              const commitResult = await this.runCommand([
+                '-C',
+                repositoryRoot,
+                '-c',
+                `user.name=${gitName}`,
+                '-c',
+                `user.email=${gitEmail}`,
+                'commit',
+                '-m',
+                commitMsg,
+              ]);
+              if (!commitResult.success) {
+                throw new BadRequestException(
+                  this.formatGitFailure('自动提交失败', commitResult),
+                );
+              }
+            }
+
+            const branchFromHead = await this.runCommand([
+              '-C',
+              repositoryRoot,
+              'branch',
+              normalizedName,
+            ]);
+            if (!branchFromHead.success) {
+              throw new BadRequestException(
+                this.formatGitFailure('创建功能组分支失败', branchFromHead),
               );
             }
 
-            const gitName = currentUser.username || 'ainative-user';
-            const gitEmail = `${currentUser.username || currentUser.sub}@ainative.local`;
-            const commitMsg = `chore(goal): auto-commit before plan branch ${normalizedName}`;
-            const commitResult = await this.runCommand([
-              '-C',
+            return {
+              success: true,
+              branch: normalizedName,
+            };
+          } finally {
+            await this.restoreLocalBranchIfNeeded(
               repositoryRoot,
-              '-c',
-              `user.name=${gitName}`,
-              '-c',
-              `user.email=${gitEmail}`,
-              'commit',
-              '-m',
-              commitMsg,
-            ]);
-            if (!commitResult.success) {
-              throw new BadRequestException(
-                this.formatGitFailure('自动提交失败', commitResult),
-              );
-            }
-          }
-
-          const branchFromHead = await this.runCommand([
-            '-C',
-            repositoryRoot,
-            'branch',
-            normalizedName,
-          ]);
-          if (!branchFromHead.success) {
-            throw new BadRequestException(
-              this.formatGitFailure('创建功能组分支失败', branchFromHead),
+              previousBranch,
+              normalizedFrom,
             );
           }
-
-          return {
-            success: true,
-            branch: normalizedName,
-          };
         }
 
         // Resolve the effective fromRef: prefer the local branch name; fall back to
@@ -409,8 +428,7 @@ export class GitService {
   }
 
   /**
-   * 在项目主仓库将 `headBranch` 合并入 `baseBranch`（checkout base 后 `git merge --no-ff`）。
-   * 成功时当前分支停留在 `baseBranch`（即需求分支上包含合并结果）。
+   * 在临时 worktree 将 `headBranch` 合并入 `baseBranch`，避免改变项目主仓当前分支。
    */
   async mergeBranchIntoBase(
     projectId: string,
@@ -435,97 +453,155 @@ export class GitService {
       currentUser,
       { syncRemote: true },
       async ({ repositoryRoot }) => {
-        const statusResult = await this.runCommand([
-          '-C',
-          repositoryRoot,
-          'status',
-          '--porcelain',
-          '--untracked-files=all',
-        ]);
-        if (!statusResult.success) {
-          throw new BadRequestException(
-            this.formatGitFailure('读取仓库状态失败', statusResult),
-          );
-        }
-        if (statusResult.stdout.trim()) {
-          throw new BadRequestException(
-            `仓库工作区不干净，请先提交或清理变更后再合并: ${statusResult.stdout.trim()}`,
-          );
-        }
-
-        const prevRef = await this.runCommand([
-          '-C',
-          repositoryRoot,
-          'rev-parse',
-          '--abbrev-ref',
-          'HEAD',
-        ]);
-        if (!prevRef.success) {
-          throw new BadRequestException(
-            this.formatGitFailure('读取当前分支失败', prevRef),
-          );
-        }
-        const previousBranch = prevRef.stdout.trim();
-        if (!previousBranch || previousBranch === 'HEAD') {
-          throw new BadRequestException('当前不处于有效分支上，无法安全合并');
-        }
-
-        const checkoutBase = await this.ensureCheckoutLocalBranch(
+        const baseRef = await this.resolveBranchRefForTemporaryWorktree(
           repositoryRoot,
           baseShort,
+          '需求分支',
         );
-        if (!checkoutBase.ok) {
-          return {
-            success: false,
-            message: checkoutBase.message,
-          };
-        }
-
         const headMergeRef = await this.resolveMergeRefOrThrow(
           repositoryRoot,
           headShort,
         );
 
-        const mergeResult = await this.runCommand([
-          '-C',
-          repositoryRoot,
-          'merge',
-          '--no-ff',
-          headMergeRef,
-        ]);
+        const tempParent = await fs.mkdtemp(
+          path.join(os.tmpdir(), 'ainative-merge-'),
+        );
+        const tempWorktree = path.join(tempParent, 'worktree');
+        let worktreeAdded = false;
 
-        if (!mergeResult.success) {
-          const conflicts = await this.readUnmergedPaths(repositoryRoot);
-          await this.runCommand(['-C', repositoryRoot, 'merge', '--abort']);
-          const back = await this.ensureCheckoutLocalBranch(
+        try {
+          const addResult = await this.runCommand([
+            '-C',
             repositoryRoot,
-            previousBranch,
-          );
-          const failureMessage = this.formatGitFailure('合并失败', mergeResult);
-          if (!back.ok) {
+            'worktree',
+            'add',
+            '--detach',
+            tempWorktree,
+            baseRef,
+          ]);
+          if (!addResult.success) {
             return {
               success: false,
-              message: `${failureMessage} 且无法切回 ${previousBranch}：${back.message}`,
+              message: this.formatGitFailure(
+                '创建临时合并工作区失败',
+                addResult,
+              ),
+            };
+          }
+          worktreeAdded = true;
+
+          const mergeResult = await this.runCommand([
+            '-C',
+            tempWorktree,
+            'merge',
+            '--no-ff',
+            headMergeRef,
+          ]);
+
+          if (!mergeResult.success) {
+            const conflicts = await this.readUnmergedPaths(tempWorktree);
+            await this.runCommand(['-C', tempWorktree, 'merge', '--abort']);
+            return {
+              success: false,
+              message: this.formatGitFailure('合并失败', mergeResult),
               conflicts,
             };
           }
-          return {
-            success: false,
-            message: failureMessage,
-            conflicts,
-          };
-        }
 
-        const detail =
-          mergeResult.stdout.trim() || mergeResult.stderr.trim() || '';
-        return {
-          success: true,
-          message:
-            `已将「${headShort}」合并入「${baseShort}」。` +
-            (detail ? ` ${detail}` : ''),
-        };
+          const pushResult = await this.runCommand([
+            '-C',
+            tempWorktree,
+            'push',
+            'origin',
+            `HEAD:refs/heads/${baseShort}`,
+          ]);
+          if (!pushResult.success) {
+            return {
+              success: false,
+              message: this.formatGitFailure('推送合并结果失败', pushResult),
+            };
+          }
+
+          const detail =
+            mergeResult.stdout.trim() ||
+            mergeResult.stderr.trim() ||
+            pushResult.stdout.trim() ||
+            pushResult.stderr.trim() ||
+            '';
+          return {
+            success: true,
+            message:
+              `已将「${headShort}」合并入「${baseShort}」。` +
+              (detail ? ` ${detail}` : ''),
+          };
+        } finally {
+          if (worktreeAdded) {
+            await this.runCommand([
+              '-C',
+              repositoryRoot,
+              'worktree',
+              'remove',
+              '--force',
+              tempWorktree,
+            ]);
+          }
+          await fs.rm(tempParent, { recursive: true, force: true });
+        }
       },
     );
+  }
+
+  async runInTemporaryBranchWorktree<T>(
+    repositoryRoot: string,
+    branchName: string,
+    operation: (worktreeRoot: string) => Promise<T>,
+  ): Promise<T> {
+    const normalizedBranchName = this.normalizeAndAssertBranchName(
+      branchName,
+      '分支名',
+    );
+    const branchRef = await this.resolveBranchRefForTemporaryWorktree(
+      repositoryRoot,
+      normalizedBranchName,
+      '分支',
+    );
+    const tempParent = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-branch-worktree-'),
+    );
+    const tempWorktree = path.join(tempParent, 'worktree');
+    let worktreeAdded = false;
+
+    try {
+      const addResult = await this.runCommand([
+        '-C',
+        repositoryRoot,
+        'worktree',
+        'add',
+        '--detach',
+        tempWorktree,
+        branchRef,
+      ]);
+      if (!addResult.success) {
+        throw new BadRequestException(
+          this.formatGitFailure('创建临时分支工作区失败', addResult),
+        );
+      }
+      worktreeAdded = true;
+
+      return await operation(tempWorktree);
+    } finally {
+      if (worktreeAdded) {
+        await this.runCommand([
+          '-C',
+          repositoryRoot,
+          'worktree',
+          'remove',
+          '--force',
+          tempWorktree,
+        ]);
+      }
+      await fs.rm(tempParent, { recursive: true, force: true });
+    }
   }
 
   private async ensureCheckoutLocalBranch(
@@ -587,33 +663,173 @@ export class GitService {
         };
   }
 
+  private async readCurrentLocalBranchIfAvailable(
+    repositoryRoot: string,
+  ): Promise<string | null> {
+    const currentBranch = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--abbrev-ref',
+      'HEAD',
+    ]);
+    if (!currentBranch.success) {
+      return null;
+    }
+
+    const branch = currentBranch.stdout.trim();
+    return branch && branch !== 'HEAD' ? branch : null;
+  }
+
+  private async restoreLocalBranchIfNeeded(
+    repositoryRoot: string,
+    previousBranch: string | null,
+    requirementBranch: string,
+  ): Promise<void> {
+    if (!previousBranch || previousBranch === requirementBranch) {
+      return;
+    }
+
+    const checkoutBack = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'checkout',
+      previousBranch,
+    ]);
+    if (!checkoutBack.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(
+          `功能组分支已处理，但恢复到原分支 ${previousBranch} 失败`,
+          checkoutBack,
+        ),
+      );
+    }
+  }
+
+  private async fastForwardLocalBranchToRemoteIfNeeded(
+    repositoryRoot: string,
+    branchShort: string,
+  ): Promise<void> {
+    const localRef = `refs/heads/${branchShort}`;
+    const remoteRef = `refs/remotes/origin/${branchShort}`;
+    const remoteOk = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      remoteRef,
+    ]);
+    if (!remoteOk.success) {
+      return;
+    }
+
+    const localContainsRemote = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'merge-base',
+      '--is-ancestor',
+      remoteRef,
+      localRef,
+    ]);
+    if (localContainsRemote.success) {
+      return;
+    }
+
+    const remoteContainsLocal = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'merge-base',
+      '--is-ancestor',
+      localRef,
+      remoteRef,
+    ]);
+    if (!remoteContainsLocal.success) {
+      throw new BadRequestException(
+        `需求分支 ${branchShort} 与 origin/${branchShort} 已分叉，请先手动处理后再创建功能组分支`,
+      );
+    }
+
+    const mergeResult = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'merge',
+      '--ff-only',
+      remoteRef,
+    ]);
+    if (!mergeResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure('同步需求分支到远端最新提交失败', mergeResult),
+      );
+    }
+  }
+
   private async resolveMergeRefOrThrow(
     repositoryRoot: string,
     headShort: string,
+  ): Promise<string> {
+    return this.resolveBranchRefOrThrow(
+      repositoryRoot,
+      headShort,
+      '待合并的功能组分支',
+    );
+  }
+
+  private async resolveBranchRefOrThrow(
+    repositoryRoot: string,
+    branchShort: string,
+    label: string,
   ): Promise<string> {
     const localOk = await this.runCommand([
       '-C',
       repositoryRoot,
       'rev-parse',
       '--verify',
-      `refs/heads/${headShort}`,
+      `refs/heads/${branchShort}`,
     ]);
     if (localOk.success) {
-      return headShort;
+      return `refs/heads/${branchShort}`;
     }
     const remoteOk = await this.runCommand([
       '-C',
       repositoryRoot,
       'rev-parse',
       '--verify',
-      `refs/remotes/origin/${headShort}`,
+      `refs/remotes/origin/${branchShort}`,
     ]);
     if (remoteOk.success) {
-      return `origin/${headShort}`;
+      return `refs/remotes/origin/${branchShort}`;
     }
-    throw new BadRequestException(
-      `待合并的功能组分支 ${headShort} 在仓库中不存在`,
-    );
+    throw new BadRequestException(`${label} ${branchShort} 在仓库中不存在`);
+  }
+
+  private async resolveBranchRefForTemporaryWorktree(
+    repositoryRoot: string,
+    branchShort: string,
+    label: string,
+  ): Promise<string> {
+    const remoteOk = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/remotes/origin/${branchShort}`,
+    ]);
+    if (remoteOk.success) {
+      return `refs/remotes/origin/${branchShort}`;
+    }
+
+    const localOk = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/heads/${branchShort}`,
+    ]);
+    if (localOk.success) {
+      return `refs/heads/${branchShort}`;
+    }
+
+    throw new BadRequestException(`${label} ${branchShort} 在仓库中不存在`);
   }
 
   private async readUnmergedPaths(repositoryRoot: string): Promise<string[]> {
@@ -1071,6 +1287,44 @@ export class GitService {
     if (!pushResult.success) {
       throw new BadRequestException(
         this.formatGitFailure(`推送 ${normalizedBranchName} 失败`, pushResult),
+      );
+    }
+  }
+
+  async pushRepositoryHeadToBranch(
+    repositoryRoot: string,
+    branchName: string,
+  ): Promise<void> {
+    const normalizedBranchName = this.normalizeAndAssertBranchName(
+      branchName,
+      '分支名',
+    );
+    const pushResult = await this.runCommand([
+      '-C',
+      path.resolve(repositoryRoot),
+      'push',
+      'origin',
+      `HEAD:refs/heads/${normalizedBranchName}`,
+    ]);
+    if (!pushResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(`推送 ${normalizedBranchName} 失败`, pushResult),
+      );
+    }
+
+    const updateRefResult = await this.runCommand([
+      '-C',
+      path.resolve(repositoryRoot),
+      'update-ref',
+      `refs/remotes/origin/${normalizedBranchName}`,
+      'HEAD',
+    ]);
+    if (!updateRefResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(
+          `同步 ${normalizedBranchName} 远端跟踪引用失败`,
+          updateRefResult,
+        ),
       );
     }
   }

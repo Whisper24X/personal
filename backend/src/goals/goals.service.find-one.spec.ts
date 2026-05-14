@@ -86,7 +86,7 @@ describe('GoalsService.findOne', () => {
     jest.restoreAllMocks();
   });
 
-  it('should checkout and clean goal branch before returning detail', async () => {
+  it('should not checkout goal branch before returning detail', async () => {
     const {
       service,
       goalRepository,
@@ -106,20 +106,9 @@ describe('GoalsService.findOne', () => {
 
     const result = await service.findOne(goal.id, currentUser);
 
-    expect(projectsService.runWithProjectRepositoryLock).toHaveBeenCalledWith(
-      goal.projectId,
-      currentUser,
-      { syncRemote: true },
-      expect.any(Function),
-    );
-    expect(gitService.checkoutBranchInRepository).toHaveBeenCalledWith(
-      '/repo',
-      goal.gitBranch,
-    );
-    expect(gitService.cleanupForeignUntrackedGoalDirs).toHaveBeenCalledWith(
-      '/repo',
-      goal.id,
-    );
+    expect(projectsService.runWithProjectRepositoryLock).not.toHaveBeenCalled();
+    expect(gitService.checkoutBranchInRepository).not.toHaveBeenCalled();
+    expect(gitService.cleanupForeignUntrackedGoalDirs).not.toHaveBeenCalled();
     expect(goalRepository.listSourceDocs).toHaveBeenCalledWith(goal.id);
     expect(result.goal).toBe(goal);
     expect(result.progress.statusCounts[TaskStatus.done]).toBe(1);

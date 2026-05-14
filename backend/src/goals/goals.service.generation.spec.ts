@@ -81,7 +81,7 @@ const createService = () => {
     writeDocInRepositoryRoot: jest.fn(
       (_repositoryRoot: string, payload: { path: string }) => ({
         relativePath: payload.path,
-        absolutePath: `/repo/docs/${payload.path}`,
+        absolutePath: `${_repositoryRoot}/docs/${payload.path}`,
       }),
     ),
   };
@@ -95,6 +95,14 @@ const createService = () => {
     commitPathsInRepositoryRootIfDirty: jest.fn().mockResolvedValue(true),
     readStatusForPathsInRepositoryRoot: jest.fn().mockResolvedValue(''),
     pushBranchInRepository: jest.fn().mockResolvedValue(undefined),
+    pushRepositoryHeadToBranch: jest.fn().mockResolvedValue(undefined),
+    runInTemporaryBranchWorktree: jest.fn(
+      async (
+        _repositoryRoot: string,
+        _branch: string,
+        operation: (worktreeRoot: string) => Promise<unknown>,
+      ) => operation('/repo-worktree'),
+    ),
   };
   const taskRepository = {};
   const taskProvisioningService = {};
@@ -182,30 +190,31 @@ describe('GoalsService generation parsing', () => {
     );
 
     expect(projectDocsService.writeDocInRepositoryRoot).toHaveBeenCalledWith(
-      '/repo',
+      '/repo-worktree',
       { path: 'goals/goal-1/PRD.md', content: markdown },
     );
-    expect(gitService.checkoutBranchInRepository).toHaveBeenCalledWith(
+    expect(gitService.checkoutBranchInRepository).not.toHaveBeenCalled();
+    expect(gitService.runInTemporaryBranchWorktree).toHaveBeenCalledWith(
       '/repo',
       goal.gitBranch,
+      expect.any(Function),
     );
-    expect(gitService.checkoutBranchInRepository).toHaveBeenCalledTimes(2);
     expect(gitService.cleanupForeignUntrackedGoalDirs).toHaveBeenCalledWith(
-      '/repo',
+      '/repo-worktree',
       goal.id,
     );
-    expect(gitService.cleanupForeignUntrackedGoalDirs).toHaveBeenCalledTimes(2);
+    expect(gitService.cleanupForeignUntrackedGoalDirs).toHaveBeenCalledTimes(1);
     expect(projectsService.runWithProjectRepositoryLock).toHaveBeenCalledTimes(
       2,
     );
     expect(gitService.commitPathsInRepositoryRootIfDirty).toHaveBeenCalledWith(
-      '/repo',
-      ['/repo/docs/goals/goal-1/PRD.md'],
+      '/repo-worktree',
+      ['/repo-worktree/docs/goals/goal-1/PRD.md'],
       'docs(goal): generate PRD for goal-1',
       { name: 'ainative-user', email: 'user-1@ainative.local' },
     );
-    expect(gitService.pushBranchInRepository).toHaveBeenCalledWith(
-      '/repo',
+    expect(gitService.pushRepositoryHeadToBranch).toHaveBeenCalledWith(
+      '/repo-worktree',
       goal.gitBranch,
     );
     expect(result.markdownLength).toBe(markdown.length);
@@ -285,30 +294,27 @@ describe('GoalsService generation parsing', () => {
     );
 
     expect(projectDocsService.writeDocInRepositoryRoot).toHaveBeenCalledWith(
-      '/repo',
+      '/repo-worktree',
       { path: 'goals/goal-1/task-plan.md', content: markdown },
     );
-    expect(gitService.checkoutBranchInRepository).toHaveBeenCalledWith(
-      '/repo',
-      goal.gitBranch,
-    );
-    expect(gitService.checkoutBranchInRepository).toHaveBeenCalledTimes(2);
+    expect(gitService.checkoutBranchInRepository).not.toHaveBeenCalled();
+    expect(gitService.runInTemporaryBranchWorktree).toHaveBeenCalledTimes(2);
     expect(gitService.cleanupForeignUntrackedGoalDirs).toHaveBeenCalledWith(
-      '/repo',
+      '/repo-worktree',
       goal.id,
     );
-    expect(gitService.cleanupForeignUntrackedGoalDirs).toHaveBeenCalledTimes(2);
+    expect(gitService.cleanupForeignUntrackedGoalDirs).toHaveBeenCalledTimes(1);
     expect(projectsService.runWithProjectRepositoryLock).toHaveBeenCalledTimes(
       2,
     );
     expect(gitService.commitPathsInRepositoryRootIfDirty).toHaveBeenCalledWith(
-      '/repo',
-      ['/repo/docs/goals/goal-1/task-plan.md'],
+      '/repo-worktree',
+      ['/repo-worktree/docs/goals/goal-1/task-plan.md'],
       'docs(goal): generate task plan for goal-1',
       { name: 'ainative-user', email: 'user-1@ainative.local' },
     );
-    expect(gitService.pushBranchInRepository).toHaveBeenCalledWith(
-      '/repo',
+    expect(gitService.pushRepositoryHeadToBranch).toHaveBeenCalledWith(
+      '/repo-worktree',
       goal.gitBranch,
     );
     expect(goalRepository.replacePlanItems).toHaveBeenCalledWith(

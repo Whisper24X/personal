@@ -350,6 +350,94 @@ describe('TaskRuntimeService', () => {
     ]);
   });
 
+  it('should resolve task base ref to local branch when local contains remote', async () => {
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockImplementation((_command: string, args: string[]) => {
+        if (args[2] === 'rev-parse') {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        if (
+          args[2] === 'merge-base' &&
+          args[4] === 'origin/feature/group' &&
+          args[5] === 'feature/group'
+        ) {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: 'not ancestor',
+        });
+      });
+
+    const resolved = await (service as any).resolveBaseRef(
+      '/repo',
+      'feature/group',
+    );
+
+    expect(resolved).toBe('feature/group');
+    expect(runCommandSpy).toHaveBeenCalledWith('git', [
+      '-C',
+      '/repo',
+      'merge-base',
+      '--is-ancestor',
+      'origin/feature/group',
+      'feature/group',
+    ]);
+  });
+
+  it('should resolve task base ref to remote branch when remote contains local', async () => {
+    jest
+      .spyOn(service as any, 'runCommand')
+      .mockImplementation((_command: string, args: string[]) => {
+        if (args[2] === 'rev-parse') {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        if (
+          args[2] === 'merge-base' &&
+          args[4] === 'feature/group' &&
+          args[5] === 'origin/feature/group'
+        ) {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: 'not ancestor',
+        });
+      });
+
+    const resolved = await (service as any).resolveBaseRef(
+      '/repo',
+      'feature/group',
+    );
+
+    expect(resolved).toBe('origin/feature/group');
+  });
+
+  it('should resolve task base ref to local branch when local and remote diverged', async () => {
+    jest
+      .spyOn(service as any, 'runCommand')
+      .mockImplementation((_command: string, args: string[]) => {
+        if (args[2] === 'rev-parse') {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: 'not ancestor',
+        });
+      });
+
+    const resolved = await (service as any).resolveBaseRef(
+      '/repo',
+      'feature/group',
+    );
+
+    expect(resolved).toBe('feature/group');
+  });
+
   it('should delegate runtime repository setup to project repository workspace service', async () => {
     process.env.GITLAB_USERNAME = 'oauth2';
     process.env.GITLAB_TOKEN = 'token-value';

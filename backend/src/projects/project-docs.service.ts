@@ -813,17 +813,11 @@ export class ProjectDocsService {
           return null;
         }
 
-        await fs
-          .mkdir(path.dirname(absolutePath), { recursive: true })
-          .then(() => fs.writeFile(absolutePath, showResult.stdout, 'utf-8'))
-          .catch(() => undefined);
-
-        const restoredStat = await fs.stat(absolutePath).catch(() => null);
         return {
           path: relativePath,
           name: path.basename(absolutePath),
-          size: restoredStat?.size ?? Buffer.byteLength(showResult.stdout),
-          updatedAt: restoredStat?.mtime ?? new Date(),
+          size: Buffer.byteLength(showResult.stdout),
+          updatedAt: new Date(),
           content: showResult.stdout,
         };
       },

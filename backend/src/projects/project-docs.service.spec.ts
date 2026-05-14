@@ -22,7 +22,7 @@ describe('ProjectDocsService', () => {
     }
   });
 
-  it('should restore a missing goal doc from the remote branch', async () => {
+  it('should read a missing goal doc from the remote branch without restoring it locally', async () => {
     const projectId = 'project-1';
     const goalId = 'daa73745-cd01-48a2-b554-508ad7a52b27';
     const docPath = `goals/${goalId}/PRD.md`;
@@ -81,7 +81,7 @@ describe('ProjectDocsService', () => {
     );
     await expect(
       fs.readFile(path.join(tempRoot, 'docs', docPath), 'utf-8'),
-    ).resolves.toBe('# PRD\n\n## 背景');
+    ).rejects.toThrow();
     expect(workspaceService.runWithProjectRepositoryLock).toHaveBeenCalledWith(
       projectId,
       expect.anything(),
