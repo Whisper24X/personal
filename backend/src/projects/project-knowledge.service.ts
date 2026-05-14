@@ -468,6 +468,23 @@ export class ProjectKnowledgeService {
         { syncRemote: false },
       );
 
+    return this.executeProjectAgentPromptPrepared(
+      project,
+      repositoryRoot,
+      prompt,
+      options,
+    );
+  }
+
+  async executeProjectAgentPromptPrepared(
+    project: Project,
+    repositoryRoot: string,
+    prompt: string,
+    options?: {
+      agentCliId?: string;
+      agentCliConfigId?: string;
+    },
+  ): Promise<{ success: boolean; stdout: string; stderr: string }> {
     const cliId = options?.agentCliId?.trim();
     const cliConfigId = options?.agentCliConfigId?.trim();
 

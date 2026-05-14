@@ -147,6 +147,107 @@ export class GoalsService {
     private readonly goalsMetrics: GoalsMetricsService,
   ) {}
 
+  private async persistGoalDocToGit(
+    goal: Goal,
+    currentUser: JwtPayloadType,
+    docPath: string,
+    content: string,
+    commitMessage: string,
+  ): Promise<void> {
+    const branch = goal.gitBranch?.trim();
+    if (!branch) {
+      throw new BadRequestException('需求未配置 Git 分支，无法保存文档');
+    }
+
+    await this.projectsService.runWithProjectRepositoryLock(
+      goal.projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ repositoryRoot }) => {
+        await this.persistGoalDocToGitAtRoot(
+          repositoryRoot,
+          goal,
+          currentUser,
+          docPath,
+          content,
+          commitMessage,
+        );
+      },
+    );
+  }
+
+  private async persistGoalDocToGitAtRoot(
+    repositoryRoot: string,
+    goal: Goal,
+    currentUser: JwtPayloadType,
+    docPath: string,
+    content: string,
+    commitMessage: string,
+  ): Promise<void> {
+    const branch = goal.gitBranch?.trim();
+    if (!branch) {
+      throw new BadRequestException('需求未配置 Git 分支，无法保存文档');
+    }
+
+    await this.gitService.checkoutBranchInRepository(repositoryRoot, branch);
+    await this.gitService.cleanupForeignUntrackedGoalDirs(
+      repositoryRoot,
+      goal.id,
+    );
+    const { absolutePath } =
+      await this.projectDocsService.writeDocInRepositoryRoot(repositoryRoot, {
+        path: docPath,
+        content,
+      });
+    const committed = await this.gitService.commitPathsInRepositoryRootIfDirty(
+      repositoryRoot,
+      [absolutePath],
+      commitMessage,
+      {
+        name: currentUser.username || 'ainative-user',
+        email: `${currentUser.username || currentUser.sub}@ainative.local`,
+      },
+    );
+    if (!committed) {
+      const status = await this.gitService.readStatusForPathsInRepositoryRoot(
+        repositoryRoot,
+        [absolutePath],
+      );
+      if (status) {
+        throw new BadRequestException(
+          `文档已写入但未能生成提交，请清理工作区后重试: ${status}`,
+        );
+      }
+    }
+    await this.gitService.pushBranchInRepository(repositoryRoot, branch);
+  }
+
+  private async prepareGoalBranchForRead(
+    goal: Goal,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    const branch = goal.gitBranch?.trim();
+    if (!branch) {
+      return;
+    }
+
+    await this.projectsService.runWithProjectRepositoryLock(
+      goal.projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ repositoryRoot }) => {
+        await this.gitService.checkoutBranchInRepository(
+          repositoryRoot,
+          branch,
+        );
+        await this.gitService.cleanupForeignUntrackedGoalDirs(
+          repositoryRoot,
+          goal.id,
+        );
+      },
+    );
+  }
+
   private async assertGoalAccess(
     goalId: string,
     currentUser: JwtPayloadType,
@@ -356,6 +457,8 @@ export class GoalsService {
     currentUser: JwtPayloadType,
   ): Promise<GoalDetailDto> {
     const goal = await this.assertGoalAccess(id, currentUser);
+    await this.prepareGoalBranchForRead(goal, currentUser);
+
     const [sourceDocs, planItems, tasks, deps] = await Promise.all([
       this.goalRepository.listSourceDocs(id),
       this.goalRepository.listPlanItemsWithSubTasks(id),
@@ -515,6 +618,9 @@ export class GoalsService {
     if (!overwrite && goal.prdDocPath) {
       throw new ConflictException('PRD 已存在，如需覆盖请设置 overwrite');
     }
+    if (!goal.gitBranch?.trim()) {
+      throw new BadRequestException('需求未配置 Git 分支，无法生成 PRD');
+    }
     if (
       goal.status !== GoalStatus.draft &&
       goal.status !== GoalStatus.prdGenerated &&
@@ -546,12 +652,31 @@ export class GoalsService {
     let lastErr = '';
     let markdown = '';
 
+    const prdAgentContext =
+      await this.projectsService.runWithProjectRepositoryLock(
+        goal.projectId,
+        currentUser,
+        { syncRemote: true },
+        async ({ project, repositoryRoot }) => {
+          await this.gitService.checkoutBranchInRepository(
+            repositoryRoot,
+            goal.gitBranch!.trim(),
+          );
+          await this.gitService.cleanupForeignUntrackedGoalDirs(
+            repositoryRoot,
+            goalId,
+          );
+
+          return { project, repositoryRoot };
+        },
+      );
+
     for (let attempt = 1; attempt <= PRD_MAX_ATTEMPTS; attempt++) {
       const result =
-        await this.projectKnowledgeService.executeProjectAgentPrompt(
-          goal.projectId,
+        await this.projectKnowledgeService.executeProjectAgentPromptPrepared(
+          prdAgentContext.project,
+          prdAgentContext.repositoryRoot,
           prompt,
-          currentUser,
           agentCli,
         );
       if (!result.success) {
@@ -569,6 +694,7 @@ export class GoalsService {
       markdown = parsed.markdown;
       break;
     }
+
     if (!markdown) {
       this.goalsMetrics.incrementPrdGeneration(false);
       throw new BadRequestException(
@@ -577,23 +703,13 @@ export class GoalsService {
     }
     this.goalsMetrics.incrementPrdGeneration(true);
 
-    try {
-      await this.projectDocsService.createDoc(
-        goal.projectId,
-        { path: rel, content: markdown },
-        currentUser,
-      );
-    } catch (e) {
-      if (e instanceof ConflictException) {
-        await this.projectDocsService.updateDoc(
-          goal.projectId,
-          { path: rel, content: markdown },
-          currentUser,
-        );
-      } else {
-        throw e;
-      }
-    }
+    await this.persistGoalDocToGit(
+      goal,
+      currentUser,
+      rel,
+      markdown,
+      `docs(goal): generate PRD for ${goalId}`,
+    );
 
     const updated = await this.goalRepository.update(goalId, {
       prdDocPath: rel,
@@ -647,38 +763,59 @@ export class GoalsService {
       throw new ConflictException('任务计划已存在，如需覆盖请设置 overwrite');
     }
 
-    let prdContent = '';
-    try {
-      const doc = await this.projectDocsService.readDoc(
-        goal.projectId,
-        goal.prdDocPath,
-        currentUser,
-      );
-      prdContent = doc.content;
-    } catch {
-      throw new BadRequestException('无法读取 PRD 文件');
-    }
-
     const agentCli = resolveGoalAgentCliForGeneration(dto, goal);
     assertGoalAgentCliForGeneration(agentCli);
-
-    const prompt = buildPlanGenerationPrompt({
-      goalTitle: goal.title,
-      goalSummary: goal.summary,
-      prdMarkdown: prdContent,
-      granularity: dto.granularity,
-    });
+    const planRel = goalTaskPlanRelativePath(goalId);
 
     let lastErr = '';
     let markdown = '';
     let rawItems: NormalizedPlanItemFromAgent[] = [];
+    let planItems: GoalPlanItem[] = [];
+    let subTasksFlat: GoalPlanSubTask[] = [];
+
+    const planAgentContext =
+      await this.projectsService.runWithProjectRepositoryLock(
+        goal.projectId,
+        currentUser,
+        { syncRemote: true },
+        async ({ project, repositoryRoot }) => {
+          await this.gitService.checkoutBranchInRepository(
+            repositoryRoot,
+            goal.gitBranch!.trim(),
+          );
+          await this.gitService.cleanupForeignUntrackedGoalDirs(
+            repositoryRoot,
+            goalId,
+          );
+
+          let prdContent = '';
+          try {
+            const doc = await this.projectDocsService.readDocInRepositoryRoot(
+              repositoryRoot,
+              goal.prdDocPath!,
+            );
+            prdContent = doc.content;
+          } catch {
+            throw new BadRequestException('无法读取 PRD 文件');
+          }
+
+          return { project, repositoryRoot, prdContent };
+        },
+      );
+
+    const prompt = buildPlanGenerationPrompt({
+      goalTitle: goal.title,
+      goalSummary: goal.summary,
+      prdMarkdown: planAgentContext.prdContent,
+      granularity: dto.granularity,
+    });
 
     for (let attempt = 1; attempt <= PLAN_MAX_ATTEMPTS; attempt++) {
       const result =
-        await this.projectKnowledgeService.executeProjectAgentPrompt(
-          goal.projectId,
+        await this.projectKnowledgeService.executeProjectAgentPromptPrepared(
+          planAgentContext.project,
+          planAgentContext.repositoryRoot,
           prompt,
-          currentUser,
           agentCli,
         );
       if (!result.success) {
@@ -716,6 +853,7 @@ export class GoalsService {
       }
       break;
     }
+
     if (!markdown || !rawItems.length) {
       this.goalsMetrics.incrementPlanGeneration(false);
       throw new BadRequestException(
@@ -723,7 +861,38 @@ export class GoalsService {
       );
     }
     this.goalsMetrics.incrementPlanGeneration(true);
+    ({ planItems, subTasksFlat } = this.buildGoalPlanRows(goalId, rawItems));
 
+    await this.persistGoalDocToGit(
+      goal,
+      currentUser,
+      planRel,
+      markdown,
+      `docs(goal): generate task plan for ${goalId}`,
+    );
+
+    await this.goalRepository.replacePlanItems(goalId, planItems, subTasksFlat);
+    const updated = await this.goalRepository.update(goalId, {
+      planDocPath: planRel,
+      status: GoalStatus.planned,
+    });
+    if (!updated) {
+      throw new NotFoundException('未找到需求');
+    }
+    return {
+      goal: updated,
+      itemCount: planItems.length,
+      subTaskCount: subTasksFlat.length,
+    };
+  }
+
+  private buildGoalPlanRows(
+    goalId: string,
+    rawItems: NormalizedPlanItemFromAgent[],
+  ): {
+    planItems: GoalPlanItem[];
+    subTasksFlat: GoalPlanSubTask[];
+  } {
     const itemLocalToUuid = new Map<string, string>();
     for (const it of rawItems) {
       itemLocalToUuid.set(it.localId, randomUUID());
@@ -810,38 +979,7 @@ export class GoalsService {
       );
     }
 
-    const planRel = goalTaskPlanRelativePath(goalId);
-    try {
-      await this.projectDocsService.createDoc(
-        goal.projectId,
-        { path: planRel, content: markdown },
-        currentUser,
-      );
-    } catch (e) {
-      if (e instanceof ConflictException) {
-        await this.projectDocsService.updateDoc(
-          goal.projectId,
-          { path: planRel, content: markdown },
-          currentUser,
-        );
-      } else {
-        throw e;
-      }
-    }
-
-    await this.goalRepository.replacePlanItems(goalId, planItems, subTasksFlat);
-    const updated = await this.goalRepository.update(goalId, {
-      planDocPath: planRel,
-      status: GoalStatus.planned,
-    });
-    if (!updated) {
-      throw new NotFoundException('未找到需求');
-    }
-    return {
-      goal: updated,
-      itemCount: planItems.length,
-      subTaskCount: subTasksFlat.length,
-    };
+    return { planItems, subTasksFlat };
   }
 
   async patchPlanItem(
