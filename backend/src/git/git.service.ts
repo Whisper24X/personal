@@ -555,6 +555,7 @@ export class GitService {
     repositoryRoot: string,
     branchName: string,
     operation: (worktreeRoot: string) => Promise<T>,
+    options?: { tempParentDir?: string },
   ): Promise<T> {
     const normalizedBranchName = this.normalizeAndAssertBranchName(
       branchName,
@@ -565,8 +566,12 @@ export class GitService {
       normalizedBranchName,
       '分支',
     );
+    const tempBaseDir = options?.tempParentDir
+      ? path.resolve(options.tempParentDir)
+      : os.tmpdir();
+    await fs.mkdir(tempBaseDir, { recursive: true });
     const tempParent = await fs.mkdtemp(
-      path.join(os.tmpdir(), 'ainative-branch-worktree-'),
+      path.join(tempBaseDir, 'ainative-branch-worktree-'),
     );
     const tempWorktree = path.join(tempParent, 'worktree');
     let worktreeAdded = false;
@@ -1269,6 +1274,41 @@ export class GitService {
     return statusResult.stdout.trim();
   }
 
+  async filterIgnoredPathsInRepositoryRoot(
+    repositoryRoot: string,
+    absolutePaths: string[],
+  ): Promise<{ keptAbsolutePaths: string[]; ignoredRelativePaths: string[] }> {
+    const root = path.resolve(repositoryRoot);
+    const relativePaths = this.resolveRelativePathsInRepositoryRoot(
+      root,
+      absolutePaths,
+    );
+    if (!relativePaths.length) {
+      return { keptAbsolutePaths: [], ignoredRelativePaths: [] };
+    }
+
+    const checkResult = await this.runCommand(
+      ['-C', root, 'check-ignore', '--stdin', '-z'],
+      Buffer.from(`${relativePaths.join('\0')}\0`, 'utf-8'),
+    );
+    if (!checkResult.success && checkResult.stderr.trim()) {
+      throw new BadRequestException(
+        this.formatGitFailure('检查 Git ignore 规则失败', checkResult),
+      );
+    }
+
+    const ignoredRelativePaths = checkResult.stdout
+      .split('\0')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const ignoredSet = new Set(ignoredRelativePaths);
+    const keptAbsolutePaths = relativePaths
+      .filter((relativePath) => !ignoredSet.has(relativePath))
+      .map((relativePath) => path.join(root, relativePath));
+
+    return { keptAbsolutePaths, ignoredRelativePaths };
+  }
+
   async pushBranchInRepository(
     repositoryRoot: string,
     branchName: string,
@@ -1928,6 +1968,7 @@ export class GitService {
 
   private async runCommand(
     args: string[],
+    stdin?: string | Buffer,
   ): Promise<{ success: boolean; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
       const childProcess = spawn('git', args, {
@@ -1944,6 +1985,10 @@ export class GitService {
 
       childProcess.stderr?.on('data', (chunk) => {
         stderr += chunk.toString('utf-8');
+      });
+
+      childProcess.stdin?.on('error', () => {
+        // Ignore broken pipes and rely on the close handler result.
       });
 
       const timeoutRef = setTimeout(() => {
@@ -1967,6 +2012,8 @@ export class GitService {
           stderr: stderr.trimEnd(),
         });
       });
+
+      childProcess.stdin?.end(stdin);
     });
   }
 }

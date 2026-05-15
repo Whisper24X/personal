@@ -114,6 +114,11 @@ const createService = () => {
     incrementPlanGeneration: jest.fn(),
     incrementGoalCreated: jest.fn(),
   };
+  const projectWorkspacePathsService = {
+    resolveWorktreeAllowedRoot: jest.fn(
+      () => '/repo-storage/project-1/worktrees',
+    ),
+  };
 
   const service = new GoalsService(
     goalRepository as never,
@@ -125,6 +130,7 @@ const createService = () => {
     taskProvisioningService as never,
     goalSourceDocsService as never,
     goalsMetrics as never,
+    projectWorkspacePathsService as never,
   );
 
   return {
@@ -136,6 +142,7 @@ const createService = () => {
     gitService,
     goalSourceDocsService,
     goalsMetrics,
+    projectWorkspacePathsService,
     getRepositoryLockDepth: () => repositoryLockDepth,
   };
 };
@@ -154,6 +161,7 @@ describe('GoalsService generation parsing', () => {
       projectKnowledgeService,
       gitService,
       goalsMetrics,
+      projectWorkspacePathsService,
       getRepositoryLockDepth,
     } = createService();
     const currentUser = createJwt();
@@ -193,12 +201,34 @@ describe('GoalsService generation parsing', () => {
       '/repo-worktree',
       { path: 'goals/goal-1/PRD.md', content: markdown },
     );
+    expect(
+      projectKnowledgeService.executeProjectAgentPromptPrepared,
+    ).toHaveBeenCalledWith(
+      { id: 'project-1' },
+      '/repo-worktree',
+      expect.stringContaining('docs/goals/goal-1/input'),
+      { agentCliId: 'codex', agentCliConfigId: 'cfg-1' },
+    );
     expect(gitService.checkoutBranchInRepository).not.toHaveBeenCalled();
-    expect(gitService.runInTemporaryBranchWorktree).toHaveBeenCalledWith(
+    expect(gitService.runInTemporaryBranchWorktree).toHaveBeenCalledTimes(2);
+    expect(gitService.runInTemporaryBranchWorktree).toHaveBeenNthCalledWith(
+      1,
+      '/repo',
+      goal.gitBranch,
+      expect.any(Function),
+      {
+        tempParentDir: '/repo-storage/project-1/worktrees',
+      },
+    );
+    expect(gitService.runInTemporaryBranchWorktree).toHaveBeenNthCalledWith(
+      2,
       '/repo',
       goal.gitBranch,
       expect.any(Function),
     );
+    expect(
+      projectWorkspacePathsService.resolveWorktreeAllowedRoot,
+    ).toHaveBeenCalledWith({ id: 'project-1' });
     expect(gitService.cleanupForeignUntrackedGoalDirs).toHaveBeenCalledWith(
       '/repo-worktree',
       goal.id,

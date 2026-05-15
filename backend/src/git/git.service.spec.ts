@@ -171,6 +171,51 @@ describe('GitService', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('should filter ignored paths in repository root', async () => {
+    const { service } = createGitService();
+    const runCommandMock = jest.spyOn(
+      service as any,
+      'runCommand',
+    ) as jest.Mock;
+    runCommandMock.mockResolvedValueOnce(
+      createGitCommandResult('docs/ignored.cache\0'),
+    );
+
+    const result = await service.filterIgnoredPathsInRepositoryRoot('/repo', [
+      '/repo/docs/keep.md',
+      '/repo/docs/ignored.cache',
+    ]);
+
+    expect(runCommandMock).toHaveBeenCalledWith(
+      ['-C', '/repo', 'check-ignore', '--stdin', '-z'],
+      Buffer.from('docs/keep.md\0docs/ignored.cache\0', 'utf-8'),
+    );
+    expect(result).toEqual({
+      keptAbsolutePaths: ['/repo/docs/keep.md'],
+      ignoredRelativePaths: ['docs/ignored.cache'],
+    });
+  });
+
+  it('should keep all paths when git check-ignore reports no ignored paths', async () => {
+    const { service } = createGitService();
+    const runCommandMock = jest.spyOn(
+      service as any,
+      'runCommand',
+    ) as jest.Mock;
+    runCommandMock.mockResolvedValueOnce(
+      createGitCommandResult('', { success: false }),
+    );
+
+    const result = await service.filterIgnoredPathsInRepositoryRoot('/repo', [
+      '/repo/docs/keep.md',
+    ]);
+
+    expect(result).toEqual({
+      keptAbsolutePaths: ['/repo/docs/keep.md'],
+      ignoredRelativePaths: [],
+    });
+  });
+
   it('should pull the current local branch from origin', async () => {
     const { service, projectsService } = createGitService();
 
@@ -958,6 +1003,38 @@ describe('GitService', () => {
           ],
         ],
       ]);
+    });
+
+    it('should create the temporary worktree under the provided parent directory', async () => {
+      const { service } = createGitService();
+      const runCommandSpy = jest.spyOn(
+        service as any,
+        'runCommand',
+      ) as jest.Mock;
+      runCommandSpy
+        .mockResolvedValueOnce(createGitCommandResult('branch-sha'))
+        .mockResolvedValueOnce(createGitCommandResult(''))
+        .mockResolvedValueOnce(createGitCommandResult(''));
+
+      const tempParentDir = path.join(
+        os.tmpdir(),
+        'ainative-allowed-worktrees',
+      );
+      const result = await service.runInTemporaryBranchWorktree(
+        '/tmp/project-repo',
+        'feature/goal',
+        (worktreeRoot) => Promise.resolve(worktreeRoot),
+        { tempParentDir },
+      );
+
+      const addCall = runCommandSpy.mock.calls[1][0] as string[];
+      const tempWorktree = addCall[5];
+      expect(result).toBe(tempWorktree);
+      expect(tempWorktree).toMatch(
+        new RegExp(
+          `^${tempParentDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/ainative-branch-worktree-.+/worktree$`,
+        ),
+      );
     });
   });
 

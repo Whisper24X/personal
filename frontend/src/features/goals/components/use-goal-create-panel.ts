@@ -11,10 +11,7 @@ import type { Project } from '@/types/api/projects'
 import { STORAGE_KEYS } from '@shared/types/common/storage'
 import { toErrorMessage } from '@api/shared/to-error-message'
 import { goalInputDirRelativePath } from '@features/goals/utils/goal-doc-paths'
-import {
-  createOrUpdateProjectDoc,
-  sanitizeGoalInputBasename,
-} from '@shared/utils/project-doc-upload'
+import { sanitizeGoalInputBasename } from '@shared/utils/project-doc-upload'
 import type { GoalSourceDocType } from '@/types/api/goals'
 import { fetchAllPages } from '@shared/utils/pagination'
 import { buildBranchOptions } from '@shared/utils/git-branch-options'
@@ -420,17 +417,14 @@ const submit = async () => {
       }
       const relativePath = `${goalInputDirRelativePath(goal.id)}/${randomUuid()}-${sanitizeGoalInputBasename(file.name)}`
       try {
-        await createOrUpdateProjectDoc(projectIdForSubmit, relativePath, file)
-        await goalsApi.addSourceDoc(goal.id, {
-          projectDocPath: relativePath,
-          docType: docTypeForGoalSourceFile(file),
-          sortOrder: i,
-        })
+        const formData = new FormData()
+        formData.append('projectDocPath', relativePath)
+        formData.append('docType', docTypeForGoalSourceFile(file))
+        formData.append('sortOrder', String(i))
+        formData.append('file', file)
         if (isZipFile(file)) {
           try {
-            const unpackResult = await goalsApi.unpackInputZip(goal.id, {
-              projectDocPath: relativePath,
-            })
+            const unpackResult = await goalsApi.uploadAndUnpackInputZip(goal.id, formData)
             if (unpackResult.extractedFileCount === 0) {
               uploadFailCount += 1
               message.warning('压缩包内没有可登记的有效文件，请更换后重试')
@@ -439,6 +433,8 @@ const submit = async () => {
             uploadFailCount += 1
             message.error(toErrorMessage(unpackError, '压缩包处理失败'))
           }
+        } else {
+          await goalsApi.uploadSourceDoc(goal.id, formData)
         }
       } catch {
         uploadFailCount += 1

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -11,16 +12,21 @@ import {
   Post,
   Query,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiBearerAuth,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { GoalsService } from './goals.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
@@ -104,6 +110,112 @@ export class GoalsController {
     @Body() dto: AddSourceDocDto,
   ) {
     return this.goalsService.addSourceDoc(id, dto, request.user);
+  }
+
+  @Post(':id/source-docs/upload')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['projectDocPath', 'docType', 'file'],
+      properties: {
+        projectDocPath: {
+          type: 'string',
+          description: '项目 docs 下的相对路径，如 goals/uuid/input/req.md',
+        },
+        docType: {
+          type: 'string',
+          enum: ['prototype', 'requirement', 'reference'],
+        },
+        sortOrder: {
+          type: 'integer',
+          minimum: 0,
+        },
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({ description: '上传并关联输入资料' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 50 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadSourceDoc(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddSourceDocDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('file is required');
+    }
+
+    return this.goalsService.uploadSourceDoc(
+      id,
+      dto,
+      file.buffer,
+      request.user,
+    );
+  }
+
+  @Post(':id/source-docs/upload-zip')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['projectDocPath', 'docType', 'file'],
+      properties: {
+        projectDocPath: {
+          type: 'string',
+          description:
+            '项目 docs 下的 zip 相对路径，如 goals/uuid/input/archive.zip',
+        },
+        docType: {
+          type: 'string',
+          enum: ['prototype', 'requirement', 'reference'],
+        },
+        sortOrder: {
+          type: 'integer',
+          minimum: 0,
+        },
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({ description: '上传 zip、解压并只关联解压后的输入资料' })
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 50 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadAndUnpackInputZip(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddSourceDocDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('file is required');
+    }
+
+    return this.goalsService.uploadAndUnpackInputZip(
+      id,
+      dto,
+      file.buffer,
+      request.user,
+    );
   }
 
   @Post(':id/unpack-input-zip')
