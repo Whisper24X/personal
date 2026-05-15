@@ -1,14 +1,15 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
+import os from 'os';
 import path from 'path';
 import extractZip from 'extract-zip';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { GitService } from '../git/git.service';
 import { ProjectDocsService } from '../projects/project-docs.service';
 import { ProjectsService } from '../projects/projects.service';
 import { Goal } from './domain/goal';
@@ -34,6 +35,7 @@ export class GoalSourceDocsService {
     private readonly goalRepository: GoalRepository,
     private readonly projectsService: ProjectsService,
     private readonly projectDocsService: ProjectDocsService,
+    private readonly gitService: GitService,
   ) {}
 
   async addSourceDoc(
@@ -58,6 +60,122 @@ export class GoalSourceDocsService {
     });
   }
 
+  async uploadSourceDoc(
+    goal: Goal,
+    dto: AddSourceDocDto,
+    file: Buffer,
+    currentUser: JwtPayloadType,
+  ) {
+    const relativePath = this.projectDocsService.normalizeProjectDocPath(
+      dto.projectDocPath,
+    );
+    this.assertGoalInputPath(goal, relativePath, '资料');
+
+    await this.persistGoalInputFilesToGit(
+      goal,
+      currentUser,
+      `docs(goal): upload source doc for ${goal.id}`,
+      async (worktreeRoot) => {
+        const { absolutePath } =
+          await this.projectDocsService.writeDocInRepositoryRoot(worktreeRoot, {
+            path: relativePath,
+            contentBase64: file.toString('base64'),
+          });
+        const { ignoredRelativePaths } =
+          await this.gitService.filterIgnoredPathsInRepositoryRoot(
+            worktreeRoot,
+            [absolutePath],
+          );
+        if (ignoredRelativePaths.length) {
+          await fs.rm(absolutePath, { force: true });
+          throw new BadRequestException(
+            `该资料路径被 Git ignore 规则忽略，不能作为需求资料提交：${ignoredRelativePaths.join(', ')}`,
+          );
+        }
+
+        return {
+          result: undefined,
+          absolutePaths: [absolutePath],
+        };
+      },
+    );
+
+    return this.goalRepository.insertSourceDoc({
+      goalId: goal.id,
+      projectDocPath: relativePath,
+      docType: dto.docType,
+      sortOrder: dto.sortOrder ?? 0,
+    });
+  }
+
+  async uploadAndUnpackInputZip(
+    goal: Goal,
+    dto: AddSourceDocDto,
+    file: Buffer,
+    currentUser: JwtPayloadType,
+  ): Promise<{ extractedFileCount: number; paths: string[] }> {
+    const normalizedZipPath = this.projectDocsService.normalizeProjectDocPath(
+      dto.projectDocPath,
+    );
+    const inputPrefix = `goals/${goal.id}/input/`;
+    if (!normalizedZipPath.toLowerCase().endsWith('.zip')) {
+      throw new BadRequestException('仅支持解压 .zip 文件');
+    }
+    this.assertGoalInputPath(goal, normalizedZipPath, 'zip');
+
+    const sourceDocs = await this.goalRepository.listSourceDocs(goal.id);
+    const maxSort = sourceDocs.reduce(
+      (max, doc) => Math.max(max, doc.sortOrder),
+      -1,
+    );
+    let sortOrder = maxSort + 1;
+
+    const tempZipDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-goal-input-zip-'),
+    );
+    const tempZipPath = path.join(tempZipDir, path.basename(normalizedZipPath));
+
+    try {
+      await fs.writeFile(tempZipPath, file);
+      const writtenDocs = await this.persistGoalInputFilesToGit(
+        goal,
+        currentUser,
+        `docs(goal): unpack source docs for ${goal.id}`,
+        async (worktreeRoot) => {
+          const unpacked = await this.unpackZipIntoGoalInput(
+            worktreeRoot,
+            inputPrefix,
+            tempZipPath,
+          );
+
+          return {
+            result: unpacked.map(({ docType, relativePath }) => ({
+              docType,
+              relativePath,
+            })),
+            absolutePaths: unpacked.map((item) => item.absolutePath),
+          };
+        },
+      );
+
+      for (const doc of writtenDocs) {
+        await this.goalRepository.insertSourceDoc({
+          goalId: goal.id,
+          projectDocPath: doc.relativePath,
+          docType: doc.docType,
+          sortOrder: sortOrder++,
+        });
+      }
+
+      return {
+        extractedFileCount: writtenDocs.length,
+        paths: writtenDocs.map((doc) => doc.relativePath),
+      };
+    } finally {
+      await fs.rm(tempZipDir, { recursive: true, force: true });
+    }
+  }
+
   async unpackInputZip(
     goal: Goal,
     dto: UnpackGoalInputZipDto,
@@ -70,26 +188,129 @@ export class GoalSourceDocsService {
     if (!normalizedZipPath.toLowerCase().endsWith('.zip')) {
       throw new BadRequestException('仅支持解压 .zip 文件');
     }
-    if (!normalizedZipPath.startsWith(inputPrefix)) {
-      throw new BadRequestException('zip 须位于该需求的 input 目录下');
+    this.assertGoalInputPath(goal, normalizedZipPath, 'zip');
+
+    const sourceDocs = await this.goalRepository.listSourceDocs(goal.id);
+    const maxSort = sourceDocs.reduce(
+      (max, doc) => Math.max(max, doc.sortOrder),
+      -1,
+    );
+    let sortOrder = maxSort + 1;
+
+    const writtenDocs = await this.persistGoalInputFilesToGit(
+      goal,
+      currentUser,
+      `docs(goal): unpack source docs for ${goal.id}`,
+      async (worktreeRoot) => {
+        const docsRoot = path.join(worktreeRoot, 'docs');
+        const zipAbsPath =
+          this.projectDocsService.resolveProjectDocAbsolutePath(
+            docsRoot,
+            normalizedZipPath,
+          );
+        const zipStat = await fs.stat(zipAbsPath).catch(() => null);
+        if (!zipStat?.isFile()) {
+          throw new NotFoundException('未找到 zip 文件');
+        }
+        const kept = await this.unpackZipIntoGoalInput(
+          worktreeRoot,
+          inputPrefix,
+          zipAbsPath,
+        );
+        await fs.rm(zipAbsPath);
+
+        return {
+          result: kept.map(({ docType, relativePath }) => ({
+            docType,
+            relativePath,
+          })),
+          absolutePaths: [...kept.map((item) => item.absolutePath), zipAbsPath],
+        };
+      },
+    );
+
+    for (const doc of writtenDocs) {
+      await this.goalRepository.insertSourceDoc({
+        goalId: goal.id,
+        projectDocPath: doc.relativePath,
+        docType: doc.docType,
+        sortOrder: sortOrder++,
+      });
     }
 
-    const { repositoryRoot } =
-      await this.projectsService.ensureProjectRepositoryReady(
-        goal.projectId,
-        currentUser,
-        { syncRemote: false },
-      );
-    const docsRoot = path.join(repositoryRoot, 'docs');
-    const zipAbsPath = path.join(docsRoot, normalizedZipPath);
-    const zipStat = await fs.stat(zipAbsPath).catch(() => null);
-    if (!zipStat?.isFile()) {
-      throw new NotFoundException('未找到 zip 文件');
+    const zipRow = sourceDocs.find(
+      (sourceDoc) => sourceDoc.projectDocPath === normalizedZipPath,
+    );
+    if (zipRow) {
+      await this.goalRepository.removeSourceDoc(zipRow.id, goal.id);
     }
 
+    return {
+      extractedFileCount: writtenDocs.length,
+      paths: writtenDocs.map((doc) => doc.relativePath),
+    };
+  }
+
+  async goalInputDirHasAnyFile(
+    projectId: string,
+    goalId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<boolean> {
+    const goal = await this.goalRepository.findById(goalId);
+    if (!goal || goal.projectId !== projectId || !goal.gitBranch?.trim()) {
+      return false;
+    }
+
+    return this.projectsService.runWithProjectRepositoryLock(
+      projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ repositoryRoot }) =>
+        this.gitService.runInTemporaryBranchWorktree(
+          repositoryRoot,
+          goal.gitBranch!.trim(),
+          async (worktreeRoot) =>
+            this.goalInputDirHasAnyFileInRepositoryRoot(worktreeRoot, goalId),
+        ),
+    );
+  }
+
+  private async goalInputDirHasAnyFileInRepositoryRoot(
+    repositoryRoot: string,
+    goalId: string,
+  ): Promise<boolean> {
+    const inputAbs = path.join(
+      repositoryRoot,
+      'docs',
+      goalInputDirRelativePath(goalId),
+    );
+    const stat = await fs.stat(inputAbs).catch(() => null);
+    if (!stat?.isDirectory()) {
+      return false;
+    }
+
+    return this.dirHasAnyFileUnder(inputAbs, 0);
+  }
+
+  private async unpackZipIntoGoalInput(
+    worktreeRoot: string,
+    inputPrefix: string,
+    zipAbsPath: string,
+  ): Promise<
+    Array<{
+      absolutePath: string;
+      docType: ReturnType<typeof docTypeForUnpackedFile>;
+      relativePath: string;
+    }>
+  > {
+    const docsRoot = path.join(worktreeRoot, 'docs');
     const extractDirName = `${randomUUID()}-unpacked`;
     const extractRelative = `${inputPrefix}${extractDirName}`;
-    const extractAbsPath = path.join(docsRoot, extractRelative);
+    const extractAbsPath =
+      this.projectDocsService.resolveProjectDocAbsolutePath(
+        docsRoot,
+        extractRelative,
+      );
 
     await fs.mkdir(extractAbsPath, { recursive: true });
 
@@ -105,13 +326,6 @@ export class GoalSourceDocsService {
       throw error;
     }
 
-    const sourceDocs = await this.goalRepository.listSourceDocs(goal.id);
-    const maxSort = sourceDocs.reduce(
-      (max, doc) => Math.max(max, doc.sortOrder),
-      -1,
-    );
-    let sortOrder = maxSort + 1;
-
     const collected = await this.collectFilesUnderExtractDir(extractAbsPath);
     if (collected.length > GOAL_UNPACK_MAX_FILES) {
       await fs.rm(extractAbsPath, { recursive: true, force: true });
@@ -120,7 +334,11 @@ export class GoalSourceDocsService {
       );
     }
 
-    const writtenPaths: string[] = [];
+    const written: Array<{
+      absolutePath: string;
+      docType: ReturnType<typeof docTypeForUnpackedFile>;
+      relativePath: string;
+    }> = [];
     for (const absolutePath of collected) {
       assertUnpackedPathDepth(extractAbsPath, absolutePath);
       const relativePath = path
@@ -132,85 +350,117 @@ export class GoalSourceDocsService {
       }
 
       const buffer = await fs.readFile(absolutePath);
-      const docType = docTypeForUnpackedFile(relativePath);
       const payload = isProbablyTextBuffer(buffer)
         ? { path: relativePath, content: buffer.toString('utf-8') }
         : { path: relativePath, contentBase64: buffer.toString('base64') };
-
-      try {
-        await this.projectDocsService.createDoc(
-          goal.projectId,
+      const { absolutePath: writtenAbsolutePath } =
+        await this.projectDocsService.writeDocInRepositoryRoot(
+          worktreeRoot,
           payload,
-          currentUser,
         );
-      } catch (error) {
-        if (error instanceof ConflictException) {
-          await this.projectDocsService.updateDoc(
-            goal.projectId,
-            payload,
-            currentUser,
-          );
-        } else {
-          throw error;
-        }
-      }
-
-      await this.goalRepository.insertSourceDoc({
-        goalId: goal.id,
-        projectDocPath: relativePath,
-        docType,
-        sortOrder: sortOrder++,
+      written.push({
+        absolutePath: writtenAbsolutePath,
+        docType: docTypeForUnpackedFile(relativePath),
+        relativePath,
       });
-      writtenPaths.push(relativePath);
     }
 
-    if (!writtenPaths.length) {
+    if (!written.length) {
       await fs.rm(extractAbsPath, { recursive: true, force: true });
       throw new BadRequestException(
-        '压缩包解压后没有可登记的有效文件（空包、仅目录、或仅有系统元数据如 __MACOSX）。请更换压缩包后重试；原 zip 已保留。',
+        '压缩包解压后没有可登记的有效文件（空包、仅目录、或仅有系统元数据如 __MACOSX）。请更换压缩包后重试。',
       );
     }
 
-    await this.projectDocsService.removeDoc(
-      goal.projectId,
-      normalizedZipPath,
-      currentUser,
+    const { keptAbsolutePaths, ignoredRelativePaths } =
+      await this.gitService.filterIgnoredPathsInRepositoryRoot(
+        worktreeRoot,
+        written.map((item) => item.absolutePath),
+      );
+    const keptAbsolutePathSet = new Set(
+      keptAbsolutePaths.map((item) => path.resolve(item)),
     );
-    const zipRow = sourceDocs.find(
-      (sourceDoc) => sourceDoc.projectDocPath === normalizedZipPath,
+    const kept = written.filter((item) =>
+      keptAbsolutePathSet.has(path.resolve(item.absolutePath)),
     );
-    if (zipRow) {
-      await this.goalRepository.removeSourceDoc(zipRow.id, goal.id);
+    if (!kept.length) {
+      await fs.rm(extractAbsPath, { recursive: true, force: true });
+      throw new BadRequestException(
+        `压缩包解压后没有可登记的有效文件（可能全部是缓存/构建产物，或被 .gitignore 忽略）。被忽略文件：${ignoredRelativePaths.join(', ') || '无'}。`,
+      );
     }
 
-    return {
-      extractedFileCount: writtenPaths.length,
-      paths: writtenPaths,
-    };
+    return kept;
   }
 
-  async goalInputDirHasAnyFile(
-    projectId: string,
-    goalId: string,
+  private assertGoalInputPath(
+    goal: Goal,
+    relativePath: string,
+    label: string,
+  ): void {
+    const inputPrefix = `${goalInputDirRelativePath(goal.id)}/`;
+    if (!relativePath.startsWith(inputPrefix)) {
+      throw new BadRequestException(`${label}须位于该需求的 input 目录下`);
+    }
+  }
+
+  private async persistGoalInputFilesToGit<T>(
+    goal: Goal,
     currentUser: JwtPayloadType,
-  ): Promise<boolean> {
-    const { repositoryRoot } =
-      await this.projectsService.ensureProjectRepositoryReady(
-        projectId,
-        currentUser,
-        { syncRemote: false },
-      );
-    const inputAbs = path.join(
-      repositoryRoot,
-      'docs',
-      goalInputDirRelativePath(goalId),
-    );
-    const stat = await fs.stat(inputAbs).catch(() => null);
-    if (!stat?.isDirectory()) {
-      return false;
+    commitMessage: string,
+    operation: (
+      worktreeRoot: string,
+    ) => Promise<{ result: T; absolutePaths: string[] }>,
+  ): Promise<T> {
+    const branch = goal.gitBranch?.trim();
+    if (!branch) {
+      throw new BadRequestException('需求未配置 Git 分支，无法保存资料');
     }
 
-    return this.dirHasAnyFileUnder(inputAbs, 0);
+    return this.projectsService.runWithProjectRepositoryLock(
+      goal.projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ repositoryRoot }) =>
+        this.gitService.runInTemporaryBranchWorktree(
+          repositoryRoot,
+          branch,
+          async (worktreeRoot) => {
+            await this.gitService.cleanupForeignUntrackedGoalDirs(
+              worktreeRoot,
+              goal.id,
+            );
+            const { result, absolutePaths } = await operation(worktreeRoot);
+            const committed =
+              await this.gitService.commitPathsInRepositoryRootIfDirty(
+                worktreeRoot,
+                absolutePaths,
+                commitMessage,
+                {
+                  name: currentUser.username || 'ainative-user',
+                  email: `${currentUser.username || currentUser.sub}@ainative.local`,
+                },
+              );
+            if (!committed) {
+              const status =
+                await this.gitService.readStatusForPathsInRepositoryRoot(
+                  worktreeRoot,
+                  absolutePaths,
+                );
+              if (status) {
+                throw new BadRequestException(
+                  `资料已写入但未能生成提交，请清理工作区后重试: ${status}`,
+                );
+              }
+            }
+            await this.gitService.pushRepositoryHeadToBranch(
+              worktreeRoot,
+              branch,
+            );
+            return result;
+          },
+        ),
+    );
   }
 
   private async dirHasAnyFileUnder(

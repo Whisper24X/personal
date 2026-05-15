@@ -9,6 +9,7 @@ import { ProjectsModule } from '../projects/projects.module';
 import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persistence/relational/relational-persistence.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { GitModule } from '../git/git.module';
+import { ProjectWorkspaceModule } from '../project-workspace/project-workspace.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { GitModule } from '../git/git.module';
     RelationalTaskPersistenceModule,
     TasksModule,
     GitModule,
+    ProjectWorkspaceModule,
   ],
   controllers: [GoalsController],
   providers: [

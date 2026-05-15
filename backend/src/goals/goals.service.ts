@@ -21,6 +21,7 @@ import { TaskRepository } from '../tasks/infrastructure/persistence/task.reposit
 import { TaskMode } from '../tasks/dto/task-mode.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskProvisioningService } from '../tasks/application/task-provisioning.service';
+import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { GoalSourceDocsService } from './goal-source-docs.service';
 import { GoalRepository } from './infrastructure/persistence/goal.repository';
 import { Goal } from './domain/goal';
@@ -145,6 +146,7 @@ export class GoalsService {
     private readonly taskProvisioningService: TaskProvisioningService,
     private readonly goalSourceDocsService: GoalSourceDocsService,
     private readonly goalsMetrics: GoalsMetricsService,
+    private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
   ) {}
 
   private async persistGoalDocToGit(
@@ -559,6 +561,38 @@ export class GoalsService {
     return this.goalSourceDocsService.addSourceDoc(goal, dto, currentUser);
   }
 
+  async uploadSourceDoc(
+    goalId: string,
+    dto: AddSourceDocDto,
+    file: Buffer,
+    currentUser: JwtPayloadType,
+  ) {
+    const goal = await this.assertGoalAccess(goalId, currentUser);
+
+    return this.goalSourceDocsService.uploadSourceDoc(
+      goal,
+      dto,
+      file,
+      currentUser,
+    );
+  }
+
+  async uploadAndUnpackInputZip(
+    goalId: string,
+    dto: AddSourceDocDto,
+    file: Buffer,
+    currentUser: JwtPayloadType,
+  ): Promise<{ extractedFileCount: number; paths: string[] }> {
+    const goal = await this.assertGoalAccess(goalId, currentUser);
+
+    return this.goalSourceDocsService.uploadAndUnpackInputZip(
+      goal,
+      dto,
+      file,
+      currentUser,
+    );
+  }
+
   /**
    * 将已上传到 goals/{goalId}/input/ 的 zip 解压到同目录下子文件夹，登记 source-docs，并删除 zip 文件与对应 source-doc 行。
    */
@@ -641,29 +675,42 @@ export class GoalsService {
           await Promise.resolve({ project, repositoryRoot }),
       );
 
-    for (let attempt = 1; attempt <= PRD_MAX_ATTEMPTS; attempt++) {
-      const result =
-        await this.projectKnowledgeService.executeProjectAgentPromptPrepared(
-          prdAgentContext.project,
-          prdAgentContext.repositoryRoot,
-          prompt,
-          agentCli,
-        );
-      if (!result.success) {
-        lastErr = result.stderr || 'agent failed';
-        this.logger.warn(`PRD agent attempt ${attempt} failed: ${lastErr}`);
-        continue;
-      }
-      const parsed = parsePrdJsonFromAgentStdout(result.stdout);
-      if (!parsed) {
-        lastErr =
-          'invalid PRD JSON: missing markdown (stream-json 需含 assistant 正文或合法 JSON)';
-        this.logger.warn(`PRD parse attempt ${attempt}: ${lastErr}`);
-        continue;
-      }
-      markdown = parsed.markdown;
-      break;
-    }
+    markdown = await this.gitService.runInTemporaryBranchWorktree(
+      prdAgentContext.repositoryRoot,
+      goal.gitBranch.trim(),
+      async (worktreeRoot) => {
+        for (let attempt = 1; attempt <= PRD_MAX_ATTEMPTS; attempt++) {
+          const result =
+            await this.projectKnowledgeService.executeProjectAgentPromptPrepared(
+              prdAgentContext.project,
+              worktreeRoot,
+              prompt,
+              agentCli,
+            );
+          if (!result.success) {
+            lastErr = result.stderr || 'agent failed';
+            this.logger.warn(`PRD agent attempt ${attempt} failed: ${lastErr}`);
+            continue;
+          }
+          const parsed = parsePrdJsonFromAgentStdout(result.stdout);
+          if (!parsed) {
+            lastErr =
+              'invalid PRD JSON: missing markdown (stream-json 需含 assistant 正文或合法 JSON)';
+            this.logger.warn(`PRD parse attempt ${attempt}: ${lastErr}`);
+            continue;
+          }
+          return parsed.markdown;
+        }
+
+        return '';
+      },
+      {
+        tempParentDir:
+          this.projectWorkspacePathsService.resolveWorktreeAllowedRoot(
+            prdAgentContext.project,
+          ),
+      },
+    );
 
     if (!markdown) {
       this.goalsMetrics.incrementPrdGeneration(false);

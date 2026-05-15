@@ -28,11 +28,16 @@ const {
   goalsApi: {
     create: vi.fn(),
     addSourceDoc: vi.fn(),
+    uploadAndUnpackInputZip: vi.fn(),
+    uploadSourceDoc: vi.fn(),
     unpackInputZip: vi.fn(),
   },
   projectsApi: {
     list: vi.fn(),
     detail: vi.fn(),
+    createDoc: vi.fn(),
+    updateDoc: vi.fn(),
+    uploadDoc: vi.fn(),
   },
   businessLinesApi: {
     detail: vi.fn(),
@@ -148,6 +153,22 @@ describe('GoalCreatePanel', () => {
       localBranches: ['main', 'feature/current'],
       remoteBranches: ['main'],
     })
+    goalsApi.uploadSourceDoc.mockResolvedValue({
+      id: 'source-1',
+      goalId: 'goal-1',
+      projectDocPath: 'goals/goal-1/input/req.md',
+      docType: 'requirement',
+      sortOrder: 0,
+      createdAt: '2026-04-08T00:00:00.000Z',
+    })
+    goalsApi.unpackInputZip.mockResolvedValue({
+      extractedFileCount: 1,
+      paths: ['goals/goal-1/input/unpacked/req.md'],
+    })
+    goalsApi.uploadAndUnpackInputZip.mockResolvedValue({
+      extractedFileCount: 1,
+      paths: ['goals/goal-1/input/unpacked/req.md'],
+    })
     fetchAllPages.mockImplementation(
       async (fetchPage: (page: number, limit: number) => Promise<{ data: unknown[] }>) => {
         const response = await fetchPage(1, 50)
@@ -217,5 +238,103 @@ describe('GoalCreatePanel', () => {
     await flushPromises()
 
     expect(wrapper.find('button[aria-label="Agent CLI"]').text()).toContain('Codex')
+  })
+
+  it('uploads selected source docs through the goal scoped upload api', async () => {
+    goalsApi.create.mockResolvedValue({
+      id: 'goal-1',
+      projectId: 'project-1',
+      title: '优化登录页',
+      summary: null,
+      status: 'draft',
+      prdDocPath: null,
+      planDocPath: null,
+      agentCliId: 'codex',
+      agentCliConfigId: 'cfg-1',
+      gitBaseBranch: 'main',
+      gitBranch: 'feature/goal-1',
+      createdAt: '2026-04-08T00:00:00.000Z',
+      updatedAt: '2026-04-08T00:00:00.000Z',
+      deletedAt: null,
+    })
+    const wrapper = mount(GoalCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+    await wrapper.find('input[type="text"]').setValue('优化登录页')
+    const file = new File(['# Req'], 'req.md', { type: 'text/markdown' })
+    const fileInput = wrapper.find('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(goalsApi.uploadSourceDoc).toHaveBeenCalledWith('goal-1', expect.any(FormData))
+    const formData = goalsApi.uploadSourceDoc.mock.calls[0]?.[1] as FormData
+    expect(formData.get('projectDocPath')).toMatch(/^goals\/goal-1\/input\/.+-req\.md$/)
+    expect(formData.get('docType')).toBe('requirement')
+    expect(formData.get('sortOrder')).toBe('0')
+    expect(formData.get('file')).toBe(file)
+    expect(goalsApi.addSourceDoc).not.toHaveBeenCalled()
+    expect(projectsApi.createDoc).not.toHaveBeenCalled()
+    expect(projectsApi.updateDoc).not.toHaveBeenCalled()
+    expect(projectsApi.uploadDoc).not.toHaveBeenCalled()
+    expect(success).toHaveBeenCalledWith('已创建需求，已关联资料')
+    expect(push).toHaveBeenCalledWith({ name: 'goal-detail', params: { goalId: 'goal-1' } })
+  })
+
+  it('uploads zip source docs through upload and unpack api without registering the zip', async () => {
+    goalsApi.create.mockResolvedValue({
+      id: 'goal-1',
+      projectId: 'project-1',
+      title: '优化登录页',
+      summary: null,
+      status: 'draft',
+      prdDocPath: null,
+      planDocPath: null,
+      agentCliId: 'codex',
+      agentCliConfigId: 'cfg-1',
+      gitBaseBranch: 'main',
+      gitBranch: 'feature/goal-1',
+      createdAt: '2026-04-08T00:00:00.000Z',
+      updatedAt: '2026-04-08T00:00:00.000Z',
+      deletedAt: null,
+    })
+    const wrapper = mount(GoalCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+    await wrapper.find('input[type="text"]').setValue('优化登录页')
+    const file = new File(['zip'], 'prototype.zip', { type: 'application/zip' })
+    const fileInput = wrapper.find('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(goalsApi.uploadAndUnpackInputZip).toHaveBeenCalledWith(
+      'goal-1',
+      expect.any(FormData),
+    )
+    const formData = goalsApi.uploadAndUnpackInputZip.mock.calls[0]?.[1] as FormData
+    expect(formData.get('projectDocPath')).toMatch(/^goals\/goal-1\/input\/.+-prototype\.zip$/)
+    expect(formData.get('file')).toBe(file)
+    expect(goalsApi.uploadSourceDoc).not.toHaveBeenCalled()
+    expect(goalsApi.unpackInputZip).not.toHaveBeenCalled()
+    expect(goalsApi.addSourceDoc).not.toHaveBeenCalled()
   })
 })

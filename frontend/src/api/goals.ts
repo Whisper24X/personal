@@ -73,6 +73,17 @@ export const goalsApi = {
     return apiHttp.post<GoalSourceDoc>(`/goals/${goalId}/source-docs`, payload)
   },
 
+  uploadSourceDoc(goalId: string, formData: FormData) {
+    return apiHttp.post<GoalSourceDoc>(`/goals/${goalId}/source-docs/upload`, formData)
+  },
+
+  uploadAndUnpackInputZip(goalId: string, formData: FormData) {
+    return apiHttp.post<{ extractedFileCount: number; paths: string[] }>(
+      `/goals/${goalId}/source-docs/upload-zip`,
+      formData,
+    )
+  },
+
   unpackInputZip(goalId: string, payload: { projectDocPath: string }) {
     return apiHttp.post<{ extractedFileCount: number; paths: string[] }>(
       `/goals/${goalId}/unpack-input-zip`,
