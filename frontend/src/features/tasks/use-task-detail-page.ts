@@ -369,12 +369,23 @@ const selectedWorkflowNode = computed(() => {
   return sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null
 })
 
-const canResetSelectedWorkflowNode = computed(() => {
+const resetTargetNode = computed(() => {
+  if (!task.value) {
+    return null
+  }
+
+  if (task.value.mode === 'workflow') {
+    return selectedWorkflowNode.value
+  }
+
+  return currentReplyTargetNode.value
+})
+
+const canResetTaskNode = computed(() => {
   const currentTask = task.value
 
   if (
     !currentTask ||
-    currentTask.mode !== 'workflow' ||
     currentTask.status === 'done' ||
     !hasButtonAccess('executeTask') ||
     actionLoading.value ||
@@ -383,14 +394,14 @@ const canResetSelectedWorkflowNode = computed(() => {
     return false
   }
 
-  if (!selectedWorkflowNode.value) {
+  if (!resetTargetNode.value) {
     return false
   }
 
   return (
-    selectedWorkflowNode.value.status === 'in_review' ||
-    selectedWorkflowNode.value.status === 'failed' ||
-    selectedWorkflowNode.value.status === 'done'
+    resetTargetNode.value.status === 'in_review' ||
+    resetTargetNode.value.status === 'failed' ||
+    resetTargetNode.value.status === 'done'
   )
 })
 
@@ -1111,10 +1122,10 @@ const completeTask = async () => {
   }
 }
 
-const resetSelectedWorkflowNode = async () => {
-  const targetNodeId = selectedWorkflowNode.value?.id ?? null
+const resetTaskNode = async () => {
+  const targetNodeId = resetTargetNode.value?.id ?? null
 
-  if (!taskId.value || !canResetSelectedWorkflowNode.value || !targetNodeId) {
+  if (!taskId.value || !canResetTaskNode.value || !targetNodeId) {
     return
   }
 
@@ -1503,7 +1514,7 @@ return reactive({
     canInterruptExecution,
     canManageReview,
     canRemove,
-    canResetSelectedWorkflowNode,
+    canResetTaskNode,
     canStartEnvironment,
     canTerminateEnvironment,
     clearMessageRefreshTimer,
@@ -1576,8 +1587,9 @@ return reactive({
     replyDisabled,
     replyPlaceholder,
     resetPendingRightPanelArtifactRefresh,
-    resetSelectedWorkflowNode,
+    resetTaskNode,
     resetTaskState,
+    resetTargetNode,
     resolveAutoSelectedWorkflowNodeId,
     resolveStoredRightPanelVisible,
     rightPanelArtifactRefreshPaths,

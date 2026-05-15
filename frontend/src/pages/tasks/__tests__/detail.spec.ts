@@ -2298,6 +2298,81 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).toContain('重新启动环境')
   })
 
+  it('resets the conversation node via reset-node API', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const detailResponse: TaskDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'conversation',
+        title: 'Conversation task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'conversation-node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'conversation-node',
+          status: 'done',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(detailResponse)
+    tasksApi.resetNode.mockResolvedValueOnce({
+      ...detailResponse,
+      nodes: detailResponse.nodes.map((node) => ({
+        ...node,
+        status: 'todo',
+      })),
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const executionContextBar = wrapper.findComponent({ name: 'TaskExecutionContextBar' })
+    await executionContextBar.get('button[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+
+    const resetButton = executionContextBar
+      .findAll('button')
+      .find((button) => button.text().trim() === '重置')
+    expect(resetButton).toBeTruthy()
+
+    await resetButton?.trigger('click')
+    await flushPromises()
+
+    const messageStore = useMessageStore()
+    expect(messageStore.items).toHaveLength(0)
+    expect(tasksApi.resetNode).toHaveBeenCalledWith('task-1', {
+      nodeId: 'conversation-node-1',
+    })
+  })
+
   it('resets the selected workflow node via reset-node API', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
