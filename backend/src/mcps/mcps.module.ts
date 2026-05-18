@@ -13,6 +13,7 @@ import { ProjectMcpOAuthConnectionEntity } from './infrastructure/persistence/re
 import { ProjectMcpOAuthSessionEntity } from './infrastructure/persistence/relational/entities/project-mcp-oauth-session.entity';
 import { OAuthMcpProviderRegistry } from './oauth-providers/oauth-mcp-provider.registry';
 import { ProjectMcpOAuthService } from './project-mcp-oauth.service';
+import { RunnerMcpProbeService } from './runner-mcp-probe.service';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ProjectMcpOAuthService } from './project-mcp-oauth.service';
   providers: [
     McpsService,
     LocalMcpProbeService,
+    RunnerMcpProbeService,
     OAuthMcpProviderRegistry,
     ProjectMcpOAuthService,
   ],

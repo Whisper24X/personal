@@ -10,6 +10,7 @@ import { ControlPlaneAgentExecutionService } from './control-plane-agent-executi
 import { LocalProcessLauncherService } from './local-process-launcher.service';
 import { RunnerAgentExecutionService } from './runner-agent-execution.service';
 import { RunnerEphemeralMcpService } from './runner-ephemeral-mcp.service';
+import { RunnerFigmaMcpCredentialSyncService } from './runner-figma-mcp-credential-sync.service';
 import { MemoryModule } from '../memory/memory.module';
 import { AgentToolOpenAiCompatibleLlmCredentialsService } from './agent-tool-openai-compatible-llm-credentials.service';
 
@@ -27,6 +28,7 @@ import { AgentToolOpenAiCompatibleLlmCredentialsService } from './agent-tool-ope
     ControlPlaneAgentExecutionService,
     RunnerAgentExecutionService,
     RunnerEphemeralMcpService,
+    RunnerFigmaMcpCredentialSyncService,
     AgentCliAdapterRegistry,
     AgentCliSmokeTestService,
     AgentToolOpenAiCompatibleLlmCredentialsService,
@@ -37,6 +39,7 @@ import { AgentToolOpenAiCompatibleLlmCredentialsService } from './agent-tool-ope
     ControlPlaneAgentExecutionService,
     RunnerAgentExecutionService,
     RunnerEphemeralMcpService,
+    RunnerFigmaMcpCredentialSyncService,
     LocalProcessLauncherService,
     AgentCliAdapterRegistry,
     AgentCliSmokeTestService,

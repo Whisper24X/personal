@@ -47,6 +47,7 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
       '--force',
       '--sandbox',
       'enabled',
+      '--approve-mcps',
     ];
   }
 
@@ -86,7 +87,7 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
       (isRoot ? 'disabled' : 'enabled');
     args.push('--sandbox', sandbox);
 
-    if (raw.approve_mcps === true) {
+    if (raw.approve_mcps !== false) {
       args.push('--approve-mcps');
     }
 

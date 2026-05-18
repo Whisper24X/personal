@@ -18,6 +18,7 @@ import {
 } from './agent-execution.types';
 import { PromptTemplateRuntimeContext } from './agent-prompt-template.service';
 import { MemoryHostService } from '../memory/memory-host.service';
+import { RunnerFigmaMcpCredentialSyncService } from './runner-figma-mcp-credential-sync.service';
 
 type ActiveAgentExecution = {
   childProcess: ChildProcess;
@@ -44,6 +45,8 @@ export class RunnerAgentExecutionService {
     private readonly isolatedRunnerContainer?: IsolatedRunnerContainerService,
     @Optional()
     private readonly memoryHost?: MemoryHostService,
+    @Optional()
+    private readonly figmaMcpCredentialSync?: RunnerFigmaMcpCredentialSyncService,
   ) {}
 
   async executeAgentNode({
@@ -271,6 +274,19 @@ export class RunnerAgentExecutionService {
         throw new Error(
           `Runner execution requires docker exec handoff, but ${missingReasons.join(', ') || 'the task container is not runnable'} (taskId=${executionContext.taskId}, nodeId=${executionContext.nodeId}, cwd=${config.cwd})`,
         );
+      }
+
+      if (
+        config.adapter === 'cursor' &&
+        containerExecRef &&
+        this.figmaMcpCredentialSync
+      ) {
+        await this.figmaMcpCredentialSync.syncCodexFigmaCredentialToCursor({
+          containerRef: containerExecRef,
+          cwdInContainer:
+            config.runnerContainerCwd ??
+            this.containerExecutionConfig!.getRunnerWorkspace(),
+        });
       }
 
       const childProcess = this.dockerExecProcessLauncher!.spawn({
