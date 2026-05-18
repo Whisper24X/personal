@@ -155,6 +155,15 @@ const canPullBranch = (branch: GitBranchDetail) => {
   return branch.isCurrent && (branch.type === 'local' || branch.type === 'both') && branch.behind > 0
 }
 
+/** 当前检出分支相对其跟踪远端已分歧（领先 / 落后 / 双方均有），可强制对齐远端 */
+const canResetBranch = (branch: GitBranchDetail) => {
+  return (
+    branch.isCurrent &&
+    (branch.type === 'local' || branch.type === 'both') &&
+    (branch.ahead > 0 || branch.behind > 0)
+  )
+}
+
 const isBranchExpanded = (branchName: string) => {
   return expandedBranch.value === branchName
 }
@@ -366,7 +375,7 @@ watch(activeProjectId, () => {
                 {{ operatingBranch === branch.name ? '拉取中...' : '拉取' }}
               </button>
               <button
-                v-if="canPullBranch(branch)"
+                v-if="canResetBranch(branch)"
                 type="button"
                 class="inline-flex h-8 items-center rounded-full border border-amber-200/70 bg-amber-50/70 px-3 text-xs font-semibold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-500/15"
                 :disabled="operatingBranch === branch.name"
