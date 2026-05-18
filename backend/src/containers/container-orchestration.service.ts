@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { createServer } from 'net';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Project } from '../projects/domain/project';
@@ -593,10 +594,10 @@ export class ContainerOrchestrationService
           command: this.config.usesSandboxEntrypoint(params.project)
             ? ['/usr/local/bin/ainative-runner-entrypoint']
             : ['sleep', 'infinity'],
-          sharedVolumeMounts: [
+          sharedVolumeMounts: this.mergeSharedVolumeMounts([
             ...(runnerConfig?.runtime.sharedVolumes ?? []),
             ...this.buildProjectOAuthCredentialVolumeMounts(params.project.id),
-          ],
+          ]),
           managedVolumeMounts: this.buildManagedVolumeMounts({
             task: params.task,
             containerName: params.containerName,
@@ -668,10 +669,34 @@ export class ContainerOrchestrationService
   }[] {
     return [
       {
-        name: `ainative-project-${projectId}-oauth-mcp-credentials`,
+        name: this.buildProjectOAuthCredentialVolumeName(projectId),
         target: '/root',
       },
     ];
+  }
+
+  private mergeSharedVolumeMounts<T extends { name: string; target: string }>(
+    mounts: T[],
+  ): T[] {
+    const seen = new Set<string>();
+    const result: T[] = [];
+    for (const mount of mounts) {
+      const key = `${mount.name}:${mount.target}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(mount);
+    }
+    return result;
+  }
+
+  private buildProjectOAuthCredentialVolumeName(projectId: string): string {
+    const digest = createHash('sha1')
+      .update(projectId)
+      .digest('hex')
+      .slice(0, 24);
+    return `ainative-oauth-mcp-${digest}`;
   }
 
   private buildManagedVolumeName(

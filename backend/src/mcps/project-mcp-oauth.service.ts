@@ -6,11 +6,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ChildProcess, execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { Repository } from 'typeorm';
 import { ContainerExecutionConfigService } from '../containers/container-execution-config.service';
 import { IsolatedRunnerContainerService } from '../containers/isolated-runner-container.service';
 import { ProjectExecutionSlotRepository } from '../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
+import { RunnerFigmaMcpCredentialSyncService } from '../agent-execution/runner-figma-mcp-credential-sync.service';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectAccessService } from '../projects/project-access.service';
 import {
@@ -63,6 +65,7 @@ export class ProjectMcpOAuthService {
     private readonly slotRepository: ProjectExecutionSlotRepository,
     private readonly isolatedRunner: IsolatedRunnerContainerService,
     private readonly containerConfig: ContainerExecutionConfigService,
+    private readonly figmaMcpCredentialSync: RunnerFigmaMcpCredentialSyncService,
     @InjectRepository(ProjectMcpOAuthConnectionEntity)
     private readonly connectionRepo: Repository<ProjectMcpOAuthConnectionEntity>,
     @InjectRepository(ProjectMcpOAuthSessionEntity)
@@ -175,24 +178,6 @@ export class ProjectMcpOAuthService {
         session.id,
         active,
       );
-      if (!authorizationUrl) {
-        this.activeLogins.delete(session.id);
-        const updated = await this.sessionRepo.save({
-          ...session,
-          status: 'succeeded',
-          errorMessage: null,
-        });
-        await this.upsertConnection(project.id, definition.provider, {
-          status: 'connected',
-          credentialVolumeRef: this.buildCredentialVolumeName(project.id),
-          lastError: null,
-          cli: dto.cli,
-          cliStatus: 'connected',
-          cliLastLoginAt: new Date().toISOString(),
-        });
-        return this.toSessionDto(updated);
-      }
-
       const parsed = this.parseAuthorizationUrl(authorizationUrl);
       const updated = await this.sessionRepo.save({
         ...session,
@@ -206,18 +191,20 @@ export class ProjectMcpOAuthService {
         provider: definition.provider,
         projectId: project.id,
         cli: dto.cli,
+        containerRef: slot.containerId,
       });
 
       return this.toSessionDto(updated);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const rawMessage = error instanceof Error ? error.message : String(error);
+      const message = this.toUserOAuthLoginError(rawMessage);
       await this.sessionRepo.update(
         { id: session.id },
         { status: 'failed', errorMessage: message },
       );
       await this.markConnectionError(connection, dto.cli, message);
       this.killActiveLogin(session.id);
-      throw error;
+      throw new BadRequestException(message);
     }
   }
 
@@ -354,7 +341,7 @@ export class ProjectMcpOAuthService {
   private waitForAuthorizationUrl(
     sessionId: string,
     active: ActiveLoginProcess,
-  ): Promise<string | null> {
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
@@ -373,7 +360,11 @@ export class ProjectMcpOAuthService {
       const onExit = (code: number | null) => {
         cleanup();
         if (code === 0) {
-          resolve(null);
+          reject(
+            new Error(
+              `OAuth login process exited before emitting an authorization URL: ${this.buildProcessDiagnostic(active)}`,
+            ),
+          );
           return;
         }
         reject(
@@ -522,6 +513,7 @@ export class ProjectMcpOAuthService {
     provider: string;
     projectId: string;
     cli: OAuthMcpCli;
+    containerRef: string;
   }): void {
     const active = this.activeLogins.get(input.sessionId);
     if (!active) {
@@ -547,6 +539,7 @@ export class ProjectMcpOAuthService {
       provider: string;
       projectId: string;
       cli: OAuthMcpCli;
+      containerRef: string;
     },
     code: number | null,
     activeOutput: ActiveLoginProcess,
@@ -556,9 +549,13 @@ export class ProjectMcpOAuthService {
     const errorMessage =
       code === 0
         ? null
-        : this.truncate(
-            activeOutput.stderr || activeOutput.stdout || 'OAuth login failed',
-            1000,
+        : this.toUserOAuthLoginError(
+            this.truncate(
+              activeOutput.stderr ||
+                activeOutput.stdout ||
+                'OAuth login failed',
+              1000,
+            ),
           );
     await this.sessionRepo.update(
       { id: input.sessionId },
@@ -575,6 +572,16 @@ export class ProjectMcpOAuthService {
       cliStatus: status === 'succeeded' ? 'connected' : 'error',
       cliLastLoginAt: status === 'succeeded' ? new Date().toISOString() : null,
     });
+    if (
+      status === 'succeeded' &&
+      input.provider === 'figma' &&
+      input.cli === 'codex'
+    ) {
+      await this.figmaMcpCredentialSync.syncCodexFigmaCredentialToCursor({
+        containerRef: input.containerRef,
+        cwdInContainer: this.containerConfig.getRunnerWorkspace(),
+      });
+    }
   }
 
   private async waitForLoginCompletion(
@@ -754,7 +761,33 @@ export class ProjectMcpOAuthService {
   }
 
   private buildCredentialVolumeName(projectId: string): string {
-    return `ainative-project-${projectId}-oauth-mcp-credentials`;
+    const digest = createHash('sha1')
+      .update(projectId)
+      .digest('hex')
+      .slice(0, 24);
+    return `ainative-oauth-mcp-${digest}`;
+  }
+
+  private toUserOAuthLoginError(message: string): string {
+    if (message.includes('403') || message.includes('Forbidden')) {
+      return 'Figma OAuth 授权被拒绝，请确认当前网络可以访问 Figma MCP，且账号具备使用 Figma MCP 的权限。';
+    }
+    if (message.includes('401') || message.includes('Unauthorized')) {
+      return 'Figma OAuth 登录态无效或已过期，请重新授权。';
+    }
+    if (message.includes('OAuth authorization URL was not emitted in time')) {
+      return '等待 Figma 授权链接超时，请确认 runner 内 Cursor CLI 可用，或稍后重试。';
+    }
+    if (message.includes('authorization URL')) {
+      return 'Runner 内 CLI 未生成 Figma 授权链接，请确认 runner 中的 Agent CLI 可用并支持 Figma MCP 登录。';
+    }
+    if (
+      message.includes('Failed to prepare Cursor MCP config') ||
+      message.includes('Failed to prepare Codex MCP config')
+    ) {
+      return '准备 Figma MCP 配置失败，请确认 runner 容器运行正常且 CLI 配置目录可写。';
+    }
+    return '启动 Figma OAuth 授权失败，请检查 runner 日志后重试。';
   }
 
   private toTomlBareKey(value: string): string {

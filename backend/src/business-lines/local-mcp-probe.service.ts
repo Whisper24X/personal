@@ -31,6 +31,11 @@ type ClassifiedMcp =
       headers: Record<string, string>;
     };
 
+export type RunnerMcpProbeContext = {
+  containerRef: string;
+  cwdInContainer: string;
+};
+
 @Injectable()
 export class LocalMcpProbeService {
   constructor(
@@ -45,6 +50,7 @@ export class LocalMcpProbeService {
       sourcePath: string;
       config: Record<string, unknown>;
     };
+    runner?: RunnerMcpProbeContext;
   }): Promise<LocalMcpProbeResultDto> {
     const agentConfig = params.agentToolConfig;
     const local = params.local;
@@ -75,6 +81,10 @@ export class LocalMcpProbeService {
     });
 
     const classified = this.classifyMcpServerConfig(local.config, local.name);
+    const runnerStdioProbe =
+      params.runner && classified.transport === 'stdio'
+        ? params.runner
+        : undefined;
     const timeoutMs =
       this.agentCliSmokeTestService.resolveLocalMcpProbeTimeoutMs();
 
@@ -83,12 +93,20 @@ export class LocalMcpProbeService {
         classified,
         agentEnv,
         timeoutMs,
+        runner: runnerStdioProbe,
       });
 
       return {
         ok: true,
         transport: classified.transport,
         toolsCount,
+        ...(runnerStdioProbe
+          ? {
+              executionPlane: 'runner' as const,
+              containerId: runnerStdioProbe.containerRef,
+              cwd: runnerStdioProbe.cwdInContainer,
+            }
+          : { executionPlane: 'backend' as const }),
         warnings: warnings.length > 0 ? warnings : undefined,
       };
     } catch (error) {
@@ -104,6 +122,13 @@ export class LocalMcpProbeService {
         errorCode: code,
         message,
         stderrPreview: this.extractStderrPreview(error),
+        ...(runnerStdioProbe
+          ? {
+              executionPlane: 'runner' as const,
+              containerId: runnerStdioProbe.containerRef,
+              cwd: runnerStdioProbe.cwdInContainer,
+            }
+          : { executionPlane: 'backend' as const }),
         warnings: warnings.length > 0 ? warnings : undefined,
       };
     }
@@ -292,6 +317,7 @@ export class LocalMcpProbeService {
     classified: ClassifiedMcp;
     agentEnv: NodeJS.ProcessEnv;
     timeoutMs: number;
+    runner?: RunnerMcpProbeContext;
   }): Promise<number> {
     const client = new Client(
       { name: 'ainative-local-mcp-probe', version: '1.0.0' },
@@ -311,11 +337,22 @@ export class LocalMcpProbeService {
           ...this.toStringRecord(params.agentEnv),
           ...params.classified.env,
         };
+        const stdioCommand = params.runner
+          ? this.buildRunnerDockerExecCommand({
+              classified: params.classified,
+              env: mergedEnv,
+              runner: params.runner,
+            })
+          : {
+              command: params.classified.command,
+              args: params.classified.args,
+              env: mergedEnv,
+            };
 
         transport = new StdioClientTransport({
-          command: params.classified.command,
-          args: params.classified.args,
-          env: mergedEnv,
+          command: stdioCommand.command,
+          args: stdioCommand.args,
+          env: stdioCommand.env,
           stderr: 'pipe',
         });
 
@@ -368,6 +405,43 @@ export class LocalMcpProbeService {
       await client.close().catch(() => undefined);
       await transport?.close().catch(() => undefined);
     }
+  }
+
+  private buildRunnerDockerExecCommand(params: {
+    classified: Extract<ClassifiedMcp, { transport: 'stdio' }>;
+    env: Record<string, string>;
+    runner: RunnerMcpProbeContext;
+  }): {
+    command: string;
+    args: string[];
+    env: Record<string, string>;
+  } {
+    const execEnv = this.toStringRecord(process.env);
+    const envArgs: string[] = ['-e', 'HOME=/root'];
+    for (const [key, value] of Object.entries(params.env)) {
+      if (!key || value === undefined || value === null) {
+        continue;
+      }
+      if (key === 'PATH' || key === 'PWD' || key === 'OLDPWD') {
+        continue;
+      }
+      envArgs.push('-e', `${key}=${value}`);
+    }
+
+    return {
+      command: 'docker',
+      args: [
+        'exec',
+        '-i',
+        '-w',
+        params.runner.cwdInContainer,
+        ...envArgs,
+        params.runner.containerRef,
+        params.classified.command,
+        ...params.classified.args,
+      ],
+      env: execEnv,
+    };
   }
 
   private headersToRecord(

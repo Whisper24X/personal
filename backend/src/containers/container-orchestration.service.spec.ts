@@ -298,6 +298,10 @@ describe('ContainerOrchestrationService', () => {
             name: 'ainative-go-build-cache',
             target: '/root/.cache/go-build',
           },
+          {
+            name: 'ainative-oauth-mcp-abb8c4342af6939a75c773ba',
+            target: '/root',
+          },
         ],
       },
       orchestration: {
@@ -386,6 +390,10 @@ describe('ContainerOrchestrationService', () => {
           {
             name: 'ainative-go-build-cache',
             target: '/root/.cache/go-build',
+          },
+          {
+            name: 'ainative-oauth-mcp-abb8c4342af6939a75c773ba',
+            target: '/root',
           },
         ],
         managedVolumeMounts: [

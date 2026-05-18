@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { AgentCliSmokeTestService } from '../agent-execution/agent-cli-smoke-test.service';
 import { AgentCliAdapterRegistry } from '../agent-execution/agent-cli/agent-cli-adapter.registry';
 import { LocalMcpProbeService } from './local-mcp-probe.service';
@@ -101,5 +102,46 @@ describe('LocalMcpProbeService', () => {
     expect(result.warnings).toEqual([
       'AGENT_MCP_CONFIG_MAY_NOT_REFERENCE_BUSINESS_LINE_FILE',
     ]);
+  });
+
+  it('should run stdio MCP through docker exec when runner context is provided', async () => {
+    const result = await service.probeWithResolvedLocal({
+      agentToolConfig: {
+        toolId: 'cursor',
+        configJson: '{}',
+      },
+      local: {
+        name: 'apifox-yanxue-api-docs',
+        sourcePath: '/data/project/.cursor/mcp.json',
+        config: {
+          command: 'apifox-mcp-server',
+          args: ['--project-id=6283389'],
+          env: { APIFOX_ACCESS_TOKEN: 'token' },
+        },
+      },
+      runner: {
+        containerRef: 'container-1',
+        cwdInContainer: '/workspace',
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.executionPlane).toBe('runner');
+    expect(StdioClientTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'docker',
+        args: expect.arrayContaining([
+          'exec',
+          '-i',
+          '-w',
+          '/workspace',
+          '-e',
+          'APIFOX_ACCESS_TOKEN=token',
+          'container-1',
+          'apifox-mcp-server',
+          '--project-id=6283389',
+        ]),
+      }),
+    );
   });
 });

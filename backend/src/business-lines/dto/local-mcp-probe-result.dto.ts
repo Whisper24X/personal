@@ -9,6 +9,17 @@ export class LocalMcpProbeResultDto {
   })
   transport?: 'stdio' | 'http' | 'sse';
 
+  @ApiPropertyOptional({
+    enum: ['backend', 'runner'],
+  })
+  executionPlane?: 'backend' | 'runner';
+
+  @ApiPropertyOptional({ type: String })
+  containerId?: string;
+
+  @ApiPropertyOptional({ type: String })
+  cwd?: string;
+
   @ApiPropertyOptional({ type: Number })
   toolsCount?: number;
 

@@ -45,6 +45,11 @@ describe('ProjectMcpOAuthService', () => {
     const containerConfig = {
       getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
     };
+    const figmaMcpCredentialSync = {
+      syncCodexFigmaCredentialToCursor: jest
+        .fn()
+        .mockResolvedValue({ synced: true }),
+    };
 
     const service = new ProjectMcpOAuthService(
       projectAccessService as never,
@@ -52,6 +57,7 @@ describe('ProjectMcpOAuthService', () => {
       slotRepository as never,
       isolatedRunner as never,
       containerConfig as never,
+      figmaMcpCredentialSync as never,
       connectionRepo as never,
       sessionRepo as never,
     );

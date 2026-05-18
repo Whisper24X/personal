@@ -857,6 +857,7 @@ describe('AgentRunnerService', () => {
       '--force',
       '--sandbox',
       'enabled',
+      '--approve-mcps',
     ]);
   });
 
@@ -1463,6 +1464,7 @@ describe('AgentRunnerService', () => {
       'stream-json',
       '--sandbox',
       'enabled',
+      '--approve-mcps',
     ]);
   });
 
