@@ -18,6 +18,7 @@ import { buildPullRequestUrl } from '../git/pull-request-url.util';
 import { GitService } from '../git/git.service';
 import { GitBranchMergeResultDto } from '../git/dto/git-branch-merge-result.dto';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
+import type { Task } from '../tasks/domain/task';
 import { TaskMode } from '../tasks/dto/task-mode.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskProvisioningService } from '../tasks/application/task-provisioning.service';
@@ -344,6 +345,53 @@ export class GoalsService {
           );
         }
       }
+    }
+  }
+
+  private assertNoBlockingExistingPlanWorkBeforeMaterialize(params: {
+    groups: GoalPlanItem[];
+    tasks: Task[];
+    targetGroupIds: Set<string>;
+  }): void {
+    const unfinishedTask = params.tasks.find(
+      (task) => task.status !== TaskStatus.done,
+    );
+    if (unfinishedTask) {
+      throw new BadRequestException(
+        `任务「${unfinishedTask.title}」尚未完成，请先完成后再创建新的计划任务`,
+      );
+    }
+
+    const subTaskByTaskId = new Map<string, GoalPlanSubTask>();
+    for (const group of params.groups) {
+      for (const subTask of group.subTasks ?? []) {
+        const taskId = subTask.taskId?.trim();
+        if (taskId) {
+          subTaskByTaskId.set(taskId, subTask);
+        }
+      }
+    }
+
+    for (const task of params.tasks) {
+      const subTask = subTaskByTaskId.get(task.id);
+      if (!subTask || subTask.status === GoalPlanItemStatus.branchMerged) {
+        continue;
+      }
+      throw new BadRequestException(
+        `任务「${task.title}」已完成但尚未合并分支，请先在任务计划中执行「合并分支」`,
+      );
+    }
+
+    const unmergedOtherGroup = params.groups.find((group) => {
+      if (params.targetGroupIds.has(group.id)) {
+        return false;
+      }
+      return Boolean(group.gitBranch?.trim()) && !group.groupMergedIntoGoalAt;
+    });
+    if (unmergedOtherGroup) {
+      throw new BadRequestException(
+        `功能组「${unmergedOtherGroup.title}」分支尚未并入需求分支，请先合并后再创建新的计划任务`,
+      );
     }
   }
 
@@ -1192,6 +1240,33 @@ export class GoalsService {
       throw new BadRequestException(
         '子任务依赖存在环，无法按顺序新建任务（请检查任务计划依赖）',
       );
+    }
+
+    const orderedItems = orderedIds.map((subTaskId) => {
+      const item = localSubById.get(subTaskId);
+      if (!item) {
+        throw new BadRequestException(`计划子任务不存在: ${subTaskId}`);
+      }
+      return item;
+    });
+    const itemsToCreate = orderedItems.filter(
+      (item) =>
+        !(
+          (item.status === GoalPlanItemStatus.taskCreated ||
+            item.status === GoalPlanItemStatus.completed ||
+            item.status === GoalPlanItemStatus.branchMerged) &&
+          item.taskId
+        ),
+    );
+    if (itemsToCreate.length > 0) {
+      const tasks = await this.taskRepository.findByGoalId(goalId);
+      this.assertNoBlockingExistingPlanWorkBeforeMaterialize({
+        groups,
+        tasks,
+        targetGroupIds: new Set(
+          itemsToCreate.map((item) => item.goalPlanItemId),
+        ),
+      });
     }
 
     const results: { planSubTaskId: string; taskId: string }[] = [];

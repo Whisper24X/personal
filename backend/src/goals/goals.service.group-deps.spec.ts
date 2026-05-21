@@ -61,6 +61,7 @@ describe('GoalsService group dependsOnItemIds', () => {
       tasksService as never,
       {} as never,
       goalsMetrics,
+      {} as never,
     );
 
     const stA = {
@@ -283,6 +284,7 @@ describe('GoalsService group dependsOnItemIds', () => {
       {} as never,
       {} as never,
       {} as GoalsMetricsService,
+      {} as never,
     );
 
     const st = {
@@ -375,7 +377,15 @@ describe('GoalsService group dependsOnItemIds', () => {
     );
   });
 
-  const setupMaterialize = (predSubStatus: GoalPlanItemStatus) => {
+  const setupMaterialize = (
+    predSubStatus: GoalPlanItemStatus,
+    options: {
+      predecessorGroupMerged?: boolean;
+      existingTasks?: Array<{ id: string; title: string; status: TaskStatus }>;
+      targetStatus?: GoalPlanItemStatus;
+      targetTaskId?: string | null;
+    } = {},
+  ) => {
     const goalRepository = {
       findById: jest.fn(),
       listPlanItemsWithSubTasks: jest.fn(),
@@ -388,6 +398,7 @@ describe('GoalsService group dependsOnItemIds', () => {
     };
     const taskRepository = {
       findById: jest.fn(),
+      findByGoalId: jest.fn().mockResolvedValue(options.existingTasks ?? []),
     };
     const tasksService = {
       create: jest.fn(),
@@ -407,6 +418,7 @@ describe('GoalsService group dependsOnItemIds', () => {
       tasksService as never,
       {} as never,
       goalsMetrics,
+      {} as never,
     );
 
     const stA = {
@@ -433,8 +445,8 @@ describe('GoalsService group dependsOnItemIds', () => {
       suggestedPrompt: null,
       dependsOnSubTaskIds: [] as string[],
       itemOrder: 0,
-      taskId: null,
-      status: GoalPlanItemStatus.approved,
+      taskId: options.targetTaskId ?? null,
+      status: options.targetStatus ?? GoalPlanItemStatus.approved,
       workflowTemplateId: 'wf-1',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -450,6 +462,9 @@ describe('GoalsService group dependsOnItemIds', () => {
         dependsOnItemIds: [] as string[],
         itemOrder: 0,
         gitBranch: 'gb-a',
+        groupMergedIntoGoalAt: options.predecessorGroupMerged
+          ? new Date('2026-05-01T00:00:00.000Z')
+          : null,
         createdAt: new Date(),
         updatedAt: new Date(),
         subTasks: [stA],
@@ -464,6 +479,7 @@ describe('GoalsService group dependsOnItemIds', () => {
         dependsOnItemIds: ['group-a'],
         itemOrder: 1,
         gitBranch: 'gb-b',
+        groupMergedIntoGoalAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
         subTasks: [stB],
@@ -491,7 +507,7 @@ describe('GoalsService group dependsOnItemIds', () => {
     tasksService.create.mockResolvedValue({ id: 'task-b-new' });
     goalRepository.updatePlanSubTask.mockResolvedValue(stBAfter);
 
-    return { service, goalRepository, tasksService };
+    return { service, goalRepository, taskRepository, tasksService };
   };
 
   it('should reject materialize when predecessor group subtasks are not branch_merged', async () => {
@@ -510,6 +526,7 @@ describe('GoalsService group dependsOnItemIds', () => {
   it('should create task when predecessor group subtasks are branch_merged', async () => {
     const { service, tasksService, goalRepository } = setupMaterialize(
       GoalPlanItemStatus.branchMerged,
+      { predecessorGroupMerged: true },
     );
     const user = createJwt();
 
@@ -529,6 +546,91 @@ describe('GoalsService group dependsOnItemIds', () => {
     expect(goalRepository.update).toHaveBeenCalledWith('goal-1', {
       status: GoalStatus.inProgress,
     });
+  });
+
+  it('should reject materialize when an existing task is not done', async () => {
+    const { service, tasksService } = setupMaterialize(
+      GoalPlanItemStatus.branchMerged,
+      {
+        predecessorGroupMerged: true,
+        existingTasks: [
+          { id: 'task-a1', title: 'Task A', status: TaskStatus.inProgress },
+        ],
+      },
+    );
+
+    await expect(
+      service.materializeTasks(
+        'goal-1',
+        { planSubTaskIds: ['st-b1'] },
+        createJwt(),
+      ),
+    ).rejects.toThrow('任务「Task A」尚未完成');
+
+    expect(tasksService.create).not.toHaveBeenCalled();
+  });
+
+  it('should reject materialize when a done task is not branch_merged', async () => {
+    const { service, tasksService } = setupMaterialize(
+      GoalPlanItemStatus.completed,
+      {
+        predecessorGroupMerged: true,
+        existingTasks: [
+          { id: 'task-a1', title: 'Task A', status: TaskStatus.done },
+        ],
+      },
+    );
+
+    await expect(
+      service.materializeTasks(
+        'goal-1',
+        { planSubTaskIds: ['st-b1'] },
+        createJwt(),
+      ),
+    ).rejects.toThrow('任务「Task A」已完成但尚未合并分支');
+
+    expect(tasksService.create).not.toHaveBeenCalled();
+  });
+
+  it('should reject materialize when another plan group branch is not merged into goal', async () => {
+    const { service, tasksService } = setupMaterialize(
+      GoalPlanItemStatus.branchMerged,
+    );
+
+    await expect(
+      service.materializeTasks(
+        'goal-1',
+        { planSubTaskIds: ['st-b1'] },
+        createJwt(),
+      ),
+    ).rejects.toThrow('功能组「Group A」分支尚未并入需求分支');
+
+    expect(tasksService.create).not.toHaveBeenCalled();
+  });
+
+  it('should return existing task id without enforcing new-task blockers', async () => {
+    const { service, taskRepository, tasksService } = setupMaterialize(
+      GoalPlanItemStatus.branchMerged,
+      {
+        existingTasks: [
+          { id: 'task-a1', title: 'Task A', status: TaskStatus.inProgress },
+        ],
+        targetStatus: GoalPlanItemStatus.taskCreated,
+        targetTaskId: 'task-b-existing',
+      },
+    );
+
+    const out = await service.materializeTasks(
+      'goal-1',
+      { planSubTaskIds: ['st-b1'] },
+      createJwt(),
+    );
+
+    expect(out.tasks).toEqual([
+      { planSubTaskId: 'st-b1', taskId: 'task-b-existing' },
+    ]);
+    expect(taskRepository.findByGoalId).not.toHaveBeenCalled();
+    expect(tasksService.create).not.toHaveBeenCalled();
   });
 
   it('should reject approve when predecessor group branch is not merged into goal (creating plan item branch)', async () => {
@@ -553,6 +655,7 @@ describe('GoalsService group dependsOnItemIds', () => {
       {} as never,
       {} as never,
       goalsMetrics,
+      {} as never,
     );
 
     const stA = {

@@ -184,6 +184,31 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     if (!detail) {
       return null
     }
+    const unfinishedTask = detail.tasks.find((task) => task.status !== 'done')
+    if (unfinishedTask) {
+      return `任务「${unfinishedTask.title}」尚未完成，请先完成后再创建新的计划任务`
+    }
+    const planSubTaskByTaskId = new Map(
+      flattenGoalPlanSubTasks(detail)
+        .filter((st) => st.taskId?.trim())
+        .map((st) => [st.taskId!, st]),
+    )
+    for (const task of detail.tasks) {
+      const planSubTask = planSubTaskByTaskId.get(task.id)
+      if (!planSubTask || planSubTask.status === 'branch_merged') {
+        continue
+      }
+      return `任务「${task.title}」已完成但尚未合并分支，请先在任务计划中执行「合并分支」`
+    }
+    const unmergedOtherGroup = detail.planItems.find(
+      (group) =>
+        group.id !== item.goalPlanItemId &&
+        !!group.gitBranch?.trim() &&
+        !group.groupMergedIntoGoalAt,
+    )
+    if (unmergedOtherGroup) {
+      return `功能组「${unmergedOtherGroup.title}」分支尚未并入需求分支，请先合并后再创建新的计划任务`
+    }
     const groupBlocked = planItemGroupDependencyBlockedReason(item)
     if (groupBlocked) {
       return groupBlocked
@@ -252,7 +277,14 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
         selectedPlanSubTask.value = current
       }
 
-      await goalsApi.materializeTasks(goalId, [item.id])
+      const materializeBlocked = planItemMaterializeBlockedReason(current)
+      if (materializeBlocked) {
+        message.warning(materializeBlocked)
+        await options.load()
+        return
+      }
+
+      await goalsApi.materializeTasks(goalId, [current.id])
       requestSidebarRecentTasksRefresh()
       void refreshSidebarRecentTasks()
       message.success('已确认并创建任务')
