@@ -22,6 +22,20 @@ type UseGoalDetailPlanItemsOptions = {
   workflowTemplates: Ref<WorkflowTemplate[]>
 }
 
+type MaterializeTasksResult = {
+  tasks: { planSubTaskId: string; taskId: string }[]
+}
+
+function taskIdForMaterializedSubTask(
+  result: MaterializeTasksResult,
+  planSubTaskId: string,
+): string | null {
+  const taskId = result.tasks
+    .find((task) => task.planSubTaskId === planSubTaskId)
+    ?.taskId.trim()
+  return taskId || null
+}
+
 function mergeSubTaskInDetail(detail: GoalDetailType, updated: GoalPlanSubTask) {
   for (const g of detail.planItems) {
     const idx = g.subTasks?.findIndex((st) => st.id === updated.id) ?? -1
@@ -54,6 +68,15 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     completed: '任务已完成',
     branch_merged: '分支已合并',
     cancelled: '已取消',
+  }
+
+  function goMaterializedTask(result: MaterializeTasksResult, planSubTaskId: string) {
+    const taskId = taskIdForMaterializedSubTask(result, planSubTaskId)
+    if (!taskId) {
+      message.warning('任务已创建，但未返回任务 ID，请刷新后查看')
+      return
+    }
+    options.goTask(taskId)
   }
 
   function openPlanItemDetail(sub: GoalPlanSubTask, groupTitle: string) {
@@ -284,13 +307,14 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
         return
       }
 
-      await goalsApi.materializeTasks(goalId, [current.id])
+      const materialized = await goalsApi.materializeTasks(goalId, [current.id])
       requestSidebarRecentTasksRefresh()
       void refreshSidebarRecentTasks()
       message.success('已确认并创建任务')
       await options.load()
       await refreshSidebarRecentTasks()
       onPlanItemSheetOpen(false)
+      goMaterializedTask(materialized, current.id)
     } catch (e) {
       message.error(toErrorMessage(e, '创建任务失败'))
       await options.load()
@@ -390,12 +414,13 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
 
     materializing.value = true
     try {
-      await goalsApi.materializeTasks(goalId, [item.id])
+      const materialized = await goalsApi.materializeTasks(goalId, [item.id])
       requestSidebarRecentTasksRefresh()
       void refreshSidebarRecentTasks()
       message.success('已创建任务')
       await options.load()
       await refreshSidebarRecentTasks()
+      goMaterializedTask(materialized, item.id)
     } catch (e) {
       message.error(toErrorMessage(e, '创建任务失败'))
     } finally {
