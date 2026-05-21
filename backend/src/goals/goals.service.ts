@@ -247,6 +247,36 @@ export class GoalsService {
     return goal;
   }
 
+  private async completeGoalWhenAllPlanSubTasksMerged(
+    goal: Goal,
+    planItems: GoalPlanItem[],
+  ): Promise<void> {
+    if (
+      goal.status === GoalStatus.done ||
+      goal.status === GoalStatus.archived
+    ) {
+      return;
+    }
+
+    const countableSubTasks = planItems.flatMap((item) =>
+      (item.subTasks ?? []).filter(
+        (subTask) => subTask.status !== GoalPlanItemStatus.cancelled,
+      ),
+    );
+    if (countableSubTasks.length === 0) {
+      return;
+    }
+
+    const allMerged = countableSubTasks.every(
+      (subTask) => subTask.status === GoalPlanItemStatus.branchMerged,
+    );
+    if (!allMerged) {
+      return;
+    }
+
+    await this.goalRepository.update(goal.id, { status: GoalStatus.done });
+  }
+
   /**
    * 功能组 dependsOnItemIds：本组子任务在确认/物化前，每个前置功能组内全部子任务须已物化且已标记「分支已合并」。
    */
@@ -422,6 +452,9 @@ export class GoalsService {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
     };
+    await this.goalRepository.completeGoalsWithAllPlanSubTasksMerged({
+      projectId: query.projectId,
+    });
     const rows = await this.goalRepository.findMany({
       paginationOptions,
       projectId: query.projectId,
@@ -439,7 +472,11 @@ export class GoalsService {
     id: string,
     currentUser: JwtPayloadType,
   ): Promise<GoalDetailDto> {
-    const goal = await this.assertGoalAccess(id, currentUser);
+    const accessibleGoal = await this.assertGoalAccess(id, currentUser);
+    await this.goalRepository.completeGoalsWithAllPlanSubTasksMerged({
+      goalId: id,
+    });
+    const goal = (await this.goalRepository.findById(id)) ?? accessibleGoal;
 
     const [sourceDocs, planItems, tasks, deps] = await Promise.all([
       this.goalRepository.listSourceDocs(id),
@@ -1108,6 +1145,9 @@ export class GoalsService {
     );
     if (directedGraphHasCycle(idSet, adj)) {
       throw new BadRequestException('子任务依赖关系存在环');
+    }
+    if (dto.status === GoalPlanItemStatus.branchMerged) {
+      await this.completeGoalWhenAllPlanSubTasksMerged(goal, groups);
     }
     return next;
   }

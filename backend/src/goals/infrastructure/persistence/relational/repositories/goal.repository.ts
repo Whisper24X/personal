@@ -156,6 +156,51 @@ export class GoalRelationalRepository extends GoalRepository {
     return rows.map((r) => GoalMapper.goalToDomain(r));
   }
 
+  async completeGoalsWithAllPlanSubTasksMerged(params: {
+    projectId?: string;
+    goalId?: string;
+  }): Promise<void> {
+    const scopeValue = params.goalId ?? params.projectId;
+    if (!scopeValue) {
+      return;
+    }
+    const scopeWhere = params.goalId ? `g."id" = $1` : `g."projectId" = $1`;
+
+    await this.goalRepo.query(
+      `
+      UPDATE "goals" g
+      SET "status" = $2::goal_status_enum,
+          "updatedAt" = now()
+      WHERE g."deletedAt" IS NULL
+        AND ${scopeWhere}
+        AND g."status" <> $2::goal_status_enum
+        AND g."status" <> $3::goal_status_enum
+        AND EXISTS (
+          SELECT 1
+          FROM "goal_plan_items" pi
+          JOIN "goal_plan_sub_tasks" st ON st."goalPlanItemId" = pi."id"
+          WHERE pi."goalId" = g."id"
+            AND st."status" <> $4::goal_plan_item_status_enum
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "goal_plan_items" pi
+          JOIN "goal_plan_sub_tasks" st ON st."goalPlanItemId" = pi."id"
+          WHERE pi."goalId" = g."id"
+            AND st."status" <> $4::goal_plan_item_status_enum
+            AND st."status" <> $5::goal_plan_item_status_enum
+        )
+      `,
+      [
+        scopeValue,
+        GoalStatus.done,
+        GoalStatus.archived,
+        GoalPlanItemStatus.cancelled,
+        GoalPlanItemStatus.branchMerged,
+      ],
+    );
+  }
+
   async listSourceDocs(goalId: string): Promise<GoalSourceDoc[]> {
     const rows = await this.sourceDocRepo.find({
       where: { goalId },

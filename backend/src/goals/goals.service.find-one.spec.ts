@@ -34,6 +34,10 @@ const createGoal = (overrides: Partial<Goal> = {}): Goal => ({
 const createService = () => {
   const goalRepository = {
     findById: jest.fn(),
+    findMany: jest.fn(),
+    completeGoalsWithAllPlanSubTasksMerged: jest
+      .fn()
+      .mockResolvedValue(undefined),
     listSourceDocs: jest.fn().mockResolvedValue([]),
     listPlanItemsWithSubTasks: jest.fn().mockResolvedValue([]),
     listTaskDependenciesForGoal: jest.fn().mockResolvedValue([]),
@@ -70,6 +74,7 @@ const createService = () => {
     {} as never,
     {} as never,
     goalsMetrics as never,
+    {} as never,
   );
 
   return {
@@ -127,5 +132,46 @@ describe('GoalsService.findOne', () => {
     expect(gitService.checkoutBranchInRepository).not.toHaveBeenCalled();
     expect(gitService.cleanupForeignUntrackedGoalDirs).not.toHaveBeenCalled();
     expect(goalRepository.listSourceDocs).toHaveBeenCalledWith(goal.id);
+  });
+
+  it('should reconcile completed goal status before returning detail', async () => {
+    const { service, goalRepository } = createService();
+    const currentUser = createJwt();
+    const goal = createGoal({ status: GoalStatus.inProgress });
+    const completedGoal = { ...goal, status: GoalStatus.done };
+    goalRepository.findById
+      .mockResolvedValueOnce(goal)
+      .mockResolvedValueOnce(completedGoal);
+
+    const result = await service.findOne(goal.id, currentUser);
+
+    expect(
+      goalRepository.completeGoalsWithAllPlanSubTasksMerged,
+    ).toHaveBeenCalledWith({ goalId: goal.id });
+    expect(result.goal.status).toBe(GoalStatus.done);
+  });
+});
+
+describe('GoalsService.findAll', () => {
+  it('should reconcile completed goal statuses before querying list', async () => {
+    const { service, goalRepository } = createService();
+    const goal = createGoal({ status: GoalStatus.done });
+    goalRepository.findMany.mockResolvedValue([goal]);
+
+    const result = await service.findAll(
+      { projectId: 'project-1', status: GoalStatus.done } as never,
+      createJwt(),
+    );
+
+    expect(
+      goalRepository.completeGoalsWithAllPlanSubTasksMerged,
+    ).toHaveBeenCalledWith({ projectId: 'project-1' });
+    expect(goalRepository.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        status: GoalStatus.done,
+      }),
+    );
+    expect(result.data).toEqual([goal]);
   });
 });

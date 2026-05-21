@@ -3,6 +3,7 @@ import { GoalsService } from './goals.service';
 import { GoalsMetricsService } from './goals-metrics.service';
 import type { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { GoalPlanItemStatus } from './dto/goal-plan-item-status.enum';
+import { GoalStatus } from './dto/goal-status.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 
 const createJwt = (): JwtPayloadType =>
@@ -29,6 +30,7 @@ describe('GoalsService.syncPlanSubTaskStatusFromLinkedTask', () => {
       {} as never,
       {} as never,
       {} as GoalsMetricsService,
+      {} as never,
     );
     return { service, goalRepository };
   };
@@ -57,6 +59,66 @@ describe('GoalsService.syncPlanSubTaskStatusFromLinkedTask', () => {
 });
 
 describe('GoalsService.patchPlanSubTask', () => {
+  const createBranchMergedService = (
+    goalStatus: GoalStatus,
+    planItems: Array<{
+      id: string;
+      subTasks: Array<{
+        id: string;
+        status: GoalPlanItemStatus;
+        dependsOnSubTaskIds?: string[];
+      }>;
+    }>,
+  ) => {
+    const goalRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'goal-1',
+        projectId: 'project-1',
+        status: goalStatus,
+      }),
+      findPlanSubTask: jest.fn().mockResolvedValue({
+        id: 'st-1',
+        goalPlanItemId: 'item-1',
+        status: GoalPlanItemStatus.completed,
+        taskId: 'task-1',
+      }),
+      listPlanItemsWithSubTasks: jest.fn().mockResolvedValue(planItems),
+      update: jest.fn().mockResolvedValue({
+        id: 'goal-1',
+        projectId: 'project-1',
+        status: GoalStatus.done,
+      }),
+      updatePlanSubTask: jest.fn().mockResolvedValue({
+        id: 'st-1',
+        goalPlanItemId: 'item-1',
+        status: GoalPlanItemStatus.branchMerged,
+        taskId: 'task-1',
+      }),
+    };
+    const projectsService = {
+      assertProjectCapability: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'task-1',
+        status: TaskStatus.done,
+      }),
+    };
+    const service = new GoalsService(
+      goalRepository as never,
+      projectsService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      taskRepository as never,
+      {} as never,
+      {} as never,
+      {} as GoalsMetricsService,
+      {} as never,
+    );
+    return { service, goalRepository };
+  };
+
   it('should reject manual completed status', async () => {
     const goalRepository = {
       findById: jest.fn().mockResolvedValue({
@@ -83,6 +145,7 @@ describe('GoalsService.patchPlanSubTask', () => {
       {} as never,
       {} as never,
       {} as GoalsMetricsService,
+      {} as never,
     );
 
     await expect(
@@ -136,6 +199,7 @@ describe('GoalsService.patchPlanSubTask', () => {
       {} as never,
       {} as never,
       {} as GoalsMetricsService,
+      {} as never,
     );
 
     const next = await service.patchPlanSubTask(
@@ -151,5 +215,132 @@ describe('GoalsService.patchPlanSubTask', () => {
       'st-1',
       expect.objectContaining({ status: GoalPlanItemStatus.branchMerged }),
     );
+  });
+
+  it('should mark goal done when all non-cancelled subtasks are branch_merged', async () => {
+    const { service, goalRepository } = createBranchMergedService(
+      GoalStatus.inProgress,
+      [
+        {
+          id: 'item-1',
+          subTasks: [
+            {
+              id: 'st-1',
+              status: GoalPlanItemStatus.branchMerged,
+              dependsOnSubTaskIds: [],
+            },
+            {
+              id: 'st-2',
+              status: GoalPlanItemStatus.branchMerged,
+              dependsOnSubTaskIds: [],
+            },
+          ],
+        },
+      ],
+    );
+
+    await service.patchPlanSubTask(
+      'goal-1',
+      'st-1',
+      { status: GoalPlanItemStatus.branchMerged },
+      createJwt(),
+    );
+
+    expect(goalRepository.update).toHaveBeenCalledWith('goal-1', {
+      status: GoalStatus.done,
+    });
+  });
+
+  it('should not mark goal done while any non-cancelled subtask is not branch_merged', async () => {
+    const { service, goalRepository } = createBranchMergedService(
+      GoalStatus.inProgress,
+      [
+        {
+          id: 'item-1',
+          subTasks: [
+            {
+              id: 'st-1',
+              status: GoalPlanItemStatus.branchMerged,
+              dependsOnSubTaskIds: [],
+            },
+            {
+              id: 'st-2',
+              status: GoalPlanItemStatus.completed,
+              dependsOnSubTaskIds: [],
+            },
+          ],
+        },
+      ],
+    );
+
+    await service.patchPlanSubTask(
+      'goal-1',
+      'st-1',
+      { status: GoalPlanItemStatus.branchMerged },
+      createJwt(),
+    );
+
+    expect(goalRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('should ignore cancelled subtasks when marking goal done', async () => {
+    const { service, goalRepository } = createBranchMergedService(
+      GoalStatus.inProgress,
+      [
+        {
+          id: 'item-1',
+          subTasks: [
+            {
+              id: 'st-1',
+              status: GoalPlanItemStatus.branchMerged,
+              dependsOnSubTaskIds: [],
+            },
+            {
+              id: 'st-2',
+              status: GoalPlanItemStatus.cancelled,
+              dependsOnSubTaskIds: [],
+            },
+          ],
+        },
+      ],
+    );
+
+    await service.patchPlanSubTask(
+      'goal-1',
+      'st-1',
+      { status: GoalPlanItemStatus.branchMerged },
+      createJwt(),
+    );
+
+    expect(goalRepository.update).toHaveBeenCalledWith('goal-1', {
+      status: GoalStatus.done,
+    });
+  });
+
+  it('should not overwrite archived goal status', async () => {
+    const { service, goalRepository } = createBranchMergedService(
+      GoalStatus.archived,
+      [
+        {
+          id: 'item-1',
+          subTasks: [
+            {
+              id: 'st-1',
+              status: GoalPlanItemStatus.branchMerged,
+              dependsOnSubTaskIds: [],
+            },
+          ],
+        },
+      ],
+    );
+
+    await service.patchPlanSubTask(
+      'goal-1',
+      'st-1',
+      { status: GoalPlanItemStatus.branchMerged },
+      createJwt(),
+    );
+
+    expect(goalRepository.update).not.toHaveBeenCalled();
   });
 });
