@@ -10,6 +10,7 @@ import TaskEnvironmentGate from '@features/tasks/detail/TaskEnvironmentGate.vue'
 import TaskExecutionContextBar from '@features/tasks/detail/TaskExecutionContextBar.vue'
 import WorkflowCard from '@features/tasks/detail/WorkflowCard.vue'
 import { nodeStatusLabelMap } from '@features/tasks/task-detail-ui.constants'
+import { goalStatusLabel } from '@shared/constants/goal-status-labels'
 import { useTaskDetailPage } from './use-task-detail-page'
 
 defineOptions({
@@ -65,7 +66,9 @@ const workflowCardRef = toRef(vm, 'workflowCardRef')
             >
               {{ vm.detail.goalSummary.title }}
             </RouterLink>
-            <span class="text-muted-foreground">（{{ vm.detail.goalSummary.status }}）</span>
+            <span class="text-muted-foreground">
+              （{{ goalStatusLabel[vm.detail.goalSummary.status] }}）
+            </span>
           </div>
 
           <div class="flex min-h-0 w-full flex-1 flex-col">

@@ -22,6 +22,20 @@ type UseGoalDetailPlanItemsOptions = {
   workflowTemplates: Ref<WorkflowTemplate[]>
 }
 
+type MaterializeTasksResult = {
+  tasks: { planSubTaskId: string; taskId: string }[]
+}
+
+function taskIdForMaterializedSubTask(
+  result: MaterializeTasksResult,
+  planSubTaskId: string,
+): string | null {
+  const taskId = result.tasks
+    .find((task) => task.planSubTaskId === planSubTaskId)
+    ?.taskId.trim()
+  return taskId || null
+}
+
 function mergeSubTaskInDetail(detail: GoalDetailType, updated: GoalPlanSubTask) {
   for (const g of detail.planItems) {
     const idx = g.subTasks?.findIndex((st) => st.id === updated.id) ?? -1
@@ -54,6 +68,15 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     completed: '任务已完成',
     branch_merged: '分支已合并',
     cancelled: '已取消',
+  }
+
+  function goMaterializedTask(result: MaterializeTasksResult, planSubTaskId: string) {
+    const taskId = taskIdForMaterializedSubTask(result, planSubTaskId)
+    if (!taskId) {
+      message.warning('任务已创建，但未返回任务 ID，请刷新后查看')
+      return
+    }
+    options.goTask(taskId)
   }
 
   function openPlanItemDetail(sub: GoalPlanSubTask, groupTitle: string) {
@@ -184,6 +207,31 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     if (!detail) {
       return null
     }
+    const unfinishedTask = detail.tasks.find((task) => task.status !== 'done')
+    if (unfinishedTask) {
+      return `任务「${unfinishedTask.title}」尚未完成，请先完成后再创建新的计划任务`
+    }
+    const planSubTaskByTaskId = new Map(
+      flattenGoalPlanSubTasks(detail)
+        .filter((st) => st.taskId?.trim())
+        .map((st) => [st.taskId!, st]),
+    )
+    for (const task of detail.tasks) {
+      const planSubTask = planSubTaskByTaskId.get(task.id)
+      if (!planSubTask || planSubTask.status === 'branch_merged') {
+        continue
+      }
+      return `任务「${task.title}」已完成但尚未合并分支，请先在任务计划中执行「合并分支」`
+    }
+    const unmergedOtherGroup = detail.planItems.find(
+      (group) =>
+        group.id !== item.goalPlanItemId &&
+        !!group.gitBranch?.trim() &&
+        !group.groupMergedIntoGoalAt,
+    )
+    if (unmergedOtherGroup) {
+      return `功能组「${unmergedOtherGroup.title}」分支尚未并入需求分支，请先合并后再创建新的计划任务`
+    }
     const groupBlocked = planItemGroupDependencyBlockedReason(item)
     if (groupBlocked) {
       return groupBlocked
@@ -252,13 +300,21 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
         selectedPlanSubTask.value = current
       }
 
-      await goalsApi.materializeTasks(goalId, [item.id])
+      const materializeBlocked = planItemMaterializeBlockedReason(current)
+      if (materializeBlocked) {
+        message.warning(materializeBlocked)
+        await options.load()
+        return
+      }
+
+      const materialized = await goalsApi.materializeTasks(goalId, [current.id])
       requestSidebarRecentTasksRefresh()
       void refreshSidebarRecentTasks()
       message.success('已确认并创建任务')
       await options.load()
       await refreshSidebarRecentTasks()
       onPlanItemSheetOpen(false)
+      goMaterializedTask(materialized, current.id)
     } catch (e) {
       message.error(toErrorMessage(e, '创建任务失败'))
       await options.load()
@@ -358,12 +414,13 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
 
     materializing.value = true
     try {
-      await goalsApi.materializeTasks(goalId, [item.id])
+      const materialized = await goalsApi.materializeTasks(goalId, [item.id])
       requestSidebarRecentTasksRefresh()
       void refreshSidebarRecentTasks()
       message.success('已创建任务')
       await options.load()
       await refreshSidebarRecentTasks()
+      goMaterializedTask(materialized, item.id)
     } catch (e) {
       message.error(toErrorMessage(e, '创建任务失败'))
     } finally {
