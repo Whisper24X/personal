@@ -41,6 +41,7 @@ const {
   planDepsHasCycle,
   planDepsMarkdown,
   planItemApproveBlockedReason,
+  planItemMaterializeBlockedReason,
   planItemDetailOpen,
   planItemEditAcceptance,
   planItemEditSuggestedPrompt,
@@ -132,6 +133,7 @@ const {
         :marking-branch-merged-id="markingBranchMergedId"
         :plan-item-status-label="planItemStatusLabel"
         :plan-item-approve-blocked-reason="planItemApproveBlockedReason"
+        :plan-item-materialize-blocked-reason="planItemMaterializeBlockedReason"
         @open-plan-item-detail="(sub, title) => openPlanItemDetail(sub, title)"
         @materialize-plan-item="materializeSingleSubTask"
         @merge-plan-group-into-goal="mergePlanGroupIntoGoal"

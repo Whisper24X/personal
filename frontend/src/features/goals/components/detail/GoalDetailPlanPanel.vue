@@ -19,6 +19,7 @@ const props = withDefaults(
     markingBranchMergedId: string | null
     planItemStatusLabel: Record<GoalPlanSubTask['status'], string>
     planItemApproveBlockedReason: (item: GoalPlanSubTask) => string | null
+    planItemMaterializeBlockedReason: (item: GoalPlanSubTask) => string | null
   }>(),
   { generatingPlan: false, markingBranchMergedId: null, mergingPlanGroupId: null },
 )
@@ -243,7 +244,11 @@ function workflowDisplayLabel(item: GoalPlanSubTask): string {
                         variant="link"
                         size="sm"
                         class="h-auto px-0 text-xs"
-                        :disabled="props.materializing"
+                        :disabled="
+                          props.materializing ||
+                          !!props.planItemMaterializeBlockedReason(item)
+                        "
+                        :title="props.planItemMaterializeBlockedReason(item) ?? undefined"
                         @click="emit('materializePlanItem', item)"
                       >
                         {{ props.materializing ? '创建中…' : '创建任务' }}

@@ -18,6 +18,7 @@ import { buildPullRequestUrl } from '../git/pull-request-url.util';
 import { GitService } from '../git/git.service';
 import { GitBranchMergeResultDto } from '../git/dto/git-branch-merge-result.dto';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
+import type { Task } from '../tasks/domain/task';
 import { TaskMode } from '../tasks/dto/task-mode.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskProvisioningService } from '../tasks/application/task-provisioning.service';
@@ -247,6 +248,36 @@ export class GoalsService {
     return goal;
   }
 
+  private async completeGoalWhenAllPlanSubTasksMerged(
+    goal: Goal,
+    planItems: GoalPlanItem[],
+  ): Promise<void> {
+    if (
+      goal.status === GoalStatus.done ||
+      goal.status === GoalStatus.archived
+    ) {
+      return;
+    }
+
+    const countableSubTasks = planItems.flatMap((item) =>
+      (item.subTasks ?? []).filter(
+        (subTask) => subTask.status !== GoalPlanItemStatus.cancelled,
+      ),
+    );
+    if (countableSubTasks.length === 0) {
+      return;
+    }
+
+    const allMerged = countableSubTasks.every(
+      (subTask) => subTask.status === GoalPlanItemStatus.branchMerged,
+    );
+    if (!allMerged) {
+      return;
+    }
+
+    await this.goalRepository.update(goal.id, { status: GoalStatus.done });
+  }
+
   /**
    * 功能组 dependsOnItemIds：本组子任务在确认/物化前，每个前置功能组内全部子任务须已物化且已标记「分支已合并」。
    */
@@ -314,6 +345,53 @@ export class GoalsService {
           );
         }
       }
+    }
+  }
+
+  private assertNoBlockingExistingPlanWorkBeforeMaterialize(params: {
+    groups: GoalPlanItem[];
+    tasks: Task[];
+    targetGroupIds: Set<string>;
+  }): void {
+    const unfinishedTask = params.tasks.find(
+      (task) => task.status !== TaskStatus.done,
+    );
+    if (unfinishedTask) {
+      throw new BadRequestException(
+        `任务「${unfinishedTask.title}」尚未完成，请先完成后再创建新的计划任务`,
+      );
+    }
+
+    const subTaskByTaskId = new Map<string, GoalPlanSubTask>();
+    for (const group of params.groups) {
+      for (const subTask of group.subTasks ?? []) {
+        const taskId = subTask.taskId?.trim();
+        if (taskId) {
+          subTaskByTaskId.set(taskId, subTask);
+        }
+      }
+    }
+
+    for (const task of params.tasks) {
+      const subTask = subTaskByTaskId.get(task.id);
+      if (!subTask || subTask.status === GoalPlanItemStatus.branchMerged) {
+        continue;
+      }
+      throw new BadRequestException(
+        `任务「${task.title}」已完成但尚未合并分支，请先在任务计划中执行「合并分支」`,
+      );
+    }
+
+    const unmergedOtherGroup = params.groups.find((group) => {
+      if (params.targetGroupIds.has(group.id)) {
+        return false;
+      }
+      return Boolean(group.gitBranch?.trim()) && !group.groupMergedIntoGoalAt;
+    });
+    if (unmergedOtherGroup) {
+      throw new BadRequestException(
+        `功能组「${unmergedOtherGroup.title}」分支尚未并入需求分支，请先合并后再创建新的计划任务`,
+      );
     }
   }
 
@@ -422,6 +500,9 @@ export class GoalsService {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
     };
+    await this.goalRepository.completeGoalsWithAllPlanSubTasksMerged({
+      projectId: query.projectId,
+    });
     const rows = await this.goalRepository.findMany({
       paginationOptions,
       projectId: query.projectId,
@@ -439,7 +520,11 @@ export class GoalsService {
     id: string,
     currentUser: JwtPayloadType,
   ): Promise<GoalDetailDto> {
-    const goal = await this.assertGoalAccess(id, currentUser);
+    const accessibleGoal = await this.assertGoalAccess(id, currentUser);
+    await this.goalRepository.completeGoalsWithAllPlanSubTasksMerged({
+      goalId: id,
+    });
+    const goal = (await this.goalRepository.findById(id)) ?? accessibleGoal;
 
     const [sourceDocs, planItems, tasks, deps] = await Promise.all([
       this.goalRepository.listSourceDocs(id),
@@ -1109,6 +1194,9 @@ export class GoalsService {
     if (directedGraphHasCycle(idSet, adj)) {
       throw new BadRequestException('子任务依赖关系存在环');
     }
+    if (dto.status === GoalPlanItemStatus.branchMerged) {
+      await this.completeGoalWhenAllPlanSubTasksMerged(goal, groups);
+    }
     return next;
   }
 
@@ -1152,6 +1240,33 @@ export class GoalsService {
       throw new BadRequestException(
         '子任务依赖存在环，无法按顺序新建任务（请检查任务计划依赖）',
       );
+    }
+
+    const orderedItems = orderedIds.map((subTaskId) => {
+      const item = localSubById.get(subTaskId);
+      if (!item) {
+        throw new BadRequestException(`计划子任务不存在: ${subTaskId}`);
+      }
+      return item;
+    });
+    const itemsToCreate = orderedItems.filter(
+      (item) =>
+        !(
+          (item.status === GoalPlanItemStatus.taskCreated ||
+            item.status === GoalPlanItemStatus.completed ||
+            item.status === GoalPlanItemStatus.branchMerged) &&
+          item.taskId
+        ),
+    );
+    if (itemsToCreate.length > 0) {
+      const tasks = await this.taskRepository.findByGoalId(goalId);
+      this.assertNoBlockingExistingPlanWorkBeforeMaterialize({
+        groups,
+        tasks,
+        targetGroupIds: new Set(
+          itemsToCreate.map((item) => item.goalPlanItemId),
+        ),
+      });
     }
 
     const results: { planSubTaskId: string; taskId: string }[] = [];

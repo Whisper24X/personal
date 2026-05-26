@@ -35,6 +35,14 @@ export abstract class GoalRepository {
     createdBy?: string;
   }): Promise<Goal[]>;
 
+  /**
+   * 回填需求完成态：若某需求存在有效计划子任务，且全部有效子任务均已「分支已合并」，则将需求置为 done。
+   */
+  abstract completeGoalsWithAllPlanSubTasksMerged(params: {
+    projectId?: string;
+    goalId?: string;
+  }): Promise<void>;
+
   abstract listSourceDocs(goalId: string): Promise<GoalSourceDoc[]>;
 
   abstract insertSourceDoc(
