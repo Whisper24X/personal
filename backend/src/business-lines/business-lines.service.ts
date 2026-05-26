@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import type { Express } from 'express';
 import { AccessService } from '../access/access.service';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
@@ -97,7 +97,15 @@ export class BusinessLinesService {
     id: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    await this.ensureCanManageBusinessLine(id, currentUser);
+    if (!this.isAdmin(currentUser)) {
+      throw new ForbiddenException('forbiddenDeleteBusinessLine');
+    }
+
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      id,
+      'businessLine.read',
+    );
 
     await this.businessLineLifecycleService.remove(id);
   }

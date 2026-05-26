@@ -5,4 +5,5 @@ export type AuthConfig = {
   expires?: ms.StringValue;
   refreshSecret?: string;
   refreshExpires?: ms.StringValue;
+  adminUsernames?: string[];
 };

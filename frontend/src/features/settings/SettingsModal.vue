@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch, type Component } from 'vue'
+import { PlatformWorkflowTemplatesPanel } from '@features/platform'
 import PersonalSettingsPanel from '@features/settings/PersonalSettingsPanel.vue'
 import {
   SETTINGS_SECTION_LABELS,
@@ -29,6 +30,7 @@ const sectionComponents: Record<SettingsSection, Component> = {
   account: PersonalSettingsPanel,
   appearance: PersonalSettingsPanel,
   notifications: PersonalSettingsPanel,
+  platformWorkflowTemplates: PlatformWorkflowTemplatesPanel,
 }
 
 const currentSectionComponent = computed<Component>(() => {
@@ -40,6 +42,10 @@ const currentSectionProps = computed(() => {
     return {
       externalTab: 'profile' as const,
     }
+  }
+
+  if (props.activeSection === 'platformWorkflowTemplates') {
+    return {}
   }
 
   return {

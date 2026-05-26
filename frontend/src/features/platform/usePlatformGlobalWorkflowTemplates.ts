@@ -120,7 +120,7 @@ export function usePlatformGlobalWorkflowTemplates(message: {
 
   const validate = (): string => {
     if (!form.value.name.trim()) {
-      return '请填写模板名称'
+      return '请填写平台工作流名称'
     }
     const nodes = normalizeNodes(form.value.nodes)
     if (nodes.length === 0) {
@@ -207,7 +207,7 @@ export function usePlatformGlobalWorkflowTemplates(message: {
           seedOnBusinessLineCreate: form.value.seedOnBusinessLineCreate,
           businessLineSeedOrder: form.value.businessLineSeedOrder,
         })
-        message.success('已创建平台母版')
+        message.success('已创建平台工作流')
       } else {
         await workflowApi.update(editingId.value, {
           name: form.value.name.trim(),

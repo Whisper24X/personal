@@ -2,12 +2,14 @@
 import { computed, onMounted } from 'vue'
 import { useMessage } from '@app/composables/useMessage'
 import { ConfirmActionModal } from '@features/business-lines'
-import { usePlatformGlobalWorkflowTemplates } from '@features/platform/usePlatformGlobalWorkflowTemplates'
-import WorkflowPromptTextarea from '@features/workflow/WorkflowPromptTextarea.vue'
-import WorkflowPromptVariablesHint from '@features/workflow/WorkflowPromptVariablesHint.vue'
+import {
+  WorkflowPromptTextarea,
+  WorkflowPromptVariablesHint,
+} from '@features/workflow'
+import { usePlatformGlobalWorkflowTemplates } from './usePlatformGlobalWorkflowTemplates'
 
 defineOptions({
-  name: 'PlatformWorkflowTemplatesPage',
+  name: 'PlatformWorkflowTemplatesPanel',
 })
 
 const message = useMessage()
@@ -34,7 +36,7 @@ const {
   remove,
 } = usePlatformGlobalWorkflowTemplates(message)
 
-const modalTitle = computed(() => (mode.value === 'create' ? '新建平台工作流母版' : '编辑平台工作流母版'))
+const modalTitle = computed(() => (mode.value === 'create' ? '新建平台工作流' : '编辑平台工作流'))
 
 const activeNode = computed(() => form.value.nodes[activeNodeIndex.value] ?? null)
 
@@ -48,12 +50,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl space-y-4 px-4 py-6">
+  <div class="space-y-4">
     <header class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 class="text-lg font-semibold tracking-tight">平台工作流母版</h1>
+        <h2 class="text-sm font-semibold tracking-tight">平台工作流</h2>
         <p class="mt-1 text-xs text-muted-foreground">
-          全局母版仅在新建业务线时按「种子顺序」复制到业务线；任务执行仍使用业务线副本。名称在全局唯一；业务线侧已有同名模板时跳过复制。
+          平台工作流仅在新建业务线时按「种子顺序」复制到业务线；任务执行仍使用业务线副本。名称在全局唯一；业务线侧已有同名工作流时跳过复制。
         </p>
       </div>
       <button
@@ -61,7 +63,7 @@ onMounted(() => {
         class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition hover:opacity-95"
         @click="openCreate()"
       >
-        新建母版
+        新建平台工作流
       </button>
     </header>
 
@@ -76,7 +78,7 @@ onMounted(() => {
       v-else-if="sortedTemplates.length === 0"
       class="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground"
     >
-      暂无 global 母版。可新建或等待数据迁移种子。
+      暂无平台工作流。可新建或等待数据迁移种子。
     </div>
 
     <div v-else class="overflow-hidden rounded-xl border border-border bg-card">
@@ -160,10 +162,10 @@ onMounted(() => {
             </p>
 
             <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
-              <p class="text-xs font-semibold text-muted-foreground">母版设置</p>
+              <p class="text-xs font-semibold text-muted-foreground">平台工作流设置</p>
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="space-y-1">
-                  <span class="text-xs font-semibold text-muted-foreground">模板名称</span>
+                  <span class="text-xs font-semibold text-muted-foreground">平台工作流名称</span>
                   <input
                     v-model="form.name"
                     class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
@@ -183,11 +185,11 @@ onMounted(() => {
               <div class="flex flex-wrap items-center gap-4">
                 <label class="flex items-center gap-2 text-xs">
                   <input v-model="form.seedOnBusinessLineCreate" type="checkbox" class="rounded border-border" />
-                  <span>新建业务线时自动复制此模板</span>
+                  <span>新建业务线时自动复制此平台工作流</span>
                 </label>
                 <label class="flex items-center gap-2 text-xs">
                   <input v-model="form.isActive" type="checkbox" class="rounded border-border" />
-                  <span>启用模板</span>
+                  <span>启用平台工作流</span>
                 </label>
                 <label class="flex items-center gap-2 text-xs">
                   <span class="font-semibold text-muted-foreground">种子顺序</span>
@@ -199,7 +201,7 @@ onMounted(() => {
                 </label>
               </div>
               <p class="text-[11px] text-muted-foreground">
-                数字越小越先复制；相同顺序时按创建时间。母版节点仅需 Prompt 骨架，业务线侧再绑定 Agent CLI。
+                数字越小越先复制；相同顺序时按创建时间。平台工作流节点仅需 Prompt 骨架，业务线侧再绑定 Agent CLI。
               </p>
             </section>
 
@@ -289,10 +291,10 @@ onMounted(() => {
 
     <ConfirmActionModal
       :open="deleteModalOpen"
-      title="删除母版"
+      title="删除平台工作流"
       :description="
         deleteTarget
-          ? `确定删除全局母版「${deleteTarget.name}」？已复制到业务线的副本不会删除。`
+          ? `确定删除平台工作流「${deleteTarget.name}」？已复制到业务线的副本不会删除。`
           : ''
       "
       confirm-text="删除"

@@ -116,7 +116,7 @@ export class AccessService {
       let businessRole: string | null = null;
       let projectRole: string | null = null;
 
-      const capabilities = new Set<string>([BUSINESS_LINE_CREATE_CAPABILITY]);
+      const capabilities = new Set<string>();
 
       let visibleBusinessLineIds = businessLineMemberships.map(
         (membership) => membership.businessLineId,
@@ -270,6 +270,7 @@ export class AccessService {
       }
 
       if (isAdmin) {
+        capabilities.add(BUSINESS_LINE_CREATE_CAPABILITY);
         for (const capability of ALL_BUSINESS_LINE_CAPABILITIES) {
           capabilities.add(capability);
         }
@@ -335,17 +336,29 @@ export class AccessService {
   }
 
   async assertBusinessLineCapability(
-    _currentUser: JwtPayloadType,
+    currentUser: JwtPayloadType,
     businessLineId: string,
-    _capability: string,
+    capability: string,
   ): Promise<BusinessLine> {
-    void _currentUser;
-    void _capability;
     const businessLine =
       await this.businessLineRepository.findById(businessLineId);
 
     if (!businessLine) {
       throw new NotFoundException('Business line not found');
+    }
+
+    if (this.isAdmin(currentUser)) {
+      return businessLine;
+    }
+
+    const hasCapability = await this.hasBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      capability,
+    );
+
+    if (!hasCapability) {
+      throw new ForbiddenException('forbiddenBusinessLine');
     }
 
     return businessLine;
@@ -372,23 +385,53 @@ export class AccessService {
   }
 
   async hasBusinessLineCapability(
-    _currentUser: JwtPayloadType,
+    currentUser: JwtPayloadType,
     businessLineId: string,
-    _capability: string,
+    capability: string,
   ): Promise<boolean> {
-    void _currentUser;
-    void _capability;
-    return Boolean(await this.businessLineRepository.findById(businessLineId));
+    if (this.isAdmin(currentUser)) {
+      return Boolean(
+        await this.businessLineRepository.findById(businessLineId),
+      );
+    }
+
+    const membership =
+      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+        businessLineId,
+        currentUser.sub,
+      );
+    const capabilities =
+      await this.resolveBusinessLineCapabilitiesForMembership(membership);
+
+    return capabilities.includes(capability);
   }
 
   async hasBusinessLineCapabilityAny(
-    _currentUser: JwtPayloadType,
+    currentUser: JwtPayloadType,
     businessLineId: string,
-    _capabilities: string[],
+    capabilities: string[],
   ): Promise<boolean> {
-    void _currentUser;
-    void _capabilities;
-    return Boolean(await this.businessLineRepository.findById(businessLineId));
+    if (capabilities.length === 0) {
+      return true;
+    }
+
+    if (this.isAdmin(currentUser)) {
+      return Boolean(
+        await this.businessLineRepository.findById(businessLineId),
+      );
+    }
+
+    const membership =
+      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+        businessLineId,
+        currentUser.sub,
+      );
+    const resolvedCapabilities =
+      await this.resolveBusinessLineCapabilitiesForMembership(membership);
+
+    return capabilities.some((capability) =>
+      resolvedCapabilities.includes(capability),
+    );
   }
 
   async hasProjectCapability(

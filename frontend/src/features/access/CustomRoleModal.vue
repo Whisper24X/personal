@@ -160,6 +160,9 @@ const syncState = () => {
   formName.value = props.initialName ?? ''
   formDescription.value = props.initialDescription ?? ''
   const allowedCapabilities = new Set(allFlattenedOptions.value.map((item) => item.code))
+  if (props.foundationCapabilityCode) {
+    allowedCapabilities.add(props.foundationCapabilityCode)
+  }
   selectedCapabilities.value = props.initialCapabilities.filter((item) =>
     allowedCapabilities.has(item),
   )

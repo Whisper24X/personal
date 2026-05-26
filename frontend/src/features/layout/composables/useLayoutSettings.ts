@@ -6,17 +6,21 @@ import {
   getAvailableSettingsSections,
   resolveAuthorizedSettingsSection,
 } from '@shared/types/common/settings'
+import { useAccessStore } from '@app/stores/modules/access'
 import { computeLayoutBreadcrumbs } from './layout-breadcrumbs'
 import { normalizeQueryValue } from './use-layout-types'
 
 export function useLayoutSettings(options: { route: RouteLocationNormalizedLoaded; router: Router }) {
   const { route, router } = options
+  const accessStore = useAccessStore()
 
   const settingsModalOpen = ref(false)
   const settingsSection = ref<SettingsSection>('account')
 
   const availableSettingsSections = computed<SettingsSection[]>(() => {
-    return getAvailableSettingsSections()
+    return getAvailableSettingsSections({
+      isPlatformAdmin: accessStore.isPlatformAdmin,
+    })
   })
 
   const defaultSettingsSection = computed<SettingsSection>(() => {
@@ -24,7 +28,9 @@ export function useLayoutSettings(options: { route: RouteLocationNormalizedLoade
   })
 
   const resolveSettingsSection = (candidate: unknown) => {
-    return resolveAuthorizedSettingsSection(normalizeQueryValue(candidate))
+    return resolveAuthorizedSettingsSection(normalizeQueryValue(candidate), {
+      isPlatformAdmin: accessStore.isPlatformAdmin,
+    })
   }
 
   const routeSettingsSection = computed(() => {

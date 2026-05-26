@@ -20,7 +20,7 @@ const emit = defineEmits<{
     <button
       type="button"
       class="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
-      aria-label="关闭复制平台模板弹窗"
+      aria-label="关闭复制平台工作流弹窗"
       @click="emit('close')"
     />
     <section
@@ -30,8 +30,8 @@ const emit = defineEmits<{
     >
       <header class="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
-          <h2 class="text-base font-semibold">复制平台工作流母版</h2>
-          <p class="mt-0.5 text-xs text-muted-foreground">选择一条母版，复制为当前业务线的工作流模板</p>
+          <h2 class="text-base font-semibold">复制平台工作流</h2>
+          <p class="mt-0.5 text-xs text-muted-foreground">选择一条平台工作流，复制为当前业务线的工作流</p>
         </div>
         <button
           type="button"
@@ -63,7 +63,7 @@ const emit = defineEmits<{
           v-else-if="!templates.length"
           class="text-sm text-muted-foreground"
         >
-          暂无可用的平台工作流母版。请管理员在系统「平台工作流母版」中配置。
+          暂无可用的平台工作流。请管理员在系统「平台工作流」中配置。
         </p>
         <ul v-else class="space-y-2">
           <li

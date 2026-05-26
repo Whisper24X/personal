@@ -166,13 +166,14 @@ export class AuthService {
     });
 
     const tokenExpires = Date.now() + ms(tokenExpiresIn);
+    const roles = this.resolveTokenRoles(data.username);
 
     const [token, refreshToken] = await Promise.all([
       await this.jwtService.signAsync(
         {
           sub: data.id,
           username: data.username,
-          roles: ['user'],
+          roles,
         },
         {
           secret: this.configService.getOrThrow('auth.secret', { infer: true }),
@@ -183,7 +184,7 @@ export class AuthService {
         {
           sub: data.id,
           username: data.username,
-          roles: ['user'],
+          roles,
         },
         {
           secret: this.configService.getOrThrow('auth.refreshSecret', {
@@ -201,5 +202,17 @@ export class AuthService {
       refreshToken,
       tokenExpires,
     };
+  }
+
+  private resolveTokenRoles(username: string): string[] {
+    const adminUsernames =
+      this.configService.get('auth.adminUsernames', { infer: true }) ?? [];
+    const normalizedUsername = username.trim().toLowerCase();
+
+    if (adminUsernames.includes(normalizedUsername)) {
+      return ['admin'];
+    }
+
+    return ['user'];
   }
 }

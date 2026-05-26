@@ -232,10 +232,7 @@ export function useLayoutSidebarNav(options: {
   const menuIconFor = (menuId: MenuItem['id']) => LAYOUT_MENU_ICON_PATHS[menuId]
 
   const canCreateBusinessLine = computed(() => {
-    return hasSomeAccess(
-      BUTTON_ACCESS_CONFIG.createBusinessLine.capabilities,
-      (capability) => accessStore.hasCapability(capability),
-    )
+    return accessStore.isPlatformAdmin
   })
 
   const canCreateProject = computed(() => {

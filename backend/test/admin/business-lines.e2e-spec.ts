@@ -15,6 +15,19 @@ describe('Business Lines Module', () => {
     ({ token: testerToken } = await createRegisteredUser({ app }));
   });
 
+  it('should reject non-admin business line creation', async () => {
+    await request(app)
+      .post('/api/v1/business-lines')
+      .auth(testerToken, {
+        type: 'bearer',
+      })
+      .send({
+        name: `bl-denied-${Date.now()}`,
+        description: 'Should be rejected',
+      })
+      .expect(403);
+  });
+
   it('should create/list/get/update/delete business line and manage members', async () => {
     const businessLineName = `bl-${Date.now()}`;
 
@@ -84,13 +97,32 @@ describe('Business Lines Module', () => {
         expect(Array.isArray(body)).toBeTruthy();
       });
 
+    const businessLineRoles: Array<{ id: string; name: string }> =
+      await request(app)
+        .get(`/api/v1/business-lines/${businessLineId}/custom-roles`)
+        .auth(adminToken, {
+          type: 'bearer',
+        })
+        .expect(200)
+        .then(({ body }) => body);
+    const getBusinessLineRole = (
+      name: string,
+    ): { id: string; name: string } => {
+      const role = businessLineRoles.find((item) => item.name === name);
+      expect(role).toBeDefined();
+
+      return role as { id: string; name: string };
+    };
+    const memberRole = getBusinessLineRole('member');
+    const ownerRole = getBusinessLineRole('owner');
+
     const firstInviteResponse = await request(app)
       .post(`/api/v1/business-lines/${businessLineId}/invitations`)
       .auth(adminToken, {
         type: 'bearer',
       })
       .send({
-        role: 'member',
+        roleId: memberRole.id,
       })
       .expect(201)
       .then(({ body }) => body);
@@ -103,7 +135,7 @@ describe('Business Lines Module', () => {
         type: 'bearer',
       })
       .send({
-        role: 'member',
+        roleId: memberRole.id,
       })
       .expect(201)
       .then(({ body }) => body);
@@ -141,8 +173,25 @@ describe('Business Lines Module', () => {
       })
       .expect(200)
       .expect(({ body }) => {
-        expect(body.member?.role).toBe('member');
+        expect(body.member?.roleId).toBe(memberRole.id);
       });
+
+    await request(app)
+      .patch(`/api/v1/business-lines/${businessLineId}`)
+      .auth(testerToken, {
+        type: 'bearer',
+      })
+      .send({
+        description: 'Non-admin update should be rejected',
+      })
+      .expect(403);
+
+    await request(app)
+      .delete(`/api/v1/business-lines/${businessLineId}`)
+      .auth(testerToken, {
+        type: 'bearer',
+      })
+      .expect(403);
 
     await request(app)
       .post('/api/v1/business-lines/invitations/accept')
@@ -161,7 +210,7 @@ describe('Business Lines Module', () => {
       })
       .send({
         userId: adminUser.id,
-        role: 'admin',
+        roleId: memberRole.id,
       })
       .expect(409);
 
@@ -171,11 +220,11 @@ describe('Business Lines Module', () => {
         type: 'bearer',
       })
       .send({
-        role: 'owner',
+        roleId: ownerRole.id,
       })
       .expect(200)
       .expect(({ body }) => {
-        expect(body.role).toBe('owner');
+        expect(body.roleId).toBe(ownerRole.id);
       });
 
     await request(app)

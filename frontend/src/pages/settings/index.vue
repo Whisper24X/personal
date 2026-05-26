@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAccessStore } from '@app/stores/modules/access'
+import { PlatformWorkflowTemplatesPanel } from '@features/platform'
 import PersonalSettingsPanel from '@features/settings/PersonalSettingsPanel.vue'
 import {
   SETTINGS_QUERY_KEY,
   SETTINGS_SECTION_LABELS,
-  SETTINGS_SECTIONS,
+  getAvailableSettingsSections,
   resolveAuthorizedSettingsSection,
+  type SettingsSection,
 } from '@shared/types/common/settings'
 
 defineOptions({
@@ -15,6 +18,13 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
+const accessStore = useAccessStore()
+
+const availableSettingsSections = computed(() => {
+  return getAvailableSettingsSections({
+    isPlatformAdmin: accessStore.isPlatformAdmin,
+  })
+})
 
 const activeSection = computed(() => {
   const candidate = typeof route.query[SETTINGS_QUERY_KEY] === 'string'
@@ -23,22 +33,26 @@ const activeSection = computed(() => {
       ? route.query[SETTINGS_QUERY_KEY][0] ?? ''
       : ''
 
-  return resolveAuthorizedSettingsSection(candidate)
+  return resolveAuthorizedSettingsSection(candidate, {
+    isPlatformAdmin: accessStore.isPlatformAdmin,
+  })
 })
 
 const currentSectionProps = computed(() => {
-  if (activeSection.value === 'account') {
+  const section = activeSection.value
+
+  if (section === 'account' || section === 'platformWorkflowTemplates') {
     return {
       externalTab: 'profile' as const,
     }
   }
 
   return {
-    externalTab: activeSection.value,
+    externalTab: section,
   }
 })
 
-const selectSection = (section: typeof SETTINGS_SECTIONS[number]) => {
+const selectSection = (section: SettingsSection) => {
   if (section === activeSection.value) {
     return
   }
@@ -71,7 +85,7 @@ const closeSettingsPage = () => {
 
           <nav class="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
             <button
-              v-for="section in SETTINGS_SECTIONS"
+              v-for="section in availableSettingsSections"
               :key="section"
               type="button"
               class="w-full rounded-xl border px-3 py-3 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -120,7 +134,8 @@ const closeSettingsPage = () => {
           </header>
 
           <main class="min-h-0 flex-1 overflow-auto px-4 py-4">
-            <PersonalSettingsPanel v-bind="currentSectionProps" />
+            <PlatformWorkflowTemplatesPanel v-if="activeSection === 'platformWorkflowTemplates'" />
+            <PersonalSettingsPanel v-else v-bind="currentSectionProps" />
           </main>
         </div>
       </div>

@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { BusinessLineMemberRole } from './dto/business-line-member-role.enum';
@@ -25,6 +30,10 @@ export class BusinessLineLifecycleService {
     createBusinessLineDto: CreateBusinessLineDto,
     currentUser: JwtPayloadType,
   ): Promise<BusinessLine> {
+    if (!this.isAdmin(currentUser)) {
+      throw new ForbiddenException('forbiddenCreateBusinessLine');
+    }
+
     const existedBusinessLine = await this.businessLineRepository.findByName(
       createBusinessLineDto.name,
     );

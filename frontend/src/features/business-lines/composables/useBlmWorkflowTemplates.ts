@@ -599,7 +599,7 @@ export function useBlmWorkflowTemplates(
       platformMasters.value = templates
     } catch (error) {
       platformMasters.value = []
-      message.error(toErrorMessage(error, '加载平台工作流母版失败'))
+      message.error(toErrorMessage(error, '加载平台工作流失败'))
     } finally {
       loadingPlatformMasters.value = false
     }

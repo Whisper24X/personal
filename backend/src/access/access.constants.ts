@@ -15,7 +15,6 @@ export const BUSINESS_LINE_CREATE_CAPABILITY = 'businessLine.create';
 const OWNER_GRANULAR_CAPABILITIES: CapabilityCode[] = [
   'businessLine.read',
   'businessLine.update',
-  'businessLine.delete',
   'businessLine.project.list.all',
   'businessLine.project.create',
   'businessLine.project.update',
@@ -145,7 +144,6 @@ const BUSINESS_LINE_CAPABILITY_DEPENDENCIES: Record<
   CapabilityCode[]
 > = {
   'businessLine.update': ['businessLine.read'],
-  'businessLine.delete': ['businessLine.read'],
   'businessLine.project.list.all': ['businessLine.read'],
   'businessLine.project.list.joined': ['businessLine.read'],
   'businessLine.project.create': ['businessLine.read'],
@@ -429,8 +427,10 @@ export const getProjectDefaultRoleTemplate = (
 export const isBusinessLineOwnerCapabilities = (
   capabilities: CapabilityCode[],
 ): boolean => {
-  return normalizeBusinessLineCapabilities(capabilities).includes(
-    'businessLine.delete',
+  const normalizedCapabilities =
+    normalizeBusinessLineCapabilities(capabilities);
+  return BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.owner].every(
+    (capability) => normalizedCapabilities.includes(capability),
   );
 };
 

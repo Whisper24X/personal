@@ -57,6 +57,7 @@ const vm = useBusinessLinesPage()
             刷新
           </button>
           <button
+            v-if="vm.canCreateBusinessLine"
             class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:shadow-md"
             type="button"
             @click="vm.openCreateLineModal"
@@ -105,6 +106,7 @@ const vm = useBusinessLinesPage()
                 成员
               </button>
               <button
+                v-if="vm.canCreateBusinessLine"
                 class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="vm.removingLineId === line.id"
                 type="button"
@@ -120,8 +122,9 @@ const vm = useBusinessLinesPage()
           v-if="!vm.loadingLines && vm.lines.length === 0"
           class="rounded-xl border border-dashed border-border bg-background/40 px-4 py-4 text-sm text-muted-foreground"
         >
-          <p>暂无业务线，请先创建。</p>
+          <p>{{ vm.canCreateBusinessLine ? '暂无业务线，请先创建。' : '暂无业务线。' }}</p>
           <button
+            v-if="vm.canCreateBusinessLine"
             class="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
             type="button"
             @click="vm.openCreateLineModal"
@@ -166,8 +169,9 @@ const vm = useBusinessLinesPage()
             v-if="!vm.loadingLines && vm.lines.length === 0"
             class="rounded-xl border border-dashed border-border bg-background/40 px-3 py-4 text-sm text-muted-foreground"
           >
-            <p>暂无业务线，请先创建。</p>
+            <p>{{ vm.canCreateBusinessLine ? '暂无业务线，请先创建。' : '暂无业务线。' }}</p>
             <button
+              v-if="vm.canCreateBusinessLine"
               class="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
               type="button"
               @click="vm.openCreateLineModal"

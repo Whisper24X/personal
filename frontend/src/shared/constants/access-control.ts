@@ -50,11 +50,6 @@ export const ACCESS_CAPABILITY_CONFIG = {
     description: '修改业务线名称与描述',
     scope: 'businessLine',
   },
-  'businessLine.delete': {
-    label: '删除业务线',
-    description: '删除业务线',
-    scope: 'businessLine',
-  },
   'businessLine.member.read': {
     label: '查看成员',
     description: '查看成员列表及成员角色信息',
@@ -354,10 +349,6 @@ export const ROUTE_ACCESS_CONFIG = {
     title: '设置',
     capabilities: [],
   },
-  platformWorkflowTemplates: {
-    title: '平台工作流母版',
-    capabilities: [],
-  },
 } as const satisfies Record<string, RouteAccessConfig>
 
 export type RouteAccessKey = keyof typeof ROUTE_ACCESS_CONFIG
@@ -407,10 +398,6 @@ export const BUTTON_ACCESS_CONFIG = {
   editBusinessLine: {
     label: '编辑业务线',
     capabilities: ['businessLine.update'],
-  },
-  deleteBusinessLine: {
-    label: '删除业务线',
-    capabilities: ['businessLine.delete'],
   },
   manageBusinessLineMembers: {
     label: '管理业务线成员',
@@ -531,7 +518,6 @@ export const PROJECT_CAPABILITY_OPTIONS = getCapabilityOptionsByScope('project')
 
 export const BUSINESS_LINE_CAPABILITY_DEPENDENCIES: Record<string, string[]> = {
   'businessLine.update': ['businessLine.read'],
-  'businessLine.delete': ['businessLine.read'],
   'businessLine.project.list.all': ['businessLine.read'],
   'businessLine.project.list.joined': ['businessLine.read'],
   'businessLine.project.create': ['businessLine.read'],
@@ -572,9 +558,7 @@ export const BUSINESS_LINE_CAPABILITY_TREE: CapabilityTreeNode[] = [
     key: 'businessLine',
     label: '业务线',
     children: [
-      { code: 'businessLine.read', label: '查看业务线', description: '查看业务线基础信息' },
       { code: 'businessLine.update', label: '编辑业务线', description: '修改业务线名称与描述' },
-      { code: 'businessLine.delete', label: '删除业务线', description: '删除业务线' },
     ],
   },
   {

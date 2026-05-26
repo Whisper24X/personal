@@ -41,7 +41,6 @@ const BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES = [
     capabilities: [
       'businessLine.read',
       'businessLine.update',
-      'businessLine.delete',
       'businessLine.project.list.all',
       'businessLine.project.create',
       'businessLine.project.update',

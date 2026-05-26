@@ -10,6 +10,12 @@ const { routerPush, routerReplace, routeState } = vi.hoisted(() => ({
   },
 }))
 
+const { accessState } = vi.hoisted(() => ({
+  accessState: {
+    isPlatformAdmin: false,
+  },
+}))
+
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
   useRouter: () => ({
@@ -18,10 +24,15 @@ vi.mock('vue-router', () => ({
   }),
 }))
 
+vi.mock('@app/stores/modules/access', () => ({
+  useAccessStore: () => accessState,
+}))
+
 describe('SettingsView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     routeState.query = {}
+    accessState.isPlatformAdmin = false
   })
 
   it('renders the full-page settings layout and closes back to home', async () => {
@@ -30,6 +41,9 @@ describe('SettingsView', () => {
         stubs: {
           PersonalSettingsPanel: {
             template: '<div>PersonalSettingsPanel</div>',
+          },
+          PlatformWorkflowTemplatesPanel: {
+            template: '<div>PlatformWorkflowTemplatesPanel</div>',
           },
         },
       },
@@ -50,6 +64,9 @@ describe('SettingsView', () => {
           PersonalSettingsPanel: {
             template: '<div>PersonalSettingsPanel</div>',
           },
+          PlatformWorkflowTemplatesPanel: {
+            template: '<div>PlatformWorkflowTemplatesPanel</div>',
+          },
         },
       },
     })
@@ -67,5 +84,47 @@ describe('SettingsView', () => {
         settings: 'notifications',
       },
     })
+  })
+
+  it('shows workflow template settings only for platform admins', async () => {
+    accessState.isPlatformAdmin = true
+    routeState.query = { settings: 'platformWorkflowTemplates' }
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs: {
+          PersonalSettingsPanel: {
+            template: '<div>PersonalSettingsPanel</div>',
+          },
+          PlatformWorkflowTemplatesPanel: {
+            template: '<div>PlatformWorkflowTemplatesPanel</div>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('平台工作流')
+    expect(wrapper.text()).toContain('PlatformWorkflowTemplatesPanel')
+  })
+
+  it('falls back when non-admin users request workflow template settings', async () => {
+    routeState.query = { settings: 'platformWorkflowTemplates' }
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs: {
+          PersonalSettingsPanel: {
+            template: '<div>PersonalSettingsPanel</div>',
+          },
+          PlatformWorkflowTemplatesPanel: {
+            template: '<div>PlatformWorkflowTemplatesPanel</div>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('平台工作流')
+    expect(wrapper.text()).toContain('账号')
+    expect(wrapper.text()).toContain('PersonalSettingsPanel')
   })
 })

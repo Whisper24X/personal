@@ -347,7 +347,7 @@ const canManageActiveLine = computed(() => {
 })
 
 const canDeleteActiveLine = computed(() => {
-  return hasActiveLineCapability('businessLine.delete')
+  return props.canCreateBusinessLine
 })
 
 const canReadProjectItems = computed(() => {

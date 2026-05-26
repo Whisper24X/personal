@@ -53,7 +53,7 @@ const showActionColumn = computed(() => {
             data-testid="open-copy-platform-wf"
             @click="emit('open-platform-copy')"
           >
-            复制平台模板
+            复制平台工作流
           </button>
           <button
             v-if="canCreateWorkflowTemplate"
@@ -148,7 +148,7 @@ const showActionColumn = computed(() => {
             </tr>
             <tr v-if="workflowTemplates.length === 0">
               <td :colspan="showActionColumn ? 3 : 2" class="px-3 py-4 text-sm text-muted-foreground">
-                当前业务线暂无工作流模板。若有权限，可使用「复制平台模板」或「创建模板」。
+                当前业务线暂无工作流模板。若有权限，可使用「复制平台工作流」或「创建模板」。
               </td>
             </tr>
           </tbody>

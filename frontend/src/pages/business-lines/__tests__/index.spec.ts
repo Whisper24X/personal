@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { setSessionToken } from '@app/stores/auth-session'
 import BusinessLinesView from '@pages/business-lines/index.vue'
 
 const { businessLinesApi, usersApi } = vi.hoisted(() => ({
@@ -32,6 +33,16 @@ vi.mock('@/api/users', () => ({
   usersApi,
 }))
 
+const { authApi } = vi.hoisted(() => ({
+  authApi: {
+    access: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/auth', () => ({
+  authApi,
+}))
+
 vi.mock('@shared/utils/pagination', () => ({
   fetchAllPages: vi.fn(async (fetchPage: (page: number, limit: number) => Promise<{ data: unknown[] }>) => {
     const response = await fetchPage(1, 50)
@@ -47,6 +58,28 @@ const lines = [
 beforeEach(() => {
   vi.clearAllMocks()
   setActivePinia(createPinia())
+  setSessionToken('test-token')
+
+  authApi.access.mockResolvedValue({
+    user: {
+      id: 'user-1',
+      username: 'admin',
+      nickname: 'Admin',
+      avatar: null,
+    },
+    currentContext: {
+      businessLineId: null,
+      projectId: null,
+      businessRole: null,
+      projectRole: null,
+    },
+    capabilities: ['businessLine.create'],
+    visibility: {
+      visibleBusinessLineIds: [],
+      visibleProjectIds: [],
+    },
+    isAdmin: true,
+  })
 
   businessLinesApi.list.mockResolvedValue({
     data: lines,
@@ -103,6 +136,45 @@ describe('BusinessLinesView', () => {
     expect(wrapper.find('#business-line-form-modal-title').text()).toBe('创建业务线')
   })
 
+  it('hides create and delete actions for non-admin users', async () => {
+    authApi.access.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        username: 'member',
+        nickname: 'Member',
+        avatar: null,
+      },
+      currentContext: {
+        businessLineId: null,
+        projectId: null,
+        businessRole: null,
+        projectRole: null,
+      },
+      capabilities: [],
+      visibility: {
+        visibleBusinessLineIds: [],
+        visibleProjectIds: [],
+      },
+      isAdmin: false,
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLinesView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const actionLabels = wrapper.findAll('button').map((button) => button.text())
+    expect(actionLabels).not.toContain('创建业务线')
+    expect(actionLabels).not.toContain('删除')
+  })
+
   it('switches to members tab and renders members area', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLinesView, {
@@ -152,6 +224,47 @@ describe('BusinessLinesView', () => {
 
     expect(wrapper.text()).toContain('当前：Growth')
     expect(businessLinesApi.listMembers).toHaveBeenCalledWith('line-2')
+  })
+
+  it('hides create business line button when user has no permission', async () => {
+    authApi.access.mockResolvedValueOnce({
+      user: {
+        id: 'user-2',
+        username: 'tester',
+        nickname: 'Tester',
+        avatar: null,
+      },
+      currentContext: {
+        businessLineId: null,
+        projectId: null,
+        businessRole: null,
+        projectRole: null,
+      },
+      capabilities: [],
+      visibility: {
+        visibleBusinessLineIds: [],
+        visibleProjectIds: [],
+      },
+      isAdmin: false,
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLinesView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const createButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '创建业务线')
+
+    expect(createButton).toBeUndefined()
   })
 
   it('opens edit modal with prefilled values', async () => {

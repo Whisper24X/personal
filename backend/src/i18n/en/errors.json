@@ -28,6 +28,7 @@
   },
   "access": {
     "forbiddenBusinessLine": "You do not have permission to access this business line.",
+    "forbiddenCreateBusinessLine": "You do not have permission to create a business line.",
     "forbiddenObservabilityView": "You do not have permission to view observability data.",
     "forbiddenProject": "You do not have permission to access this project.",
     "forbiddenQueueView": "You do not have permission to view the queue.",

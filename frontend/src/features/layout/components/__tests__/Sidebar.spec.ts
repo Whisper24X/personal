@@ -115,7 +115,6 @@ describe('Sidebar menu scope', () => {
       isNavActive: () => false,
       isBusinessLineManageActive: false,
       isSettingsActive: false,
-      isPlatformWorkflowTemplatesActive: false,
     })
 
     expect(wrapper.text()).toContain('Retail')
@@ -161,7 +160,6 @@ describe('Sidebar menu scope', () => {
       isNavActive: () => false,
       isBusinessLineManageActive: false,
       isSettingsActive: false,
-      isPlatformWorkflowTemplatesActive: false,
     })
 
     expect(wrapper.text()).toContain('Retail')
@@ -193,7 +191,6 @@ describe('Sidebar menu scope', () => {
       isNavActive: () => false,
       isBusinessLineManageActive: false,
       isSettingsActive: false,
-      isPlatformWorkflowTemplatesActive: false,
     })
 
     const activeLink = wrapper
@@ -229,7 +226,6 @@ describe('Sidebar menu scope', () => {
       isNavActive: () => false,
       isBusinessLineManageActive: false,
       isSettingsActive: false,
-      isPlatformWorkflowTemplatesActive: false,
     })
 
     const todoDot = wrapper.get('[data-task-id="task-1"] .sidebar-task-status-dot')

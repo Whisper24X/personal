@@ -7,7 +7,7 @@ import {
   flattenCapabilityTree,
 } from '@shared/constants/access'
 
-const totalCapabilityCount = flattenCapabilityTree(BUSINESS_LINE_CAPABILITY_TREE).length - 1
+const totalCapabilityCount = flattenCapabilityTree(BUSINESS_LINE_CAPABILITY_TREE).length
 
 const mountModal = (initialCapabilities: string[] = []) =>
   mount(CustomRoleModal, {

@@ -28,6 +28,7 @@
   },
   "access": {
     "forbiddenBusinessLine": "没有权限访问该业务线",
+    "forbiddenCreateBusinessLine": "没有权限创建业务线",
     "forbiddenObservabilityView": "没有权限查看可观测数据",
     "forbiddenProject": "没有权限访问该项目",
     "forbiddenQueueView": "没有权限查看队列",

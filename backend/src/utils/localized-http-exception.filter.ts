@@ -309,6 +309,7 @@ const LEGACY_MESSAGE_KEYS = new Map<string, string>([
   ['Workspace path not found', 'errors.workspace.pathNotFound'],
   ['file is required', 'errors.common.fileRequired'],
   ['forbiddenBusinessLine', 'errors.access.forbiddenBusinessLine'],
+  ['forbiddenCreateBusinessLine', 'errors.access.forbiddenCreateBusinessLine'],
   ['forbiddenObservabilityView', 'errors.access.forbiddenObservabilityView'],
   ['forbiddenProject', 'errors.access.forbiddenProject'],
   ['forbiddenQueueView', 'errors.access.forbiddenQueueView'],

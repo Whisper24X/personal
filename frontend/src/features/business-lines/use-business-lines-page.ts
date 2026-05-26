@@ -1,5 +1,6 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from '@app/composables/useMessage'
+import { useAccessStore } from '@app/stores/modules/access'
 import { businessLinesApi, type BusinessLine, type BusinessLineCustomRole, type BusinessLineMember } from '@/api/business-lines'
 import { buildBusinessLineRoleAssignmentOptions } from '@shared/constants/access'
 import { usersApi } from '@/api/users'
@@ -23,6 +24,9 @@ const updatingMemberUserId = ref('')
 const removingMemberUserId = ref('')
 const validationMessage = ref('')
 const message = useMessage()
+const accessStore = useAccessStore()
+
+const canCreateBusinessLine = computed(() => accessStore.isPlatformAdmin)
 
 const lines = ref<BusinessLine[]>([])
 const members = ref<BusinessLineMember[]>([])
@@ -157,6 +161,10 @@ const ensureMembersContextLoaded = async () => {
 }
 
 const openCreateLineModal = () => {
+  if (!canCreateBusinessLine.value) {
+    return
+  }
+
   lineFormMode.value = 'create'
   editingLineId.value = ''
   lineFormInitialName.value = ''
@@ -200,6 +208,10 @@ const submitLineForm = async (payload: { name: string; description: string }) =>
 }
 
 const removeLine = async (line: BusinessLine) => {
+  if (!canCreateBusinessLine.value) {
+    return
+  }
+
   removingLineTarget.value = line
   lineDeleteModalOpen.value = true
 }
@@ -213,7 +225,7 @@ const setLineDeleteModalOpen = (open: boolean) => {
 
 const confirmRemoveLine = async () => {
   const line = removingLineTarget.value
-  if (!line) {
+  if (!line || !canCreateBusinessLine.value) {
     return
   }
 
@@ -338,6 +350,7 @@ watch(
 )
 
 onMounted(() => {
+  void accessStore.loadContext()
   void loadLines()
 })
 
@@ -345,6 +358,7 @@ onMounted(() => {
   return reactive({
     activeTab,
     addMember,
+    canCreateBusinessLine,
     closeMemberFormModal,
     confirmRemoveLine,
     displayUserLabel,
