@@ -1,5 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 
+export type MemoryLlmProvider =
+  | 'openai-compatible'
+  | 'anthropic'
+  | 'cursor-agent';
+
 export type MemoryRuntimeConfigSnapshot = {
   extractionEnabled: boolean;
   injectionEnabled: boolean;
@@ -19,10 +24,13 @@ export type MemoryRuntimeConfigSnapshot = {
   promotionDistinctQueriesMin: number;
   promotionColdStart: boolean;
   memoryIngestDryRun: boolean;
-  /** OpenAI-compatible chat completion */
+  /** Structured JSON completion provider used by memory extraction. */
+  llmProvider: MemoryLlmProvider;
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  llmHeaders: string[];
+  llmCommand: string;
   llmMaxRetries: number;
   scoreWeightRelevance: number;
   scoreWeightFrequency: number;
@@ -74,6 +82,24 @@ const envNumber = (key: string, defaultValue: number): number => {
   return Number.isFinite(n) ? n : defaultValue;
 };
 
+const normalizeMemoryLlmProvider = (value: string): MemoryLlmProvider => {
+  if (value === 'anthropic' || value === 'cursor-agent') {
+    return value;
+  }
+  return 'openai-compatible';
+};
+
+const envStringArray = (key: string): string[] => {
+  const v = process.env[key];
+  if (v === undefined || v === '') {
+    return [];
+  }
+  return v
+    .split(/\r?\n|;;/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 export const loadMemoryRuntimeConfigFromEnv =
   (): MemoryRuntimeConfigSnapshot => ({
     extractionEnabled: envBool('MEMORY_EXTRACTION_ENABLED', false),
@@ -103,9 +129,14 @@ export const loadMemoryRuntimeConfigFromEnv =
     ),
     promotionColdStart: envBool('MEMORY_PROMOTION_COLD_START', true),
     memoryIngestDryRun: envBool('MEMORY_INGEST_DRY_RUN', false),
+    llmProvider: normalizeMemoryLlmProvider(
+      envString('MEMORY_LLM_PROVIDER', 'openai-compatible'),
+    ),
     llmBaseUrl: memoryLlmEnvString('MEMORY_LLM_BASE_URL'),
     llmApiKey: memoryLlmEnvString('MEMORY_LLM_API_KEY'),
     llmModel: memoryLlmEnvString('MEMORY_LLM_MODEL'),
+    llmHeaders: envStringArray('MEMORY_LLM_HEADERS'),
+    llmCommand: envString('MEMORY_LLM_COMMAND', ''),
     llmMaxRetries: envNumber('MEMORY_LLM_MAX_RETRIES', 2),
     scoreWeightRelevance: envNumber('MEMORY_SCORE_WEIGHT_RELEVANCE', 0.3),
     scoreWeightFrequency: envNumber('MEMORY_SCORE_WEIGHT_FREQUENCY', 0.24),
@@ -146,45 +177,88 @@ const openAiEnvTrim = (key: string): string => {
 /** Fills blank llm triple fields from process OPENAI_* (after MEMORY and DB merges). */
 export const applyOpenAiProcessEnvFallback = (
   snap: MemoryRuntimeConfigSnapshot,
-): MemoryRuntimeConfigSnapshot => ({
-  ...snap,
-  llmBaseUrl: snap.llmBaseUrl.trim()
-    ? snap.llmBaseUrl
-    : openAiEnvTrim('OPENAI_BASE_URL'),
-  llmApiKey: snap.llmApiKey.trim()
-    ? snap.llmApiKey
-    : openAiEnvTrim('OPENAI_API_KEY'),
-  llmModel: snap.llmModel.trim()
-    ? snap.llmModel
-    : openAiEnvTrim('OPENAI_MODEL'),
-});
+): MemoryRuntimeConfigSnapshot => {
+  if (snap.llmProvider !== 'openai-compatible') {
+    return snap;
+  }
+
+  const next = {
+    ...snap,
+    llmBaseUrl: snap.llmBaseUrl.trim()
+      ? snap.llmBaseUrl
+      : openAiEnvTrim('OPENAI_BASE_URL'),
+    llmApiKey: snap.llmApiKey.trim()
+      ? snap.llmApiKey
+      : openAiEnvTrim('OPENAI_API_KEY'),
+    llmModel: snap.llmModel.trim()
+      ? snap.llmModel
+      : openAiEnvTrim('OPENAI_MODEL'),
+  };
+
+  if (
+    next.llmBaseUrl !== snap.llmBaseUrl ||
+    next.llmApiKey !== snap.llmApiKey ||
+    next.llmModel !== snap.llmModel
+  ) {
+    return { ...next, llmProvider: 'openai-compatible' };
+  }
+
+  return next;
+};
 
 export const mergeLlmTripleIfBlankFromPartial = (
   snap: MemoryRuntimeConfigSnapshot,
   partial: Partial<{
+    llmProvider: MemoryLlmProvider;
     llmBaseUrl: string;
     llmApiKey: string;
     llmModel: string;
+    llmHeaders: string[];
+    llmCommand: string;
   }>,
-): MemoryRuntimeConfigSnapshot => ({
-  ...snap,
-  llmBaseUrl: snap.llmBaseUrl.trim()
-    ? snap.llmBaseUrl
-    : (partial.llmBaseUrl?.trim() ?? ''),
-  llmApiKey: snap.llmApiKey.trim()
-    ? snap.llmApiKey
-    : (partial.llmApiKey?.trim() ?? ''),
-  llmModel: snap.llmModel.trim()
-    ? snap.llmModel
-    : (partial.llmModel?.trim() ?? ''),
-});
+): MemoryRuntimeConfigSnapshot => {
+  const providerCanOverride =
+    Boolean(partial.llmProvider) &&
+    !snap.llmBaseUrl.trim() &&
+    !snap.llmApiKey.trim() &&
+    !snap.llmModel.trim() &&
+    !snap.llmHeaders.length &&
+    !snap.llmCommand.trim();
+
+  return {
+    ...snap,
+    llmProvider: providerCanOverride ? partial.llmProvider! : snap.llmProvider,
+    llmBaseUrl: snap.llmBaseUrl.trim()
+      ? snap.llmBaseUrl
+      : (partial.llmBaseUrl?.trim() ?? ''),
+    llmApiKey: snap.llmApiKey.trim()
+      ? snap.llmApiKey
+      : (partial.llmApiKey?.trim() ?? ''),
+    llmModel: snap.llmModel.trim()
+      ? snap.llmModel
+      : (partial.llmModel?.trim() ?? ''),
+    llmHeaders: snap.llmHeaders.length
+      ? snap.llmHeaders
+      : (partial.llmHeaders ?? []),
+    llmCommand: snap.llmCommand.trim()
+      ? snap.llmCommand
+      : (partial.llmCommand?.trim() ?? ''),
+  };
+};
 
 const DEFAULT_MEMORY_LLM_MODEL = 'gpt-4o-mini';
+const DEFAULT_ANTHROPIC_LLM_MODEL = 'claude-sonnet-4-5';
 
 /** Ensures model is non-empty for chat/completions request body. */
 export const finalizeMemoryLlmModelIfBlank = (
   snap: MemoryRuntimeConfigSnapshot,
 ): MemoryRuntimeConfigSnapshot => ({
   ...snap,
-  llmModel: snap.llmModel.trim() ? snap.llmModel : DEFAULT_MEMORY_LLM_MODEL,
+  llmModel: snap.llmModel.trim()
+    ? snap.llmModel
+    : snap.llmProvider === 'anthropic'
+      ? DEFAULT_ANTHROPIC_LLM_MODEL
+      : snap.llmProvider === 'openai-compatible'
+        ? DEFAULT_MEMORY_LLM_MODEL
+        : '',
 });

@@ -63,6 +63,7 @@ describe('AgentToolOpenAiCompatibleLlmCredentialsService', () => {
       await svc.resolvePartialOpenAiCompatibleLlmFromPersistedDefaults(
         project(),
       );
+    expect(r.llmProvider).toBe('openai-compatible');
     expect(r.llmApiKey).toBe('sk-db');
     expect(r.llmModel).toBe('gpt-x');
     expect(r.llmBaseUrl).toBe(
@@ -104,5 +105,84 @@ describe('AgentToolOpenAiCompatibleLlmCredentialsService', () => {
     expect(r.llmApiKey).toBe('sk-only');
     expect(r.llmBaseUrl).toBeUndefined();
     expect(repo.findDefaultByBusinessLineIdAndToolId).toHaveBeenCalled();
+  });
+
+  it('should read default claude-code config as anthropic memory LLM', async () => {
+    const registry = new AgentCliAdapterRegistry();
+    const p = project();
+    p.configJson = { agentAdapter: 'claude-code' };
+    const repo: Pick<
+      AgentToolConfigRepository,
+      'findDefaultByBusinessLineIdAndToolId'
+    > = {
+      findDefaultByBusinessLineIdAndToolId: jest.fn().mockResolvedValue({
+        id: 'c1',
+        businessLineId: 'bl1',
+        toolId: 'claude-code',
+        name: 'default',
+        description: null,
+        configJson: JSON.stringify({
+          auth_type: 'ANTHROPIC_API_KEY',
+          auth_token: 'sk-ant',
+          base_url: 'https://api.anthropic.test/v1',
+          model: 'claude-test',
+        }),
+        isDefault: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    };
+
+    const svc = new AgentToolOpenAiCompatibleLlmCredentialsService(
+      repo as AgentToolConfigRepository,
+      registry,
+    );
+
+    const r =
+      await svc.resolvePartialOpenAiCompatibleLlmFromPersistedDefaults(p);
+
+    expect(r.llmProvider).toBe('anthropic');
+    expect(r.llmApiKey).toBe('sk-ant');
+    expect(r.llmBaseUrl).toBe('https://api.anthropic.test/v1');
+    expect(r.llmModel).toBe('claude-test');
+  });
+
+  it('should read default cursor-agent config as cursor memory LLM', async () => {
+    const registry = new AgentCliAdapterRegistry();
+    const p = project();
+    p.configJson = { agentAdapter: 'cursor-agent' };
+    const repo: Pick<
+      AgentToolConfigRepository,
+      'findDefaultByBusinessLineIdAndToolId'
+    > = {
+      findDefaultByBusinessLineIdAndToolId: jest.fn().mockResolvedValue({
+        id: 'c1',
+        businessLineId: 'bl1',
+        toolId: 'cursor-agent',
+        name: 'default',
+        description: null,
+        configJson: JSON.stringify({
+          api_key: 'cursor-key',
+          model: 'composer-test',
+          headers: ['X-Test: 1'],
+        }),
+        isDefault: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    };
+
+    const svc = new AgentToolOpenAiCompatibleLlmCredentialsService(
+      repo as AgentToolConfigRepository,
+      registry,
+    );
+
+    const r =
+      await svc.resolvePartialOpenAiCompatibleLlmFromPersistedDefaults(p);
+
+    expect(r.llmProvider).toBe('cursor-agent');
+    expect(r.llmApiKey).toBe('cursor-key');
+    expect(r.llmModel).toBe('composer-test');
+    expect(r.llmHeaders).toEqual(['X-Test: 1']);
   });
 });
