@@ -21,28 +21,49 @@ const props = withDefaults(
     title: string
     titleId: string
     validationMessage: string
-    loadingWorkflowConfiguredCliTools: boolean
-    workflowConfiguredCliTools: unknown[]
-    workflowCliToolSelectOptions: CliSelectOption[]
     submittingWorkflowTemplate: boolean
     submitDisabled: boolean
     submitLoadingText: string
     submitIdleText: string
-    getWorkflowNodeConfigSelectOptions: (agentCliId: string) => CliSelectOption[]
-    isWorkflowNodeConfigLoading: (agentCliId: string) => boolean
     formatWorkflowNodeTabLabel: (node: WorkflowTemplateNodeForm, index: number) => string
+    /** 为 true 时隐藏 Agent CLI / Agent CLI 配置（如平台工作流编辑） */
+    hideAgentCli?: boolean
+    loadingWorkflowConfiguredCliTools?: boolean
+    workflowConfiguredCliTools?: unknown[]
+    workflowCliToolSelectOptions?: CliSelectOption[]
+    getWorkflowNodeConfigSelectOptions?: (agentCliId: string) => CliSelectOption[]
+    isWorkflowNodeConfigLoading?: (agentCliId: string) => boolean
     selectPanelZIndex?: number
     /** 模板信息区副文案；不传则不展示 */
     templateInfoHint?: string
     templateNamePlaceholder?: string
+    templateNameLabel?: string
     tabKeyPrefix?: string
+    /** 节点定义区副文案；不传则按 hideAgentCli 使用默认文案 */
+    nodeDefinitionHint?: string
   }>(),
   {
+    hideAgentCli: false,
+    loadingWorkflowConfiguredCliTools: false,
+    workflowConfiguredCliTools: () => [],
+    workflowCliToolSelectOptions: () => [],
+    getWorkflowNodeConfigSelectOptions: () => [],
+    isWorkflowNodeConfigLoading: () => false,
     selectPanelZIndex: WORKFLOW_TEMPLATE_EDITOR_SELECT_PANEL_Z_INDEX,
     templateNamePlaceholder: '例如：项目发布修复流',
+    templateNameLabel: '模板名称',
     tabKeyPrefix: 'workflow-template-editor-node-tab',
   },
 )
+
+const resolvedNodeDefinitionHint = computed(() => {
+  if (props.nodeDefinitionHint) {
+    return props.nodeDefinitionHint
+  }
+  return props.hideAgentCli
+    ? '每个节点可配置 Prompt 与循环等选项；业务线侧再绑定 Agent CLI。'
+    : '每个节点可配置 Prompt、Agent CLI 和配置。'
+})
 
 const panelZIndex = computed(() => props.selectPanelZIndex ?? WORKFLOW_TEMPLATE_EDITOR_SELECT_PANEL_Z_INDEX)
 
@@ -109,7 +130,7 @@ const emit = defineEmits<{
             </div>
             <div class="grid gap-3 md:grid-cols-2">
               <label class="space-y-1">
-                <span class="text-xs font-semibold text-muted-foreground">模板名称</span>
+                <span class="text-xs font-semibold text-muted-foreground">{{ templateNameLabel }}</span>
                 <input
                   v-model="form.name"
                   class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
@@ -127,6 +148,7 @@ const emit = defineEmits<{
                 />
               </label>
             </div>
+            <slot name="template-settings" />
           </section>
 
           <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
@@ -134,7 +156,7 @@ const emit = defineEmits<{
               <div>
                 <p class="text-xs font-semibold text-muted-foreground">节点定义</p>
                 <p class="mt-1 text-[11px] text-muted-foreground">
-                  每个节点可配置 Prompt、Agent CLI 和配置。
+                  {{ resolvedNodeDefinitionHint }}
                 </p>
               </div>
               <button
@@ -263,39 +285,41 @@ const emit = defineEmits<{
                     </label>
                   </template>
 
-                  <label class="space-y-1">
-                    <span class="text-[11px] text-muted-foreground">Agent CLI</span>
-                    <AppSelect
-                      v-model="activeWorkflowCreateNode.input.agentCliId"
-                      aria-label="Agent CLI"
-                      :disabled="
-                        loadingWorkflowConfiguredCliTools || workflowConfiguredCliTools.length === 0
-                      "
-                      :options="workflowCliToolSelectOptions"
-                      :panel-z-index="panelZIndex"
-                      trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
-                      @change="void emit('nodeCliChange', activeWorkflowCreateNode)"
-                    />
-                  </label>
+                  <template v-if="!hideAgentCli">
+                    <label class="space-y-1">
+                      <span class="text-[11px] text-muted-foreground">Agent CLI</span>
+                      <AppSelect
+                        v-model="activeWorkflowCreateNode.input.agentCliId"
+                        aria-label="Agent CLI"
+                        :disabled="
+                          loadingWorkflowConfiguredCliTools || workflowConfiguredCliTools.length === 0
+                        "
+                        :options="workflowCliToolSelectOptions"
+                        :panel-z-index="panelZIndex"
+                        trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
+                        @change="void emit('nodeCliChange', activeWorkflowCreateNode)"
+                      />
+                    </label>
 
-                  <label class="space-y-1">
-                    <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
-                    <AppSelect
-                      v-model="activeWorkflowCreateNode.input.agentCliConfigId"
-                      aria-label="Agent CLI 配置"
-                      placeholder="请选择 Agent CLI 配置"
-                      :disabled="
-                        !activeWorkflowCreateNode.input.agentCliId ||
-                        isWorkflowNodeConfigLoading(activeWorkflowCreateNode.input.agentCliId)
-                      "
-                      :options="
-                        getWorkflowNodeConfigSelectOptions(activeWorkflowCreateNode.input.agentCliId)
-                      "
-                      :panel-z-index="panelZIndex"
-                      panel-placement="top"
-                      trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
-                    />
-                  </label>
+                    <label class="space-y-1">
+                      <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
+                      <AppSelect
+                        v-model="activeWorkflowCreateNode.input.agentCliConfigId"
+                        aria-label="Agent CLI 配置"
+                        placeholder="请选择 Agent CLI 配置"
+                        :disabled="
+                          !activeWorkflowCreateNode.input.agentCliId ||
+                          isWorkflowNodeConfigLoading(activeWorkflowCreateNode.input.agentCliId)
+                        "
+                        :options="
+                          getWorkflowNodeConfigSelectOptions(activeWorkflowCreateNode.input.agentCliId)
+                        "
+                        :panel-z-index="panelZIndex"
+                        panel-placement="top"
+                        trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
+                      />
+                    </label>
+                  </template>
                 </div>
               </div>
             </div>

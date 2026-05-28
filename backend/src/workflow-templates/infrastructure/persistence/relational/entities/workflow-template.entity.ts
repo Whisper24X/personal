@@ -74,20 +74,6 @@ export class WorkflowTemplateEntity extends EntityRelationalHelper {
   @Column({ type: 'boolean', default: true, comment: '模板是否启用' })
   isActive: boolean;
 
-  @Column({
-    type: 'boolean',
-    default: false,
-    comment: '新建业务线时是否从该 global 母版复制到业务线',
-  })
-  seedOnBusinessLineCreate: boolean;
-
-  @Column({
-    type: 'int',
-    default: 0,
-    comment: '多条母版参与种子时的排序（升序；相同则按创建时间）',
-  })
-  businessLineSeedOrder: number;
-
   @Column({ type: 'jsonb', comment: '模板工作流节点JSON' })
   nodesJson: WorkflowTemplateNode[];
 

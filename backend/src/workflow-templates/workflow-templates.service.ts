@@ -43,16 +43,6 @@ export class WorkflowTemplatesService {
     let businessLineId: string | null = null;
     let projectId: string | null = null;
 
-    if (
-      createWorkflowTemplateDto.scope !== WorkflowTemplateScope.global &&
-      (createWorkflowTemplateDto.seedOnBusinessLineCreate !== undefined ||
-        createWorkflowTemplateDto.businessLineSeedOrder !== undefined)
-    ) {
-      throw new BadRequestException(
-        'seedOnBusinessLineCreate and businessLineSeedOrder are only valid for global templates',
-      );
-    }
-
     if (scope === WorkflowTemplateScope.global) {
       if (!this.isAdmin(currentUser)) {
         throw new ForbiddenException('forbiddenWorkflowTemplate');
@@ -138,14 +128,6 @@ export class WorkflowTemplatesService {
       businessLineId,
       projectId,
       isActive: createWorkflowTemplateDto.isActive ?? true,
-      seedOnBusinessLineCreate:
-        scope === WorkflowTemplateScope.global
-          ? (createWorkflowTemplateDto.seedOnBusinessLineCreate ?? false)
-          : false,
-      businessLineSeedOrder:
-        scope === WorkflowTemplateScope.global
-          ? (createWorkflowTemplateDto.businessLineSeedOrder ?? 0)
-          : 0,
       nodesJson: normalizedNodes,
       createdBy: currentUser.sub,
     });
@@ -227,8 +209,6 @@ export class WorkflowTemplatesService {
       businessLineId,
       projectId: null,
       isActive: true,
-      seedOnBusinessLineCreate: false,
-      businessLineSeedOrder: 0,
       nodesJson: source.nodesJson,
       createdBy: currentUser.sub,
     });
@@ -404,16 +384,6 @@ export class WorkflowTemplatesService {
       ensureValidWorkflowTemplateNodes(updateWorkflowTemplateDto.nodes);
     }
 
-    if (
-      (updateWorkflowTemplateDto.seedOnBusinessLineCreate !== undefined ||
-        updateWorkflowTemplateDto.businessLineSeedOrder !== undefined) &&
-      existedTemplate.scope !== WorkflowTemplateScope.global
-    ) {
-      throw new BadRequestException(
-        'seedOnBusinessLineCreate and businessLineSeedOrder apply only to global templates',
-      );
-    }
-
     const updatedTemplate = await this.workflowTemplateRepository.update(id, {
       ...(updateWorkflowTemplateDto.name !== undefined
         ? { name: updateWorkflowTemplateDto.name }
@@ -430,18 +400,6 @@ export class WorkflowTemplatesService {
         : {}),
       ...(updateWorkflowTemplateDto.isActive !== undefined
         ? { isActive: updateWorkflowTemplateDto.isActive }
-        : {}),
-      ...(updateWorkflowTemplateDto.seedOnBusinessLineCreate !== undefined
-        ? {
-            seedOnBusinessLineCreate:
-              updateWorkflowTemplateDto.seedOnBusinessLineCreate,
-          }
-        : {}),
-      ...(updateWorkflowTemplateDto.businessLineSeedOrder !== undefined
-        ? {
-            businessLineSeedOrder:
-              updateWorkflowTemplateDto.businessLineSeedOrder,
-          }
         : {}),
     });
 

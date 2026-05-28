@@ -35,12 +35,6 @@ export class WorkflowTemplate {
   @ApiProperty({ type: Boolean, default: true })
   isActive: boolean;
 
-  @ApiProperty({ type: Boolean, default: false })
-  seedOnBusinessLineCreate: boolean;
-
-  @ApiProperty({ type: Number, default: 0 })
-  businessLineSeedOrder: number;
-
   @ApiProperty({ type: Array, required: false })
   nodesJson: WorkflowTemplateNode[];
 

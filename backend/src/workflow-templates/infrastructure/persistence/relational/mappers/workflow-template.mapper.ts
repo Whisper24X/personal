@@ -12,8 +12,6 @@ export class WorkflowTemplateMapper {
     domainEntity.businessLineId = raw.businessLineId;
     domainEntity.projectId = raw.projectId;
     domainEntity.isActive = raw.isActive;
-    domainEntity.seedOnBusinessLineCreate = raw.seedOnBusinessLineCreate;
-    domainEntity.businessLineSeedOrder = raw.businessLineSeedOrder;
     domainEntity.nodesJson = raw.nodesJson;
     domainEntity.createdBy = raw.createdBy;
     domainEntity.createdAt = raw.createdAt;
@@ -37,10 +35,6 @@ export class WorkflowTemplateMapper {
     persistenceEntity.businessLineId = domainEntity.businessLineId;
     persistenceEntity.projectId = domainEntity.projectId;
     persistenceEntity.isActive = domainEntity.isActive;
-    persistenceEntity.seedOnBusinessLineCreate =
-      domainEntity.seedOnBusinessLineCreate ?? false;
-    persistenceEntity.businessLineSeedOrder =
-      domainEntity.businessLineSeedOrder ?? 0;
     persistenceEntity.nodesJson = domainEntity.nodesJson;
     persistenceEntity.createdBy = domainEntity.createdBy;
     persistenceEntity.createdAt = domainEntity.createdAt;

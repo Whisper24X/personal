@@ -3,82 +3,135 @@ import { workflowApi } from '@/api/workflow'
 import type {
   WorkflowTemplate,
   WorkflowTemplateNode,
+  WorkflowTemplateNodeInput,
   WorkflowNodeType,
 } from '@/types/api/workflow'
 import { fetchAllPages } from '@shared/utils/pagination'
 import { toErrorMessage } from '@api/shared/to-error-message'
+import {
+  createEmptyWorkflowNodeInput,
+  formatWorkflowNodeTabLabel,
+  type WorkflowCreateFormState,
+  type WorkflowTemplateNodeForm,
+  type WorkflowTemplateNodeInputForm,
+} from '@features/workflow'
 
-export type PlatformWorkflowNodeForm = {
-  nodeOrder: number
-  name: string
-  type: WorkflowNodeType
-  requiresApproval: boolean
-  requiresArtifact: boolean
-  prompt: string
+export type PlatformWorkflowFormState = WorkflowCreateFormState
+
+const normalizeWorkflowNodeInput = (
+  input?: WorkflowTemplateNodeInput,
+): WorkflowTemplateNodeInputForm => {
+  const rawInput = (input ?? {}) as Record<string, unknown>
+  const prompt = typeof rawInput.prompt === 'string' ? rawInput.prompt : ''
+  const earlyExitMarkerEnabled = Boolean(rawInput.earlyExitMarkerEnabled)
+  const earlyExitMarkerFileName =
+    typeof rawInput.earlyExitMarkerFileName === 'string'
+      ? rawInput.earlyExitMarkerFileName.trim()
+      : ''
+  const loopEnabled =
+    typeof rawInput.loopEnabled === 'boolean'
+      ? rawInput.loopEnabled
+      : Boolean(
+          earlyExitMarkerEnabled ||
+            (typeof rawInput.maxLoops === 'number' && rawInput.maxLoops > 1),
+        )
+
+  return {
+    ...createEmptyWorkflowNodeInput(),
+    prompt,
+    loopEnabled,
+    earlyExitMarkerEnabled,
+    earlyExitMarkerFileName,
+  }
 }
 
-export type PlatformWorkflowFormState = {
-  name: string
-  description: string
-  seedOnBusinessLineCreate: boolean
-  businessLineSeedOrder: number
-  isActive: boolean
-  nodes: PlatformWorkflowNodeForm[]
-}
-
-const normalizeNodes = (nodes: PlatformWorkflowNodeForm[]) => {
+const normalizeNodes = (nodes: WorkflowTemplateNodeForm[]) => {
   return [...nodes]
-    .sort((a, b) => a.nodeOrder - b.nodeOrder)
+    .sort((left, right) => left.nodeOrder - right.nodeOrder)
     .map((node, index) => ({
       ...node,
       nodeOrder: index + 1,
       name: node.name.trim() || `step-${index + 1}`,
       requiresApproval: Boolean(node.requiresApproval),
       requiresArtifact: Boolean(node.requiresArtifact),
-      prompt: node.prompt.trim(),
+      maxLoops: Math.max(Number(node.maxLoops) || 1, 1),
+      input: normalizeWorkflowNodeInput(node.input),
     }))
 }
 
-const nodeFromApi = (node: WorkflowTemplateNode, index: number): PlatformWorkflowNodeForm => {
-  const input = node.input ?? {}
-  const prompt = typeof input.prompt === 'string' ? input.prompt : ''
+const nodeFromApi = (node: WorkflowTemplateNode, index: number): WorkflowTemplateNodeForm => {
+  const input = normalizeWorkflowNodeInput(node.input)
+  const maxLoops = typeof node.input?.maxLoops === 'number' ? node.input.maxLoops : 1
+
   return {
     nodeOrder: node.nodeOrder ?? index + 1,
     name: node.name,
     type: (node.type as WorkflowNodeType) ?? 'agent',
     requiresApproval: Boolean(node.requiresApproval),
     requiresArtifact: Boolean(node.requiresArtifact),
-    prompt,
+    maxLoops: Math.max(maxLoops, 1),
+    input,
   }
 }
 
-const buildNodesForApi = (nodes: PlatformWorkflowNodeForm[]): WorkflowTemplateNode[] => {
-  return normalizeNodes(nodes).map((node) => ({
-    nodeOrder: node.nodeOrder,
-    name: node.name,
-    type: node.type,
-    requiresApproval: node.requiresApproval,
-    requiresArtifact: node.requiresArtifact,
-    input: node.prompt ? { prompt: node.prompt } : {},
-  }))
+const serializeWorkflowNodeInput = (
+  input: WorkflowTemplateNodeInputForm,
+): WorkflowTemplateNodeInput | undefined => {
+  const normalizedPrompt = input.prompt.trim()
+  const normalizedMarkerFileName = input.earlyExitMarkerFileName.trim()
+  const payload: WorkflowTemplateNodeInput = {}
+
+  if (normalizedPrompt) {
+    payload.prompt = normalizedPrompt
+  }
+
+  if (input.loopEnabled) {
+    payload.loopEnabled = true
+    payload.earlyExitMarkerEnabled = true
+  }
+
+  if (input.loopEnabled && normalizedMarkerFileName) {
+    payload.earlyExitMarkerFileName = normalizedMarkerFileName
+  }
+
+  return Object.keys(payload).length > 0 ? payload : undefined
 }
+
+const buildNodesForApi = (nodes: WorkflowTemplateNodeForm[]): WorkflowTemplateNode[] => {
+  return normalizeNodes(nodes).map((node) => {
+    const serializedInput = serializeWorkflowNodeInput(node.input)
+    const input: WorkflowTemplateNodeInput = {
+      ...serializedInput,
+      ...(node.input.loopEnabled && node.maxLoops !== undefined && node.maxLoops > 1
+        ? { maxLoops: node.maxLoops }
+        : {}),
+    }
+
+    return {
+      nodeOrder: node.nodeOrder,
+      name: node.name,
+      type: node.type,
+      requiresApproval: node.requiresApproval,
+      requiresArtifact: node.requiresArtifact,
+      input: Object.keys(input).length > 0 ? input : undefined,
+    }
+  })
+}
+
+const buildWorkflowNode = (nodeOrder: number): WorkflowTemplateNodeForm => ({
+  nodeOrder,
+  name: `step-${nodeOrder}`,
+  type: 'agent',
+  requiresApproval: true,
+  requiresArtifact: false,
+  maxLoops: 1,
+  input: createEmptyWorkflowNodeInput(),
+})
 
 const emptyForm = (): PlatformWorkflowFormState => ({
   name: '',
   description: '',
-  seedOnBusinessLineCreate: false,
-  businessLineSeedOrder: 0,
-  isActive: true,
-  nodes: [
-    {
-      nodeOrder: 1,
-      name: 'step-1',
-      type: 'agent',
-      requiresApproval: true,
-      requiresArtifact: false,
-      prompt: '',
-    },
-  ],
+  nodes: [buildWorkflowNode(1)],
 })
 
 export function usePlatformGlobalWorkflowTemplates(message: {
@@ -92,7 +145,7 @@ export function usePlatformGlobalWorkflowTemplates(message: {
   const mode = ref<'create' | 'edit'>('create')
   const editingId = ref('')
   const validationMessage = ref('')
-  const activeNodeIndex = ref(0)
+  const workflowEditorActiveNodeIndex = ref(0)
   const form = ref<PlatformWorkflowFormState>(emptyForm())
   const deleteModalOpen = ref(false)
   const deleteTarget = ref<WorkflowTemplate | null>(null)
@@ -102,7 +155,10 @@ export function usePlatformGlobalWorkflowTemplates(message: {
 
   const syncActiveNodeIndex = () => {
     const max = form.value.nodes.length - 1
-    activeNodeIndex.value = Math.min(Math.max(activeNodeIndex.value, 0), Math.max(max, 0))
+    workflowEditorActiveNodeIndex.value = Math.min(
+      Math.max(workflowEditorActiveNodeIndex.value, 0),
+      Math.max(max, 0),
+    )
   }
 
   const loadTemplates = async () => {
@@ -127,8 +183,12 @@ export function usePlatformGlobalWorkflowTemplates(message: {
       return '至少需要一个节点'
     }
     for (let i = 0; i < nodes.length; i += 1) {
-      if (!nodes[i]?.name.trim()) {
+      const node = nodes[i]
+      if (!node?.name.trim()) {
         return `节点 #${i + 1} 名称不能为空`
+      }
+      if (node.input.loopEnabled && !node.input.earlyExitMarkerFileName.trim()) {
+        return `节点 #${i + 1} 已启用循环，请填写 Marker 文件名`
       }
     }
     return ''
@@ -138,7 +198,7 @@ export function usePlatformGlobalWorkflowTemplates(message: {
     mode.value = 'create'
     editingId.value = ''
     form.value = emptyForm()
-    activeNodeIndex.value = 0
+    workflowEditorActiveNodeIndex.value = 0
     validationMessage.value = ''
     modalOpen.value = true
   }
@@ -149,15 +209,12 @@ export function usePlatformGlobalWorkflowTemplates(message: {
     form.value = {
       name: t.name,
       description: t.description ?? '',
-      seedOnBusinessLineCreate: Boolean(t.seedOnBusinessLineCreate),
-      businessLineSeedOrder: t.businessLineSeedOrder ?? 0,
-      isActive: t.isActive !== false,
       nodes: (t.nodesJson ?? []).map((n, i) => nodeFromApi(n, i)),
     }
     if (form.value.nodes.length === 0) {
       form.value.nodes = emptyForm().nodes
     }
-    activeNodeIndex.value = 0
+    workflowEditorActiveNodeIndex.value = 0
     validationMessage.value = ''
     modalOpen.value = true
   }
@@ -167,16 +224,9 @@ export function usePlatformGlobalWorkflowTemplates(message: {
   }
 
   const addNode = () => {
-    const nextOrder = form.value.nodes.length + 1
-    form.value.nodes.push({
-      nodeOrder: nextOrder,
-      name: `step-${nextOrder}`,
-      type: 'agent',
-      requiresApproval: true,
-      requiresArtifact: false,
-      prompt: '',
-    })
-    activeNodeIndex.value = form.value.nodes.length - 1
+    form.value.nodes.push(buildWorkflowNode(form.value.nodes.length + 1))
+    form.value.nodes = normalizeNodes(form.value.nodes)
+    workflowEditorActiveNodeIndex.value = form.value.nodes.length - 1
   }
 
   const removeNode = (index: number) => {
@@ -184,6 +234,7 @@ export function usePlatformGlobalWorkflowTemplates(message: {
       return
     }
     form.value.nodes.splice(index, 1)
+    form.value.nodes = normalizeNodes(form.value.nodes)
     syncActiveNodeIndex()
   }
 
@@ -203,9 +254,7 @@ export function usePlatformGlobalWorkflowTemplates(message: {
           description: form.value.description.trim() || undefined,
           scope: 'global',
           nodes,
-          isActive: form.value.isActive,
-          seedOnBusinessLineCreate: form.value.seedOnBusinessLineCreate,
-          businessLineSeedOrder: form.value.businessLineSeedOrder,
+          isActive: true,
         })
         message.success('已创建平台工作流')
       } else {
@@ -213,9 +262,6 @@ export function usePlatformGlobalWorkflowTemplates(message: {
           name: form.value.name.trim(),
           description: form.value.description.trim() || undefined,
           nodes,
-          isActive: form.value.isActive,
-          seedOnBusinessLineCreate: form.value.seedOnBusinessLineCreate,
-          businessLineSeedOrder: form.value.businessLineSeedOrder,
         })
         message.success('已保存')
       }
@@ -260,11 +306,12 @@ export function usePlatformGlobalWorkflowTemplates(message: {
     modalOpen,
     mode,
     validationMessage,
-    activeNodeIndex,
+    workflowEditorActiveNodeIndex,
     form,
     deleteModalOpen,
     deleteTarget,
     deleting,
+    formatWorkflowNodeTabLabel,
     loadTemplates,
     openCreate,
     openEdit,

@@ -29,8 +29,6 @@ export type WorkflowTemplate = {
   businessLineId?: string | null
   projectId?: string | null
   isActive: boolean
-  seedOnBusinessLineCreate?: boolean
-  businessLineSeedOrder?: number
   nodesJson: WorkflowTemplateNode[]
   createdAt?: string
   updatedAt?: string
@@ -44,8 +42,6 @@ export type CreateWorkflowTemplatePayload = {
   projectId?: string
   nodes: WorkflowTemplateNode[]
   isActive?: boolean
-  seedOnBusinessLineCreate?: boolean
-  businessLineSeedOrder?: number
 }
 
 export type UpdateWorkflowTemplatePayload = Partial<CreateWorkflowTemplatePayload>

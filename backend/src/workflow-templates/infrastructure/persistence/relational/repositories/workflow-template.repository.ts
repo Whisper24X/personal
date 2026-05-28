@@ -222,9 +222,7 @@ export class WorkflowTemplateRelationalRepository
     }
 
     if (scope === WorkflowTemplateScope.global) {
-      query
-        .orderBy('workflowTemplate.businessLineSeedOrder', 'ASC')
-        .addOrderBy('workflowTemplate.createdAt', 'ASC');
+      query.orderBy('workflowTemplate.createdAt', 'ASC');
     } else {
       query.orderBy('workflowTemplate.createdAt', 'DESC');
     }

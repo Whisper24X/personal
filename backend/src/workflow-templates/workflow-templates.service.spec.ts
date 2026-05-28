@@ -138,8 +138,6 @@ describe('WorkflowTemplatesService', () => {
       businessLineId: project.businessLineId,
       projectId: 'project-1',
       isActive: true,
-      seedOnBusinessLineCreate: false,
-      businessLineSeedOrder: 0,
       nodesJson: [createWorkflowNode({ requiresApproval: true })],
       createdBy: currentUser.sub,
     });
@@ -313,8 +311,6 @@ describe('WorkflowTemplatesService', () => {
       businessLineId: null,
       projectId: null,
       isActive: true,
-      seedOnBusinessLineCreate: true,
-      businessLineSeedOrder: 1,
       nodesJson: [createWorkflowNode()],
       createdBy: currentUser.sub,
       createdAt: new Date(),
@@ -327,8 +323,6 @@ describe('WorkflowTemplatesService', () => {
         name: 'Global seed',
         scope: WorkflowTemplateScope.global,
         nodes: [createWorkflowNode()],
-        seedOnBusinessLineCreate: true,
-        businessLineSeedOrder: 1,
       },
       currentUser,
     );
@@ -344,8 +338,6 @@ describe('WorkflowTemplatesService', () => {
         scope: WorkflowTemplateScope.global,
         businessLineId: null,
         projectId: null,
-        seedOnBusinessLineCreate: true,
-        businessLineSeedOrder: 1,
       }),
     );
   });
@@ -402,8 +394,6 @@ describe('WorkflowTemplatesService', () => {
         businessLineId: null,
         projectId: null,
         isActive: true,
-        seedOnBusinessLineCreate: false,
-        businessLineSeedOrder: 0,
         nodesJson: [createWorkflowNode()],
         createdBy: 'u1',
         createdAt: new Date(),
@@ -443,8 +433,6 @@ describe('WorkflowTemplatesService', () => {
       businessLineId: null,
       projectId: null,
       isActive: true,
-      seedOnBusinessLineCreate: true,
-      businessLineSeedOrder: 0,
       nodesJson: [createWorkflowNode({ name: 'N1' })],
       createdBy: 'admin',
       createdAt: new Date(),
@@ -460,8 +448,6 @@ describe('WorkflowTemplatesService', () => {
         businessLineId: 'business-line-1',
         projectId: null,
         isActive: true,
-        seedOnBusinessLineCreate: false,
-        businessLineSeedOrder: 0,
         createdBy: currentUser.sub,
       });
     workflowTemplateRepository.findByName.mockResolvedValue(null);
@@ -481,8 +467,6 @@ describe('WorkflowTemplatesService', () => {
         businessLineId: 'business-line-1',
         nodesJson: globalTemplate.nodesJson,
         createdBy: currentUser.sub,
-        seedOnBusinessLineCreate: false,
-        businessLineSeedOrder: 0,
       }),
     );
   });

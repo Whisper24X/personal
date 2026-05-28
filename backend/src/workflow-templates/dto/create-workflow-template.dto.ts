@@ -5,7 +5,6 @@ import {
   IsBoolean,
   IsEnum,
   IsIn,
-  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -58,22 +57,6 @@ export class CreateWorkflowTemplateDto {
 
   @ApiPropertyOptional({ type: Boolean, default: true })
   @IsOptional()
-  isActive?: boolean;
-
-  @ApiPropertyOptional({
-    type: Boolean,
-    description: '仅 global 母版：新建业务线时是否复制此模板',
-  })
-  @IsOptional()
   @IsBoolean()
-  seedOnBusinessLineCreate?: boolean;
-
-  @ApiPropertyOptional({
-    type: Number,
-    description: '仅 global 母版：多条种子母版的排序（升序）',
-  })
-  @IsOptional()
-  @IsInt()
-  @Type(() => Number)
-  businessLineSeedOrder?: number;
+  isActive?: boolean;
 }
