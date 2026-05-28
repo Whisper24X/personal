@@ -4,6 +4,7 @@ import { Project } from '../projects/domain/project';
 import { AgentCliAdapterId } from './agent-cli/agent-cli-adapter.interface';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
 import { sanitizeAgentToolConfigJson } from './agent-cli-sanitize-config';
+import type { MemoryLlmProvider } from '../memory/memory-runtime.config';
 
 /** Matches Codex CLI base URL normalization for OpenAI-compatible chat/completions bases. */
 export function normalizeCodexStyleOpenAiChatBaseUrl(url: string): string {
@@ -15,9 +16,12 @@ export function normalizeCodexStyleOpenAiChatBaseUrl(url: string): string {
 }
 
 export type OpenAiCompatibleLlmTriple = {
+  llmProvider: MemoryLlmProvider;
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  llmHeaders: string[];
+  llmCommand: string;
 };
 
 /**
@@ -60,7 +64,12 @@ export class AgentToolOpenAiCompatibleLlmCredentialsService {
         parsed,
       );
       const triple = this.extractOpenAiCompatibleTriple(adapter, sanitized);
-      if (triple.llmBaseUrl || triple.llmApiKey || triple.llmModel) {
+      if (
+        triple.llmBaseUrl ||
+        triple.llmApiKey ||
+        triple.llmModel ||
+        triple.llmHeaders?.length
+      ) {
         return triple;
       }
     }
@@ -114,13 +123,21 @@ export class AgentToolOpenAiCompatibleLlmCredentialsService {
     if (adapter === 'opencode') {
       return this.extractFromOpencodeSanitized(sanitized);
     }
+    if (adapter === 'claude') {
+      return this.extractFromClaudeSanitized(sanitized);
+    }
+    if (adapter === 'cursor') {
+      return this.extractFromCursorSanitized(sanitized);
+    }
     return {};
   }
 
   private extractFromCodexSanitized(
     sanitized: Record<string, unknown>,
   ): Partial<OpenAiCompatibleLlmTriple> {
-    const out: Partial<OpenAiCompatibleLlmTriple> = {};
+    const out: Partial<OpenAiCompatibleLlmTriple> = {
+      llmProvider: 'openai-compatible',
+    };
     const baseRaw =
       typeof sanitized.base_url === 'string' && sanitized.base_url.trim()
         ? sanitized.base_url.trim()
@@ -147,7 +164,9 @@ export class AgentToolOpenAiCompatibleLlmCredentialsService {
     if (provider !== 'openai') {
       return {};
     }
-    const out: Partial<OpenAiCompatibleLlmTriple> = {};
+    const out: Partial<OpenAiCompatibleLlmTriple> = {
+      llmProvider: 'openai-compatible',
+    };
     const baseRaw =
       typeof sanitized.base_url === 'string' && sanitized.base_url.trim()
         ? sanitized.base_url.trim()
@@ -162,5 +181,95 @@ export class AgentToolOpenAiCompatibleLlmCredentialsService {
       out.llmModel = sanitized.model.trim();
     }
     return out;
+  }
+
+  private extractFromClaudeSanitized(
+    sanitized: Record<string, unknown>,
+  ): Partial<OpenAiCompatibleLlmTriple> {
+    const env = this.extractStringEnv(sanitized.env);
+    const authType =
+      typeof sanitized.auth_type === 'string' && sanitized.auth_type.trim()
+        ? sanitized.auth_type.trim()
+        : 'ANTHROPIC_AUTH_TOKEN';
+    const authToken =
+      typeof sanitized.auth_token === 'string' && sanitized.auth_token.trim()
+        ? sanitized.auth_token.trim()
+        : '';
+    const envToken =
+      authType === 'ANTHROPIC_API_KEY'
+        ? env.ANTHROPIC_API_KEY
+        : env.ANTHROPIC_AUTH_TOKEN;
+    const fallbackToken =
+      env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY || '';
+    const token = authToken || envToken || fallbackToken;
+    const baseRaw =
+      typeof sanitized.base_url === 'string' && sanitized.base_url.trim()
+        ? sanitized.base_url.trim()
+        : (env.ANTHROPIC_BASE_URL ?? '');
+    const model =
+      typeof sanitized.model === 'string' && sanitized.model.trim()
+        ? sanitized.model.trim()
+        : '';
+
+    if (!authToken && !envToken && !fallbackToken && !model && !baseRaw) {
+      return {};
+    }
+
+    return {
+      llmProvider: 'anthropic',
+      llmApiKey: authType === 'ANTHROPIC_AUTH_TOKEN' ? '' : token,
+      llmBaseUrl: baseRaw || 'https://api.anthropic.com/v1',
+      llmModel: model,
+      llmHeaders:
+        authType === 'ANTHROPIC_AUTH_TOKEN' && token
+          ? [`Authorization: Bearer ${token}`]
+          : [],
+    };
+  }
+
+  private extractFromCursorSanitized(
+    sanitized: Record<string, unknown>,
+  ): Partial<OpenAiCompatibleLlmTriple> {
+    const env = this.extractStringEnv(sanitized.env);
+    const apiKey =
+      typeof sanitized.api_key === 'string' && sanitized.api_key.trim()
+        ? sanitized.api_key.trim()
+        : (env.CURSOR_API_KEY ?? '');
+    const model =
+      typeof sanitized.model === 'string' && sanitized.model.trim()
+        ? sanitized.model.trim()
+        : '';
+    const headers = Array.isArray(sanitized.headers)
+      ? sanitized.headers
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+
+    if (!apiKey && !model && !headers.length) {
+      return {};
+    }
+
+    return {
+      llmProvider: 'cursor-agent',
+      llmApiKey: apiKey,
+      llmModel: model,
+      llmHeaders: headers,
+    };
+  }
+
+  private extractStringEnv(value: unknown): Record<string, string> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    return Object.entries(value as Record<string, unknown>).reduce<
+      Record<string, string>
+    >((result, [key, item]) => {
+      if (typeof item === 'string' && item.trim()) {
+        result[key] = item.trim();
+      }
+      return result;
+    }, {});
   }
 }

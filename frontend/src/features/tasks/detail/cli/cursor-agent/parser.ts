@@ -37,6 +37,8 @@ const TOOL_KEY_DISPLAY_NAME: Record<string, string> = {
   fileSearchToolCall: 'FileSearch',
 }
 
+const AINATIVE_INJECTED_PROMPT_SOURCE = 'ainative_injected_prompt'
+
 function resolveToolFromKey(key: string): { displayName: string; entryType: NormalizedEntryType } {
   const display = TOOL_KEY_DISPLAY_NAME[key]
   if (display) {
@@ -299,6 +301,16 @@ function parseCursorAgentLine(
       return content ? createEntry('system_message', content, timestamp, `${idBase}-system`) : null
     }
 
+    // type=user_message is the AINative pre-execution prompt record.
+    if (type === 'user_message') {
+      const content = getString(msg.message) || extractContentParts(msg)
+      return content
+        ? createEntry('user_message', content, timestamp, `${idBase}-user`, {
+            source: getString(msg.source),
+          })
+        : null
+    }
+
     // type=user
     if (type === 'user') {
       const content = extractContentParts(msg)
@@ -374,7 +386,31 @@ export function parseCursorAgentMessages(messages: TaskMessage[]): NormalizedEnt
     entries.push(createEntry('system_message', content, timestamp, `${idBase}-raw`))
   })
 
-  return mergeThinkingDeltas(entries)
+  return dedupeInjectedPromptEntries(mergeThinkingDeltas(entries))
+}
+
+function dedupeInjectedPromptEntries(entries: NormalizedEntry[]): NormalizedEntry[] {
+  const nativeUserPrompts = new Set(
+    entries
+      .filter((entry) => entry.type === 'user_message' && entry.metadata?.source !== AINATIVE_INJECTED_PROMPT_SOURCE)
+      .map((entry) => normalizePromptContent(entry.content))
+      .filter(Boolean),
+  )
+
+  if (nativeUserPrompts.size === 0) {
+    return entries
+  }
+
+  return entries.filter((entry) => {
+    if (entry.type !== 'user_message' || entry.metadata?.source !== AINATIVE_INJECTED_PROMPT_SOURCE) {
+      return true
+    }
+    return !nativeUserPrompts.has(normalizePromptContent(entry.content))
+  })
+}
+
+function normalizePromptContent(content: string): string {
+  return content.trim().replace(/\s+/g, ' ')
 }
 
 function mergeThinkingDeltas(entries: NormalizedEntry[]): NormalizedEntry[] {

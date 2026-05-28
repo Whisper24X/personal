@@ -1,6 +1,7 @@
 import { BaseAgentCliAdapter } from '../agent-cli-adapter.base';
 import {
   AgentCliContinuationOptions,
+  AgentCliPreExecutionOutputInput,
   AgentCliRunnerConfigInput,
 } from '../agent-cli-adapter.interface';
 
@@ -56,6 +57,25 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
     options: AgentCliContinuationOptions,
   ): string[] {
     return [...args, '--resume', options.sessionId];
+  }
+
+  buildPreExecutionOutputRecords(
+    input: AgentCliPreExecutionOutputInput,
+  ): Record<string, unknown>[] {
+    const prompt = this.normalizeOptionalString(input.prompt);
+
+    if (!prompt) {
+      return [];
+    }
+
+    return [
+      {
+        type: 'user_message',
+        message: prompt,
+        created_at: input.createdAt.toISOString(),
+        source: 'ainative_injected_prompt',
+      },
+    ];
   }
 
   private buildCursorPrintArgs(raw: Record<string, unknown>): string[] {

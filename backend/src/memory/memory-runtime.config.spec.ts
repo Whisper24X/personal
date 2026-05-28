@@ -10,16 +10,21 @@ describe('memory-runtime LLM merge helpers', () => {
   const blankLlmSnap = (): MemoryRuntimeConfigSnapshot =>
     ({
       ...loadMemoryRuntimeConfigFromEnv(),
+      llmProvider: 'openai-compatible',
       llmBaseUrl: '',
       llmApiKey: '',
       llmModel: '',
+      llmHeaders: [],
+      llmCommand: '',
     }) as MemoryRuntimeConfigSnapshot;
 
   it('should fill only blanks when merging LLM triple from partial', () => {
     let s = mergeLlmTripleIfBlankFromPartial(blankLlmSnap(), {
+      llmProvider: 'cursor-agent',
       llmBaseUrl: 'https://x/v1',
       llmApiKey: 'k',
     });
+    expect(s.llmProvider).toBe('cursor-agent');
     expect(s.llmBaseUrl).toBe('https://x/v1');
     expect(s.llmApiKey).toBe('k');
     expect(s.llmModel).toBe('');
@@ -30,6 +35,20 @@ describe('memory-runtime LLM merge helpers', () => {
       { llmModel: 'm2' },
     );
     expect(s.llmModel).toBe('m1');
+  });
+
+  it('should finalize provider-specific default models', () => {
+    const anthropic = finalizeMemoryLlmModelIfBlank({
+      ...blankLlmSnap(),
+      llmProvider: 'anthropic',
+    });
+    const cursor = finalizeMemoryLlmModelIfBlank({
+      ...blankLlmSnap(),
+      llmProvider: 'cursor-agent',
+    });
+
+    expect(anthropic.llmModel).toBe('claude-sonnet-4-5');
+    expect(cursor.llmModel).toBe('');
   });
 
   it('should apply OPENAI_* process env when MEMORY LLM fields are blank', () => {

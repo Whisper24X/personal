@@ -11,6 +11,49 @@ function createTaskMessage(content: string): TaskMessage {
 }
 
 describe('parseCursorAgentMessages', () => {
+  it('parses AINative injected prompt as user message', () => {
+    const line = JSON.stringify({
+      type: 'user_message',
+      message: '使用 brainstorm 技能，生成需求澄清文档。',
+      source: 'ainative_injected_prompt',
+      created_at: '2026-03-19T02:00:00.000Z',
+    })
+    const entries = parseCursorAgentMessages([createTaskMessage(line)])
+
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      type: 'user_message',
+      content: '使用 brainstorm 技能，生成需求澄清文档。',
+    })
+  })
+
+  it('deduplicates AINative injected prompt when Cursor emits the same user message', () => {
+    const prompt = '使用 brainstorm 技能，生成需求澄清文档。'
+    const injected = JSON.stringify({
+      type: 'user_message',
+      message: prompt,
+      source: 'ainative_injected_prompt',
+      created_at: '2026-03-19T02:00:00.000Z',
+    })
+    const nativeUser = JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: prompt }],
+      },
+    })
+    const entries = parseCursorAgentMessages([
+      createTaskMessage(injected),
+      createTaskMessage(nativeUser),
+    ])
+
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      type: 'user_message',
+      content: prompt,
+    })
+  })
+
   it('extracts thinking from message.content parts with thinking field', () => {
     const line = JSON.stringify({
       type: 'thinking',
