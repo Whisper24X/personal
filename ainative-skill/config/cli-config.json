@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "allow": ["Shell(*)"],
+    "deny": []
+  },
+  "version": 1,
+  "editor": {
+    "vimMode": false
+  },
+  "model": {
+    "modelId": "composer-1.5",
+    "displayModelId": "composer-1.5",
+    "displayName": "Composer 1.5",
+    "displayNameShort": "Composer 1.5",
+    "aliases": [],
+    "maxMode": false
+  },
+  "hasChangedDefaultModel": true,
+  "maxMode": false,
+  "privacyCache": {
+    "ghostMode": true,
+    "privacyMode": 2,
+    "updatedAt": 1772696731571
+  },
+  "authInfo": {
+    "email": "chenjianfeng@guanghe.tv",
+    "displayName": "chenjianfeng 陈剑枫",
+    "teamId": 17415973,
+    "teamName": "OnionAcademy",
+    "userId": 195038206,
+    "authId": "auth0|user_01JSP49GNTFBDCW5242XSGHM0H"
+  },
+  "network": {
+    "useHttp1ForAgent": false
+  },
+  "approvalMode": "allowlist",
+  "sandbox": {
+    "mode": "disabled",
+    "networkAccess": "user_config_with_defaults"
+  },
+  "attribution": {
+    "attributeCommitsToAgent": true,
+    "attributePRsToAgent": true
+  }
+}

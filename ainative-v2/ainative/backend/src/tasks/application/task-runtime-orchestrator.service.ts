@@ -1,0 +1,109 @@
+import { Injectable } from '@nestjs/common';
+import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
+import { ProjectAccessService } from '../../projects/project-access.service';
+import { Project } from '../../projects/domain/project';
+import { Task } from '../domain/task';
+import { TaskRepository } from '../infrastructure/persistence/task.repository';
+import { TaskRuntimeService } from '../task-runtime.service';
+import { TaskLogLevel } from '../dto/task-log-level.enum';
+import { TaskLogService } from './task-log.service';
+import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
+import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
+
+type TaskRuntimeSnapshot = {
+  gitBranch: string;
+  gitBaseBranch: string;
+  worktreePath: string;
+};
+
+@Injectable()
+export class TaskRuntimeOrchestratorService {
+  constructor(
+    private readonly projectAccessService: ProjectAccessService,
+    private readonly taskRepository: TaskRepository,
+    private readonly taskRuntimeService: TaskRuntimeService,
+    private readonly taskLogService: TaskLogService,
+    private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
+  ) {}
+
+  async prepareTaskRuntime(
+    task: Task,
+    currentUser: JwtPayloadType,
+  ): Promise<{ task: Task; project: Project }> {
+    const project = await this.projectAccessService.assertProjectCapability(
+      task.projectId,
+      currentUser,
+      'project.task.read',
+    );
+
+    const initializedRuntime = await this.initializeTaskRuntime(task, project);
+
+    return {
+      task: this.createRuntimeTaskSnapshot(
+        initializedRuntime.task,
+        initializedRuntime.runtime,
+      ),
+      project,
+    };
+  }
+
+  async initializeTaskRuntime(
+    task: Task,
+    project: Project,
+    options?: { forceLog?: boolean },
+  ): Promise<{
+    task: Task;
+    runtime: TaskRuntimeSnapshot;
+  }> {
+    const runtime = await this.taskRuntimeService.ensureRuntime(task, project);
+
+    const hasRuntimeChanged =
+      task.gitBranch !== runtime.gitBranch ||
+      task.gitBaseBranch !== runtime.gitBaseBranch ||
+      task.gitWorktree !== runtime.gitWorktree;
+
+    const runtimeTask = hasRuntimeChanged
+      ? ((await this.taskRepository.update(task.id, {
+          gitBranch: runtime.gitBranch,
+          gitBaseBranch: runtime.gitBaseBranch,
+          gitWorktree: runtime.gitWorktree,
+        })) ?? task)
+      : task;
+
+    if (hasRuntimeChanged) {
+      this.taskWorkspaceContextCache.invalidateTask(task.id);
+    }
+
+    if (options?.forceLog || hasRuntimeChanged) {
+      await this.taskLogService.appendLog({
+        taskId: task.id,
+        taskNodeId: null,
+        level: TaskLogLevel.info,
+        message: 'Task sandbox initialized',
+        payload: {
+          gitBranch: runtime.gitBranch,
+          gitBaseBranch: runtime.gitBaseBranch,
+          gitWorktree: runtime.gitWorktree,
+          worktreePath: runtime.worktreePath,
+        },
+      });
+    }
+
+    await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
+
+    return {
+      task: runtimeTask,
+      runtime,
+    };
+  }
+
+  createRuntimeTaskSnapshot(task: Task, runtime: TaskRuntimeSnapshot): Task {
+    return {
+      ...task,
+      gitBranch: runtime.gitBranch,
+      gitBaseBranch: runtime.gitBaseBranch,
+      gitWorktree: runtime.worktreePath,
+    };
+  }
+}

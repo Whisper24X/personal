@@ -1,0 +1,26 @@
+---
+description: Import boundaries and dependency flow for frontend/
+globs: frontend/**/*.{vue,ts}
+alwaysApply: false
+---
+
+# Dependency flow
+
+Enforce this direction (aligned with skill `references/spa-architecture.md` §4–5; features = public surface only):
+
+```
+app      -> pages, features(public API), api, shared
+pages    -> features(public API), api, shared
+features -> api, shared, other-features(public API only)
+api      -> shared
+shared   -> shared, npm packages
+```
+
+- **Never** import `features/`, `pages/`, or `app/` from `api/` or from `shared/` (HTTP 层与 `shared/` 若需同步 Pinia，用事件桥接，见 `shared/utils/auth-session-bridge.ts` + `app/main.ts` 监听器，勿在 `api/` 内 `import @app/stores`)。
+- **装配层消费**：`pages/`、`features/` 使用 `@app/stores`、应用级 composable（如 `@app/composables/useMessage`）是预期路径；**不要**从 `shared/` 直接依赖 `@app/`（消息宿主与 `useMessage` 放在 `app/`）。
+- **Cross-feature**: import only from another feature’s **public entry** (e.g. `index.ts`), not deep internal paths. Tooling: `eslint.config.ts` uses `eslint-plugin-boundaries`; optional stricter `capture` for per-feature globs is documented in that file—normative rule remains **public API only**.
+- **Tooling**: `frontend/eslint.config.ts` 启用 `eslint-plugin-boundaries`（`boundaries/dependencies`）与 `max-lines`（Vue：**error@600** 为默认；`maxLinesExemptVueFiles` 列表内暂 **warn@600**；400 行软上限靠评审）。循环依赖：`pnpm --dir frontend run deps:circular:strict`（`dpdm`），已纳入根目录 `quality-gate`。`no-restricted-imports` 拦截团队约定的废弃路径（如旧 `views`/`hooks` 等，以配置为准）。
+- **Contract-first**: when changing backend contracts, prefer touching `api/` and `types/api/` (or equivalent) before wide UI edits—see data flow in `references/spa-architecture.md` §3 and §7.
+- **CLI renderers**: each agent owns UI under its own directory; no cross-agent UI imports; shared code in `cli` is non-UI primitives only (see §8 in `.agents/skills/frontend-architecture/references/spa-architecture.md`).
+
+Full diagram and data flow: `.agents/skills/frontend-architecture/references/spa-architecture.md`.

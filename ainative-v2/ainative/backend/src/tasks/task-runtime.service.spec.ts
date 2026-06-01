@@ -1,0 +1,652 @@
+import { spawnSync } from 'child_process';
+import { ConfigService } from '@nestjs/config';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
+import { Project } from '../projects/domain/project';
+import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
+import { Task } from './domain/task';
+import { TaskMode } from './dto/task-mode.enum';
+import { TaskStatus } from './dto/task-status.enum';
+import { TaskRuntimeService } from './task-runtime.service';
+
+process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
+
+const runGit = (args: string[], cwd: string): string => {
+  const result = spawnSync('git', args, {
+    cwd,
+    encoding: 'utf-8',
+  });
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr || `git ${args.join(' ')} failed`);
+  }
+
+  return result.stdout.trim();
+};
+
+const createTask = (overrides: Partial<Task> = {}): Task => ({
+  id: 'task-test-id',
+  projectId: 'project-test-id',
+  businessLineId: 'business-line-test-id',
+  mode: TaskMode.workflow,
+  title: 'runtime test',
+  status: TaskStatus.todo,
+  gitBranch: 'feature/runtime-test',
+  gitBaseBranch: 'main',
+  gitWorktree: null,
+  prompt: null,
+  configJson: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  deletedAt: null,
+  ...overrides,
+});
+
+const createProject = (
+  overrides: Partial<Project> = {},
+  configJson?: Record<string, unknown> | null,
+): Project => ({
+  id: 'project-test-id',
+  businessLineId: 'business-line-test-id',
+  name: 'AINative Runtime Project',
+  description: null,
+  gitUrl: 'git@example.com:group/ainative-workspace.git',
+  defaultBranch: 'main',
+  configJson: configJson ?? null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  deletedAt: null,
+  ...overrides,
+});
+
+const initializeRepository = async (): Promise<string> => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'ainative-runtime-spec-'),
+  );
+
+  runGit(['init'], directory);
+  runGit(['config', 'user.name', 'AINative Test'], directory);
+  runGit(['config', 'user.email', 'ainative@example.com'], directory);
+
+  await fs.writeFile(path.join(directory, 'README.md'), '# runtime test\n');
+  runGit(['add', 'README.md'], directory);
+  runGit(['commit', '-m', 'init commit'], directory);
+
+  return directory;
+};
+
+const createTaskRuntimeService = (): TaskRuntimeService => {
+  const configService = new ConfigService();
+  const projectWorkspacePathsService = new ProjectWorkspacePathsService(
+    configService,
+  );
+  const projectRepositoryWorkspaceService = {
+    ensureProjectRepository: jest.fn((project: Project) =>
+      Promise.resolve(
+        projectWorkspacePathsService.resolveRepositoryRoot(project),
+      ),
+    ),
+  };
+
+  return new TaskRuntimeService(
+    configService,
+    projectWorkspacePathsService,
+    projectRepositoryWorkspaceService as never,
+  );
+};
+
+describe('TaskRuntimeService', () => {
+  const service = createTaskRuntimeService();
+  const createdDirectories: string[] = [];
+  const originalGitRuntimeEnabled = process.env.AINATIVE_GIT_RUNTIME_ENABLED;
+  const originalGitlabUsername = process.env.GITLAB_USERNAME;
+  const originalGitlabToken = process.env.GITLAB_TOKEN;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+
+    if (originalGitRuntimeEnabled === undefined) {
+      delete process.env.AINATIVE_GIT_RUNTIME_ENABLED;
+    } else {
+      process.env.AINATIVE_GIT_RUNTIME_ENABLED = originalGitRuntimeEnabled;
+    }
+
+    if (originalGitlabUsername === undefined) {
+      delete process.env.GITLAB_USERNAME;
+    } else {
+      process.env.GITLAB_USERNAME = originalGitlabUsername;
+    }
+
+    if (originalGitlabToken === undefined) {
+      delete process.env.GITLAB_TOKEN;
+    } else {
+      process.env.GITLAB_TOKEN = originalGitlabToken;
+    }
+
+    await Promise.all(
+      createdDirectories
+        .splice(0)
+        .map((directory) => fs.rm(directory, { recursive: true, force: true })),
+    );
+  });
+
+  it('should return null when git worktree is clean', async () => {
+    const repositoryPath = await initializeRepository();
+    createdDirectories.push(repositoryPath);
+
+    const artifact = await service.collectGitDiffArtifact(
+      createTask({ gitWorktree: repositoryPath }),
+    );
+
+    expect(artifact).toBeNull();
+  });
+
+  it('should collect git diff artifact with commit metadata', async () => {
+    const repositoryPath = await initializeRepository();
+    createdDirectories.push(repositoryPath);
+
+    await fs.appendFile(path.join(repositoryPath, 'README.md'), '\nnew line\n');
+
+    const artifact = await service.collectGitDiffArtifact(
+      createTask({ gitWorktree: repositoryPath }),
+    );
+
+    expect(artifact).not.toBeNull();
+    expect(artifact?.content).toContain('## commit');
+    expect(artifact?.content).toContain('```diff');
+    expect(artifact?.metadata.branch).toBeTruthy();
+    expect(artifact?.metadata.headCommit).toBeTruthy();
+    expect(Array.isArray(artifact?.metadata.changedFiles)).toBeTruthy();
+    expect(artifact?.metadata.changedFiles).toContain('README.md');
+  });
+
+  it('should fall back to directory cleanup when git worktree cleanup fails', async () => {
+    const project = createProject();
+    const worktreeBase = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'projects',
+      project.id,
+      'worktrees',
+    );
+    const worktreePath = path.join(
+      worktreeBase,
+      `wk-cleanup-test-${Date.now()}`,
+    );
+    await fs.mkdir(worktreePath, { recursive: true });
+    createdDirectories.push(path.dirname(worktreePath));
+
+    const cleanupResult = await service.cleanupRuntime(
+      createTask({ gitWorktree: worktreePath }),
+      project,
+    );
+
+    expect(cleanupResult.cleaned).toBeTruthy();
+
+    await expect(fs.access(worktreePath)).rejects.toThrow();
+  });
+
+  it('should report cleanup failure when directory removal fails and the path remains', async () => {
+    const project = createProject();
+    const worktreeBase = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'projects',
+      project.id,
+      'worktrees',
+    );
+    const worktreePath = path.join(
+      worktreeBase,
+      `wk-cleanup-fail-${Date.now()}`,
+    );
+    await fs.mkdir(worktreePath, { recursive: true });
+    createdDirectories.push(path.dirname(worktreePath));
+
+    const removeSpy = jest
+      .spyOn(fs, 'rm')
+      .mockRejectedValueOnce(new Error('rm blocked'));
+
+    const cleanupResult = await service.cleanupRuntime(
+      createTask({ gitWorktree: worktreePath }),
+      project,
+    );
+
+    removeSpy.mockRestore();
+
+    expect(cleanupResult.cleaned).toBe(false);
+    expect(cleanupResult.errorMessage).toContain('rm blocked');
+    await expect(fs.access(worktreePath)).resolves.toBeUndefined();
+  });
+
+  it('should delete the task branch during runtime cleanup when requested', async () => {
+    const repositoryPath = await initializeRepository();
+    createdDirectories.push(repositoryPath);
+    runGit(['branch', 'feature/runtime-test'], repositoryPath);
+
+    const cleanupResult = await service.cleanupRuntime(
+      createTask({
+        gitWorktree: null,
+        gitBranch: 'feature/runtime-test',
+      }),
+      createProject(
+        {},
+        {
+          repoLocalPath: repositoryPath,
+        },
+      ),
+      {
+        deleteBranch: true,
+      },
+    );
+
+    expect(cleanupResult.cleaned).toBe(true);
+    expect(
+      runGit(['branch', '--list', 'feature/runtime-test'], repositoryPath),
+    ).toBe('');
+  });
+
+  it('should reuse existing worktree without syncing repository again', async () => {
+    const allowedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-worktree-root-'),
+    );
+    createdDirectories.push(allowedRoot);
+    const canonicalAllowedRoot = await fs.realpath(allowedRoot);
+
+    const project = createProject(
+      {},
+      {
+        worktreeAllowedRoot: canonicalAllowedRoot,
+      },
+    );
+    const worktreePath = path.join(canonicalAllowedRoot, 'wk-existing-runtime');
+
+    await fs.mkdir(worktreePath, { recursive: true });
+    await fs.writeFile(path.join(worktreePath, '.git'), 'gitdir: mocked\n');
+
+    const ensureProjectRepositorySpy = jest.spyOn(
+      service as any,
+      'ensureProjectRepository',
+    );
+
+    await (service as any).ensureGitWorktree({
+      project,
+      worktreePath,
+      allowedRoot: canonicalAllowedRoot,
+      branch: 'feature/runtime-test',
+      gitBaseBranch: 'main',
+    });
+
+    expect(ensureProjectRepositorySpy).not.toHaveBeenCalled();
+  });
+
+  it('should sync repository before creating a missing worktree', async () => {
+    const allowedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-worktree-root-'),
+    );
+    createdDirectories.push(allowedRoot);
+    const canonicalAllowedRoot = await fs.realpath(allowedRoot);
+
+    const project = createProject(
+      {},
+      {
+        worktreeAllowedRoot: canonicalAllowedRoot,
+      },
+    );
+    const worktreePath = path.join(canonicalAllowedRoot, 'wk-create-runtime');
+    const repositoryRoot = path.join(canonicalAllowedRoot, 'repo-cache');
+
+    const ensureProjectRepositorySpy = jest
+      .spyOn(service as any, 'ensureProjectRepository')
+      .mockResolvedValue(repositoryRoot);
+    const resolveBaseRefSpy = jest
+      .spyOn(service as any, 'resolveBaseRef')
+      .mockResolvedValue('origin/main');
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockImplementation(async (command: string, args: string[]) => {
+        if (
+          command === 'git' &&
+          args[0] === '-C' &&
+          args[1] === repositoryRoot &&
+          args[2] === 'worktree' &&
+          args[3] === 'add'
+        ) {
+          await fs.mkdir(worktreePath, { recursive: true });
+          await fs.writeFile(
+            path.join(worktreePath, '.git'),
+            'gitdir: mocked\n',
+          );
+        }
+
+        return {
+          success: true,
+          stdout: '',
+          stderr: '',
+        };
+      });
+
+    await (service as any).ensureGitWorktree({
+      project,
+      worktreePath,
+      allowedRoot: canonicalAllowedRoot,
+      branch: 'feature/runtime-test',
+      gitBaseBranch: 'main',
+    });
+
+    expect(ensureProjectRepositorySpy).toHaveBeenCalledWith(project);
+    expect(resolveBaseRefSpy).toHaveBeenCalledWith(repositoryRoot, 'main');
+    expect(runCommandSpy).toHaveBeenCalledWith('git', [
+      '-C',
+      repositoryRoot,
+      'worktree',
+      'add',
+      '--force',
+      '-B',
+      'feature/runtime-test',
+      worktreePath,
+      'origin/main',
+    ]);
+  });
+
+  it('should resolve task base ref to local branch when local contains remote', async () => {
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockImplementation((_command: string, args: string[]) => {
+        if (args[2] === 'rev-parse') {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        if (
+          args[2] === 'merge-base' &&
+          args[4] === 'origin/feature/group' &&
+          args[5] === 'feature/group'
+        ) {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: 'not ancestor',
+        });
+      });
+
+    const resolved = await (service as any).resolveBaseRef(
+      '/repo',
+      'feature/group',
+    );
+
+    expect(resolved).toBe('feature/group');
+    expect(runCommandSpy).toHaveBeenCalledWith('git', [
+      '-C',
+      '/repo',
+      'merge-base',
+      '--is-ancestor',
+      'origin/feature/group',
+      'feature/group',
+    ]);
+  });
+
+  it('should resolve task base ref to remote branch when remote contains local', async () => {
+    jest
+      .spyOn(service as any, 'runCommand')
+      .mockImplementation((_command: string, args: string[]) => {
+        if (args[2] === 'rev-parse') {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        if (
+          args[2] === 'merge-base' &&
+          args[4] === 'feature/group' &&
+          args[5] === 'origin/feature/group'
+        ) {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: 'not ancestor',
+        });
+      });
+
+    const resolved = await (service as any).resolveBaseRef(
+      '/repo',
+      'feature/group',
+    );
+
+    expect(resolved).toBe('origin/feature/group');
+  });
+
+  it('should resolve task base ref to local branch when local and remote diverged', async () => {
+    jest
+      .spyOn(service as any, 'runCommand')
+      .mockImplementation((_command: string, args: string[]) => {
+        if (args[2] === 'rev-parse') {
+          return Promise.resolve({ success: true, stdout: '', stderr: '' });
+        }
+        return Promise.resolve({
+          success: false,
+          stdout: '',
+          stderr: 'not ancestor',
+        });
+      });
+
+    const resolved = await (service as any).resolveBaseRef(
+      '/repo',
+      'feature/group',
+    );
+
+    expect(resolved).toBe('feature/group');
+  });
+
+  it('should delegate runtime repository setup to project repository workspace service', async () => {
+    process.env.GITLAB_USERNAME = 'oauth2';
+    process.env.GITLAB_TOKEN = 'token-value';
+
+    const project = createProject({
+      gitUrl: 'git@gitlab.yc345.tv:frontend/yanxue-main.git',
+    });
+    const repositoryRoot = (service as any).resolveRepositoryRoot(project);
+    const ensureProjectRepositorySpy = jest
+      .spyOn(
+        (service as any).projectRepositoryWorkspaceService,
+        'ensureProjectRepository',
+      )
+      .mockResolvedValue(repositoryRoot);
+
+    await (service as any).ensureProjectRepository(project);
+
+    expect(ensureProjectRepositorySpy).toHaveBeenCalledWith(project);
+  });
+
+  it('should resolve default repository and worktree paths under tmp tree', () => {
+    const project = createProject();
+    const task = createTask();
+
+    const expectedProjectBase = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'projects',
+      project.id,
+    );
+    const expectedWorktreeBase = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'projects',
+      project.id,
+      'worktrees',
+    );
+
+    expect((service as any).resolveRepositoryRoot(project)).toBe(
+      path.join(expectedProjectBase, 'ainative-workspace'),
+    );
+    expect((service as any).resolveWorktreeBaseDir(project)).toBe(
+      expectedWorktreeBase,
+    );
+    expect((service as any).resolveGitWorktreePath(task, project)).toBe(
+      path.join(expectedWorktreeBase, `wk-${task.id}`),
+    );
+  });
+
+  it('should enable git runtime by default when project and env are unset', () => {
+    delete process.env.AINATIVE_GIT_RUNTIME_ENABLED;
+
+    expect((service as any).isGitRuntimeEnabled(createProject())).toBe(true);
+  });
+
+  it('should allow env to explicitly disable git runtime', () => {
+    process.env.AINATIVE_GIT_RUNTIME_ENABLED = 'false';
+
+    expect((service as any).isGitRuntimeEnabled(createProject())).toBe(false);
+  });
+
+  it('should keep explicit repo/worktree path overrides', () => {
+    const project = createProject(
+      {},
+      {
+        repoCacheBaseDir: '/tmp/ainative-repo-cache',
+        worktreeBaseDir: '/tmp/ainative-worktrees',
+      },
+    );
+    const task = createTask();
+
+    expect((service as any).resolveRepositoryRoot(project)).toBe(
+      path.resolve(
+        '/tmp/ainative-repo-cache',
+        'ainative-workspace-project-test-id',
+      ),
+    );
+    expect((service as any).resolveWorktreeBaseDir(project)).toBe(
+      path.resolve('/tmp/ainative-worktrees'),
+    );
+    expect((service as any).resolveGitWorktreePath(task, project)).toBe(
+      path.resolve('/tmp/ainative-worktrees', `wk-${task.id}`),
+    );
+  });
+
+  it('should derive runtime worktree path from stored worktree name', () => {
+    const project = createProject();
+    const task = createTask({
+      gitWorktree: 'wk-20260306-001',
+    });
+
+    expect((service as any).resolveGitWorktreePath(task, project)).toBe(
+      path.resolve(
+        resolveAinativeDataRootDir(),
+        project.businessLineId,
+        'projects',
+        project.id,
+        'worktrees',
+        'wk-20260306-001',
+      ),
+    );
+  });
+
+  it('should prefer legacy worktree path when old directory still exists', async () => {
+    const project = createProject();
+    const task = createTask({
+      gitWorktree: 'wk-20260306-001',
+    });
+    const legacyPath = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'worktrees',
+      project.id,
+      'wk-20260306-001',
+    );
+
+    await fs.mkdir(legacyPath, { recursive: true });
+    createdDirectories.push(
+      path.resolve(resolveAinativeDataRootDir(), project.businessLineId),
+    );
+
+    expect(service.resolveTaskWorktreePath(task, project)).toBe(legacyPath);
+  });
+
+  it('should prefer repoLocalPath over repo cache base dir', () => {
+    const project = createProject(
+      {},
+      {
+        repoLocalPath: '/tmp/ainative-fixed-repo',
+        repoCacheBaseDir: '/tmp/ainative-repo-cache',
+      },
+    );
+
+    expect((service as any).resolveRepositoryRoot(project)).toBe(
+      path.resolve('/tmp/ainative-fixed-repo'),
+    );
+  });
+
+  it('should keep explicit task branch for git worktree naming', () => {
+    const project = createProject();
+
+    expect(
+      (service as any).resolveBranch(
+        createTask({ gitBranch: 'feature/runtime-test' }),
+        project,
+      ),
+    ).toBe('feature/runtime-test');
+    expect(
+      (service as any).resolveBranch(
+        createTask({ gitBranch: 'wk-existing' }),
+        project,
+      ),
+    ).toBe('wk-existing');
+  });
+
+  it('should generate feature-prefixed fallback branch when task branch is empty', () => {
+    const project = createProject({
+      name: 'AINative Runtime Project',
+    });
+    const task = createTask({ gitBranch: null });
+
+    expect((service as any).resolveBranch(task, project)).toBe(
+      'feature/ainative-runtime-project-task-tes',
+    );
+  });
+
+  it('should normalize and validate requested create worktree path under allowed root', async () => {
+    const allowedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-allowed-root-'),
+    );
+    createdDirectories.push(allowedRoot);
+    const canonicalAllowedRoot = await fs.realpath(allowedRoot);
+    const project = createProject(
+      {},
+      {
+        worktreeAllowedRoot: allowedRoot,
+      },
+    );
+    const requestedPath = path.join(canonicalAllowedRoot, 'task-create-1');
+
+    const resolvedPath = await service.resolveAndValidateCreateWorktreePath(
+      project,
+      requestedPath,
+    );
+
+    expect(resolvedPath).toBe(path.resolve(requestedPath));
+  });
+
+  it('should reject requested create worktree path outside allowed root', async () => {
+    const allowedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-allowed-root-'),
+    );
+    createdDirectories.push(allowedRoot);
+    const outsideRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-outside-root-'),
+    );
+    createdDirectories.push(outsideRoot);
+    const project = createProject(
+      {},
+      {
+        worktreeAllowedRoot: allowedRoot,
+      },
+    );
+
+    await expect(
+      service.resolveAndValidateCreateWorktreePath(
+        project,
+        path.join(outsideRoot, 'task-create-2'),
+      ),
+    ).rejects.toThrow('outside allowed root');
+  });
+});

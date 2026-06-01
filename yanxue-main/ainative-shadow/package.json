@@ -1,0 +1,37 @@
+{
+  "name": "trip-shadow",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "rsbuild dev --env-mode development",
+    "build:test": "rsbuild build --env-mode test",
+    "build:stage": "rsbuild build --env-mode stage",
+    "build:prod": "rsbuild build --env-mode production",
+    "preview": "npm run build:prod && python3 scripts/serve.py",
+    "serve": "python scripts/serve.py"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "@guanghe-pub/axios-interceptors": "^0.1.1",
+    "@guanghe-pub/onion-oss-webpack-plugin": "^1.2.0",
+    "@guanghe-pub/yc-pc-upload-vue": "^0.3.4",
+    "axios": "^1.7.2",
+    "dayjs": "^1.11.13",
+    "element-plus": "^2.8.7",
+    "html2canvas": "^1.4.1",
+    "lodash": "^4.17.21",
+    "pinia": "^2.1.7",
+    "qrcode": "^1.5.4",
+    "vue": "^3.4.19",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@rsbuild/core": "^0.5.2",
+    "@rsbuild/plugin-babel": "^0.6.5",
+    "@rsbuild/plugin-vue": "^0.5.2",
+    "@rsbuild/plugin-vue-jsx": "^0.6.5",
+    "@types/node": "^20.12.7",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.4.2"
+  }
+}

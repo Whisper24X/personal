@@ -1,0 +1,592 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/grab_ticket_task_config.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "GrabTicketTaskConfig"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/api/shadow/v1/grab_ticket_task_config/create": {
+      "post": {
+        "summary": "研学抢票任务配置表-创建一条数据",
+        "operationId": "GrabTicketTaskConfig_CreateGrabTicketTaskConfig",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateGrabTicketTaskConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateGrabTicketTaskConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "GrabTicketTaskConfig"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/grab_ticket_task_config/delete": {
+      "post": {
+        "summary": "研学抢票任务配置表-删除单条数据",
+        "operationId": "GrabTicketTaskConfig_DeleteGrabTicketTaskConfig",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeleteGrabTicketTaskConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1DeleteGrabTicketTaskConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "GrabTicketTaskConfig"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/grab_ticket_task_config/info": {
+      "get": {
+        "summary": "研学抢票任务配置表-单条数据查询",
+        "operationId": "GrabTicketTaskConfig_GetGrabTicketTaskConfigInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetGrabTicketTaskConfigInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "description": "id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "GrabTicketTaskConfig"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/grab_ticket_task_config/list": {
+      "post": {
+        "summary": "研学抢票任务配置表-列表数据查询",
+        "operationId": "GrabTicketTaskConfig_GetGrabTicketTaskConfigList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetGrabTicketTaskConfigListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetGrabTicketTaskConfigListReq"
+            }
+          }
+        ],
+        "tags": [
+          "GrabTicketTaskConfig"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/grab_ticket_task_config/update": {
+      "post": {
+        "summary": "研学抢票任务配置表-更新一条数据",
+        "operationId": "GrabTicketTaskConfig_UpdateGrabTicketTaskConfig",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateGrabTicketTaskConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateGrabTicketTaskConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "GrabTicketTaskConfig"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/grab_ticket_task_config/update_status": {
+      "post": {
+        "summary": "研学抢票任务配置表-更新状态",
+        "operationId": "GrabTicketTaskConfig_UpdateGrabTicketTaskConfigStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateGrabTicketTaskConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateGrabTicketTaskConfigStatusReq"
+            }
+          }
+        ],
+        "tags": [
+          "GrabTicketTaskConfig"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1CreateGrabTicketTaskConfigReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "响应-研学抢票任务配置表-创建一条数据"
+    },
+    "v1CreateGrabTicketTaskConfigReq": {
+      "type": "object",
+      "properties": {
+        "siteConfigId": {
+          "type": "string",
+          "title": "站点配置ID"
+        },
+        "session": {
+          "type": "string",
+          "title": "场次"
+        },
+        "venue": {
+          "type": "string",
+          "title": "场馆"
+        },
+        "timeSlot": {
+          "type": "string",
+          "title": "时间段"
+        },
+        "priority": {
+          "type": "string",
+          "title": "优先级"
+        },
+        "maxRetries": {
+          "type": "integer",
+          "format": "int32",
+          "title": "最大重试次数"
+        },
+        "retryCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "重试次数"
+        },
+        "userInfo": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1GrabTicketUserInfo"
+          },
+          "title": "用户信息"
+        },
+        "ticketType": {
+          "type": "string",
+          "title": "票种类型"
+        },
+        "visitDate": {
+          "type": "string",
+          "title": "参观日期"
+        },
+        "preExecuteTimeGap": {
+          "type": "integer",
+          "format": "int32",
+          "title": "预执行提前时间（毫秒）"
+        },
+        "enableRetry": {
+          "type": "boolean",
+          "title": "是否启用循环执行"
+        },
+        "retryTimeGap": {
+          "type": "integer",
+          "format": "int32",
+          "title": "循环间隔（毫秒）"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态"
+        },
+        "taskName": {
+          "type": "string",
+          "title": "任务名称"
+        }
+      },
+      "title": "请求-研学抢票任务配置表-创建一条数据"
+    },
+    "v1DeleteGrabTicketTaskConfigReply": {
+      "type": "object",
+      "title": "响应-研学抢票任务配置表-删除多条数据"
+    },
+    "v1DeleteGrabTicketTaskConfigReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "请求-研学抢票任务配置表-删除单条数据"
+    },
+    "v1GetGrabTicketTaskConfigInfoReply": {
+      "type": "object",
+      "properties": {
+        "info": {
+          "$ref": "#/definitions/v1GrabTicketTaskConfigInfo"
+        }
+      },
+      "title": "响应-研学抢票任务配置表-单条数据查询"
+    },
+    "v1GetGrabTicketTaskConfigListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1GrabTicketTaskConfigInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-研学抢票任务配置表-列表数据查询"
+    },
+    "v1GetGrabTicketTaskConfigListReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页数"
+        },
+        "siteConfigId": {
+          "type": "string",
+          "title": "站点配置ID"
+        }
+      },
+      "title": "请求-研学抢票任务配置表-列表数据查询"
+    },
+    "v1GrabTicketTaskConfigInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "siteConfigId": {
+          "type": "string",
+          "title": "站点配置ID"
+        },
+        "session": {
+          "type": "string",
+          "title": "场次"
+        },
+        "venue": {
+          "type": "string",
+          "title": "场馆"
+        },
+        "timeSlot": {
+          "type": "string",
+          "title": "时间段"
+        },
+        "priority": {
+          "type": "string",
+          "title": "优先级"
+        },
+        "maxRetries": {
+          "type": "integer",
+          "format": "int32",
+          "title": "最大重试次数"
+        },
+        "retryCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "重试次数"
+        },
+        "userInfo": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1GrabTicketUserInfo"
+          },
+          "title": "用户信息"
+        },
+        "ticketType": {
+          "type": "string",
+          "title": "票种类型"
+        },
+        "visitDate": {
+          "type": "string",
+          "title": "参观日期"
+        },
+        "preExecuteTimeGap": {
+          "type": "integer",
+          "format": "int32",
+          "title": "预执行提前时间（毫秒）"
+        },
+        "enableRetry": {
+          "type": "boolean",
+          "title": "是否启用循环执行"
+        },
+        "retryTimeGap": {
+          "type": "integer",
+          "format": "int32",
+          "title": "循环间隔（毫秒）"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态"
+        },
+        "taskName": {
+          "type": "string",
+          "title": "任务名称"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      },
+      "title": "研学抢票任务配置表信息"
+    },
+    "v1GrabTicketUserInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "姓名"
+        },
+        "idCard": {
+          "type": "string",
+          "title": "身份证号"
+        },
+        "phone": {
+          "type": "string",
+          "title": "手机号码"
+        }
+      }
+    },
+    "v1UpdateGrabTicketTaskConfigReply": {
+      "type": "object",
+      "title": "响应-研学抢票任务配置表-更新一条数据"
+    },
+    "v1UpdateGrabTicketTaskConfigReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "siteConfigId": {
+          "type": "string",
+          "title": "站点配置ID"
+        },
+        "session": {
+          "type": "string",
+          "title": "场次"
+        },
+        "venue": {
+          "type": "string",
+          "title": "场馆"
+        },
+        "timeSlot": {
+          "type": "string",
+          "title": "时间段"
+        },
+        "priority": {
+          "type": "string",
+          "title": "优先级"
+        },
+        "maxRetries": {
+          "type": "integer",
+          "format": "int32",
+          "title": "最大重试次数"
+        },
+        "retryCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "重试次数"
+        },
+        "userInfo": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1GrabTicketUserInfo"
+          },
+          "title": "用户信息"
+        },
+        "ticketType": {
+          "type": "string",
+          "title": "票种类型"
+        },
+        "visitDate": {
+          "type": "string",
+          "title": "参观日期"
+        },
+        "preExecuteTimeGap": {
+          "type": "integer",
+          "format": "int32",
+          "title": "预执行提前时间（毫秒）"
+        },
+        "enableRetry": {
+          "type": "boolean",
+          "title": "是否启用循环执行"
+        },
+        "retryTimeGap": {
+          "type": "integer",
+          "format": "int32",
+          "title": "循环间隔（毫秒）"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态"
+        },
+        "taskName": {
+          "type": "string",
+          "title": "任务名称"
+        }
+      },
+      "title": "请求-研学抢票任务配置表-更新一条数据"
+    },
+    "v1UpdateGrabTicketTaskConfigStatusReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态"
+        }
+      },
+      "title": "请求-研学抢票任务配置表-更新状态"
+    }
+  }
+}

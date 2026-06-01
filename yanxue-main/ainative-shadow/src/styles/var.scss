@@ -1,0 +1,50 @@
+/**
+ * 此处主要定义应用于所有组件的全局样式
+ * 应用于单一组件的全局样式请在packages/对应组件下定义
+ */
+// --- 主色 ---
+// 可操作功能使用黄色
+
+$color-primary-yellow: #ffd633;
+// 可交互但弱于黄色
+
+$color-primary-blue: #518aff;
+// 字体或状态主色
+
+$color-primary-dark: #1c3058;
+
+// --- 颜色色阶 ---
+// 标题/主文案
+
+$color-text-main: #1c3058;
+// 副文案
+
+$color-text-secondary: #8d97ab;
+// 次级信息/线条强调
+
+$color-text-regular: #cccccc;
+// 分割线（弱）
+
+$color-divider: #eeeeee;
+// 背景色
+
+$color-background: #f3f4f5;
+// 提示色
+
+$color-warning: #fa5a65;
+
+// --- 文字色阶 ---
+
+$color-text-gray-1: #1c3058;
+
+$color-text-gray-2: #495979;
+
+$color-text-gray-3: #6d7a94;
+
+$color-text-gray-4: #8d97ab;
+
+$color-text-gray-5: #c6cbd5;
+
+$color-text-gray-6: #e2e5ea;
+
+$color-text-gray-7: #f3f4f5;

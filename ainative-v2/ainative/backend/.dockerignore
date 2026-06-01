@@ -1,0 +1,14 @@
+/node_modules
+/.data
+/dist
+/files
+/coverage
+/docs
+/test
+/tmp
+/.git
+/.github
+/.husky
+/.vscode
+*.log
+.DS_Store

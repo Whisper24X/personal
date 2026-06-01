@@ -1,0 +1,339 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@source "../../../**/*.{vue,js,ts,jsx,tsx,html}";
+@import 'tailwindcss';
+@import './theme.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@plugin 'tailwindcss-animate';
+@plugin '@tailwindcss/typography';
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  :root {
+    --app-viewport-height: 100vh;
+    /* 登录 .brand-logo-badge 内 SVG 圆角；徽章见 @layer components */
+    --brand-logo-img-radius: 0.75rem;
+    --brand-logo-badge-size: 3.2rem;
+    --brand-logo-badge-pad: 0.25rem;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  html,
+  body {
+    overflow: hidden;
+  }
+
+  html {
+    @apply bg-background text-foreground font-sans;
+  }
+
+  body {
+    @apply h-full bg-background text-foreground antialiased;
+    letter-spacing: var(--tracking-normal);
+  }
+
+  html[data-background-style='glow'] body {
+    background-image:
+      radial-gradient(circle at 16% 8%, color-mix(in oklab, var(--primary) 16%, transparent) 0%, transparent 46%),
+      radial-gradient(circle at 84% 74%, color-mix(in oklab, var(--secondary) 18%, transparent) 0%, transparent 54%),
+      radial-gradient(circle at 50% 100%, color-mix(in oklab, var(--accent) 20%, transparent) 0%, transparent 58%);
+    background-size:
+      100% 100%,
+      100% 100%,
+      100% 100%;
+    background-attachment: fixed;
+  }
+
+  html[data-background-style='glow'] .app-surface {
+    background-image:
+      radial-gradient(circle at 16% 8%, rgba(251, 191, 36, 0.14) 0%, transparent 46%),
+      radial-gradient(circle at 84% 74%, rgba(20, 184, 166, 0.16) 0%, transparent 54%),
+      radial-gradient(circle at 50% 100%, rgba(168, 85, 247, 0.14) 0%, transparent 58%);
+    background-size:
+      100% 100%,
+      100% 100%,
+      100% 100%;
+  }
+
+  @supports (color: color-mix(in oklab, black, white)) {
+    html[data-background-style='glow'] .app-surface {
+      background-image:
+        radial-gradient(circle at 16% 8%, color-mix(in oklab, var(--primary) 16%, transparent) 0%, transparent 46%),
+        radial-gradient(circle at 84% 74%, color-mix(in oklab, var(--secondary) 18%, transparent) 0%, transparent 54%),
+        radial-gradient(circle at 50% 100%, color-mix(in oklab, var(--accent) 20%, transparent) 0%, transparent 58%);
+    }
+  }
+
+  #app {
+    min-height: 0;
+  }
+
+  @supports (height: 100dvh) {
+    :root {
+      --app-viewport-height: 100dvh;
+    }
+  }
+
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  input,
+  select,
+  textarea {
+    @apply bg-background text-foreground border-border outline-ring/50;
+  }
+
+  button {
+    @apply border-border outline-ring/50 cursor-pointer;
+  }
+}
+
+@layer components {
+  /**
+   * 品牌 Logo 容器：与登录页原 auth-logo-badge 视觉一致，供侧栏 / 登录等复用。
+   */
+  .brand-logo-badge {
+    --brand-accent: #0f766e;
+    --brand-secondary: #2563eb;
+    --brand-warm: #f59e0b;
+
+    display: grid;
+    height: var(--brand-logo-badge-size);
+    width: var(--brand-logo-badge-size);
+    place-items: center;
+    padding: var(--brand-logo-badge-pad);
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid color-mix(in oklab, white 34%, transparent);
+    background: linear-gradient(
+      130deg,
+      color-mix(in oklab, var(--brand-accent) 90%, black) 0%,
+      color-mix(in oklab, var(--brand-secondary) 82%, var(--brand-accent)) 72%,
+      color-mix(in oklab, var(--brand-warm) 74%, var(--brand-secondary)) 100%
+    );
+    box-shadow:
+      0 18px 30px -18px color-mix(in oklab, var(--brand-secondary) 45%, transparent),
+      0 1px 0 rgba(255, 255, 255, 0.25) inset;
+  }
+
+  .brand-logo-image {
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+    border-radius: var(--brand-logo-img-radius);
+  }
+
+  html[data-theme-color='mono'] .brand-logo-badge {
+    background: var(--primary);
+    box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 58%, transparent);
+  }
+}
+
+@layer utilities {
+  /* 主内容区全宽利用；仅 Layout 使用，避免 max-w-6xl 居中留白过大 */
+  .container {
+    @apply w-full max-w-full px-2.5 md:px-3;
+  }
+
+  .app-surface {
+    @apply bg-background;
+  }
+
+  .panel-card {
+    @apply rounded-2xl border border-border bg-card shadow-sm;
+  }
+
+  .fade-up {
+    animation: fade-up 240ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    animation-duration: 1ms;
+  }
+}
+
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.app-message-host {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 140;
+  width: min(420px, calc(100vw - 1.5rem));
+  pointer-events: none;
+}
+
+.app-message-item {
+  pointer-events: auto;
+  display: flex;
+  gap: 0.75rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  box-shadow: var(--shadow-lg);
+  padding: 0.75rem 0.8rem;
+  align-items: flex-start;
+}
+
+.app-message-item + .app-message-item {
+  margin-top: 0.6rem;
+}
+
+.app-message-icon {
+  flex-shrink: 0;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.75rem;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.app-message-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.app-message-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.app-message-text {
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+  word-break: break-word;
+}
+
+.app-message-close {
+  flex-shrink: 0;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 0.45rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.app-message-close:hover {
+  border-color: var(--border);
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--accent) 62%, transparent);
+}
+
+.app-message-success .app-message-icon {
+  background: color-mix(in oklab, var(--secondary) 28%, transparent);
+  color: color-mix(in oklab, var(--foreground) 80%, var(--secondary));
+}
+
+.app-message-success .app-message-title {
+  color: color-mix(in oklab, var(--foreground) 78%, var(--secondary));
+}
+
+.app-message-error .app-message-icon {
+  background: color-mix(in oklab, var(--destructive) 22%, transparent);
+  color: var(--destructive);
+}
+
+.app-message-error .app-message-title {
+  color: var(--destructive);
+}
+
+.app-message-warning .app-message-icon {
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+  color: color-mix(in oklab, var(--foreground) 50%, var(--primary));
+}
+
+.app-message-warning .app-message-title {
+  color: color-mix(in oklab, var(--foreground) 55%, var(--primary));
+}
+
+.app-message-info .app-message-icon {
+  background: color-mix(in oklab, var(--accent) 88%, var(--secondary));
+  color: color-mix(in oklab, var(--foreground) 70%, var(--secondary));
+}
+
+.app-message-info .app-message-title {
+  color: color-mix(in oklab, var(--foreground) 76%, var(--secondary));
+}
+
+.app-message-transition-enter-active,
+.app-message-transition-leave-active {
+  transition: all 180ms ease;
+}
+
+.app-message-transition-enter-from,
+.app-message-transition-leave-to {
+  opacity: 0;
+  transform: translateX(12px) translateY(-4px);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}

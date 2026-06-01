@@ -1,0 +1,39 @@
+{
+  "name": "ainative-cli",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "ainative": "./cli/ainative-cli.mjs"
+  },
+  "scripts": {
+    "dev": "sh -c 'pnpm --dir backend run start:dev & backend_pid=$!; trap \"kill $backend_pid\" EXIT INT TERM; until node -e \"fetch(\\\"http://127.0.0.1:9000/\\\").then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))\"; do sleep 1; done; pnpm --dir frontend dev'",
+    "dev:backend": "pnpm --dir backend run start:dev",
+    "dev:frontend": "pnpm --dir frontend dev",
+    "dev:install": "pnpm install && pnpm --dir frontend install && pnpm --dir backend install",
+    "lint": "pnpm run lint:frontend && pnpm run lint:backend",
+    "lint:frontend": "pnpm --dir frontend run lint",
+    "lint:backend": "pnpm --dir backend run lint",
+    "type-check": "pnpm run type-check:frontend && pnpm run type-check:backend",
+    "type-check:frontend": "pnpm --dir frontend run type-check",
+    "type-check:backend": "pnpm --dir backend run type-check",
+    "quality-gate": "pnpm run lint && pnpm run type-check && pnpm --dir frontend run deps:circular:strict",
+    "prepare": "husky",
+    "docker:up": "docker compose --env-file /dev/null up -d",
+    "docker:up:build": "docker compose --env-file /dev/null up -d --build",
+    "docker:build": "docker compose --env-file /dev/null build",
+    "docker:build:runner": "node ./runner/build-image.mjs",
+    "docker:down": "docker compose --env-file /dev/null down",
+    "docker:logs": "docker compose --env-file /dev/null logs -f",
+    "docker:restart": "docker compose --env-file /dev/null restart",
+    "docker:clean": "docker compose --env-file /dev/null down -v",
+    "clean": "rm -rf frontend/node_modules frontend/dist backend/node_modules backend/dist",
+    "cli": "node ./cli/ainative-cli.mjs"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "npm-run-all2": "^8.0.4"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

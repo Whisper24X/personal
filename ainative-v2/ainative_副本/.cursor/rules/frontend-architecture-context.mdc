@@ -1,0 +1,15 @@
+---
+description: Points AI to the canonical frontend architecture skill pack and approved repo docs
+alwaysApply: true
+---
+
+# Frontend architecture source of truth
+
+- **Normative rules** (dependency matrix, feature public API, CLI renderer boundaries, daily development constraints) live only under `.agents/skills/frontend-architecture/`: read `SKILL.md`, then `references/spa-architecture.md` and `references/multi-frontend-alignment.md`. Do not treat `analysis/` or ad-hoc scaffold docs as binding.
+- **Cross-project alignment** (ainative-app / ainative-shadow): same pack, `references/multi-frontend-alignment.md`. Three products do **not** need top-level folder isomorphism; align **roles and data flow** (see dev-spec mapping table).
+- **Supplementary repo docs** (context, not a replacement for the skill references):
+  - `docs/dev-spec/frontend/ARCHITECTURE.md` — Web SPA layers, **term mapping** to app/shadow, build and cross-cutting summary; same layering intent as the skill; narrative style aligned with other dev-spec architecture files.
+  - `docs/technical/frontend-architecture-feasibility-analysis.md` — **project background and history** (feasibility, phased execution record, risks); **not** normative architecture text. On conflict, follow the skill `references/`.
+- Historical «nine-folder» or external templates are **not** binding; follow the five-partition matrix and CLI rules in `references/spa-architecture.md`.
+- `frontend/ARCHITECTURE.md` (if present) is optional notes on layout, not the normative source.
+- **Guardrails in repo**: `frontend/eslint.config.ts` — `eslint-plugin-boundaries` + import resolver、`max-lines`（Vue 默认 error@600，豁免列表见同文件）；root `quality-gate` 含 `frontend` 的 `deps:circular:strict`（`dpdm`）。条文仍以 skill `references/spa-architecture.md` 为准，工具为辅助。

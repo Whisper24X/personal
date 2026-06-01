@@ -1,0 +1,56 @@
+# .air.toml - air 热重载配置文件
+# 变更后通过 kratos run 启动（需已安装 Kratos CLI：go install github.com/go-kratos/kratos/cmd/kratos@latest，且 kratos 在 PATH）
+# 文档: https://github.com/air-verse/air
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+pre_cmd = []
+# 不使用 go build 产出二进制；占位以满足 Air「先执行 cmd 再启动进程」流程
+cmd = "true"
+# 仅 cmd 下单一入口时会自动选用；内部为 go run
+entrypoint = ["kratos", "run"]
+# 监听文件变化的扩展名
+include_ext = ["go", "yaml", "yml"]
+# 排除的目录
+exclude_dir = ["tmp", "bin", "logs", ".git", "vendor", "third_party", "doc", "api"]
+# 排除的文件正则
+exclude_regex = ["_test\\.go$", "wire_gen\\.go$", "\\.pb\\.go$", "\\.pb\\.validate\\.go$"]
+# 排除的文件
+exclude_file = []
+# 排除不变的目录
+exclude_unchanged = true
+# 跟踪符号链接的目录
+follow_symlink = true
+# 构建延迟（毫秒）- 文件变化后等待一段时间再构建
+delay = 1000
+# 发送中断信号后等待的时间
+kill_delay = 500
+# 构建失败时是否停止旧进程
+stop_on_error = true
+# 是否在终端显示日志
+log = "build-errors.log"
+
+[color]
+# 自定义输出颜色
+main = "magenta"
+watcher = "cyan"
+build = "yellow"
+runner = "green"
+
+[log]
+# 显示时间
+time = true
+# 仅显示主日志
+main_only = false
+
+[misc]
+# 退出时清理 tmp 目录
+clean_on_exit = true
+
+[screen]
+# 构建时是否清屏
+clear_on_rebuild = true
+# 保持滚动
+keep_scroll = true

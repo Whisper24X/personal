@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+//import "protoc-gen-openapiv2/options/annotations.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//用户-微信
+service UserWx {
+  //用户-微信-unionid同步
+  rpc SyncUserWxUnionid(SyncUserWxUnionidReq) returns (SyncUserWxUnionidReply) {
+    option (google.api.http) = {get: "/yanxue/api/shadow/v1/user_wx/sync_unionid"};
+  }
+}
+
+//用户-微信信息
+message UserWxInfo {
+  string id = 1; // id
+  string unionid = 2; // unionid
+  string offiaccountOpenId = 3; // 公众号openid
+  bool offiaccountFollow = 4; // 公众号是否关注
+  int32 status = 5; // -1=禁用 1=开启
+  string createdAt = 6; // 创建时间
+  string updatedAt = 7; // 更新时间
+  string nickname = 8; // 昵称
+  int32 sex = 9; // 性别
+  string province = 10; // 省份
+  string city = 11; // 城市
+  string country = 12; // 国家
+  string headimgurl = 13; // 头像
+  string miniprogramOpenId = 14; // 小程序openid
+}
+
+//请求-用户-微信-unionid同步
+message SyncUserWxUnionidReq {}
+
+//响应-用户-微信-unionid同步
+message SyncUserWxUnionidReply {}

@@ -1,0 +1,24 @@
+name: yanxue
+server:
+  http:
+    addr: 0.0.0.0:8000
+    timeout: 10s
+  grpc:
+    addr: 0.0.0.0:9000
+    timeout: 10s
+logger:
+  enableResWithCode: 200
+  enableReqWithCode: 200
+env: ${GO_ENV}
+
+jwt:
+  admin:
+    accessSecret: "SGO3lP58kDrKnq4tC0cyeVBEmQs02jIWHb2Aih97oZTfM6zgxLwRdJYXuF1abc"
+    refreshAfter: 86400
+    accessExpire: 604800
+    issuer: "admin"
+  fwh:
+    accessSecret: "SGO3lP58kDrKnq4tC0cyeVBEmQs02jIWHb2Aih97oZTfM6zgxLwRdJYXuF1der"
+    refreshAfter: 604800
+    accessExpire: 2592000
+    issuer: "fwh"

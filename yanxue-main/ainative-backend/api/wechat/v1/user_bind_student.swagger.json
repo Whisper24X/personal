@@ -1,0 +1,345 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "wechat/v1/user_bind_student.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "UserBindStudent"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/wechat/v1/user_bind_student/create": {
+      "post": {
+        "summary": "用户绑定学生-创建一条数据",
+        "operationId": "UserBindStudent_StoreUserBindStudent",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreUserBindStudentReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreUserBindStudentReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserBindStudent"
+        ]
+      }
+    },
+    "/yanxue/wechat/v1/user_bind_student/delete": {
+      "post": {
+        "summary": "用户绑定学生-删除多条数据",
+        "operationId": "UserBindStudent_DeleteUserBindStudent",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/wechatv1DeleteUserBindStudentReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/wechatv1DeleteUserBindStudentReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserBindStudent"
+        ]
+      }
+    },
+    "/yanxue/wechat/v1/user_bind_student/info": {
+      "post": {
+        "summary": "用户绑定学生-单条数据查询",
+        "operationId": "UserBindStudent_GetUserBindStudentInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/wechatv1GetUserBindStudentInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/wechatv1GetUserBindStudentInfoReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserBindStudent"
+        ]
+      }
+    },
+    "/yanxue/wechat/v1/user_bind_student/list": {
+      "post": {
+        "summary": "用户绑定学生-列表数据查询",
+        "operationId": "UserBindStudent_GetUserBindStudentList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/wechatv1GetUserBindStudentListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/wechatv1GetUserBindStudentListReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserBindStudent"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1StoreUserBindStudentReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "响应-用户绑定学生-创建一条数据"
+    },
+    "v1StoreUserBindStudentReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "studentName": {
+          "type": "string",
+          "title": "学生-名称"
+        },
+        "studentIdentityCard": {
+          "type": "string",
+          "title": "学生-身份证"
+        },
+        "studentSex": {
+          "type": "string",
+          "title": "学生-性别 男M 女F"
+        },
+        "studentAge": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学生-年龄"
+        }
+      },
+      "title": "请求-用户绑定学生-创建一条数据",
+      "required": [
+        "studentName",
+        "studentSex",
+        "studentAge"
+      ]
+    },
+    "wechatv1DeleteUserBindStudentReply": {
+      "type": "object",
+      "title": "响应-用户绑定学生-删除多条数据"
+    },
+    "wechatv1DeleteUserBindStudentReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "请求-用户绑定学生-删除多条数据",
+      "required": [
+        "id"
+      ]
+    },
+    "wechatv1GetUserBindStudentInfoReply": {
+      "type": "object",
+      "properties": {
+        "info": {
+          "$ref": "#/definitions/wechatv1UserBindStudentInfo",
+          "title": "单条数据"
+        }
+      },
+      "title": "响应-用户绑定学生-单条数据查询"
+    },
+    "wechatv1GetUserBindStudentInfoReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "请求-用户绑定学生-单条数据查询",
+      "required": [
+        "id"
+      ]
+    },
+    "wechatv1GetUserBindStudentListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/wechatv1UserBindStudentInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-用户绑定学生-列表数据查询"
+    },
+    "wechatv1GetUserBindStudentListReq": {
+      "type": "object",
+      "title": "请求-用户绑定学生-列表数据查询"
+    },
+    "wechatv1UserBindStudentInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "studentIdentityCard": {
+          "type": "string",
+          "title": "学生-身份证"
+        },
+        "studentName": {
+          "type": "string",
+          "title": "学生-名称"
+        },
+        "studentSex": {
+          "type": "string",
+          "title": "学生-性别 男M 女F"
+        },
+        "studentAge": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学生-年龄 1-100"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      },
+      "title": "用户绑定学生信息"
+    }
+  }
+}

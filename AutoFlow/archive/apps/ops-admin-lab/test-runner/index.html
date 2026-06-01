@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoFlow · Test Runner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <section class="panel hero">
+      <div class="hero-top">
+        <div class="hero-main">
+          <span class="eyebrow">Test Runner</span>
+          <h1>AutoFlow</h1>
+          <p class="hero-tagline">让软件交付工时锐减90%</p>
+        </div>
+
+        <div class="hero-actions">
+          <button class="btn btn-ghost" id="btn-select-all">全选测试</button>
+          <button class="btn btn-ghost" id="btn-deselect-all">清空选择</button>
+          <button class="btn btn-ghost" id="btn-theme" title="切换主题">切到浅色</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="dashboard">
+      <aside class="panel sidebar-panel" id="tree-panel">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <span class="panel-kicker">Selection</span>
+            <span class="panel-title">测试用例树</span>
+            <span class="panel-subtitle">按 spec、describe、test 三层组织，支持局部执行与批量修复。</span>
+          </div>
+          <span class="panel-subtitle sel-summary" id="sel-summary">加载中...</span>
+        </div>
+
+        <div class="tree-toolbar">
+          <span class="status-pill status-pill-ok">默认全选</span>
+          <span class="status-pill status-pill-warn">支持折叠浏览</span>
+        </div>
+
+        <div class="tree-summary">
+          <div class="summary-card">
+            <span class="summary-label">已选测试</span>
+            <strong class="summary-value" id="tree-summary-selected">0</strong>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">可用 spec</span>
+            <strong class="summary-value" id="tree-summary-specs">0</strong>
+          </div>
+        </div>
+
+        <div class="tree-body" id="tree-body">
+          <div class="log-empty">正在加载 spec 文件...</div>
+        </div>
+      </aside>
+
+      <section class="panel log-panel" id="log-panel">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <span class="panel-kicker">Execution</span>
+            <span class="panel-title">实时执行日志</span>
+            <span class="panel-subtitle">展示 cursor agent 的实时输出、执行结果和报告入口。</span>
+          </div>
+          <div class="log-head-extra">
+            <span class="panel-subtitle">SSE Stream</span>
+            <span class="run-badge-slot" id="run-badge"></span>
+          </div>
+        </div>
+
+        <div class="log-viewport">
+          <div class="log-topline">
+            <span class="run-context" id="run-context">尚未执行</span>
+            <span class="log-caption">日志会在运行期间持续自动滚动</span>
+          </div>
+
+          <div class="log-wrap" id="log-wrap">
+            <div class="log-idle" id="log-idle">
+              <div class="log-idle-title">准备就绪，等待执行</div>
+              <p>选择要运行的测试后，点击底部主操作按钮即可启动 Playwright fix-loop，日志将实时显示在这里。</p>
+            </div>
+
+            <div class="log-connecting" id="log-connecting" style="display:none">
+              <div class="log-connecting-dots">
+                <span class="log-connecting-dot"></span>
+                <span class="log-connecting-dot"></span>
+                <span class="log-connecting-dot"></span>
+              </div>
+              <div class="log-connecting-title">正在连接 cursor agent</div>
+              <p>服务已接收请求，正在建立执行流，请稍候。</p>
+            </div>
+
+            <pre class="log-content" id="log-content" style="display:none"></pre>
+          </div>
+
+          <button class="scroll-btn" id="scroll-btn" style="display:none" title="滚动到底部">↓</button>
+
+          <div class="log-status" id="log-status" style="display:none">
+            <span class="status-text" id="status-text"></span>
+            <span id="report-link"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="panel action-dock">
+    <div class="dock-copy">
+      <span class="dock-title">执行区</span>
+      <span class="dock-subtitle" id="dock-selection">当前已选择 0 个测试</span>
+    </div>
+    <div class="dock-actions">
+      <button class="btn btn-accent" id="btn-run-all" disabled>测试全部并修复</button>
+      <button class="btn btn-primary" id="btn-run-selected" disabled>执行选中并修复</button>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

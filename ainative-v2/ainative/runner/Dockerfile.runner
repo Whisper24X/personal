@@ -1,0 +1,172 @@
+# syntax=docker/dockerfile:1.7
+FROM golang:1.23-bookworm AS go-toolchain
+
+# runner 是执行环境镜像，不像 backend 那样需要在镜像内产出 dist 再复制到运行层。
+# 这里保留单阶段结构，避免为了不存在的 root build 引入额外脆弱性。
+FROM node:22.21.1-bookworm-slim
+
+COPY --from=go-toolchain /usr/local/go /usr/local/go
+
+# ============================================================
+# 环境变量
+# ============================================================
+
+ENV TZ=Asia/Shanghai \
+    DEBIAN_FRONTEND=noninteractive \
+    GOROOT=/usr/local/go \
+    GOPATH=/go \
+    GO_ENV=development \
+    GOPROXY=https://goproxy.cn,direct \
+    GOPRIVATE=gitlab.yc345.tv \
+    CGO_ENABLED=1 \
+    NODE_ENV=development \
+    CHROME_BIN=/usr/bin/chromium \
+    CHROME_PATH=/usr/bin/chromium \
+    PATH=/go/bin:/usr/local/go/bin:/root/.local/bin:/root/.opencode/bin:${PATH}
+
+# ============================================================
+# 系统依赖
+# ============================================================
+
+# bash/curl/git/make  — 基础构建工具
+# openssh-client      — 拉取 gitlab 私有仓库
+# netcat-openbsd      — 健康检查 / 端口探测
+# supervisor/nginx    — 进程管理 + 反向代理（preview/full sandbox 画像需要）
+# 注意：runner 本身不是 Docker 控制面。容器创建 / docker exec / compose 编排都由宿主或 backend 完成，
+# 所以这里刻意不安装 docker CLI / docker compose，避免把职责重新耦回 runner 镜像。
+# nodejs/npm          — 前端构建（glibc 兼容 Taro binding）
+# cmake               — 构建 librdkafka（confluent-kafka-go 需 v2.3+，Debian 自带版本过旧）
+# ripgrep / fd-find   — AI agent 代码搜索（rg、fd；Debian fd 命令为 fdfind，链到 fd）
+# jq                  — JSON 处理
+# tree / less / bat   — 目录结构 / 分页 / 语法高亮查看（AI agent 高频调用）
+# procps              — ps / top，agent 需查看和管理进程
+# patch / wget        — 应用补丁 / 下载文件
+RUN --mount=type=cache,id=runner-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=runner-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    bash curl git make cmake python3 pkg-config \
+    openssh-client netcat-openbsd zip unzip \
+    supervisor nginx \
+    ca-certificates \
+    gcc g++ \
+    ripgrep fd-find jq tree less bat procps patch wget fzf gh \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
+    && ln -sf /usr/bin/batcat /usr/local/bin/bat \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone
+
+# chromium + xvfb + fonts-liberation：体积大、易因镜像源/资源导致 apt 失败；单独一层且失败不阻断镜像，避免拖死后续 Cursor CLI 等步骤
+# 未安装成功时 CHROME_BIN 仍指向 /usr/bin/chromium，Chrome DevTools MCP 需在镜像内浏览器时需自行换源或改用带浏览器的 profile
+RUN --mount=type=cache,id=runner-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=runner-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
+    bash -o pipefail -c 'apt-get update && (apt-get install -y --no-install-recommends chromium xvfb fonts-liberation || echo "WARN: chromium/xvfb/fonts-liberation install failed; browser-based MCP may be unavailable in this image.") && rm -rf /var/lib/apt/lists/*' \
+    && ln -sf /usr/bin/chromium /usr/local/bin/google-chrome \
+    && ln -sf /usr/bin/chromium /usr/local/bin/chrome
+
+# protoc 锁定 3.21.9
+RUN ARCH=$(uname -m) \
+    && case "$ARCH" in aarch64) PROTOC_ARCH=aarch_64;; x86_64) PROTOC_ARCH=x86_64;; *) echo "unsupported arch: $ARCH" && exit 1;; esac \
+    && curl -sL "https://github.com/protocolbuffers/protobuf/releases/download/v21.9/protoc-21.9-linux-${PROTOC_ARCH}.zip" -o /tmp/protoc.zip \
+    && unzip -o /tmp/protoc.zip -d /usr/local bin/protoc 'include/*' \
+    && rm -f /tmp/protoc.zip \
+    && protoc --version
+
+# 从源码构建 librdkafka v2.3+（confluent-kafka-go 要求，Debian bookworm 仅 2.0.2）
+RUN cd /tmp \
+    && curl -sL https://github.com/confluentinc/librdkafka/archive/refs/tags/v2.3.0.tar.gz | tar xz \
+    && cd librdkafka-2.3.0 \
+    && mkdir build && cd build \
+    && cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+    && make -j$(nproc) && make install \
+    && ldconfig \
+    && cd / && rm -rf /tmp/librdkafka-2.3.0
+
+# ============================================================
+# GitLab Token（用于拉取 gitlab.yc345.tv 私有依赖）
+# ============================================================
+
+# 这些 build arg 只用于镜像构建阶段拉取私有 Go 工具，不会作为运行时环境变量持久保留。
+ARG GITLAB_USERNAME
+ARG GITLAB_TOKEN
+
+# ============================================================
+# Go 工具链
+# ============================================================
+
+# air             — 热重载
+# kratos          — 框架 CLI
+# protoc-gen-*    — Proto 代码生成（Go/gRPC/HTTP/Gateway/Validate/Errors）
+# wire            — 依赖注入
+# go-enum         — 枚举生成
+# goimports       — 代码格式化
+RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    if [ -z "$GITLAB_USERNAME" ]; then echo "GITLAB_USERNAME build arg is required" >&2; exit 1; fi \
+    && if [ -z "$GITLAB_TOKEN" ]; then echo "GITLAB_TOKEN build arg is required" >&2; exit 1; fi \
+    && export GIT_CONFIG_GLOBAL=/tmp/.gitconfig \
+    && git config --global url."https://${GITLAB_USERNAME}:${GITLAB_TOKEN}@gitlab.yc345.tv/".insteadOf "https://gitlab.yc345.tv/" \
+    && go install github.com/air-verse/air@latest \
+    && go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93 \
+    && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 \
+    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0 \
+    && go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.13.0 \
+    && go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.27.2 \
+    && go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@a7bae93 \
+    && go install github.com/envoyproxy/protoc-gen-validate@v0.9.0 \
+    && go install github.com/google/wire/cmd/wire@v0.6.0 \
+    && go install github.com/abice/go-enum@v0.9.1 \
+    && go install golang.org/x/tools/cmd/goimports@v0.23.0 \
+    && go install gitlab.yc345.tv/backend/protoc-gen-go-errors@v0.0.4 \
+    && go install gitlab.yc345.tv/backend/yc_turbo_kit@latest \
+    && go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4 \
+    && rm -f "$GIT_CONFIG_GLOBAL"
+
+# ============================================================
+# Node / pnpm（前端构建）
+# ============================================================
+
+# 配置 npm 镜像源 + 重试策略，提升国内网络下的安装成功率
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set prefer-offline true \
+    && npm install -g pnpm@9 \
+    && pnpm config set registry https://registry.npmmirror.com
+
+
+# ============================================================
+# AI Coding CLI 工具
+# ============================================================
+
+# Claude Code / Codex / Gemini CLI / OpenSpec / 常用 MCP server（npm 全局安装）
+RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest @fission-ai/openspec@latest \
+    chrome-devtools-mcp@latest apifox-mcp-server@latest
+
+# OpenCode / Cursor CLI 为 best-effort 安装：网络或上游变更可能导致安装失败，不阻断镜像构建
+RUN bash -o pipefail -c 'curl -fsSL https://opencode.ai/install | bash' \
+    || echo "WARN: OpenCode install failed; opencode steps in docker mode need a working binary."
+RUN bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash' \
+    || echo "WARN: Cursor CLI install failed or unavailable for this platform; docker mode cursor-agent steps need a working agent binary."
+
+
+# Go 编译的 CLI（OpenCode、Codex）依赖系统 CA 证书，需显式指定路径
+ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}" \
+    SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+
+# ============================================================
+# 配置文件 & 入口脚本
+# ============================================================
+
+COPY runner/render-runner-config.mjs /usr/local/bin/ainative-render-runner-config
+COPY runner/entrypoint.sh /usr/local/bin/ainative-runner-entrypoint
+RUN chmod +x /usr/local/bin/ainative-runner-entrypoint \
+    && chmod +x /usr/local/bin/ainative-render-runner-config \
+    && mkdir -p /var/log/nginx /run/nginx /etc/ainative /var/log/supervisor /workspace/logs
+
+WORKDIR /workspace
+EXPOSE 8080
+
+CMD ["/usr/local/bin/ainative-runner-entrypoint"]

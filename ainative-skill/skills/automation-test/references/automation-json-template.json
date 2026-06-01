@@ -1,0 +1,70 @@
+{
+  "testCase": "TC-XXX：用例名称 - 场景描述",
+  "status": "pending",
+  "precondition": ["前置条件1", "前置条件2"],
+  "steps": [
+    {
+      "step": "步骤描述文本（完整描述用户操作）",
+      "action": "open",
+      "params": {
+        "url": "https://example.com/path"
+      },
+      "expected": null,
+      "status": "pending",
+      "error": null
+    },
+    {
+      "step": "步骤描述文本（如：用户在账号输入框输入账号）",
+      "action": "type",
+      "params": {
+        "selector": "账号输入框"
+      },
+      "expected": null,
+      "status": "pending",
+      "error": null
+    },
+    {
+      "step": "步骤描述文本（如：用户点击登录按钮）",
+      "action": "click",
+      "params": {
+        "selector": "登录按钮"
+      },
+      "expected": {
+        "type": "cookie",
+        "value": "token"
+      },
+      "waitFor": {
+        "type": "toast",
+        "text": "登录成功",
+        "timeout": 5000
+      },
+      "status": "pending",
+      "error": null
+    },
+    {
+      "step": "步骤描述文本（示例：验证登录成功 - 通过元素断言）",
+      "action": "verify",
+      "params": {
+        "selector": "用户头像"
+      },
+      "expected": {
+        "type": "element",
+        "value": "用户头像"
+      },
+      "status": "pending",
+      "error": null
+    },
+    {
+      "step": "步骤描述文本（示例：验证页面跳转 - 通过 URL 模糊匹配）",
+      "action": "verify",
+      "params": {},
+      "expected": {
+        "type": "url_match",
+        "value": "/dashboard"
+      },
+      "status": "pending",
+      "error": null
+    }
+  ],
+  "duration": 0
+}

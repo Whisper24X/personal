@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//系统-数据日志
+service SysDataLog {
+  //系统-数据日志-列表数据查询
+  rpc GetSysDataLogList(GetSysDataLogListReq) returns (GetSysDataLogListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/shadow/v1/sys_data_log/list"
+      body: "*"
+    };
+  }
+}
+
+//系统-数据日志信息
+message SysDataLogInfo {
+  string id = 1; // 主键ID（UUID自动生成）
+  string operationType = 2; // 操作类型
+  string operatorId = 3; // 操作数据Id
+  string oldData = 4; // 旧数据
+  string newData = 5; // 新数据
+  string createdAt = 6; // 创建时间
+  string updatedBy = 7; // 操作人
+  string updatedByName = 8; // 操作人名称
+  string module = 9; // 功能模块
+  string remark = 10; // 备注
+}
+
+//请求-系统-数据日志-列表数据查询
+message GetSysDataLogListReq {
+  int32 page = 1; //页码
+  int32 pageSize = 2; //页数
+  string module = 3; // 模块:优惠券；合同模版；订单；
+  string operatorId = 4; // 操作对象ID
+}
+
+//响应-系统-数据日志-列表数据查询
+message GetSysDataLogListReply {
+  int32 total = 1; //总数
+  repeated SysDataLogInfo list = 2; // 列表数据
+}

@@ -1,0 +1,271 @@
+import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
+import { TaskStatus } from '../dto/task-status.enum';
+import { TaskStatusService } from './task-status.service';
+
+const createService = () => {
+  const taskRepository = {
+    findById: jest.fn(),
+    update: jest.fn(),
+  };
+  const taskNodeRepository = {
+    findByTaskId: jest.fn(),
+  };
+  const notificationsService = {
+    notifyTaskStatusChanged: jest.fn().mockResolvedValue(undefined),
+  };
+  const taskLogService = {
+    appendLog: jest.fn().mockResolvedValue(undefined),
+  };
+  const containerOrchestration = {
+    removeContainerForTask: jest.fn().mockResolvedValue(undefined),
+  };
+  const goalsService = {
+    syncPlanSubTaskStatusFromTask: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const service = new TaskStatusService(
+    taskRepository as never,
+    taskNodeRepository as never,
+    notificationsService as never,
+    taskLogService as never,
+    containerOrchestration as never,
+    goalsService as never,
+  );
+
+  return {
+    service,
+    taskRepository,
+    taskNodeRepository,
+    notificationsService,
+    taskLogService,
+    containerOrchestration,
+    goalsService,
+  };
+};
+
+const createDoneNode = (id: string) => ({
+  id,
+  taskId: 'task-1',
+  nodeOrder: 1,
+  name: `Node ${id}`,
+  status: TaskNodeStatus.done,
+  loopJson: null,
+});
+
+const createNode = (
+  status: TaskStatus | TaskNodeStatus,
+  overrides: Record<string, unknown> = {},
+) => ({
+  id: `node-${status}`,
+  taskId: 'task-1',
+  nodeOrder: 1,
+  name: `Node ${status}`,
+  status,
+  loopJson: null,
+  ...overrides,
+});
+
+describe('TaskStatusService', () => {
+  it('should return todo when all nodes are todo and task has not started progressing', () => {
+    const { service } = createService();
+
+    expect(
+      service.calculateTaskStatus(
+        [createNode(TaskStatus.todo)] as never,
+        TaskStatus.todo,
+      ),
+    ).toBe(TaskStatus.todo);
+  });
+
+  it('should return in_progress when all nodes are todo but task was already in progress', () => {
+    const { service } = createService();
+
+    expect(
+      service.calculateTaskStatus(
+        [createNode(TaskStatus.todo)] as never,
+        TaskStatus.inProgress,
+      ),
+    ).toBe(TaskStatus.inProgress);
+  });
+
+  it('should return in_progress when a node is pending review but not all nodes are done', () => {
+    const { service } = createService();
+
+    expect(
+      service.calculateTaskStatus(
+        [
+          createNode(TaskStatus.done, { id: 'node-1', nodeOrder: 1 }),
+          createNode(TaskStatus.inReview, { id: 'node-2', nodeOrder: 2 }),
+        ] as never,
+        TaskStatus.inProgress,
+      ),
+    ).toBe(TaskStatus.inProgress);
+  });
+
+  it('should keep task in progress when a node has failed', () => {
+    const { service } = createService();
+
+    expect(
+      service.calculateTaskStatus(
+        [
+          createNode(TaskNodeStatus.done, { id: 'node-1', nodeOrder: 1 }),
+          createNode(TaskNodeStatus.failed, { id: 'node-2', nodeOrder: 2 }),
+        ] as never,
+        TaskStatus.inProgress,
+      ),
+    ).toBe(TaskStatus.inProgress);
+  });
+
+  it('should return in_review when all nodes are done but task is not manually completed', () => {
+    const { service } = createService();
+
+    expect(
+      service.calculateTaskStatus(
+        [createDoneNode('node-1')] as never,
+        TaskStatus.inProgress,
+      ),
+    ).toBe(TaskStatus.inReview);
+  });
+
+  it('should return done when all nodes are done and task is already completed manually', () => {
+    const { service } = createService();
+
+    expect(
+      service.calculateTaskStatus(
+        [createDoneNode('node-1')] as never,
+        TaskStatus.done,
+      ),
+    ).toBe(TaskStatus.done);
+  });
+
+  it('should keep the task container when status moves to in_review', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      containerOrchestration,
+      goalsService,
+      taskLogService,
+    } = createService();
+
+    taskRepository.findById.mockResolvedValue({
+      id: 'task-1',
+      projectId: 'project-1',
+      businessLineId: 'business-line-1',
+      mode: TaskMode.workflow,
+      title: 'Workflow task',
+      status: TaskStatus.inProgress,
+      gitWorktree: 'wk-task-1',
+      createdBy: 'user-1',
+    });
+    taskNodeRepository.findByTaskId.mockResolvedValue([
+      createNode(TaskStatus.done),
+    ]);
+
+    await service.recalculateTaskStatus('task-1');
+
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      'task-1',
+      expect.objectContaining({
+        status: TaskStatus.inReview,
+        finishedAt: null,
+      }),
+    );
+    expect(
+      containerOrchestration.removeContainerForTask,
+    ).not.toHaveBeenCalled();
+    expect(goalsService.syncPlanSubTaskStatusFromTask).toHaveBeenCalledWith(
+      'task-1',
+      TaskStatus.inReview,
+    );
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        taskNodeId: null,
+        message: 'Task kept worktree while pending review',
+      }),
+    );
+  });
+
+  it('should remove the task container only when status reaches done', async () => {
+    const { service, taskRepository, containerOrchestration } = createService();
+
+    taskRepository.findById.mockResolvedValue({
+      id: 'task-1',
+      projectId: 'project-1',
+      businessLineId: 'business-line-1',
+      mode: TaskMode.workflow,
+      title: 'Workflow task',
+      status: TaskStatus.inReview,
+      gitWorktree: 'wk-task-1',
+      createdBy: 'user-1',
+    });
+
+    await service.setTaskStatus('task-1', TaskStatus.done);
+
+    expect(containerOrchestration.removeContainerForTask).toHaveBeenCalledWith(
+      'task-1',
+      'project-1',
+    );
+  });
+
+  it('should persist manual task completion through setTaskStatus', async () => {
+    const {
+      service,
+      taskRepository,
+      taskLogService,
+      goalsService,
+      notificationsService,
+    } = createService();
+
+    taskRepository.findById.mockResolvedValue({
+      id: 'task-1',
+      title: 'Task 1',
+      createdBy: 'user-1',
+      mode: TaskMode.workflow,
+      gitWorktree: 'wk-1',
+      status: TaskStatus.inReview,
+    });
+
+    await service.setTaskStatus('task-1', TaskStatus.done);
+
+    expect(taskRepository.update).toHaveBeenCalledWith('task-1', {
+      status: TaskStatus.done,
+      finishedAt: expect.any(Date),
+    });
+    expect(goalsService.syncPlanSubTaskStatusFromTask).toHaveBeenCalledWith(
+      'task-1',
+      TaskStatus.done,
+    );
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        message: 'Task completed; worktree preserved',
+      }),
+    );
+    expect(notificationsService.notifyTaskStatusChanged).not.toHaveBeenCalled();
+  });
+
+  it('should notify when workflow task status changes to in_review', async () => {
+    const { service, taskRepository, notificationsService } = createService();
+
+    taskRepository.findById.mockResolvedValue({
+      id: 'task-1',
+      title: 'Task 1',
+      createdBy: 'user-1',
+      mode: TaskMode.workflow,
+      gitWorktree: 'wk-1',
+      status: TaskStatus.inProgress,
+    });
+
+    await service.setTaskStatus('task-1', TaskStatus.inReview);
+
+    expect(notificationsService.notifyTaskStatusChanged).toHaveBeenCalledWith({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: 'Task 1',
+      status: TaskStatus.inReview,
+    });
+  });
+});

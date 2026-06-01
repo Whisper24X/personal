@@ -1,0 +1,646 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shadow/v1/channel.proto";
+import "shadow/v1/good.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//订单
+service Order {
+  //订单-列表数据查询
+  rpc GetOrderList(GetOrderListReq) returns (GetOrderListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/getOrderList"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 订单-导入订单信息
+  rpc ImportOrderInfoByCsvFile(ImportOrderInfoByCsvFileReq) returns (ImportOrderInfoByCsvFileReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/importContractUserInfoByCsvFile"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 订单-导出订单信息
+  rpc ExportOrderList(ExportOrderListReq) returns (ExportOrderListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/exportOrderList"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 订单-结束
+  rpc FinishOrder(FinishOrderReq) returns (FinishOrderReply) {}
+  // 订单-取消
+  rpc CancelOrder(CancelOrderReq) returns (CancelOrderReply) {}
+  // 订单-获取订单商品详情
+  rpc GetOrderGoodInfo(GetOrderGoodInfoReq) returns (GetOrderGoodInfoReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/goodinfo"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 订单-手机号查询订单
+  rpc GetOrderListByPhone(GetOrderListByPhoneReq) returns (GetOrderListByPhoneReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/getOrderListByPhone"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 查询订单核销进度
+  rpc GetOrderVerificationProgressList(GetOrderVerificationProgressListReq) returns (GetOrderVerificationProgressListReply) {
+    option (google.api.http) = {get: "/yanxue/api/shadow/v1/order/getOrderVerificationProgressList"};
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 订单-修改订单详情
+  rpc UpdateOrderDetail(UpdateOrderDetailReq) returns (UpdateOrderDetailReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/updateOrderDetail"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 订单-导入手机号
+  rpc ImportPhoneByCsvFile(ImportPhoneByCsvFileReq) returns (ImportPhoneByCsvFileReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/importPhoneByCsvFile"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 抖音订单消息回传
+  rpc DouYinOrderInfoCallback(DouYinOrderInfoCallbackReq) returns (DouYinOrderInfoCallbackReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/douYinOrderInfoCallback"
+      body: "*"
+    };
+  }
+  // 订单退款状态同步
+  rpc SyncOrderRefundStatus(SyncOrderRefundStatusReq) returns (SyncOrderRefundStatusReply) {}
+  // 微店订单同步
+  rpc SyncWeiDianOrder(SyncWeiDianOrderReq) returns (SyncWeiDianOrderReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncWeiDianOrder"
+      body: "*"
+    };
+  }
+  // 小程序订单退款
+  rpc MiniProgramOrderRefund(MiniProgramOrderRefundReq) returns (MiniProgramOrderRefundReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/miniProgramOrderRefund"
+      body: "*"
+    };
+  }
+  // 关闭超时未支付订单
+  rpc CloseExpiredOrders(CloseExpiredOrdersReq) returns (CloseExpiredOrdersReply) {}
+  // 同步微信支付订单状态
+  rpc SyncWechatPayOrderStatus(SyncWechatPayOrderStatusReq) returns (SyncWechatPayOrderStatusReply) {}
+  // 同步微信支付账单
+  rpc SyncWechatPayBill(SyncWechatPayBillReq) returns (SyncWechatPayBillReply) {}
+  // 导出微信账单
+  rpc ExportWechatPayBill(ExportWechatPayBillReq) returns (ExportWechatPayBillReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/exportWechatPayBill"
+      body: "*"
+    };
+  }
+  // 旧订单拆单
+  rpc SplitSubOrder(SplitSubOrderReq) returns (SplitSubOrderReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/splitSubOrder"
+      body: "*"
+    };
+  }
+  // 刷服务状态数据
+  rpc RefreshServiceStatus(RefreshServiceStatusReq) returns (RefreshServiceStatusReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/refreshServiceStatus"
+      body: "*"
+    };
+  }
+  // 刷新商品类型
+  rpc RefreshGoodType(RefreshGoodTypeReq) returns (RefreshGoodTypeReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/refreshGoodType"
+      body: "*"
+    };
+  }
+  // 同步抖音分账信息
+  rpc SyncDouYinSettleInfo(SyncDouYinSettleInfoReq) returns (SyncDouYinSettleInfoReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncDouYinSettleInfo"
+      body: "*"
+    };
+  }
+  // 同步历史订单费用
+  rpc SyncHistoryOrderFee(SyncHistoryOrderFeeReq) returns (SyncHistoryOrderFeeReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncHistoryOrderFee"
+      body: "*"
+    };
+  }
+  // 同步抖音券ID
+  rpc SyncDouYinCertificateId(SyncDouYinCertificateIdReq) returns (SyncDouYinCertificateIdReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncDouYinCertificateId"
+      body: "*"
+    };
+  }
+  // 同步微店退款金额
+  rpc SyncWeiDianRefundAmount(SyncWeiDianRefundAmountReq) returns (SyncWeiDianRefundAmountReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncWeiDianRefundAmount"
+      body: "*"
+    };
+  }
+  // 修复订单数据
+  rpc FixOrderData(FixOrderDataReq) returns (FixOrderDataReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/fixOrderData"
+      body: "*"
+    };
+  }
+  // 修复退款数据
+  rpc FixRefundAmount(FixRefundAmountReq) returns (FixRefundAmountReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/fixRefundAmount"
+      body: "*"
+    };
+  }
+  // 同步抖音订单
+  rpc SyncDouYinOrder(SyncDouYinOrderReq) returns (SyncDouYinOrderReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncDouYinOrder"
+      body: "*"
+    };
+  }
+  // 重试失败的订单回调
+  rpc RetryFailedOrderCallback(RetryFailedOrderCallbackReq) returns (RetryFailedOrderCallbackReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/retryFailedOrderCallback"
+      body: "*"
+    };
+  }
+  // 同步订单结算时间
+  rpc SyncOrderSettlementTime(SyncOrderSettlementTimeReq) returns (SyncOrderSettlementTimeReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncOrderSettlementTime"
+      body: "*"
+    };
+  }
+  // 查询抖音订单券ID信息
+  rpc QueryDouYinOrderCertificateInfo(QueryDouYinOrderCertificateInfoReq) returns (QueryDouYinOrderCertificateInfoReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/queryDouYinOrderCertificateInfo"
+      body: "*"
+    };
+  }
+}
+
+// 请求-同步抖音订单
+message SyncDouYinOrderReq {}
+
+// 响应-同步抖音订单
+message SyncDouYinOrderReply {}
+
+// 请求-重试失败的订单回调
+message RetryFailedOrderCallbackReq {}
+
+// 响应-重试失败的订单回调
+message RetryFailedOrderCallbackReply {}
+
+// 请求-同步订单结算时间
+message SyncOrderSettlementTimeReq {
+  string channel = 1; // 渠道类型：miniprogram-小程序渠道 douyin-抖音渠道
+}
+
+// 响应-同步订单结算时间
+message SyncOrderSettlementTimeReply {
+  int32 totalCount = 1; // 总处理订单数
+  int32 successCount = 2; // 成功更新数
+  int32 failCount = 3; // 失败数
+}
+
+// 请求-查询抖音订单券ID信息
+message QueryDouYinOrderCertificateInfoReq {
+  string orderId = 1; // 抖音订单ID（originOrderNumber）
+  string accountId = 2; // 抖音账户ID（可选，默认使用系统配置）
+}
+
+// 响应-查询抖音订单券ID信息
+message QueryDouYinOrderCertificateInfoReply {
+  string orderId = 1; // 订单ID
+  int32 orderStatus = 2; // 订单状态
+  string skuName = 3; // 商品名称
+  string skuId = 4; // 商品ID
+  int32 count = 5; // 券数量
+  int32 receiptAmount = 6; // 实收金额（单位：分）
+  int32 discountAmount = 7; // 优惠金额（单位：分）
+  int64 anchorId = 8; // 达人ID
+  repeated CertificateInfo certificates = 9; // 券信息列表
+}
+
+// 券信息
+message CertificateInfo {
+  string certificateId = 1; // 券ID
+  string combinationId = 2; // 组合ID
+  int32 itemStatus = 3; // 券状态：301-已退款
+  int32 itemUpdateTime = 4; // 券更新时间
+  string orderItemId = 5; // 订单项ID
+  int32 refundAmount = 6; // 退款金额（单位：分）
+  int32 refundTime = 7; // 退款时间
+}
+
+// 请求-修复退款数据
+message FixRefundAmountReq {}
+
+// 响应-修复退款数据
+message FixRefundAmountReply {
+  int32 totalCount = 1; // 总数
+  int32 successCount = 2; // 成功数
+  int32 failCount = 3; // 失败数
+  repeated FailedRefundOrder failedOrders = 4; // 失败订单列表
+}
+
+message FailedRefundOrder {
+  string orderId = 1;
+  string orderNumber = 2;
+  int32 parentRefundAmount = 3; // 父订单退款金额
+  int32 subOrdersRefundSum = 4; // 子订单退款金额总和
+  string reason = 5; // 失败原因
+}
+
+// 请求-修复订单数据
+message FixOrderDataReq {}
+
+// 响应-修复订单数据
+message FixOrderDataReply {
+  string message = 1; // 消息
+}
+
+// 请求-同步抖音券ID
+message SyncDouYinCertificateIdReq {}
+
+// 响应-同步抖音券ID
+message SyncDouYinCertificateIdReply {}
+
+// 请求-同步微店退款金额
+message SyncWeiDianRefundAmountReq {}
+
+// 响应-同步微店退款金额
+message SyncWeiDianRefundAmountReply {}
+
+// 请求-同步历史订单费用
+message SyncHistoryOrderFeeReq {}
+
+// 响应-同步历史订单费用
+message SyncHistoryOrderFeeReply {}
+
+// 请求-同步抖音分账信息
+message SyncDouYinSettleInfoReq {}
+
+// 响应-同步抖音分账信息
+message SyncDouYinSettleInfoReply {}
+
+// 请求-刷新商品类型
+message RefreshGoodTypeReq {}
+
+// 响应-刷新商品类型
+message RefreshGoodTypeReply {
+  int32 totalCount = 1; // 总数
+  int32 successCount = 2; // 成功数
+  int32 failCount = 3; // 失败数
+}
+
+// 请求-刷服务状态数据
+message RefreshServiceStatusReq {
+  string startTime = 1; // 开始时间（可选，格式：2006-01-02 15:04:05）
+}
+
+// 响应-刷服务状态数据
+message RefreshServiceStatusReply {
+  int32 totalCount = 1; // 总数
+  int32 successCount = 2; // 成功数
+  int32 failCount = 3; // 失败数
+}
+
+// 请求-旧订单拆单
+message SplitSubOrderReq {
+  string startTime = 1; // 开始时间（可选，格式：2006-01-02 15:04:05）
+}
+
+// 响应-旧订单拆单
+message SplitSubOrderReply {
+  int32 totalCount = 1; // 总数
+  int32 successCount = 2; // 成功数
+  int32 failCount = 3; // 失败数
+}
+
+// 请求-导出微信账单
+message ExportWechatPayBillReq {
+  string billStartTime = 1 [(validate.rules).string = {min_len: 1}]; // 账单起始日期
+  string billEndTime = 2 [(validate.rules).string = {min_len: 1}]; // 账单结束日期
+}
+
+// 响应-导出微信账单
+message ExportWechatPayBillReply {
+  string downloadUrl = 1; // 下载链接
+}
+
+// 请求-同步微信支付账单
+message SyncWechatPayBillReq {}
+
+// 响应-同步微信支付账单
+message SyncWechatPayBillReply {}
+
+//请求-小程序订单退款
+message MiniProgramOrderRefundReq {
+  string orderId = 1 [(validate.rules).string.uuid = true]; // 订单ID
+  string payId = 2 [(validate.rules).string = {min_len: 1}]; // 支付订单ID
+  string refundReason = 3 [(validate.rules).string = {min_len: 1}]; // 退款原因
+  int32 refundAmount = 4; // 退款金额: 单位分
+}
+
+//响应-小程序订单退款
+message MiniProgramOrderRefundReply {
+  string refundId = 1; // 退款ID
+}
+
+message SyncWeiDianOrderReq {}
+message SyncWeiDianOrderReply {}
+
+message SyncOrderRefundStatusReq {}
+message SyncOrderRefundStatusReply {}
+
+message DouYinOrderInfoCallbackReq {
+  string event = 1; // 消息类型
+  string client_key = 2; // 对应服务商平台或开发者平台中的APPID，应用ID
+  string from_user_id = 3; // 标识用户身份的openId，同一用户在不同的APPID中openId不相同
+  string content = 4; // 消息内容，根据需要解析消息内容，不同类型的消息内容不同
+  string log_id = 5; // 抖音内部日志id，可提供给抖音方便排查问题
+}
+
+message DouYinOrderInfoCallbackReply {
+  int32 challenge = 1; // 验证信息
+}
+
+message ImportPhoneByCsvFileReq {
+  string fileUrl = 1 [(validate.rules).string = {min_len: 1}]; // 文件地址
+}
+
+message ImportPhoneByCsvFileReply {}
+
+message UpdateOrderDetailReq {
+  string id = 1 [(validate.rules).string = {min_len: 1}]; // 订单ID
+  string phone = 2; // 手机号
+  string status = 3; // 订单状态
+  string remark = 4; // 备注
+}
+
+message UpdateOrderDetailReply {
+  bool isSucceed = 1; // 是否成功
+}
+
+message GetOrderVerificationProgressListReq {
+  string orderId = 1; // 订单编号
+}
+
+message OrderVerificationProgressItem {
+  string orderId = 1; // 订单编号
+  string courseName = 2; // 课程名称
+  string verificationDate = 3; // 核销日期
+  string period = 4; // 课程时段
+  string childName = 5; // 孩子姓名
+}
+
+message CategoryVerificationProgressItem {
+  string categoryName = 1; // 类型名称
+  int32 totalAppointmentNums = 2; // 可预约总数
+  int32 totalFinishedNums = 3; // 已完成预约总数
+  repeated OrderVerificationProgressItem list = 4; // 列表数据
+}
+
+message GetOrderVerificationProgressListReply {
+  int32 totalAppointmentNums = 1; // 可预约总数
+  int32 totalFinishedNums = 2; // 已完成预约总数
+  repeated CategoryVerificationProgressItem list = 3; // 列表数据
+}
+
+message ExportOrderListReq {
+  string goodName = 1; // 商品名称
+  string channelId = 2; // 渠道ID
+  string paymentTimeStart = 3; // 支付开始时间
+  string paymentTimeEnd = 4; // 支付结束时间
+  string orderStatus = 5; // 订单状态
+  string orderNumber = 6; // 订单编号
+  string phone = 7; // 手机号
+  string serviceStatus = 8; // 服务状态：pending待预约 success已预约 completed已完成
+  string goodType = 9; // 商品类型：single:单日营；multi：多日营
+  string refundTimeStart = 10; // 退款开始时间
+  string refundTimeEnd = 11; // 退款结束时间
+  string parentOrderId = 12; // 父订单Id
+  string campTimeStart = 13; // 参营开始时间
+  string campTimeEnd = 14; // 参营结束时间
+}
+
+message ExportOrderListReply {
+  string downloadUrl = 1; // 下载链接
+}
+
+message ImportOrderInfoByCsvFileReq {
+  string channelId = 1 [(validate.rules).string = {min_len: 1}]; // 渠道ID
+  string fileUrl = 2 [(validate.rules).string = {min_len: 1}]; // 文件地址
+}
+
+message ImportOrderInfoByCsvFileReply {}
+
+//订单信息
+message OrderInfo {
+  string id = 1; // id
+  string channelId = 2; // 渠道ID
+  string goodId = 3; // 商品 Id
+  string channelGoodId = 4; // 渠道商品Id
+  string orderNumber = 5; // 订单编号
+  int32 orderPrice = 6; // 订单金额：单位分
+  string paymentTime = 7; // 支付时间
+  string phone = 8; // 联系方式
+  string status = 9; // 订单状态 pending待预约 success已预约 completed已完成 refunded已退款 pendingPayment待付款 closed已关闭
+  string createdAt = 10; // 创建时间
+  string updatedAt = 11; // 更新时间
+  string updatedBy = 12; // 操作人
+  string goodName = 13; // 商品名称
+  string channelName = 14; // 渠道名称
+  int32 discountAmount = 15; // 优惠金额
+  string updatedByName = 16; // 操作人名称
+  string payId = 17; // 支付订单号
+  string refundId = 18; // 退款订单号
+  string refundReason = 19; // 退款原因
+  float refundAmount = 20; // 退款金额
+  string parentRemark = 21; // 家长备注
+  string refundTime = 22; // 退款时间
+  string goodType = 23; // 商品类型
+  int32 platformFee = 24; // 平台手续费：单位分
+  string serviceStatus = 25; // 服务状态：pending待预约 success已预约 completed已完成
+  string talentUid = 26; // 达人ID
+  string talentName = 27; // 达人名称
+  int32 talentCommission = 28; // 达人佣金：单位分
+  int32 receiptAmount = 29; // 实收金额：单位分
+  int32 platformDiscountAmount = 30; // 平台优惠金额：单位分
+  int32 paymentDiscountAmount = 31; // 支付优惠金额：单位分
+  int32 shopDiscountAmount = 32; // 店铺优惠金额：单位分
+  int32 actualInsured = 33; // 保险费：单位分
+  string settlementTime = 34; // 结算时间
+}
+
+//请求-订单-列表数据查询
+message GetOrderListReq {
+  int32 page = 1; //页码
+  int32 pageSize = 2; //页数
+  string goodName = 3; // 商品名称
+  string channelId = 4; // 渠道ID
+  string paymentTimeStart = 5; // 支付开始时间
+  string paymentTimeEnd = 6; // 支付结束时间
+  string orderStatus = 7; // 订单状态
+  string orderNumber = 8; // 订单编号
+  string phone = 9; // 手机号
+  string serviceStatus = 10; // 服务状态：pending待预约 success已预约 completed已完成
+  string goodType = 11; // 商品类型：single:单日营；multi：多日营
+  string refundTimeStart = 12; // 退款开始时间
+  string refundTimeEnd = 13; // 退款结束时间
+}
+
+//响应-订单-列表数据查询
+message GetOrderListReply {
+  int32 total = 1; //总数
+  repeated OrderInfo list = 2; // 列表数据
+}
+
+message FinishOrderReq {
+  repeated string orderIds = 1; // 订单ID集合
+}
+
+message FinishOrderReply {}
+
+message CancelOrderReq {
+  repeated string orderIds = 1; // 订单ID集合
+}
+
+message CancelOrderReply {}
+
+message GetOrderGoodInfoReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: ["id"]
+    }
+  };
+  string id = 1 [(validate.rules).string.uuid = true]; // id
+}
+
+message GetOrderGoodInfoReply {
+  OrderInfo orderInfo = 1; // 订单信息
+  GoodInfo goodInfo = 2; // 商品信息
+  ChannelInfo channelInfo = 3; // 渠道信息
+}
+
+message GetOrderListByPhoneReq {
+  string phone = 1; // 手机号
+}
+
+message GetOrderListByPhoneReply {
+  repeated OrderInfo list = 1; // 订单列表
+}
+
+// 请求-关闭超时未支付订单
+message CloseExpiredOrdersReq {}
+
+// 响应-关闭超时未支付订单
+message CloseExpiredOrdersReply {
+  int32 successCount = 1; // 成功关闭的订单数量
+}
+
+//请求-同步微信支付订单状态
+message SyncWechatPayOrderStatusReq {}
+
+//响应-同步微信支付订单状态
+message SyncWechatPayOrderStatusReply {}

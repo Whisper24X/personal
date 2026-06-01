@@ -1,0 +1,165 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/sys_auth.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SysAuth"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/shadow/v1/SysAuthLogout": {
+      "post": {
+        "summary": "Auth-退出",
+        "operationId": "SysAuth_SysAuthLogout",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysAuthLogoutReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysAuthLogoutReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysAuth"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysAuthLogin": {
+      "post": {
+        "summary": "Auth-登录",
+        "operationId": "SysAuth_SysAuthLogin",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysAuthLoginReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysAuthLoginReq"
+            }
+          }
+        ],
+        "tags": [
+          "SysAuth"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1SysAuthLoginReply": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "title": "Token"
+        },
+        "expiredAt": {
+          "type": "string",
+          "format": "int64",
+          "title": "过期时间"
+        },
+        "refreshAt": {
+          "type": "string",
+          "format": "int64",
+          "title": "刷新时间"
+        }
+      },
+      "title": "响应-登录"
+    },
+    "v1SysAuthLoginReq": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "title": "账号名，4到16位（字母，数字，下划线，减号）"
+        },
+        "password": {
+          "type": "string",
+          "title": "密码"
+        }
+      },
+      "title": "请求-登录"
+    },
+    "v1SysAuthLogoutReply": {
+      "type": "object",
+      "title": "响应-退出"
+    },
+    "v1SysAuthLogoutReq": {
+      "type": "object",
+      "title": "请求-退出"
+    }
+  }
+}

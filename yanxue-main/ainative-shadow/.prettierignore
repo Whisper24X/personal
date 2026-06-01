@@ -1,0 +1,35 @@
+## OS
+.DS_Store
+.idea
+.editorconfig
+
+# Ignored suffix
+*.log
+*.md
+*.svg
+*.png
+*ignore
+
+## Local
+site/public
+.vscode
+.husky
+.dockerignore
+node_modules
+default.conf
+Dockerfile
+.env.development
+.env.production
+.env.stage
+.env.test
+nginx.conf
+
+## Built-files
+.cache
+dist
+lib
+build
+coverage
+.npm-cache
+.npmrc
+

@@ -1,0 +1,983 @@
+import { TaskInteractionService } from './task-interaction.service';
+import { TaskMode } from '../dto/task-mode.enum';
+import { TaskNodeStatus } from '../dto/task-node-status.enum';
+import { TaskStatus } from '../dto/task-status.enum';
+import { ConflictException } from '@nestjs/common';
+
+const createTask = (overrides: Record<string, unknown> = {}) => ({
+  id: 'task-1',
+  projectId: 'project-1',
+  businessLineId: 'business-line-1',
+  mode: TaskMode.workflow,
+  title: 'Workflow task',
+  prompt: 'task prompt',
+  status: TaskStatus.done,
+  gitBranch: 'feature/task-1',
+  gitBaseBranch: 'main',
+  gitWorktree: 'wk-20260319-1',
+  configJson: null,
+  startedAt: null,
+  finishedAt: null,
+  createdAt: new Date('2026-03-19T10:00:00.000Z'),
+  updatedAt: new Date('2026-03-19T10:00:00.000Z'),
+  ...overrides,
+});
+
+const createNode = (overrides: Record<string, unknown> = {}) => ({
+  id: 'node-1',
+  taskId: 'task-1',
+  nodeOrder: 1,
+  name: 'Node 1',
+  input: null,
+  agentCliId: 'codex',
+  agentCliConfigId: 'cfg-1',
+  agentClioutput: '/tmp/node-1.jsonl',
+  agentCliSessionId: null,
+  configJson: null,
+  loopJson: null,
+  runtimeJson: null,
+  status: TaskNodeStatus.done,
+  startedAt: new Date('2026-03-19T10:00:00.000Z'),
+  finishedAt: new Date('2026-03-19T10:10:00.000Z'),
+  createdAt: new Date('2026-03-19T10:00:00.000Z'),
+  updatedAt: new Date('2026-03-19T10:10:00.000Z'),
+  ...overrides,
+});
+
+const createCurrentUser = () => ({
+  sub: 'user-1',
+  roles: ['admin'],
+  iat: 1,
+  exp: 9999999999,
+});
+
+const createService = (taskOverrides: Record<string, unknown> = {}) => {
+  const task = createTask(taskOverrides);
+  const taskRepository = {
+    update: jest.fn().mockImplementation((_taskId, payload) => ({
+      ...task,
+      ...payload,
+    })),
+    hasRunningTaskInProject: jest.fn().mockResolvedValue(false),
+  };
+  const taskNodeRepository = {
+    findByTaskId: jest.fn().mockResolvedValue([]),
+    findInProgressByTaskId: jest.fn().mockResolvedValue(null),
+    findFirstByTaskIdAndStatus: jest.fn().mockResolvedValue(null),
+    findByTaskIdAndStatus: jest.fn().mockResolvedValue([]),
+    findById: jest.fn().mockResolvedValue(null),
+    update: jest.fn().mockResolvedValue(null),
+  };
+  const taskRuntimeService = {
+    cleanupRuntime: jest.fn(),
+  };
+  const taskAccessService = {
+    getTaskOrThrow: jest.fn().mockResolvedValue(task),
+    getProjectByIdOrThrow: jest.fn(),
+  };
+  const taskRuntimeOrchestrator = {
+    prepareTaskRuntime: jest.fn().mockResolvedValue({
+      task,
+      project: {
+        id: 'project-1',
+        businessLineId: 'business-line-1',
+        name: 'Project',
+        description: null,
+        gitUrl: 'https://example.com/repo.git',
+        defaultBranch: 'main',
+        configJson: null,
+        createdAt: new Date('2026-03-19T10:00:00.000Z'),
+        updatedAt: new Date('2026-03-19T10:00:00.000Z'),
+        deletedAt: null,
+      },
+    }),
+  };
+  const taskConfigResolver = {
+    normalizeOptionalString: jest.fn().mockImplementation((value) => {
+      return typeof value === 'string' && value.trim() ? value.trim() : null;
+    }),
+    buildPendingReplyRuntimeJson: jest
+      .fn()
+      .mockImplementation((message: string) => ({
+        pendingUserMessage: message,
+      })),
+    readNodeLoopConfig: jest.fn().mockImplementation((loopJson) => ({
+      enabled: Boolean(loopJson?.enabled),
+      loopCount: Number(loopJson?.loopCount ?? 0),
+      maxLoops: Number(loopJson?.maxLoops ?? 1),
+    })),
+  };
+  const taskLogService = {
+    appendLog: jest.fn().mockResolvedValue(undefined),
+    deleteNodeLogs: jest.fn().mockResolvedValue(0),
+  };
+  const taskOutputService = {
+    writeNodeOutputJsonl: jest.fn(),
+    resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
+    removeNodeOutputFiles: jest.fn().mockResolvedValue(undefined),
+  };
+  const taskStatusService = {
+    recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
+    setTaskStatus: jest.fn().mockResolvedValue(undefined),
+  };
+  const taskQueryService = {
+    detailById: jest.fn().mockResolvedValue({ task, nodes: [] }),
+  };
+  const taskSchedulerService = {
+    triggerDispatch: jest.fn().mockResolvedValue(undefined),
+  };
+  const taskEnvironmentService = {
+    assertEnvironmentReady: jest.fn().mockResolvedValue(undefined),
+  };
+  const taskGitService = {
+    commitIfChanged: jest.fn().mockResolvedValue({
+      committed: false,
+      skippedReason: 'no_changes',
+    }),
+    resolveHeadCommitShaForTask: jest.fn().mockResolvedValue('commit-after'),
+    resetHardToCommitForTask: jest.fn().mockResolvedValue(undefined),
+  };
+  const taskWorkspaceWatchService = {
+    syncTaskWatch: jest.fn().mockResolvedValue(undefined),
+  };
+  const taskWorkspaceContextCache = {
+    invalidateTask: jest.fn(),
+  };
+  const notificationsService = {
+    notifyTaskNodeStatusChanged: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const service = new TaskInteractionService(
+    taskRepository as never,
+    taskNodeRepository as never,
+    taskRuntimeService as never,
+    taskAccessService as never,
+    taskRuntimeOrchestrator as never,
+    taskConfigResolver as never,
+    taskLogService as never,
+    taskOutputService as never,
+    taskStatusService as never,
+    taskQueryService as never,
+    taskSchedulerService as never,
+    taskEnvironmentService as never,
+    taskGitService as never,
+    taskWorkspaceWatchService as never,
+    taskWorkspaceContextCache as never,
+    notificationsService as never,
+  );
+
+  return {
+    service,
+    task,
+    taskRepository,
+    taskNodeRepository,
+    taskRuntimeService,
+    taskAccessService,
+    taskRuntimeOrchestrator,
+    taskConfigResolver,
+    taskLogService,
+    taskOutputService,
+    taskStatusService,
+    taskQueryService,
+    taskSchedulerService,
+    taskEnvironmentService,
+    taskGitService,
+    taskWorkspaceWatchService,
+    taskWorkspaceContextCache,
+    notificationsService,
+  };
+};
+
+describe('TaskInteractionService', () => {
+  it('should invalidate cached workspace context after successful cleanup', async () => {
+    const {
+      service,
+      taskAccessService,
+      taskRuntimeService,
+      taskRepository,
+      taskWorkspaceContextCache,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const project = {
+      id: 'project-1',
+      businessLineId: 'business-line-1',
+      name: 'Project',
+      description: null,
+      gitUrl: 'https://example.com/repo.git',
+      defaultBranch: 'main',
+      configJson: null,
+      createdAt: new Date('2026-03-19T10:00:00.000Z'),
+      updatedAt: new Date('2026-03-19T10:00:00.000Z'),
+      deletedAt: null,
+    };
+
+    taskAccessService.getProjectByIdOrThrow.mockResolvedValue(project);
+    taskRuntimeService.cleanupRuntime.mockResolvedValue({ cleaned: true });
+
+    await service.cleanupWorktree('task-1', currentUser as never);
+
+    expect(taskRepository.update).toHaveBeenCalledWith('task-1', {
+      gitWorktree: null,
+    });
+    expect(taskWorkspaceContextCache.invalidateTask).toHaveBeenCalledWith(
+      'task-1',
+    );
+  });
+
+  it('should reject execute when environment is not ready', async () => {
+    const { service, taskEnvironmentService } = createService({
+      status: TaskStatus.todo,
+    });
+    const currentUser = createCurrentUser();
+    taskEnvironmentService.assertEnvironmentReady.mockRejectedValue(
+      new ConflictException('执行环境未就绪，请先启动环境'),
+    );
+
+    await expect(
+      service.execute('task-1', currentUser as never),
+    ).rejects.toThrow('执行环境未就绪，请先启动环境');
+  });
+
+  it('should queue execution after environment readiness passes', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskEnvironmentService,
+      taskStatusService,
+      taskSchedulerService,
+      taskLogService,
+    } = createService({
+      status: TaskStatus.todo,
+    });
+    const currentUser = createCurrentUser();
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      createNode({
+        id: 'node-todo',
+        status: TaskNodeStatus.todo,
+        nodeOrder: 1,
+      }),
+    );
+
+    await service.execute('task-1', currentUser as never);
+
+    expect(taskEnvironmentService.assertEnvironmentReady).toHaveBeenCalled();
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        message: 'Task queued for execution',
+      }),
+    );
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-1',
+    );
+    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
+  });
+
+  it('should reuse the most recent done node with a cli session when replying', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskConfigResolver,
+      taskQueryService,
+    } = createService({
+      status: TaskStatus.inReview,
+    });
+    const currentUser = createCurrentUser();
+    const olderDoneNode = createNode({
+      id: 'node-1',
+      nodeOrder: 1,
+      finishedAt: new Date('2026-03-19T10:10:00.000Z'),
+      agentCliSessionId: 'session-older',
+    });
+    const latestDoneNodeWithoutSession = createNode({
+      id: 'node-2',
+      nodeOrder: 2,
+      finishedAt: new Date('2026-03-19T10:20:00.000Z'),
+      agentCliSessionId: null,
+    });
+    const latestDoneNodeWithSession = createNode({
+      id: 'node-3',
+      nodeOrder: 3,
+      finishedAt: new Date('2026-03-19T10:30:00.000Z'),
+      agentCliSessionId: 'session-latest',
+    });
+
+    taskNodeRepository.findByTaskIdAndStatus.mockResolvedValue([
+      olderDoneNode,
+      latestDoneNodeWithoutSession,
+      latestDoneNodeWithSession,
+    ]);
+
+    await service.reply(
+      'task-1',
+      { message: 'Please continue' } as never,
+      currentUser as never,
+    );
+
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-3', {
+      status: TaskStatus.todo,
+      finishedAt: null,
+      runtimeJson:
+        taskConfigResolver.buildPendingReplyRuntimeJson('Please continue'),
+    });
+    expect(taskQueryService.detailById).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
+  });
+
+  it('should reject done-node reply when no cli session exists', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inReview,
+    });
+    const currentUser = createCurrentUser();
+    const olderDoneNode = createNode({
+      id: 'node-1',
+      nodeOrder: 1,
+      finishedAt: new Date('2026-03-19T10:10:00.000Z'),
+      agentCliSessionId: null,
+    });
+    const latestDoneNode = createNode({
+      id: 'node-2',
+      nodeOrder: 2,
+      finishedAt: new Date('2026-03-19T10:20:00.000Z'),
+      agentCliSessionId: null,
+    });
+
+    taskNodeRepository.findByTaskIdAndStatus.mockResolvedValue([
+      olderDoneNode,
+      latestDoneNode,
+    ]);
+
+    await expect(
+      service.reply(
+        'task-1',
+        { message: 'Please continue' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('Task reply cannot continue without agent session');
+
+    expect(taskLogService.appendLog).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).not.toHaveBeenCalled();
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should persist the raw reply template before execution-time rendering', async () => {
+    const { service, taskNodeRepository, taskConfigResolver, taskLogService } =
+      createService({
+        status: TaskStatus.todo,
+      });
+    const currentUser = createCurrentUser();
+    const todoNode = createNode({
+      id: 'node-todo',
+      status: TaskStatus.todo,
+      agentCliSessionId: 'session-todo',
+    });
+
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      todoNode,
+    );
+
+    await service.reply(
+      'task-1',
+      { message: 'Please continue on {{gitBranch}}' } as never,
+      currentUser as never,
+    );
+
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        taskNodeId: null,
+        message: 'Please continue on {{gitBranch}}',
+      }),
+    );
+    expect(
+      taskConfigResolver.buildPendingReplyRuntimeJson,
+    ).toHaveBeenCalledWith('Please continue on {{gitBranch}}');
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-todo', {
+      runtimeJson: taskConfigResolver.buildPendingReplyRuntimeJson(
+        'Please continue on {{gitBranch}}',
+      ),
+    });
+  });
+
+  it('should reject reply when task is already completed', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskRuntimeOrchestrator,
+      taskLogService,
+    } = createService({
+      status: TaskStatus.done,
+    });
+    const currentUser = createCurrentUser();
+
+    await expect(
+      service.reply(
+        'task-1',
+        { message: 'Please continue' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('Completed task cannot accept reply');
+
+    expect(taskRuntimeOrchestrator.prepareTaskRuntime).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).not.toHaveBeenCalled();
+    expect(taskLogService.appendLog).not.toHaveBeenCalled();
+  });
+
+  it('should queue the failed node again when replying after failure', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskConfigResolver,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+      taskQueryService,
+    } = createService({
+      status: TaskStatus.inProgress,
+    });
+    const currentUser = createCurrentUser();
+    const failedNode = createNode({
+      id: 'node-failed',
+      status: TaskNodeStatus.failed,
+      nodeOrder: 2,
+      agentCliSessionId: 'session-failed',
+    });
+
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      failedNode,
+    );
+
+    await service.reply(
+      'task-1',
+      { message: 'Please continue' } as never,
+      currentUser as never,
+    );
+
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-failed', {
+      status: TaskNodeStatus.todo,
+      finishedAt: null,
+      runtimeJson:
+        taskConfigResolver.buildPendingReplyRuntimeJson('Please continue'),
+    });
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        taskNodeId: 'node-failed',
+        message: 'Failed node moved back to todo by reply',
+      }),
+    );
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-1',
+    );
+    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
+    expect(taskQueryService.detailById).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
+  });
+
+  it('should reject failed node reply when no agent session is available', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inProgress,
+    });
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      createNode({
+        id: 'node-failed',
+        status: TaskNodeStatus.failed,
+        nodeOrder: 2,
+        agentCliSessionId: null,
+      }),
+    );
+
+    await expect(
+      service.reply(
+        'task-1',
+        { message: 'Please continue' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('Task reply cannot continue without agent session');
+
+    expect(taskLogService.appendLog).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).not.toHaveBeenCalled();
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should reject in-review node reply when no agent session is available', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inReview,
+    });
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findFirstByTaskIdAndStatus
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        createNode({
+          id: 'node-review',
+          status: TaskNodeStatus.inReview,
+          nodeOrder: 2,
+          agentCliSessionId: null,
+        }),
+      );
+
+    await expect(
+      service.reply(
+        'task-1',
+        { message: 'Please continue' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('Task reply cannot continue without agent session');
+
+    expect(taskLogService.appendLog).not.toHaveBeenCalled();
+    expect(taskNodeRepository.update).not.toHaveBeenCalled();
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should cancel a running node without overwriting existing output jsonl', async () => {
+    const {
+      service,
+      task,
+      taskNodeRepository,
+      taskOutputService,
+      taskStatusService,
+      taskSchedulerService,
+      taskQueryService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const runningNode = createNode({
+      status: TaskStatus.inProgress,
+      finishedAt: null,
+      agentClioutput: null,
+    });
+
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(runningNode);
+
+    await service.cancel('task-1', currentUser as never);
+
+    expect(taskOutputService.writeNodeOutputJsonl).not.toHaveBeenCalled();
+    expect(taskOutputService.resolveNodeOutputPath).toHaveBeenCalledWith(
+      task,
+      runningNode,
+    );
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-1', {
+      status: TaskStatus.inReview,
+      finishedAt: expect.any(Date),
+      agentClioutput: '/tmp/node-1.jsonl',
+      runtimeJson: null,
+    });
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-1',
+    );
+    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
+    expect(taskQueryService.detailById).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
+  });
+
+  it('should notify when cancelling a workflow node into in_review', async () => {
+    const { service, taskNodeRepository, notificationsService } = createService(
+      {
+        createdBy: 'user-1',
+        mode: TaskMode.workflow,
+      },
+    );
+    const currentUser = createCurrentUser();
+    const runningNode = createNode({
+      id: 'node-review',
+      nodeOrder: 2,
+      name: 'Preview build',
+      status: TaskStatus.inProgress,
+      finishedAt: null,
+    });
+
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(runningNode);
+
+    await service.cancel('task-1', currentUser as never);
+
+    expect(
+      notificationsService.notifyTaskNodeStatusChanged,
+    ).toHaveBeenCalledWith({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: 'Workflow task',
+      nodeId: 'node-review',
+      nodeName: 'Preview build',
+      nodeOrder: 2,
+      status: TaskStatus.inReview,
+    });
+  });
+
+  it('should reject execute when task still has an in_review node', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inProgress,
+      startedAt: new Date('2026-03-19T10:00:00.000Z'),
+    });
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValueOnce(
+      createNode({
+        id: 'node-review',
+        status: TaskNodeStatus.inReview,
+        nodeOrder: 2,
+      }),
+    );
+
+    await expect(
+      service.execute('task-1', currentUser as never),
+    ).rejects.toThrow('Task has in_review node and cannot execute');
+
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should reject execute when task still has a failed node', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService({
+      status: TaskStatus.inProgress,
+      startedAt: new Date('2026-03-19T10:00:00.000Z'),
+    });
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findFirstByTaskIdAndStatus
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        createNode({
+          id: 'node-failed',
+          status: TaskNodeStatus.failed,
+          nodeOrder: 2,
+        }),
+      );
+
+    await expect(
+      service.execute('task-1', currentUser as never),
+    ).rejects.toThrow('Task has failed node and cannot execute');
+
+    expect(taskStatusService.recalculateTaskStatus).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should auto-commit workspace changes before approving a node', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskAccessService,
+      taskGitService,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const inReviewNode = createNode({
+      id: 'node-review',
+      nodeOrder: 2,
+      name: 'Preview build',
+      status: TaskStatus.inReview,
+    });
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(createTask());
+    taskNodeRepository.findById.mockResolvedValue(inReviewNode);
+    taskGitService.commitIfChanged.mockResolvedValue({
+      committed: true,
+      commitSha: 'abc123',
+      subject: 'chore(task): approve node #2 Preview build',
+    });
+
+    await service.approve(
+      'task-1',
+      { nodeId: 'node-review' } as never,
+      currentUser as never,
+    );
+
+    expect(taskGitService.commitIfChanged).toHaveBeenCalledWith(
+      'task-1',
+      'chore(task): approve node #2 Preview build',
+      currentUser,
+    );
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-review', {
+      status: TaskStatus.done,
+      finishedAt: inReviewNode.finishedAt,
+      runtimeJson: null,
+      afterRunCommitSha: 'abc123',
+    });
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        taskNodeId: 'node-review',
+        message: 'Node approval auto-committed staged changes',
+        payload: expect.objectContaining({
+          commitSha: 'abc123',
+        }),
+      }),
+    );
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-1',
+    );
+    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
+  });
+
+  it('should stop approval when auto-commit fails', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskAccessService,
+      taskGitService,
+      taskLogService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const inReviewNode = createNode({
+      id: 'node-review',
+      status: TaskStatus.inReview,
+    });
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(createTask());
+    taskNodeRepository.findById.mockResolvedValue(inReviewNode);
+    taskGitService.commitIfChanged.mockRejectedValue(
+      new Error('git commit failed'),
+    );
+
+    await expect(
+      service.approve(
+        'task-1',
+        { nodeId: 'node-review' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('git commit failed');
+
+    expect(taskNodeRepository.update).not.toHaveBeenCalledWith('node-review', {
+      status: TaskStatus.done,
+      finishedAt: expect.anything(),
+      runtimeJson: null,
+      afterRunCommitSha: expect.anything(),
+    });
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskNodeId: 'node-review',
+        level: 'error',
+        message: 'Node approval auto-commit failed',
+      }),
+    );
+  });
+
+  it('should complete task manually only when all nodes are done', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskAccessService,
+      taskStatusService,
+      taskLogService,
+      taskQueryService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const reviewTask = createTask({
+      status: TaskStatus.inReview,
+    });
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(reviewTask);
+    taskNodeRepository.findByTaskId.mockResolvedValue([
+      createNode({
+        id: 'node-1',
+        status: TaskNodeStatus.done,
+      }),
+      createNode({
+        id: 'node-2',
+        status: TaskNodeStatus.done,
+      }),
+    ]);
+
+    await service.complete(reviewTask.id, currentUser as never);
+
+    expect(taskStatusService.setTaskStatus).toHaveBeenCalledWith(
+      reviewTask.id,
+      TaskStatus.done,
+    );
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: reviewTask.id,
+        taskNodeId: null,
+        message: 'Task marked as done manually',
+        payload: expect.objectContaining({
+          completedBy: currentUser.sub,
+        }),
+      }),
+    );
+    expect(taskQueryService.detailById).toHaveBeenCalledWith(
+      reviewTask.id,
+      currentUser,
+    );
+  });
+
+  it('should reject manual completion when task still has unfinished nodes', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskAccessService,
+      taskStatusService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const reviewTask = createTask({
+      status: TaskStatus.inReview,
+    });
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(reviewTask);
+    taskNodeRepository.findByTaskId.mockResolvedValue([
+      createNode({
+        id: 'node-1',
+        status: TaskStatus.done,
+      }),
+      createNode({
+        id: 'node-2',
+        status: TaskStatus.inReview,
+      }),
+    ]);
+
+    await expect(
+      service.complete(reviewTask.id, currentUser as never),
+    ).rejects.toThrow('Only task with all nodes done can be completed');
+
+    expect(taskStatusService.setTaskStatus).not.toHaveBeenCalled();
+  });
+
+  it('should reset the selected node and following nodes back to todo', async () => {
+    const {
+      service,
+      task,
+      taskNodeRepository,
+      taskConfigResolver,
+      taskLogService,
+      taskOutputService,
+      taskStatusService,
+      taskGitService,
+      taskQueryService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const leadingDoneNode = createNode({
+      id: 'node-1',
+      nodeOrder: 1,
+      status: TaskStatus.done,
+    });
+    const targetNode = createNode({
+      id: 'node-2',
+      nodeOrder: 2,
+      status: TaskStatus.done,
+      beforeRunCommitSha: 'commit-before-node-2',
+      loopJson: {
+        enabled: true,
+        loopCount: 2,
+        maxLoops: 3,
+      },
+    });
+    const reviewNode = createNode({
+      id: 'node-3',
+      nodeOrder: 3,
+      status: TaskStatus.inReview,
+      loopJson: {
+        enabled: false,
+        loopCount: 1,
+        maxLoops: 1,
+      },
+    });
+
+    taskNodeRepository.findById.mockResolvedValue(targetNode);
+    taskNodeRepository.findByTaskId.mockResolvedValue([
+      leadingDoneNode,
+      targetNode,
+      reviewNode,
+    ]);
+
+    await service.resetNode(task.id, targetNode.id, currentUser as never);
+
+    expect(taskGitService.resetHardToCommitForTask).toHaveBeenCalledWith(
+      task,
+      expect.objectContaining({
+        id: 'project-1',
+      }),
+      'commit-before-node-2',
+    );
+    expect(taskOutputService.removeNodeOutputFiles).toHaveBeenCalledTimes(2);
+    expect(taskLogService.deleteNodeLogs).toHaveBeenCalledWith({
+      taskId: task.id,
+      nodeIds: ['node-2', 'node-3'],
+    });
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-2', {
+      status: TaskStatus.todo,
+      startedAt: null,
+      finishedAt: null,
+      agentClioutput: null,
+      agentCliSessionId: null,
+      runtimeJson: null,
+      afterRunCommitSha: null,
+      loopJson: {
+        enabled: true,
+        loopCount: 0,
+        maxLoops: 3,
+      },
+    });
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-3', {
+      status: TaskStatus.todo,
+      startedAt: null,
+      finishedAt: null,
+      agentClioutput: null,
+      agentCliSessionId: null,
+      runtimeJson: null,
+      afterRunCommitSha: null,
+      loopJson: {
+        enabled: false,
+        loopCount: 0,
+        maxLoops: 1,
+      },
+    });
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: null,
+        message: 'Node reset completed',
+      }),
+    );
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      task.id,
+    );
+    expect(taskQueryService.detailById).toHaveBeenCalledWith(
+      task.id,
+      currentUser,
+    );
+    expect(taskConfigResolver.readNodeLoopConfig).toHaveBeenCalledTimes(2);
+  });
+});

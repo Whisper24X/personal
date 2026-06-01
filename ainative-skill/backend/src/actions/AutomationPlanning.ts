@@ -1,0 +1,1601 @@
+/**
+ * AutomationPlanning Action
+ * Evaluates which test cases can be automated and creates an automation plan
+ * Generates JSON format test case files for automation execution
+ */
+
+import * as path from 'path';
+import * as fs from 'fs/promises';
+import { BaseAction } from '../core/base/BaseAction';
+import { IActionOutput } from '@mind2build/shared';
+import { WorkspaceOptions, logger, WorkspaceManager } from '../utils';
+import { buildCLIModePrompt } from '../utils/document/CLIPromptBuilder';
+
+export interface AutomationPlanningOptions extends WorkspaceOptions {
+  // Inherits all options from WorkspaceOptions
+  testUrl?: string; // Optional URL to test against
+  /** 按用例类型选用的部署 URL 映射（类型 -> URL），由 readDeployResultUrlMap 填充 */
+  deployUrlMap?: Record<string, string>;
+  /** Enable MCP validation after JSON generation (default: false) */
+  enableMCPValidation?: boolean;
+  /** Enable MCP auto-fix for detected issues (default: false) */
+  enableMCPAutoFix?: boolean;
+  /** Maximum number of fix attempts per JSON file (default: 1) */
+  mcpMaxFixAttempts?: number;
+  /** 强制重新生成脚本，跳过「脚本已存在且 TEST.md 未变更」的检测 */
+  forceRegenerate?: boolean;
+}
+
+export class AutomationPlanning extends BaseAction {
+  constructor() {
+    super(
+      'AutomationPlanning',
+      'Evaluate test cases for automation feasibility and create an automation plan with priorities and technology choices'
+    );
+  }
+
+  async run(input: string, options?: AutomationPlanningOptions): Promise<IActionOutput> {
+    const isCLIMode = this.isCLIMode();
+
+    logger.info('========================================');
+    logger.info('AutomationPlanning: Starting automation planning', {
+      isCLIMode,
+      executorMode: this.getExecutorMode(),
+    });
+    logger.info('========================================');
+
+    await this.enrichTestCasesWithPathGuide(options);
+
+    if (isCLIMode) {
+      // CLI 模式：使用 Cursor CLI 按 playwright-skill 约定生成 Playwright 脚本到 docs/test/auto
+      return await this.runCLIMode(input, options);
+    } else {
+      // LLM 模式：保持现有的文本解析逻辑
+      return await this.runLLMMode(input, options);
+    }
+  }
+
+  /**
+   * LLM 模式：使用文本解析逻辑生成 JSON 文件
+   */
+  private async runLLMMode(input: string, options?: AutomationPlanningOptions): Promise<IActionOutput> {
+    try {
+      // Read test cases from workspace
+      let testCases = '';
+
+      if (options) {
+        // Try to read reviewed test cases first, fallback to original test cases
+        try {
+          const reviewedTestCases = await this.readWorkspaceFile('TEST_REVIEW.md', {
+            ...options,
+            documentType: 'TEST',
+          });
+          if (reviewedTestCases) {
+            testCases = reviewedTestCases;
+            logger.info('AutomationPlanning: Loaded reviewed test cases from workspace', {
+              testCasesLength: testCases.length,
+            });
+          }
+        } catch (error: any) {
+          logger.warn('AutomationPlanning: Failed to read reviewed test cases, trying original', {
+            error: error.message,
+          });
+        }
+
+        // Fallback to original test cases
+        if (!testCases) {
+          try {
+            const originalTestCases = await this.readWorkspaceFile('TEST.md', {
+              ...options,
+              documentType: 'TEST',
+            });
+            if (originalTestCases) {
+              testCases = originalTestCases;
+            }
+          } catch (error: any) {
+            logger.warn('AutomationPlanning: Failed to read test cases from workspace', {
+              error: error.message,
+            });
+          }
+        }
+      }
+
+      // Use input if test cases not found in workspace
+      if (!testCases) {
+        testCases = input;
+      }
+
+      if (!testCases || testCases.trim() === '') {
+        throw new Error('Test cases not found for automation planning');
+      }
+
+      // Generate JSON files from test cases (no browser validation)
+      let validationResults = '';
+      let jsonScriptFiles: Array<{ id: string; filename: string; content: string }> = [];
+      const sampleTestCases = this.extractSampleTestCases(testCases, 50);
+      const workspaceDirForTest = options ? this.getWorkspaceDir({ ...options, documentType: 'TEST' }) : '';
+      const deployUrl = options && workspaceDirForTest ? await this.readDeployResultBaseUrl(workspaceDirForTest) : undefined;
+      const deployUrlMap = options && workspaceDirForTest ? await this.readDeployResultUrlMap(workspaceDirForTest) : {};
+      const testUrl = options?.testUrl || deployUrl || this.extractUrlFromTestCases(testCases);
+      const passedCases = sampleTestCases.filter(
+        (tc) => tc.name && tc.name.includes('正向场景') && tc.steps && tc.steps.length > 0
+      );
+
+      if (passedCases.length > 0) {
+        logger.info('AutomationPlanning: Generating JSON files from test cases', {
+          sampleCount: sampleTestCases.length,
+          withStepsCount: passedCases.length,
+          testUrl,
+        });
+        jsonScriptFiles = await this.generateStagehandScripts(passedCases, testUrl, options, deployUrlMap);
+        validationResults = '## 自动化用例生成\n\n已为提取的用例生成 JSON 文件。';
+        logger.info('AutomationPlanning: JSON generation completed', {
+          jsonFilesCount: jsonScriptFiles.length,
+          testCaseIds: jsonScriptFiles.map((s) => s.id),
+        });
+      } else {
+        logger.warn('AutomationPlanning: No test cases with steps extracted, skipping JSON generation', {
+          sampleCount: sampleTestCases.length,
+        });
+      }
+
+      const workspaceOptions: WorkspaceOptions = {
+        ...options,
+        documentType: 'TEST',
+      };
+
+      // Ensure docs/test/auto exists so AutomationExecution can run even when 0 JSON files
+      try {
+        const docsTestDir = this.getWorkspaceDir(workspaceOptions);
+        const autoDir = path.join(docsTestDir, 'auto');
+        await fs.mkdir(autoDir, { recursive: true });
+        logger.debug('AutomationPlanning: Ensured auto directory exists', { autoDir });
+      } catch (mkdirError: any) {
+        logger.warn('AutomationPlanning: Failed to ensure auto directory', { error: mkdirError.message });
+      }
+
+      // Save JSON files if generated (one file per test case)
+      logger.info('AutomationPlanning: Checking if JSON files need to be saved', {
+        jsonFilesCount: jsonScriptFiles.length,
+        isArray: Array.isArray(jsonScriptFiles),
+      });
+      if (jsonScriptFiles && jsonScriptFiles.length > 0) {
+        const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+        const expectedAutoDir = path.join(workspaceDir, 'auto');
+        logger.info('AutomationPlanning: Starting to save JSON files', {
+          jsonFilesCount: jsonScriptFiles.length,
+          workspaceDir,
+          expectedAutoDir,
+          documentType: workspaceOptions.documentType,
+        });
+        try {
+          const savedFiles: string[] = [];
+          for (const scriptFile of jsonScriptFiles) {
+            const scriptPath = `auto/${scriptFile.filename}`;
+            const expectedFullPath = path.join(workspaceDir, scriptPath);
+            try {
+              logger.info('AutomationPlanning: Saving JSON file', {
+                filename: scriptFile.filename,
+                relativePath: scriptPath,
+                expectedFullPath,
+                workspaceDir,
+                contentLength: scriptFile.content.length,
+              });
+              await this.saveToWorkspace(scriptPath, scriptFile.content, workspaceOptions);
+              savedFiles.push(scriptPath);
+              logger.info('AutomationPlanning: JSON file saved successfully', {
+                filename: scriptFile.filename,
+                relativePath: scriptPath,
+                expectedFullPath,
+              });
+            } catch (fileError: any) {
+              logger.error('AutomationPlanning: Failed to save individual JSON file', {
+                filename: scriptFile.filename,
+                relativePath: scriptPath,
+                expectedFullPath,
+                error: fileError.message,
+                stack: fileError.stack,
+              });
+              // Continue saving other files even if one fails
+            }
+          }
+          if (savedFiles.length > 0) {
+            logger.info('AutomationPlanning: Saved JSON files successfully', {
+              jsonFilesCount: jsonScriptFiles.length,
+              savedCount: savedFiles.length,
+              jsonFiles: savedFiles,
+              workspaceDir,
+              autoDir: expectedAutoDir,
+              fullPath: `${workspaceDir}/auto/`,
+            });
+          } else {
+            logger.warn('AutomationPlanning: No JSON files were saved successfully', {
+              attemptedCount: jsonScriptFiles.length,
+              workspaceDir,
+              expectedAutoDir,
+            });
+          }
+        } catch (saveError: any) {
+          logger.error('AutomationPlanning: Failed to save JSON files, but continuing', {
+            error: saveError.message,
+            stack: saveError.stack,
+            workspaceDir,
+            expectedAutoDir,
+          });
+          // Don't throw - allow the process to continue
+        }
+      } else {
+        logger.warn('AutomationPlanning: No JSON files to save', {
+          jsonFilesCount: jsonScriptFiles?.length || 0,
+          isArray: Array.isArray(jsonScriptFiles),
+          reason: !jsonScriptFiles ? 'jsonScriptFiles is null/undefined' : jsonScriptFiles.length === 0 ? 'jsonScriptFiles.length is 0' : 'unknown',
+        });
+      }
+
+      logger.info('AutomationPlanning: Preparing final summary', {
+        jsonFilesCount: jsonScriptFiles.length,
+        hasValidationResults: !!validationResults,
+      });
+
+      const summary =
+        jsonScriptFiles.length > 0 ? `已筛选并生成 ${jsonScriptFiles.length} 个 JSON 格式测试用例文件` : validationResults || '未生成 JSON 文件';
+
+      logger.info('AutomationPlanning: Automation planning completed', {
+        summary,
+        jsonFilesCount: jsonScriptFiles.length,
+        workspaceDir: this.getWorkspaceDir(workspaceOptions),
+      });
+
+      return {
+        content: summary,
+        data: {
+          type: 'automation_plan',
+          timestamp: new Date().toISOString(),
+          workspaceDir: this.getWorkspaceDir(workspaceOptions),
+          jsonFilesGenerated: jsonScriptFiles.length > 0,
+          jsonFilesCount: jsonScriptFiles.length,
+        },
+      };
+    } catch (error: any) {
+      logger.error('========================================');
+      logger.error('AutomationPlanning: Failed to create automation plan', {
+        error: error.message,
+        stack: error.stack,
+        name: error.name,
+      });
+      logger.error('========================================');
+
+      throw error;
+    }
+  }
+
+  /**
+   * 判断是否可跳过规划：脚本已存在且 TEST.md 未在脚本生成后被修改
+   */
+  private async shouldSkipPlanning(workspaceDir: string): Promise<boolean> {
+    const autoDir = path.join(workspaceDir, 'auto');
+    const testMdPath = path.join(workspaceDir, 'TEST.md');
+    try {
+      const entries = await fs.readdir(autoDir, { withFileTypes: true });
+      const scriptEntries = entries.filter(
+        (e) =>
+          e.isFile() &&
+          (e.name.endsWith('.js') || e.name.endsWith('.ts')) &&
+          !/^playwright-test-API-/i.test(e.name) &&
+          !/^api-test-/i.test(e.name)
+      );
+      if (scriptEntries.length === 0) return false;
+
+      let minScriptMtime = Infinity;
+      for (const entry of scriptEntries) {
+        const stat = await fs.stat(path.join(autoDir, entry.name));
+        if (stat.mtimeMs < minScriptMtime) minScriptMtime = stat.mtimeMs;
+      }
+
+      const testMdStat = await fs.stat(testMdPath);
+      const skip = testMdStat.mtimeMs < minScriptMtime;
+      if (skip) {
+        logger.info('AutomationPlanning: Skipping - scripts exist and TEST.md unchanged', {
+          scriptCount: scriptEntries.length,
+          testMdMtime: testMdStat.mtimeMs,
+          minScriptMtime,
+        });
+      }
+      return skip;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * CLI 模式：使用 CLI 工具生成 JSON 文件
+   */
+  private async runCLIMode(_input: string, options?: AutomationPlanningOptions): Promise<IActionOutput> {
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'TEST');
+    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+
+    logger.info('AutomationPlanning: Running in CLI mode', {
+      workspaceDir,
+      executorMode: this.getExecutorMode(),
+    });
+
+    try {
+      // 确保 auto 目录存在（docs/test/auto）
+      const autoDir = path.join(workspaceDir, 'auto');
+      await fs.mkdir(autoDir, { recursive: true });
+      logger.debug('AutomationPlanning: Ensured auto directory exists', { autoDir });
+
+      // 脚本已存在且 TEST.md 未变更时跳过生成（ImproveCode 完成后回来自动化流程的场景）
+      if (!options?.forceRegenerate && (await this.shouldSkipPlanning(workspaceDir))) {
+        const scriptFiles = await this.readGeneratedScriptFiles(workspaceDir);
+        const summary = `脚本已存在且 TEST.md 未变更，跳过生成，直接执行（共 ${scriptFiles.length} 个脚本）`;
+        logger.info('AutomationPlanning: ' + summary);
+        return {
+          content: summary,
+          data: {
+            type: 'automation_plan',
+            timestamp: new Date().toISOString(),
+            workspaceDir,
+            scriptFilesGenerated: scriptFiles.length > 0,
+            scriptFilesCount: scriptFiles.length,
+            scriptFiles: scriptFiles.map((f) => ({ id: f.id, filename: f.filename })),
+            jsonFilesGenerated: scriptFiles.length > 0,
+            jsonFilesCount: scriptFiles.length,
+            jsonFiles: scriptFiles.map((f) => ({ id: f.id, filename: f.filename })),
+            cliMode: true,
+            skipped: true,
+          },
+        };
+      }
+
+      const deployUrlMap = await this.readDeployResultUrlMap(workspaceDir);
+      const effectiveTestUrl =
+        (Object.keys(deployUrlMap).length > 0 ? deployUrlMap['统一入口'] || Object.values(deployUrlMap)[0] : undefined) ?? options?.testUrl;
+      const prompt = this.buildCLIPrompt(workspaceDir, {
+        ...options,
+        testUrl: effectiveTestUrl,
+        deployUrlMap: Object.keys(deployUrlMap).length > 0 ? deployUrlMap : undefined,
+      });
+      const systemPrompt = await this.buildCLISystemPrompt();
+
+      logger.info('AutomationPlanning: Executing CLI tool', {
+        promptLength: prompt.length,
+        systemPromptLength: systemPrompt.length,
+        workspaceDir,
+      });
+
+      const output = await this.execute(prompt, {
+        workDir: workspaceDir,
+        systemPrompt,
+      });
+
+      logger.info('AutomationPlanning: CLI tool execution completed', { outputLength: output.length });
+
+      const scriptFiles = await this.readGeneratedScriptFiles(workspaceDir);
+
+      logger.info('AutomationPlanning: CLI mode completed', {
+        scriptFilesCount: scriptFiles.length,
+        scriptFiles: scriptFiles.map((f) => f.filename),
+      });
+
+      const summary =
+        scriptFiles.length > 0
+          ? `已通过 Cursor CLI 按 playwright-skill 约定生成 ${scriptFiles.length} 个 Playwright 脚本到 docs/test/auto`
+          : 'CLI 工具执行完成，但未在 docs/test/auto 中找到生成的 .js 脚本';
+
+      return {
+        content: summary,
+        data: {
+          type: 'automation_plan',
+          timestamp: new Date().toISOString(),
+          workspaceDir,
+          scriptFilesGenerated: scriptFiles.length > 0,
+          scriptFilesCount: scriptFiles.length,
+          scriptFiles: scriptFiles.map((f) => ({ id: f.id, filename: f.filename })),
+          jsonFilesGenerated: scriptFiles.length > 0,
+          jsonFilesCount: scriptFiles.length,
+          jsonFiles: scriptFiles.map((f) => ({ id: f.id, filename: f.filename })),
+          cliMode: true,
+        },
+      };
+    } catch (error: any) {
+      logger.error('AutomationPlanning: CLI mode failed', {
+        error: error.message,
+        stack: error.stack,
+        workspaceDir,
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * 加载 playwright-skill 内容用于 CLI 模式（生成 Playwright 脚本）
+   */
+  private async loadPlaywrightSkillForCLI(): Promise<string> {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const skillPath = path.join(projectRoot, 'skills', 'playwright-skill', 'SKILL.md');
+
+    try {
+      const skillContent = await fs.readFile(skillPath, 'utf-8');
+      // 限制总长度，避免 prompt 过长；保留 CRITICAL WORKFLOW、Execution Pattern、Common Patterns 等
+      return skillContent.length > 4000 ? skillContent.slice(0, 4000) + '\n\n...' : skillContent;
+    } catch (error) {
+      logger.warn('AutomationPlanning: Failed to load playwright-skill', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return '';
+    }
+  }
+
+  /**
+   * 加载 API_REFERENCE.md 用于 CLI 模式，提供选择器回退、等待策略、表单操作等详细参考
+   */
+  private async loadAPIReferenceForCLI(): Promise<string> {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const apiRefPath = path.join(
+      projectRoot,
+      'skills',
+      'playwright-skill',
+      'skills',
+      'playwright-skill',
+      'API_REFERENCE.md'
+    );
+
+    try {
+      const content = await fs.readFile(apiRefPath, 'utf-8');
+      // 限制长度，优先保留 Selectors & Locators（含 fallback）、Common Actions、Waiting Strategies、Assertions
+      const maxLen = 6000;
+      return content.length > maxLen ? content.slice(0, maxLen) + '\n\n...(truncated)' : content;
+    } catch (error) {
+      logger.warn('AutomationPlanning: Failed to load API_REFERENCE', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return '';
+    }
+  }
+
+  /**
+   * 加载 path-guide skill 内容，用于路径指引补充
+   */
+  private async loadPathGuideSkill(): Promise<string> {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const skillPath = path.join(projectRoot, 'skills', 'path-guide', 'SKILL.md');
+    try {
+      return await fs.readFile(skillPath, 'utf-8');
+    } catch {
+      logger.warn('AutomationPlanning: path-guide skill not found', { skillPath });
+      return '';
+    }
+  }
+
+  /**
+   * 在生成脚本前，使用 path-guide skill 补充 TEST.md 中各用例的 When 导航路径。
+   * 读取 PRD + 扫描前端源码 → 更新 TEST.md 的 When 步骤。
+   * 任何失败都不阻断后续脚本生成流程。
+   */
+  private async enrichTestCasesWithPathGuide(options?: AutomationPlanningOptions): Promise<void> {
+    try {
+      const pathGuideSkill = await this.loadPathGuideSkill();
+      if (!pathGuideSkill) {
+        logger.info('AutomationPlanning: Skipping path guide enrichment (skill not found)');
+        return;
+      }
+
+      const workspaceOptions = this.validateWorkspaceOptions(options, 'TEST');
+      const testDir = this.getWorkspaceDir(workspaceOptions);
+      const baseWorkspaceDir = testDir.replace(/\/docs\/test$/, '');
+
+      let prdContent = '';
+      try {
+        const prd = await this.readWorkspaceFile('PRD.md', { ...options, documentType: 'PRD' });
+        if (prd) {
+          prdContent = prd.length > 6000 ? prd.slice(0, 6000) + '\n\n...(truncated)' : prd;
+        }
+      } catch {
+        logger.debug('AutomationPlanning: PRD not found, skipping path guide enrichment');
+      }
+      if (!prdContent) {
+        logger.info('AutomationPlanning: No PRD available, skipping path guide enrichment');
+        return;
+      }
+
+      const prompt = `你是自动化测试用例优化工程师。请根据以下 skill 规范，生成自动化就绪的测试用例。
+
+## 任务
+
+1. 读取 docs/prd/PRD.md（内容已提供在下方）
+2. 扫描项目前端源码，查找路由文件和页面组件：
+   - 查找 ainative-shadow/src/routers/ 或 ainative-shadow/src/router/ 下的路由配置文件
+   - 分析路由 meta.title（菜单名称）和 meta.hidden（是否隐藏）
+   - 对隐藏路由，读取其父级页面组件找到跳转入口（按钮文案、router.push 等）
+3. 读取 docs/test/TEST.md
+4. 对每个测试用例的 **When** 步骤，将抽象的页面导航描述替换为基于源码分析的准确导航步骤
+5. 根据 When 到达的最终页面，优化 **Then** 断言（仅保留该页面上可直接观测到的 UI 变化）
+6. 对非 UI 可验证用例（后台定时任务、数据库直接操作等），在属性表 \`类型\` 列标注为 \`通用（不可UI自动化）\`
+7. 将更新后的 TEST.md 写回 docs/test/TEST.md
+
+## 约束
+
+- 修改 **When** 步骤中的导航部分，补充具体菜单点击路径和等待点
+- 根据 When 到达的最终页面优化 **Then** 断言：只保留页面可观测结果（提示信息、列表变化、元素状态等），移除数据库断言、接口断言、硬编码时间/数量、主观描述
+- **不修改 Given** 和属性表格（类型标注除外）
+- 菜单/按钮文案必须与路由 meta.title 和组件中的按钮文案一致
+- 隐藏路由必须写明通过哪个页面的哪个按钮进入
+- 每步点击后标注等待点（如 → 等待表格加载）
+- 导航路径用 → 连接，不得跳级
+
+## path-guide skill 规范
+
+${pathGuideSkill}
+
+## PRD 内容（用于理解功能页面）
+
+${prdContent}
+`;
+
+      logger.info('AutomationPlanning: Enriching TEST.md with path guide', {
+        promptLength: prompt.length,
+        baseWorkspaceDir,
+      });
+
+      await this.execute(prompt, {
+        workDir: baseWorkspaceDir,
+      });
+
+      logger.info('AutomationPlanning: Path guide enrichment completed');
+    } catch (error: any) {
+      logger.warn('AutomationPlanning: Path guide enrichment failed, continuing with script generation', {
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * 构建 CLI 模式的系统提示词（Playwright 脚本生成）
+   */
+  private async buildCLISystemPrompt(): Promise<string> {
+    const [skillContent, apiRefContent] = await Promise.all([
+      this.loadPlaywrightSkillForCLI(),
+      this.loadAPIReferenceForCLI(),
+    ]);
+
+    return `你是一个专业的自动化测试工程师。你的任务是根据测试用例文档，按 playwright-skill 的约定生成 **Playwright JavaScript 脚本**，并保存到 **docs/test/auto** 目录。
+
+## 输出要求
+
+- **仅针对 UI/功能测试用例生成脚本**：只为文档中「第二部分」或功能/界面类用例（如类型为「管理后台」、用例ID 为 TC-xxx 的列表）生成 Playwright 脚本。**不要**为「第三部分：接口测试用例」、用例ID 为 **API-xxx** 的接口用例生成脚本（接口用例由接口自动化流程单独生成到 docs/test/auto-api）。
+- **仅针对「正向场景」**：只为**标题中包含「正向场景」**的用例生成脚本，跳过标题含「异常场景」「边界条件」等的用例。
+- 生成物：每个符合条件的测试用例对应一个 **.js** 文件（Playwright 脚本），不要生成 JSON。
+- 输出目录：**所有脚本必须写入 docs/test/auto**（相对当前 workspace 的 docs/test/auto），不要写入 /tmp 或其它目录。
+- 遵循 playwright-skill 约定：
+  - 使用 \`const { chromium } = require('playwright')\`，脚本内使用 \`(async () => { ... })()\` 等自执行异步函数。
+  - URL 使用顶部常量（如 \`const TARGET_URL = process.env.TARGET_URL || '...'\`）参数化，便于配置。**禁止对 TARGET_URL 做 .replace() 去掉尾斜杠**，必须原样传给 \`page.goto(TARGET_URL, ...)\`，否则 Docker 环境下 nginx 301 重定向会导致端口错误而连接被拒绝。
+  - 默认 \`headless: false\`，除非用户明确要求无头模式。
+  - 每个脚本自包含：打开页面、执行步骤、断言、关闭浏览器。
+  - **前置条件与登录**：若用例表格中的「前置条件」包含「已登录」「登录管理后台」「用户已登录」等，脚本必须在执行业务步骤前先执行登录：登录账号与密码由运行环境从 **skills/playwright-skill/login.md** 读取并注入为 \`LOGIN_USER\`、\`LOGIN_PASSWORD\`；脚本使用 \`process.env.LOGIN_USER\` 与 \`process.env.LOGIN_PASSWORD\`（或顶部常量 \`const LOGIN_USER = process.env.LOGIN_USER || ''\`、\`const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || ''\`）。打开目标站点后，**必须先等待 SPA 可能的异步重定向**：用 \`try { await page.waitForURL((url) => url.href.includes('/login')); } catch (e) {}\` 等待客户端路由重定向到 /login（SPA 的 Vue Router/React Router 重定向是异步的，直接检查 \`page.url()\` 会漏掉重定向），然后再用 \`if (page.url().includes('/login'))\` 判断是否需要登录。登录时填写账号密码并提交，**等待跳转**须用 \`page.waitForURL((url) => !url.href.includes('/login'))\`，注意回调参数 \`url\` 是 URL 对象，必须用 \`url.href.includes(...)\`，禁止写 \`url.includes(...)\`（会报 url.includes is not a function）；若未配置则抛出明确提示（如「需要登录。请配置 skills/playwright-skill/login.md 或设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD」）。登录提交后若 waitForURL 超时未离开登录页，必须 throw new Error(...)，不得仅等待固定时间后继续。**禁止在 waitFor、waitForURL、goto 等调用中写 timeout 参数**，使用 Playwright 默认超时。
+  - **断言与失败**：预期结果未满足时（如关键元素未出现、仍停留在登录页、文案不符）必须 throw new Error('...') 或 process.exit(1)，不得仅 console.log 后正常结束，否则执行引擎会按退出码 0 误判为成功。
+  - **幂等下拉选择（自动保存型）**：若用例中某个下拉框选择后会自动保存（无需额外点击保存按钮），脚本必须先读取下拉框当前值（如 \`textContent()\`），判断是否已等于目标值。若已等于目标值，需先选择另一个选项并等待保存动作完成（如等待 success message 出现并消失），再选择目标值，确保 change 事件必定触发。否则直接选择当前已选值不会触发 change，断言会超时。
+  - **路径指引**：TEST.md 中若存在「路径指引」小节及表格（页面/场景、操作路径），生成脚本时**必须**使用该表格。当用例前置条件或 Given 涉及表格中的页面（如「进入商品创建页面」「定金商品创建页面」）时，进入该页面的步骤须**严格按照表格中的操作路径**依次通过点击菜单/链接实现（如先点击「商品管理」，再「平台商品管理」，再「新增平台商品」，再输入/选择等），使用 \`page.getByRole('link', { name: '...' })\` 或 \`page.locator('text=...')\` 等，文案须与路径指引一致，不得臆造或跳过中间层级。**每步点击菜单、下拉或选择器后，须等待其展开内容（如列表、表格、下拉选项）可见后再执行下一步点击**，使用 \`locator('...').waitFor({ state: 'visible' })\` 等待下一级内容区域（不写 timeout），避免未加载就操作。
+
+${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本，每个用例一个独立 .js 文件。'}
+
+${apiRefContent ? `## Playwright API 参考（选择器、等待、表单操作等）
+
+生成脚本时请参考以下 API 参考，**必须遵守**：
+- **多弹窗**：页面上有多个 dialog 时，用 \`page.getByRole('dialog', { name: '弹窗标题' })\` 精确定位，禁止 \`locator('[role="dialog"]')\`（会 strict mode violation）
+- **Element Plus 下拉**：下拉选项渲染在 body portal，用 \`page.locator('.el-select-dropdown, .el-popper').last().getByText('选项')\`，点击前先 \`waitFor({ state: 'visible' })\`
+- **Element Plus Tab**：用 \`dialog.locator('.el-tabs__item').filter({ hasText: 'Tab名' })\` 定位 Tab 头
+- **弹窗内按钮**：若 element is not visible，先 \`scrollIntoViewIfNeeded()\` 再点击
+- **表单项过滤**：用 \`locator('.el-form-item').filter({ hasText: '购买渠道' })\`，禁止 \`.el-form-item:has-text("购买渠道")\`（会 CSS 解析错误）
+- **禁止固定 timeout**：不写 \`timeout: 10000\`、\`timeout: 5000\` 等，省略则用 Playwright 默认；禁止 \`page.waitForTimeout(ms)\`
+- **Selectors & Locators**：\`getByRole('link')\` 失败时用 \`.or()\` 回退
+- **Common Actions**：表单填写、下拉选择等标准写法
+
+${apiRefContent}` : ''}
+
+## 文件命名
+
+- 格式：\`playwright-test-TC-XXX-用例简述.js\`（例如 \`playwright-test-TC-001-用户登录-正确账号密码登录成功.js\`）。仅对 TC-xxx 类用例生成，不要生成 playwright-test-API-xxx 等接口脚本。
+- 从 TEST.md / TEST_REVIEW.md 的**功能/UI 用例部分**解析每个用例的编号与名称，为每个符合条件的用例生成一个脚本文件。`;
+  }
+
+  /**
+   * 读取 CLI 生成的 Playwright 脚本文件（.js / .ts）
+   */
+  private async readGeneratedScriptFiles(workspaceDir: string): Promise<Array<{ id: string; filename: string }>> {
+    const autoDir = path.join(workspaceDir, 'auto');
+    const scriptFiles: Array<{ id: string; filename: string }> = [];
+
+    try {
+      logger.info('AutomationPlanning: Reading generated script files', { autoDir });
+
+      try {
+        await fs.access(autoDir);
+      } catch {
+        logger.warn('AutomationPlanning: Auto directory does not exist', { autoDir });
+        return scriptFiles;
+      }
+
+      const entries = await fs.readdir(autoDir, { withFileTypes: true });
+      const scriptEntries = entries.filter((entry) => entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts')));
+
+      logger.info('AutomationPlanning: Found script files', {
+        totalFiles: entries.length,
+        scriptCount: scriptEntries.length,
+        scriptNames: scriptEntries.map((e) => e.name),
+      });
+
+      for (const entry of scriptEntries) {
+        const baseName = entry.name.replace(/\.(js|ts)$/, '');
+        // 从 playwright-test-TC-001-xxx 或 TC-001-xxx 提取 id
+        const idMatch = baseName.match(/^(?:playwright-test-)?(TC-[\dA-Z-]+)/i) || [null, baseName];
+        const id = idMatch[1] || baseName;
+
+        scriptFiles.push({
+          id,
+          filename: entry.name,
+        });
+      }
+
+      return scriptFiles.sort((a, b) => a.filename.localeCompare(b.filename));
+    } catch (error: any) {
+      logger.error('AutomationPlanning: Failed to read generated script files', {
+        error: error.message,
+        stack: error.stack,
+        autoDir,
+      });
+      return scriptFiles;
+    }
+  }
+
+  /**
+   * 解析部署文档中所有「标签: URL」，返回映射表（如 管理后台 -> url）。
+   * 优先读取 docs/deploy/deploy.md（含完整访问地址表），若无或解析不到则回退到 deployResult.md。
+   */
+  private async readDeployResultUrlMap(workspaceDir: string): Promise<Record<string, string>> {
+    const baseWorkspaceDir = workspaceDir.replace(/\/docs\/test$/, '');
+    const deployDir = path.join(baseWorkspaceDir, 'docs', 'deploy');
+    const deployMdPath = path.join(deployDir, 'deploy.md');
+    const deployResultPath = path.join(deployDir, 'deployResult.md');
+    const regex = /([^\s,，；]+?)\s*[：:]?\s*(https?:\/\/[^\s,，；)、]+)/g;
+
+    const parseUrlMap = (content: string): Record<string, string> => {
+      const map: Record<string, string> = {};
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(content)) !== null) {
+        const label = match[1].trim();
+        const url = match[2].trim();
+        if (label && url && !map[label]) {
+          map[label] = url;
+        }
+      }
+      return map;
+    };
+
+    try {
+      try {
+        const content = await fs.readFile(deployMdPath, 'utf-8');
+        const map = parseUrlMap(content);
+        if (Object.keys(map).length > 0) {
+          logger.debug('AutomationPlanning: Resolved deploy URL map from deploy.md', {
+            deployMdPath,
+            keys: Object.keys(map),
+          });
+          return map;
+        }
+      } catch (e: any) {
+        if (e?.code !== 'ENOENT') {
+          logger.warn('AutomationPlanning: Failed to read deploy.md for URL map', {
+            deployMdPath,
+            error: e?.message ?? String(e),
+          });
+        }
+      }
+      const content = await fs.readFile(deployResultPath, 'utf-8');
+      const map = parseUrlMap(content);
+      if (Object.keys(map).length > 0) {
+        logger.debug('AutomationPlanning: Resolved deploy URL map from deployResult.md', {
+          deployResultPath,
+          keys: Object.keys(map),
+        });
+      }
+      return map;
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.debug('AutomationPlanning: No deploy doc found for URL map', {
+          deployMdPath,
+          deployResultPath,
+        });
+      } else {
+        logger.warn('AutomationPlanning: Failed to read deploy docs for URL map', {
+          deployMdPath,
+          deployResultPath,
+          error: err?.message ?? String(err),
+        });
+      }
+      return {};
+    }
+  }
+
+  /**
+   * 读取 workspace 下部署文档中的部署地址（优先「统一入口」）。
+   * 优先从 docs/deploy/deploy.md 解析（含完整访问地址表），若无或解析不到则从 deployResult.md 解析。
+   * 用于在生成 Playwright 脚本时把打开页面的 URL 映射进脚本。
+   */
+  private async readDeployResultBaseUrl(workspaceDir: string): Promise<string | undefined> {
+    const map = await this.readDeployResultUrlMap(workspaceDir);
+    if (map['统一入口']) {
+      return map['统一入口'];
+    }
+    const firstKey = Object.keys(map)[0];
+    return firstKey ? map[firstKey] : undefined;
+  }
+
+  /**
+   * 构建 CLI 模式的 Prompt（Playwright 脚本生成到 docs/test/auto）
+   */
+  private buildCLIPrompt(workspaceDir: string, options?: AutomationPlanningOptions): string {
+    const baseWorkspaceDir = workspaceDir.replace(/\/docs\/test$/, '');
+    const inputDir = `${baseWorkspaceDir}/docs/test`;
+    const outputDir = `${baseWorkspaceDir}/docs/test/auto`;
+
+    const deployUrlMap = options?.deployUrlMap;
+    const hasUrlMap = deployUrlMap && Object.keys(deployUrlMap).length > 0;
+    let systemContext: string | undefined;
+    if (hasUrlMap) {
+      const lines = ['测试目标 URL 按用例类型选用（每个用例见 TEST.md 中该用例表格的「类型」列）：'];
+      for (const [label, url] of Object.entries(deployUrlMap)) {
+        lines.push(`- ${label}: ${url}`);
+      }
+      lines.push('若类型未在上表则使用「统一入口」；若无则使用表中第一个 URL。');
+      lines.push('脚本中的 TARGET_URL 必须与上表所列 URL 完全一致，保留末尾斜杠（如有），不得自行去掉。**严禁使用 .replace() 去掉尾斜杠**，直接 `page.goto(TARGET_URL, ...)` 即可。');
+      systemContext = lines.join('\n');
+    } else {
+      const testUrl = options?.testUrl || '';
+      systemContext = testUrl ? `测试目标 URL: ${testUrl}` : undefined;
+    }
+
+    const taskPoints = [
+      '从输入文件夹 docs/test 读取 TEST.md 或 TEST_REVIEW.md（优先 TEST_REVIEW.md）',
+      '解析测试用例，提取每个用例的编号、名称、前置条件、测试步骤、预期结果',
+      '**仅针对标题中包含「正向场景」的用例**生成 Playwright 脚本；不要为标题含「异常场景」「边界条件」等非正向场景的用例生成脚本',
+      '若 TEST.md 中存在「路径指引」表格，脚本中进入页面的步骤须按表格中的**操作路径**依次点击（如 商品管理 → 平台商品管理 → 新增平台商品 → 选择商品类型为「定金」），不得臆造路径；路径中的文案用于 locator/getByRole 的 name 或 text',
+      '若用例前置条件包含「已登录」或「登录管理后台」，脚本须先使用 LOGIN_USER/LOGIN_PASSWORD 执行登录，再执行业务步骤',
+      '按 playwright-skill 约定为每个测试用例生成一个 Playwright JavaScript 脚本（.js）',
+      '脚本须自包含：require("playwright")、TARGET_URL 常量、headless: false、步骤与断言、browser.close()',
+      '文件命名：playwright-test-TC-XXX-用例简述.js（例如 playwright-test-TC-001-用户登录-正确账号密码登录成功.js）',
+      '**所有脚本必须保存到输出目录 docs/test/auto**，不要写入 /tmp 或其它路径',
+    ];
+
+    return buildCLIModePrompt({
+      inputDir,
+      outputDir,
+      inputFileNames: ['TEST.md', 'TEST_REVIEW.md'],
+      outputFileName: 'playwright-test-*.js',
+      taskDescription: '使用 playwright-skill 约定，根据测试用例文档生成 Playwright 自动化测试脚本到 docs/test/auto',
+      taskPoints,
+      systemContext,
+      includeKnowledgeInput: true,
+    });
+  }
+
+  /**
+   * Extract sample test cases for JSON generation
+   * Now extracts ALL test cases, not just a sample
+   */
+  private extractSampleTestCases(
+    testCases: string,
+    maxCount?: number
+  ): Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string; caseType?: string }> {
+    const samples: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string; caseType?: string }> = [];
+
+    // Preprocess: avoid code block extraction when content is already a full document (starts with #)
+    // so we don't truncate at the first inner ``` and lose the test case section
+    let processedContent = testCases;
+    let usedCodeBlock = false;
+    const trimmedInput = testCases.trim();
+    if (!trimmedInput.match(/^#+\s/m)) {
+      let codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*?)\n```/);
+      if (!codeBlockMatch) {
+        codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*?)```/);
+      }
+      if (!codeBlockMatch) {
+        codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*)$/);
+      }
+      if (codeBlockMatch && codeBlockMatch[1]) {
+        processedContent = codeBlockMatch[1].trim();
+        usedCodeBlock = true;
+        logger.info('AutomationPlanning: Extracted content from markdown code block', {
+          originalLength: testCases.length,
+          extractedLength: processedContent.length,
+        });
+      }
+    } else {
+      logger.debug('AutomationPlanning: Content starts with #, skipping code block extraction');
+    }
+
+    // Remove leading explanatory text: find first #### 测试用例 / #### TC-xxx / #### Test Case
+    const firstTestCaseIndex = processedContent.search(/####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case)/i);
+    if (firstTestCaseIndex > 0) {
+      processedContent = processedContent.substring(firstTestCaseIndex);
+      logger.debug('AutomationPlanning: Removed leading text before first test case', {
+        removedLength: firstTestCaseIndex,
+      });
+    } else if (firstTestCaseIndex === -1) {
+      logger.info('AutomationPlanning: No #### test case header found, trying section fallbacks');
+      // Fallbacks for common TEST doc structures: ## 功能模块, ## 第二部分：测试用例, ### 模块1
+      const headerRe = /####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case)/i;
+      let sectionMatch = processedContent.match(/##\s+功能模块[\s\S]*?(####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case))/i);
+      if (sectionMatch && sectionMatch.index !== undefined) {
+        processedContent = processedContent.substring(sectionMatch.index);
+        logger.info('AutomationPlanning: Fallback matched ## 功能模块');
+      } else {
+        sectionMatch = processedContent.match(/##\s+第二部分[：:]?\s*测试用例[\s\S]*?(####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case))/i);
+        if (sectionMatch && sectionMatch.index !== undefined) {
+          processedContent = processedContent.substring(sectionMatch.index);
+          logger.info('AutomationPlanning: Fallback matched ## 第二部分：测试用例');
+        } else {
+          sectionMatch = processedContent.match(/(###\s+模块\d+[\s\S]*?)(####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case))/i);
+          if (sectionMatch && sectionMatch.index !== undefined && sectionMatch[1] !== undefined) {
+            const caseStart = sectionMatch.index + sectionMatch[1].length;
+            processedContent = processedContent.substring(caseStart);
+            logger.info('AutomationPlanning: Fallback matched ### 模块N, jumped to first ####');
+          }
+        }
+      }
+      const hasHeaderAfterFallback = processedContent.substring(0, 500).search(headerRe) !== -1;
+      if (!hasHeaderAfterFallback) {
+        logger.warn('AutomationPlanning: No test case header found after fallbacks', {
+          firstTestCaseIndex: -1,
+          hasPart2: processedContent.includes('第二部分'),
+          hasTC001: processedContent.includes('TC-001'),
+        });
+      }
+    }
+
+    logger.info('AutomationPlanning: Processed content for extraction', {
+      processedLength: processedContent.length,
+      first100Chars: processedContent.substring(0, 100),
+      usedCodeBlock,
+    });
+
+    const lines = processedContent.split('\n');
+
+    let currentTestCase: { id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string; caseType?: string } | null =
+      null;
+    let inSteps = false;
+    let inExpectedResults = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+
+      // Detect test case header - Only match #### (4 hashes) to avoid matching category headers like "### 原有测试用例"
+      // Match patterns like: "#### 测试用例1：正常注册流程" or "#### TC-001: Test Case Name"
+      if (trimmed.match(/^####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case)/i)) {
+        // Save previous test case if exists and has valid data
+        if (currentTestCase) {
+          // Ensure ID is set before saving
+          if (!currentTestCase.id) {
+            // Try to extract ID from name
+            const nameMatch = currentTestCase.name.match(/TC-[\dA-Z-]+/i);
+            if (nameMatch) {
+              currentTestCase.id = nameMatch[0];
+            } else {
+              // Generate ID if not found
+              currentTestCase.id = `TC-${String(samples.length + 1).padStart(3, '0')}`;
+            }
+          }
+          // Only save if has valid name and at least some content
+          if (currentTestCase.name && currentTestCase.name.trim() && currentTestCase.id) {
+            samples.push(currentTestCase);
+          }
+        }
+
+        // Check if we've reached max count
+        if (maxCount && samples.length >= maxCount) {
+          break;
+        }
+
+        // Start new test case
+        currentTestCase = {
+          id: '',
+          name: trimmed.replace(/^####\s+/, '').trim(),
+          steps: [],
+          expectedResults: [],
+          precondition: '',
+          caseType: undefined,
+        };
+        inSteps = false;
+        inExpectedResults = false;
+        continue;
+      }
+
+      // Extract test case ID (TC-XXX format) - must be on a line with "测试用例编号"
+      if (trimmed.includes('**测试用例编号**') || trimmed.includes('测试用例编号')) {
+        const idMatch = trimmed.match(/TC-[\dA-Z-]+/i);
+        if (idMatch && currentTestCase) {
+          currentTestCase.id = idMatch[0];
+        }
+      }
+
+      // Extract precondition (前置条件) and case type (类型) - handle both table format and text format
+      if (currentTestCase) {
+        // Table format: "| 前置条件 | 用户已登录系统 |" or "| 类型     | 管理后台                       |"
+        if (trimmed.startsWith('|') && trimmed.includes('前置条件')) {
+          const parts = trimmed
+            .split('|')
+            .map((p) => p.trim())
+            .filter((p) => p);
+          const preconditionIndex = parts.findIndex((p) => p.includes('前置条件'));
+          if (preconditionIndex >= 0 && preconditionIndex + 1 < parts.length) {
+            currentTestCase.precondition = parts[preconditionIndex + 1].trim();
+            logger.debug('AutomationPlanning: Extracted precondition from table', {
+              testCaseId: currentTestCase.id || 'unknown',
+              precondition: currentTestCase.precondition,
+            });
+          }
+        }
+        if (trimmed.startsWith('|') && trimmed.includes('类型')) {
+          const parts = trimmed
+            .split('|')
+            .map((p) => p.trim())
+            .filter((p) => p);
+          const typeIndex = parts.findIndex((p) => p.includes('类型'));
+          if (typeIndex >= 0 && typeIndex + 1 < parts.length) {
+            currentTestCase.caseType = parts[typeIndex + 1].trim();
+            logger.debug('AutomationPlanning: Extracted caseType from table', {
+              testCaseId: currentTestCase.id || 'unknown',
+              caseType: currentTestCase.caseType,
+            });
+          }
+        }
+        // Text format: "前置条件：用户已登录系统" or "**前置条件**：用户已登录系统"
+        else if ((trimmed.includes('**前置条件**') || trimmed.includes('前置条件')) && !trimmed.startsWith('|')) {
+          const preconditionMatch = trimmed.match(/前置条件[：:]\s*(.+)/i);
+          if (preconditionMatch && preconditionMatch[1]) {
+            currentTestCase.precondition = preconditionMatch[1].trim();
+            logger.debug('AutomationPlanning: Extracted precondition from text', {
+              testCaseId: currentTestCase.id || 'unknown',
+              precondition: currentTestCase.precondition,
+            });
+          }
+        }
+      }
+
+      // Detect steps section - "测试步骤" / "Steps" / "操作步骤" or BDD-style "When" / "当" / "操作"
+      if (trimmed.match(/测试步骤|Steps|操作步骤|\*\*When\*\*|\*\*当\*\*|^When\s*[：:]|\*\*操作\*\*|^操作\s*[：:]/i) && currentTestCase) {
+        inSteps = true;
+        inExpectedResults = false;
+        continue;
+      }
+
+      // Reset inSteps when we encounter "预期结果" or BDD "Then" section
+      if (trimmed.match(/预期结果|Expected Result|Expected Results|\*\*Then\*\*|\*\*那么\*\*|^Then\s*[：:]|^那么\s*[：:]/i) && currentTestCase) {
+        inSteps = false;
+        inExpectedResults = true;
+        continue;
+      }
+
+      // Collect steps: numbered "1. step" or bullet "- step" / "* step" (BDD When list)
+      if (inSteps && !inExpectedResults && currentTestCase) {
+        // Match numbered steps: "1. step" or "  - 1. step"
+        const stepMatch = trimmed.match(/^[\s\-*]*\d+\.\s+(.+)$/);
+        if (stepMatch) {
+          const step = stepMatch[1].trim();
+          if (step && step.length >= 3 && !step.match(/^\*\*.*\*\*$/) && !step.includes('预期结果')) {
+            currentTestCase.steps.push(step);
+            logger.debug('AutomationPlanning: Extracted test step', {
+              testCaseId: currentTestCase.id || 'unknown',
+              step: step.substring(0, 50),
+            });
+          }
+          continue;
+        }
+        // Match bullet list (BDD When style): "- 用户点击..." or "* 打开页面"
+        const bulletMatch = trimmed.match(/^\s*[-*]\s+(.+)$/);
+        if (bulletMatch) {
+          const step = bulletMatch[1].trim();
+          if (step && step.length >= 2 && !step.match(/^\*\*.*\*\*$/) && !step.includes('预期结果')) {
+            currentTestCase.steps.push(step);
+            logger.debug('AutomationPlanning: Extracted test step (bullet)', {
+              testCaseId: currentTestCase.id || 'unknown',
+              step: step.substring(0, 50),
+            });
+          }
+        }
+      }
+
+      // Collect expected results: bullet list in "Then" section (BDD style)
+      if (inExpectedResults && currentTestCase) {
+        // Match bullet list: "- 提示：登陆成功" or "* 用户处于已登录状态"
+        const bulletMatch = trimmed.match(/^\s*[-*]\s+(.+)$/);
+        if (bulletMatch) {
+          const expectedResult = bulletMatch[1].trim();
+          // 清理可能的 markdown 格式（如 **提示**：）
+          const cleanedResult = expectedResult.replace(/\*\*/g, '').trim();
+          if (cleanedResult && cleanedResult.length >= 2 && !cleanedResult.match(/^\*\*.*\*\*$/)) {
+            currentTestCase.expectedResults.push(cleanedResult);
+            logger.debug('AutomationPlanning: Extracted expected result', {
+              testCaseId: currentTestCase.id || 'unknown',
+              expectedResult: cleanedResult.substring(0, 50),
+            });
+          }
+        }
+      }
+    }
+
+    // Add last test case if exists
+    if (currentTestCase) {
+      if (!currentTestCase.id) {
+        // Try to extract ID from name
+        const nameMatch = currentTestCase.name.match(/TC-[\dA-Z-]+/i);
+        if (nameMatch) {
+          currentTestCase.id = nameMatch[0];
+        } else {
+          // Generate ID if not found
+          currentTestCase.id = `TC-${String(samples.length + 1).padStart(3, '0')}`;
+        }
+      }
+      // Only save if has valid name and ID
+      if (currentTestCase.name && currentTestCase.name.trim() && currentTestCase.id) {
+        if (!maxCount || samples.length < maxCount) {
+          samples.push(currentTestCase);
+        }
+      }
+    }
+
+    // Log extraction results
+    const logPayload: Record<string, unknown> = {
+      extractedCount: samples.length,
+      maxCount: maxCount || 'unlimited',
+      testCaseIds: samples.map((tc) => tc.id),
+      testCaseNames: samples.map((tc) => tc.name.substring(0, 30)),
+      stepsCounts: samples.map((tc) => tc.steps.length),
+    };
+    if (samples.length === 0) {
+      logPayload.diagnostic = {
+        processedLength: processedContent.length,
+        hasPart2: processedContent.includes('第二部分'),
+        hasTC001: processedContent.includes('TC-001'),
+      };
+    }
+    logger.info('AutomationPlanning: Test case extraction completed', logPayload);
+
+    return samples;
+  }
+
+  /**
+   * Extract URL from test cases if mentioned
+   */
+  private extractUrlFromTestCases(testCases: string): string | undefined {
+    const urlMatch = testCases.match(/https?:\/\/[^\s)]+/i);
+    return urlMatch ? urlMatch[0] : undefined;
+  }
+
+  /**
+   * Build a safe script filename from test case id and name for better distinction in auto/*.json.
+   * Format: {id}-{sanitizedName}.json, e.g. TC-001-用户注册-手机号注册成功.json
+   */
+  private toSafeScriptFilename(id: string, name: string): string {
+    const safeId = id.replace(/[^a-zA-Z0-9-_]/g, '_');
+    if (!name || !name.trim()) {
+      return `${safeId}.json`;
+    }
+    let part = name.trim();
+    // Strip leading "TC-xxx：" or "TC-xxx:" to avoid duplication in filename
+    part = part.replace(/^\s*TC-[\dA-Z-]+[：:]\s*/i, '').trim();
+    if (!part) {
+      return `${safeId}.json`;
+    }
+    // Replace illegal filename chars and normalize spaces to single hyphen
+    part = part
+      .replace(/[\\/:*?"<>|]/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    if (!part) {
+      return `${safeId}.json`;
+    }
+    const maxNameLen = 56;
+    if (part.length > maxNameLen) {
+      part = part.slice(0, maxNameLen).replace(/-+$/, '');
+    }
+    return `${safeId}-${part}.json`;
+  }
+
+  /**
+   * Parse step text to extract action type and params
+   * Uses keyword matching to identify action types and extract URL/selector
+   * @param stepText - The step description text
+   * @returns Object with action type and params (url or selector)
+   */
+  private parseStepAction(stepText: string): { action: string; params: { url?: string; selector?: string; [key: string]: any } } {
+    const lowerStep = stepText.toLowerCase();
+
+    // Extract URL if present
+    const urlMatch = stepText.match(/(https?:\/\/[^\s]+)/i);
+    const url = urlMatch ? urlMatch[1] : undefined;
+
+    // Extract selector based on keywords
+    let selector: string | undefined = undefined;
+
+    // Match action types based on keywords
+    if (lowerStep.includes('点击') || lowerStep.includes('click')) {
+      // Extract button/element name for selector
+      const buttonMatch = stepText.match(/点击["']?([^"'\s]+(?:按钮|button))["']?/i) || stepText.match(/click\s+["']?([^"'\s]+)["']?/i);
+      if (buttonMatch) {
+        selector = buttonMatch[1];
+      } else {
+        // Try to extract common button names
+        const commonButtons = ['登录', '退出', '提交', '确认', '取消', '保存'];
+        for (const btn of commonButtons) {
+          if (stepText.includes(btn)) {
+            selector = `${btn}按钮`;
+            break;
+          }
+        }
+      }
+      return { action: 'click', params: selector ? { selector } : {} };
+    }
+
+    if (lowerStep.includes('输入') || lowerStep.includes('type') || lowerStep.includes('输入框')) {
+      // Extract input field name for selector
+      const inputMatch = stepText.match(/(?:在)?([^输入框]+)(?:输入框|输入)/i) || stepText.match(/type\s+["']?([^"'\s]+)["']?/i);
+      if (inputMatch) {
+        selector = inputMatch[1].trim();
+      } else {
+        // Try to extract common input names
+        const commonInputs = ['账号', '密码', '用户名', '邮箱', '手机号'];
+        for (const inp of commonInputs) {
+          if (stepText.includes(inp)) {
+            selector = `${inp}输入框`;
+            break;
+          }
+        }
+      }
+      return { action: 'type', params: selector ? { selector } : {} };
+    }
+
+    if (lowerStep.includes('打开') || lowerStep.includes('open') || lowerStep.includes('导航') || lowerStep.includes('navigate')) {
+      return { action: 'open', params: url ? { url } : {} };
+    }
+
+    if (lowerStep.includes('验证') || lowerStep.includes('verify') || lowerStep.includes('检查') || lowerStep.includes('check')) {
+      // Extract element name for verification
+      const verifyMatch = stepText.match(/验证["']?([^"'\s]+)["']?/i) || stepText.match(/verify\s+["']?([^"'\s]+)["']?/i);
+      if (verifyMatch) {
+        selector = verifyMatch[1];
+      }
+      return { action: 'verify', params: selector ? { selector } : {} };
+    }
+
+    if (lowerStep.includes('悬停') || lowerStep.includes('hover')) {
+      // Extract element name for hover
+      const hoverMatch = stepText.match(/悬停在["']?([^"'\s]+)["']?/i) || stepText.match(/hover\s+["']?([^"'\s]+)["']?/i);
+      if (hoverMatch) {
+        selector = hoverMatch[1];
+      }
+      return { action: 'hover', params: selector ? { selector } : {} };
+    }
+
+    // Default to unknown if no match
+    return { action: 'unknown', params: url ? { url } : {} };
+  }
+
+  /**
+   * Parse expected result string to extract type and value
+   * @param expectedText - The expected result text
+   * @returns Object with type and value, or null if cannot parse
+   */
+  private parseExpectedResult(expectedText: string): { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | null {
+    if (!expectedText || !expectedText.trim()) {
+      return null;
+    }
+
+    const lowerText = expectedText.toLowerCase();
+
+    // Cookie type: contains keywords like "cookie", "token", "登录态", "认证", "session"
+    // 优先识别登录态特征校验
+    if (
+      lowerText.includes('cookie') ||
+      lowerText.includes('token') ||
+      lowerText.includes('登录态') ||
+      lowerText.includes('认证') ||
+      lowerText.includes('session') ||
+      lowerText.includes('auth')
+    ) {
+      // 提取 cookie 名称（如 token、auth_token 等）
+      const cookieNameMatch =
+        expectedText.match(/(?:cookie|token|session|auth)[\s:：=]+([a-zA-Z_][a-zA-Z0-9_]*)/i) ||
+        expectedText.match(/([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:cookie|token|session)/i);
+      const value = cookieNameMatch ? cookieNameMatch[1] : lowerText.includes('token') ? 'token' : 'auth_token';
+      return { type: 'cookie', value };
+    }
+
+    // URL match type: contains keywords like "包含", "匹配", "模糊", "url_match"
+    // 用于登录后页面跳转的模糊匹配
+    if (lowerText.includes('url_match') || lowerText.includes('url匹配') || lowerText.includes('模糊匹配') || lowerText.includes('包含路径')) {
+      // Extract URL pattern
+      const urlMatch = expectedText.match(/(https?:\/\/[^\s]+)/i) || expectedText.match(/(\/[^\s]+)/i) || expectedText.match(/([^\s]+)/);
+      const value = urlMatch ? urlMatch[1] : expectedText.trim();
+      return { type: 'url_match', value };
+    }
+
+    // URL type: contains keywords like "跳转", "url", "地址", "跳转到"
+    // 注意：登录相关预期优先使用 cookie 或 url_match，避免使用固定 URL
+    if (
+      lowerText.includes('跳转') ||
+      lowerText.includes('url') ||
+      lowerText.includes('地址') ||
+      lowerText.includes('跳转到') ||
+      lowerText.includes('redirect') ||
+      lowerText.includes('navigate')
+    ) {
+      // 如果是登录相关，优先使用 url_match 而不是固定 url
+      if (lowerText.includes('登录') || lowerText.includes('login')) {
+        const urlMatch = expectedText.match(/(https?:\/\/[^\s]+)/i) || expectedText.match(/(\/[^\s]+)/i);
+        const value = urlMatch ? urlMatch[1] : expectedText.trim();
+        return { type: 'url_match', value };
+      }
+
+      // Extract URL path or full URL
+      const urlMatch = expectedText.match(/(https?:\/\/[^\s]+)/i) || expectedText.match(/(\/[^\s]+)/i);
+      const value = urlMatch ? urlMatch[1] : expectedText.trim();
+      return { type: 'url', value };
+    }
+
+    // API type: contains keywords like "接口", "请求", "响应", "api"
+    if (
+      lowerText.includes('接口') ||
+      lowerText.includes('请求') ||
+      lowerText.includes('响应') ||
+      lowerText.includes('api') ||
+      lowerText.includes('request') ||
+      lowerText.includes('response')
+    ) {
+      // Extract API endpoint or status code
+      const apiMatch =
+        expectedText.match(/(\d{3})/i) || // HTTP status code
+        expectedText.match(/(\/api\/[^\s]+)/i) || // API endpoint
+        expectedText.match(/([A-Z]+\s+[^\s]+)/i); // HTTP method + endpoint
+      const value = apiMatch ? apiMatch[1] : expectedText.trim();
+      return { type: 'api', value };
+    }
+
+    // Element type: contains keywords like "元素", "按钮", "输入框", "显示", "头像", "用户名"
+    // 优先识别登录态特征元素（用户头像、用户名等）
+    if (
+      lowerText.includes('头像') ||
+      lowerText.includes('avatar') ||
+      lowerText.includes('用户名') ||
+      lowerText.includes('user') ||
+      lowerText.includes('profile') ||
+      lowerText.includes('用户信息')
+    ) {
+      // 登录态特征元素
+      const elementMatch =
+        expectedText.match(/["']?([^"'\s]*(?:头像|用户名|avatar|user|profile))["']?/i) ||
+        expectedText.match(/(显示|出现|可见)[^，。；]*(?:头像|用户名)/i);
+      const value = elementMatch ? elementMatch[1] || elementMatch[0] : lowerText.includes('头像') ? '用户头像' : '用户名';
+      return { type: 'element', value };
+    }
+
+    if (
+      lowerText.includes('元素') ||
+      lowerText.includes('按钮') ||
+      lowerText.includes('输入框') ||
+      lowerText.includes('element') ||
+      lowerText.includes('button') ||
+      lowerText.includes('input') ||
+      lowerText.includes('显示') ||
+      lowerText.includes('出现') ||
+      lowerText.includes('可见')
+    ) {
+      // Extract element name or description
+      const elementMatch = expectedText.match(/["']?([^"'\s]+(?:按钮|输入框|元素))["']?/i) || expectedText.match(/(显示|出现|可见)[^，。；]*/i);
+      const value = elementMatch ? elementMatch[1] || elementMatch[0] : expectedText.trim();
+      return { type: 'element', value };
+    }
+
+    // Toast/Text type: 检测 Toast 消息或文本提示
+    // 如果是登录相关的 Toast，生成组合断言（Toast waitFor + Cookie expected）
+    if (
+      lowerText.includes('toast') ||
+      lowerText.includes('提示') ||
+      lowerText.includes('消息') ||
+      lowerText.includes('成功') ||
+      lowerText.includes('失败') ||
+      lowerText.includes('错误') ||
+      lowerText.includes('通知') ||
+      lowerText.includes('notification') ||
+      lowerText.includes('alert')
+    ) {
+      // 提取 Toast 文本内容
+      const toastTextMatch = expectedText.match(/["']([^"']+)["']/) || expectedText.match(/(提示|消息|成功|失败|错误)[：:：]?\s*([^，。；\n]+)/i);
+      const toastText = toastTextMatch ? toastTextMatch[2] || toastTextMatch[1] || expectedText.trim() : expectedText.trim();
+
+      // 如果是登录相关，返回特殊标记，后续处理会生成组合断言
+      if (lowerText.includes('登录') || lowerText.includes('login')) {
+        // 返回一个特殊对象，标记需要组合断言
+        return { type: 'toast_with_login', value: toastText } as any;
+      }
+
+      // 其他 Toast 消息，返回 text 类型
+      return { type: 'text', value: toastText };
+    }
+
+    // Text type: default for other cases (contains "显示", "提示", "文案", "文本")
+    // This is the fallback type
+    return { type: 'text', value: expectedText.trim() };
+  }
+
+  /**
+   * Generate JSON format test case files for each test case
+   * Returns an array of JSON files with their IDs and content
+   * 严格按照测试用例的步骤顺序生成 JSON 文件，确保每个步骤都被正确转换
+   */
+  private async generateStagehandScripts(
+    testCases: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string; caseType?: string }>,
+    _url?: string,
+    _options?: AutomationPlanningOptions,
+    deployUrlMap?: Record<string, string>
+  ): Promise<Array<{ id: string; filename: string; content: string }>> {
+    logger.info('AutomationPlanning: generateStagehandScripts method started (generating JSON files)', {
+      testCasesCount: testCases.length,
+    });
+    const scriptFiles: Array<{ id: string; filename: string; content: string }> = [];
+    const usedFilenames = new Set<string>();
+
+    try {
+      logger.info('AutomationPlanning: Starting to process test cases for JSON generation', {
+        totalTestCases: testCases.length,
+      });
+      let processedCount = 0;
+      for (const testCase of testCases) {
+        processedCount++;
+        logger.debug('AutomationPlanning: Processing test case', {
+          index: processedCount,
+          total: testCases.length,
+          testCaseId: testCase.id,
+          testCaseName: testCase.name,
+        });
+        try {
+          // Ensure we have valid test case data
+          if (!testCase || !testCase.name) {
+            logger.warn('AutomationPlanning: Skipping invalid test case', { testCase });
+            continue;
+          }
+
+          const scriptId = testCase.id || `TC-${String(scriptFiles.length + 1).padStart(3, '0')}`;
+          let filename = this.toSafeScriptFilename(scriptId, testCase.name);
+          if (usedFilenames.has(filename)) {
+            let suffix = 2;
+            while (usedFilenames.has(filename)) {
+              const base = filename.replace(/\.json$/, '');
+              filename = `${base}_${suffix}.json`;
+              suffix += 1;
+            }
+          }
+          usedFilenames.add(filename);
+          const safeName = (testCase.name || 'Unknown').trim();
+          const safeSteps = (testCase.steps || []).filter((step) => step && step.trim());
+          const expectedResults = (testCase.expectedResults || []).filter((er) => er && er.trim());
+          const precondition = (testCase.precondition || '').trim();
+
+          // 按用例类型选用部署 URL（open 步骤用）
+          const caseBaseUrl =
+            deployUrlMap && testCase.caseType && deployUrlMap[testCase.caseType]
+              ? deployUrlMap[testCase.caseType]
+              : deployUrlMap && deployUrlMap['统一入口']
+                ? deployUrlMap['统一入口']
+                : deployUrlMap && Object.keys(deployUrlMap).length > 0
+                  ? Object.values(deployUrlMap)[0]
+                  : _url;
+
+          // 查找前置用例：如果前置条件包含"登录"或"已登录"，找到登录用例（TC-001）
+          // 注意：不能将当前用例自己作为前置条件用例
+          // 更严格的匹配：只匹配明确的"已登录"或"登录状态"，排除"登录页面"等不相关的前置条件
+          let prerequisiteCase: { id: string; name: string; steps: string[] } | null = null;
+          const hasPrerequisiteKeyword =
+            precondition &&
+            (precondition.includes('已登录') ||
+              precondition.includes('登录状态') ||
+              precondition.includes('用户已登录') ||
+              precondition.includes('logged in') ||
+              precondition.includes('login state'));
+
+          // 添加调试日志
+          logger.info('AutomationPlanning: Checking prerequisite logic', {
+            testCaseId: scriptId,
+            testCaseName: safeName,
+            precondition,
+            hasPrerequisiteKeyword: !!hasPrerequisiteKeyword,
+          });
+
+          if (hasPrerequisiteKeyword) {
+            // 查找 TC-001（登录用例），但排除当前用例本身
+            // 更精确的匹配：优先匹配 TC-001，其次匹配名称包含"登录"但不包含"退出"的用例
+            prerequisiteCase =
+              testCases.find((tc) => {
+                if (tc.id === scriptId) return false; // 排除当前用例
+                if (tc.id === 'TC-001') return true; // 优先匹配 TC-001
+                // 匹配名称包含"登录"但不包含"退出"的用例
+                return tc.name.includes('登录') && !tc.name.includes('退出');
+              }) || null;
+            if (prerequisiteCase) {
+              logger.info('AutomationPlanning: Found prerequisite case for precondition', {
+                testCaseId: scriptId,
+                precondition,
+                prerequisiteCaseId: prerequisiteCase.id,
+                prerequisiteCaseName: prerequisiteCase.name,
+                prerequisiteStepsCount: prerequisiteCase.steps.length,
+              });
+            } else {
+              logger.warn('AutomationPlanning: No prerequisite case found despite keyword match', {
+                testCaseId: scriptId,
+                precondition,
+                availableTestCaseIds: testCases.map((tc) => tc.id),
+              });
+            }
+          }
+
+          logger.info('AutomationPlanning: Generating JSON for test case', {
+            testCaseId: scriptId,
+            testCaseName: safeName,
+            stepsCount: safeSteps.length,
+            steps: safeSteps,
+            expectedResultsCount: expectedResults.length,
+            expectedResults,
+            precondition,
+            hasPrerequisite: !!prerequisiteCase,
+          });
+
+          // 构建步骤数组：只包含当前测试用例的步骤（不再合并前置条件步骤）
+          const allSteps: Array<{
+            step: string;
+            action: string;
+            params: { url?: string; selector?: string; [key: string]: any };
+            expected: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | null;
+            status: string;
+            error: null;
+          }> = [];
+
+          // 添加测试用例步骤（不再添加前置条件步骤）
+          const totalStepsCount = safeSteps.length;
+          for (let i = 0; i < safeSteps.length; i++) {
+            const step = safeSteps[i];
+            const trimmedStep = step.trim();
+            if (trimmedStep) {
+              const { action, params } = this.parseStepAction(trimmedStep);
+              const isLastStep = i === totalStepsCount - 1;
+
+              // 打开页面步骤：若无 url 则使用按用例类型解析的 caseBaseUrl
+              let resolvedParams = { ...params };
+              if (action === 'open' && !resolvedParams.url && caseBaseUrl) {
+                resolvedParams = { ...resolvedParams, url: caseBaseUrl };
+              }
+
+              // 最后一个步骤包含预期结果（解析为对象格式）
+              let expected: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | null = null;
+              let waitFor: { type: 'toast' | 'element'; text?: string; selector?: string; timeout?: number } | undefined = undefined;
+
+              if (isLastStep && expectedResults.length > 0) {
+                const parsedResult = this.parseExpectedResult(expectedResults.join('；'));
+
+                // 检查是否是 Toast + 登录的组合断言
+                if (parsedResult && (parsedResult as any).type === 'toast_with_login') {
+                  // 生成组合断言：Toast waitFor + Cookie expected
+                  waitFor = {
+                    type: 'toast',
+                    text: parsedResult.value,
+                    timeout: 5000,
+                  };
+                  expected = {
+                    type: 'cookie',
+                    value: 'token',
+                  };
+                } else {
+                  expected = parsedResult;
+                }
+              }
+
+              allSteps.push({
+                step: trimmedStep,
+                action,
+                params: resolvedParams,
+                expected,
+                ...(waitFor && { waitFor }),
+                status: 'pending',
+                error: null,
+              });
+            }
+          }
+
+          // 转换 precondition 为数组格式
+          // 如果包含"登录"关键词，转换为 ["login"]
+          let preconditionArray: string[] | undefined = undefined;
+          if (precondition) {
+            const lowerPrecondition = precondition.toLowerCase();
+            if (
+              lowerPrecondition.includes('已登录') ||
+              lowerPrecondition.includes('登录状态') ||
+              lowerPrecondition.includes('用户已登录') ||
+              lowerPrecondition.includes('logged in') ||
+              lowerPrecondition.includes('login state')
+            ) {
+              preconditionArray = ['login'];
+            } else {
+              // 保留原始前置条件作为数组元素
+              preconditionArray = [precondition];
+            }
+          }
+
+          // 构建 JSON 对象
+          const testCaseJSON = {
+            testCase: safeName,
+            status: 'pending',
+            precondition: preconditionArray, // 改为数组格式
+            steps: allSteps,
+            duration: 0,
+          };
+
+          // 将 JSON 对象序列化为字符串
+          const jsonContent = JSON.stringify(testCaseJSON, null, 2);
+
+          scriptFiles.push({
+            id: scriptId,
+            filename,
+            content: jsonContent,
+          });
+
+          logger.info('AutomationPlanning: Generated JSON for test case', {
+            testCaseId: scriptId,
+            filename,
+            stepsCount: allSteps.length,
+            jsonLength: jsonContent.length,
+          });
+        } catch (caseError: any) {
+          logger.warn('AutomationPlanning: Failed to generate JSON for test case', {
+            testCase: testCase.name,
+            error: caseError.message,
+            stack: caseError.stack,
+          });
+          // Continue processing other test cases
+        }
+        logger.debug('AutomationPlanning: Completed processing test case', {
+          index: processedCount,
+          total: testCases.length,
+          testCaseId: testCase.id,
+          jsonFilesGeneratedSoFar: scriptFiles.length,
+        });
+      }
+      logger.info('AutomationPlanning: Finished processing all test cases', {
+        totalTestCases: testCases.length,
+        processedCount,
+        generatedJsonFiles: scriptFiles.length,
+      });
+    } catch (error: any) {
+      logger.error('AutomationPlanning: Error generating JSON files', {
+        error: error.message,
+        stack: error.stack,
+        testCasesCount: testCases.length,
+        generatedJsonFilesCount: scriptFiles.length,
+      });
+      // Return empty array instead of throwing - allow process to continue
+    }
+
+    logger.info('AutomationPlanning: Completed generating JSON files', {
+      totalTestCases: testCases.length,
+      generatedJsonFiles: scriptFiles.length,
+      testCaseIds: scriptFiles.map((s) => s.id),
+      filenames: scriptFiles.map((s) => s.filename),
+    });
+
+    logger.info('AutomationPlanning: generateStagehandScripts method returning', {
+      returnValueLength: scriptFiles.length,
+    });
+
+    return scriptFiles;
+  }
+}

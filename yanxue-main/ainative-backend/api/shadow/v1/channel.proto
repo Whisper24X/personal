@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//渠道
+service Channel {
+  //渠道-列表数据查询
+  rpc GetChannelList(GetChannelListReq) returns (GetChannelListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/channel/list"
+      body: "*"
+    };
+  }
+  //渠道-创建
+  rpc CreateChannel(CreateChannelReq) returns (CreateChannelReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/channel/create"
+      body: "*"
+    };
+  }
+}
+
+message GetChannelListReq {}
+
+message ChannelInfo {
+  string id = 1; // id
+  string name = 2; // 名称
+  string verificationCodeType = 3; // 渠道卷码类型none:无卷码required:必须optional:可有可无
+}
+
+message GetChannelListReply {
+  repeated ChannelInfo list = 1; // 列表数据
+}
+
+message CreateChannelReq {
+  string name = 1; // 渠道名称
+}
+
+message CreateChannelReply {
+  string id = 1; // 渠道id
+}

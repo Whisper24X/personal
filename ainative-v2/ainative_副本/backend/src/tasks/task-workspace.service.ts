@@ -1,0 +1,575 @@
+import { createReadStream } from 'fs';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import {
+  TaskWorkspaceEntryDto,
+  TaskWorkspaceFileDto,
+  TaskWorkspaceFileQueryDto,
+  TaskWorkspacePreviewDto,
+  TaskWorkspaceTreeDto,
+  TaskWorkspaceTreeQueryDto,
+} from './dto/task-workspace.dto';
+import { TaskRuntimeService } from './task-runtime.service';
+import { TasksService } from './tasks.service';
+import {
+  SlowApiDiagnosticsSession,
+  createSlowApiDiagnostics,
+} from '../observability/slow-api-diagnostics';
+import { TaskWorkspaceContextCacheService } from './application/task-workspace-context-cache.service';
+import type { ResolvedWorkspaceContext } from './application/task-workspace-context-cache.service';
+
+@Injectable()
+export class TaskWorkspaceService {
+  private readonly maxFileReadBytes = 1024 * 1024;
+  private readonly maxTextPreviewBytes = 256 * 1024;
+  private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
+  private readonly workspaceContextCacheTtlMs = 15_000;
+  private readonly maxWorkspaceContextCacheEntries = 256;
+
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly taskRuntimeService: TaskRuntimeService,
+    private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
+  ) {}
+
+  async getWorkspaceTree(
+    taskId: string,
+    query: TaskWorkspaceTreeQueryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskWorkspaceTreeDto> {
+    const diagnostics = createSlowApiDiagnostics('tasks.workspace.tree', {
+      taskId,
+      userId: currentUser.sub,
+      path: query.path ?? '.',
+    });
+
+    try {
+      const { workspaceRoot } = await this.resolveWorkspaceContext(
+        taskId,
+        currentUser,
+        diagnostics,
+      );
+      const resolved = await diagnostics.measure(
+        'resolvePath',
+        () =>
+          this.resolveTargetPath({
+            workspaceRoot,
+            relativePath: query.path,
+          }),
+        (result) => ({
+          cwd: result.cwd,
+        }),
+      );
+
+      const dirEntries = await diagnostics.measure(
+        'readdir',
+        async () => {
+          try {
+            return await fs.readdir(resolved.targetPath, {
+              withFileTypes: true,
+            });
+          } catch (error) {
+            this.rethrowWorkspaceTreeReadError(error);
+          }
+        },
+        (result) => ({
+          pathExists: true,
+          isDirectory: true,
+          entryCount: result.length,
+        }),
+      );
+
+      const entries = await diagnostics.measure('sortEntries', () =>
+        dirEntries
+          .map<TaskWorkspaceEntryDto>((entry) => {
+            const absoluteEntryPath = path.join(
+              resolved.targetPath,
+              entry.name,
+            );
+
+            return {
+              name: entry.name,
+              path: this.toRelativePath(workspaceRoot, absoluteEntryPath),
+              isDir: entry.isDirectory(),
+            };
+          })
+          .sort((left, right) => {
+            if (left.isDir && !right.isDir) {
+              return -1;
+            }
+            if (!left.isDir && right.isDir) {
+              return 1;
+            }
+            return left.name.localeCompare(right.name, undefined, {
+              numeric: true,
+              sensitivity: 'base',
+            });
+          }),
+      );
+
+      return {
+        cwd: resolved.cwd,
+        entries,
+      };
+    } finally {
+      diagnostics.flush();
+    }
+  }
+
+  async getWorkspaceFileStream(
+    taskId: string,
+    query: TaskWorkspaceFileQueryDto,
+    currentUser: JwtPayloadType,
+  ) {
+    const { workspaceRoot } = await this.resolveWorkspaceContext(
+      taskId,
+      currentUser,
+    );
+    const resolved = await this.resolveTargetPath({
+      workspaceRoot,
+      relativePath: query.path,
+    });
+
+    const stat = await fs.stat(resolved.targetPath).catch(() => null);
+    if (!stat) {
+      throw new NotFoundException('Workspace file not found');
+    }
+    if (!stat.isFile()) {
+      throw new BadRequestException('Workspace path must be a file');
+    }
+
+    const mimeType = this.resolveMimeType(resolved.targetPath);
+    const stream = createReadStream(resolved.targetPath);
+
+    return {
+      stream,
+      mimeType,
+      size: stat.size,
+    };
+  }
+
+  async getWorkspaceFile(
+    taskId: string,
+    query: TaskWorkspaceFileQueryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskWorkspaceFileDto> {
+    const { workspaceRoot } = await this.resolveWorkspaceContext(
+      taskId,
+      currentUser,
+    );
+    const resolved = await this.resolveTargetPath({
+      workspaceRoot,
+      relativePath: query.path,
+    });
+
+    const stat = await fs.stat(resolved.targetPath).catch(() => null);
+    if (!stat) {
+      throw new NotFoundException('Workspace file not found');
+    }
+    if (!stat.isFile()) {
+      throw new BadRequestException('Workspace path must be a file');
+    }
+
+    const mimeType = this.resolveMimeType(resolved.targetPath);
+    const tooLarge = stat.size > this.maxFileReadBytes;
+
+    if (tooLarge) {
+      return {
+        path: resolved.cwd,
+        name: path.basename(resolved.targetPath),
+        size: stat.size,
+        tooLarge: true,
+        encoding: null,
+        mimeType,
+        content: null,
+      };
+    }
+
+    const fileBuffer = await fs.readFile(resolved.targetPath);
+    const isText = this.isTextBuffer(fileBuffer);
+
+    return {
+      path: resolved.cwd,
+      name: path.basename(resolved.targetPath),
+      size: stat.size,
+      tooLarge: false,
+      encoding: isText ? 'utf8' : 'base64',
+      mimeType,
+      content: isText
+        ? fileBuffer.toString('utf-8')
+        : fileBuffer.toString('base64'),
+    };
+  }
+
+  async getWorkspacePreview(
+    taskId: string,
+    query: TaskWorkspaceFileQueryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskWorkspacePreviewDto> {
+    const { workspaceRoot } = await this.resolveWorkspaceContext(
+      taskId,
+      currentUser,
+    );
+    const resolved = await this.resolveTargetPath({
+      workspaceRoot,
+      relativePath: query.path,
+    });
+
+    const stat = await fs.stat(resolved.targetPath).catch(() => null);
+    if (!stat) {
+      throw new NotFoundException('Workspace file not found');
+    }
+    if (!stat.isFile()) {
+      throw new BadRequestException('Workspace path must be a file');
+    }
+
+    const mimeType = this.resolveMimeType(resolved.targetPath);
+
+    if (mimeType === 'application/pdf') {
+      return {
+        path: resolved.cwd,
+        previewType: 'pdf',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('video/')) {
+      return {
+        path: resolved.cwd,
+        previewType: 'video',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('audio/')) {
+      return {
+        path: resolved.cwd,
+        previewType: 'audio',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('image/')) {
+      if (stat.size > this.maxImagePreviewBytes) {
+        return {
+          path: resolved.cwd,
+          previewType: 'image',
+          tooLarge: true,
+          size: stat.size,
+          mimeType,
+          dataUrl: null,
+        };
+      }
+
+      const fileBuffer = await fs.readFile(resolved.targetPath);
+
+      return {
+        path: resolved.cwd,
+        previewType: 'image',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+        dataUrl: `data:${mimeType};base64,${fileBuffer.toString('base64')}`,
+      };
+    }
+
+    if (stat.size > this.maxTextPreviewBytes) {
+      return {
+        path: resolved.cwd,
+        previewType: this.isTextLikeMime(mimeType) ? 'text' : 'binary',
+        tooLarge: true,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    const fileBuffer = await fs.readFile(resolved.targetPath);
+    const isText =
+      this.isTextLikeMime(mimeType) || this.isTextBuffer(fileBuffer);
+
+    if (!isText) {
+      return {
+        path: resolved.cwd,
+        previewType: 'binary',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    return {
+      path: resolved.cwd,
+      previewType: 'text',
+      tooLarge: false,
+      size: stat.size,
+      mimeType,
+      text: fileBuffer.toString('utf-8'),
+    };
+  }
+
+  private async resolveWorkspaceContext(
+    taskId: string,
+    currentUser: JwtPayloadType,
+    diagnostics?: SlowApiDiagnosticsSession,
+  ): Promise<ResolvedWorkspaceContext> {
+    const now = Date.now();
+    const cachedEntry = this.taskWorkspaceContextCache.get(
+      taskId,
+      currentUser.sub,
+      now,
+    );
+
+    if (cachedEntry) {
+      diagnostics?.add({ workspaceContextCacheHit: true });
+      return cachedEntry.promise;
+    }
+
+    this.taskWorkspaceContextCache.delete(taskId, currentUser.sub);
+    diagnostics?.add({ workspaceContextCacheHit: false });
+    this.taskWorkspaceContextCache.pruneExpired(
+      now,
+      this.maxWorkspaceContextCacheEntries,
+    );
+
+    const promise = this.loadWorkspaceContext(taskId, currentUser, diagnostics);
+    this.taskWorkspaceContextCache.begin(taskId, currentUser.sub, promise);
+
+    try {
+      const context = await promise;
+      this.taskWorkspaceContextCache.finalize(
+        taskId,
+        currentUser.sub,
+        promise,
+        Date.now() + this.workspaceContextCacheTtlMs,
+      );
+      return context;
+    } catch (error) {
+      this.taskWorkspaceContextCache.delete(taskId, currentUser.sub, promise);
+      throw error;
+    }
+  }
+
+  invalidateWorkspaceContext(taskId: string): void {
+    this.taskWorkspaceContextCache.invalidateTask(taskId);
+  }
+
+  private async loadWorkspaceContext(
+    taskId: string,
+    currentUser: JwtPayloadType,
+    diagnostics?: SlowApiDiagnosticsSession,
+  ): Promise<ResolvedWorkspaceContext> {
+    const { task, project } = diagnostics
+      ? await diagnostics.measure(
+          'access',
+          () =>
+            this.tasksService.assertCanAccessTaskProject(
+              taskId,
+              currentUser,
+              diagnostics,
+            ),
+          (result) => ({
+            projectId: result.project.id,
+            gitWorktree: result.task.gitWorktree ?? null,
+          }),
+        )
+      : await this.tasksService.assertCanAccessTaskProject(
+          taskId,
+          currentUser,
+          diagnostics,
+        );
+
+    if (!task.gitWorktree?.trim()) {
+      throw new ConflictException('Task workspace is not initialized');
+    }
+
+    const runtimeWorkspaceRoot =
+      this.taskRuntimeService.resolveTaskWorktreePath(task, project);
+
+    const workspaceRoot = diagnostics
+      ? await diagnostics.measure(
+          'realpath',
+          () =>
+            fs.realpath(runtimeWorkspaceRoot).catch(() => {
+              throw new NotFoundException('Task workspace path does not exist');
+            }),
+          (result) => ({
+            workspaceRoot: result,
+          }),
+        )
+      : await fs.realpath(runtimeWorkspaceRoot).catch(() => {
+          throw new NotFoundException('Task workspace path does not exist');
+        });
+
+    return {
+      task,
+      workspaceRoot,
+    };
+  }
+
+  private async resolveTargetPath({
+    workspaceRoot,
+    relativePath,
+  }: {
+    workspaceRoot: string;
+    relativePath?: string;
+  }): Promise<{ targetPath: string; cwd: string }> {
+    const normalizedRelativePath = this.normalizeRelativePath(relativePath);
+
+    if (normalizedRelativePath === '.') {
+      return {
+        targetPath: workspaceRoot,
+        cwd: '.',
+      };
+    }
+
+    const rawTargetPath = path.resolve(workspaceRoot, normalizedRelativePath);
+
+    const targetPath = await fs.realpath(rawTargetPath).catch(() => {
+      throw new NotFoundException('Workspace path does not exist');
+    });
+
+    this.ensurePathInsideWorkspace(workspaceRoot, targetPath);
+
+    return {
+      targetPath,
+      cwd: this.toRelativePath(workspaceRoot, targetPath),
+    };
+  }
+
+  private rethrowWorkspaceTreeReadError(error: unknown): never {
+    const errorCode = (error as NodeJS.ErrnoException | undefined)?.code;
+
+    if (errorCode === 'ENOENT') {
+      throw new NotFoundException('Workspace path not found');
+    }
+
+    if (errorCode === 'ENOTDIR') {
+      throw new BadRequestException('Workspace path must be a directory');
+    }
+
+    throw error;
+  }
+
+  private normalizeRelativePath(value?: string): string {
+    if (!value?.trim()) {
+      return '.';
+    }
+
+    if (path.isAbsolute(value)) {
+      throw new BadRequestException('Absolute path is not allowed');
+    }
+
+    const normalized = path
+      .normalize(value.trim())
+      .replace(/^\.(?:[\\/]|$)/, '')
+      .replace(/[\\/]+$/, '');
+
+    if (!normalized) {
+      return '.';
+    }
+
+    const pathSegments = normalized.split(path.sep);
+    if (pathSegments.some((segment) => segment === '..')) {
+      throw new BadRequestException('Workspace path cannot escape root');
+    }
+
+    return normalized;
+  }
+
+  private ensurePathInsideWorkspace(
+    workspaceRoot: string,
+    targetPath: string,
+  ): void {
+    const relativePath = path.relative(workspaceRoot, targetPath);
+
+    if (
+      relativePath === '' ||
+      (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+    ) {
+      return;
+    }
+
+    throw new BadRequestException('Workspace path cannot escape root');
+  }
+
+  private toRelativePath(workspaceRoot: string, targetPath: string): string {
+    const relativePath = path.relative(workspaceRoot, targetPath);
+
+    if (!relativePath) {
+      return '.';
+    }
+
+    return relativePath.split(path.sep).join('/');
+  }
+
+  private isTextBuffer(value: Buffer): boolean {
+    const inspectLength = Math.min(value.length, 8_192);
+
+    for (let index = 0; index < inspectLength; index += 1) {
+      if (value[index] === 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private resolveMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+
+    const mimeTypeMap: Record<string, string> = {
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.json': 'application/json',
+      '.yml': 'text/yaml',
+      '.yaml': 'text/yaml',
+      '.ts': 'text/typescript',
+      '.tsx': 'text/typescript',
+      '.js': 'text/javascript',
+      '.jsx': 'text/javascript',
+      '.vue': 'text/plain',
+      '.css': 'text/css',
+      '.scss': 'text/x-scss',
+      '.html': 'text/html',
+      '.xml': 'application/xml',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.bmp': 'image/bmp',
+      '.ico': 'image/x-icon',
+      '.pdf': 'application/pdf',
+      '.zip': 'application/zip',
+      '.tar': 'application/x-tar',
+      '.gz': 'application/gzip',
+    };
+
+    return mimeTypeMap[ext] ?? 'application/octet-stream';
+  }
+
+  private isTextLikeMime(mimeType: string): boolean {
+    return (
+      mimeType.startsWith('text/') ||
+      mimeType === 'application/json' ||
+      mimeType === 'application/xml' ||
+      mimeType === 'text/yaml' ||
+      mimeType === 'text/typescript' ||
+      mimeType === 'text/javascript'
+    );
+  }
+}

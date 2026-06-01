@@ -1,0 +1,207 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "yanxue",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "User"
+    }
+  ],
+  "paths": {
+    "/yanxue/wechat/v1/user_wx/queryParentInfo": {
+      "get": {
+        "summary": "User-查询监护人信息",
+        "deprecated": false,
+        "description": "",
+        "operationId": "User_QueryParentInfo",
+        "tags": [
+          "User"
+        ],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1QueryParentInfoReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/user_wx/storeParentInfo": {
+      "post": {
+        "summary": "User-保存监护人信息",
+        "deprecated": false,
+        "description": "",
+        "operationId": "User_StoreParentInfo",
+        "tags": [
+          "User"
+        ],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1StoreParentInfoReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1StoreParentInfoReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "protobufAny": {
+        "type": "object",
+        "properties": {
+          "@type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "rpcStatus": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/protobufAny"
+            }
+          }
+        }
+      },
+      "v1ParentInfo": {
+        "type": "object",
+        "properties": {
+          "parentIdentityCard": {
+            "type": "string",
+            "title": "家长-身份证"
+          },
+          "parentName": {
+            "type": "string",
+            "title": "家长-姓名"
+          },
+          "parentSex": {
+            "type": "string",
+            "title": "家长-性别 男M 女F"
+          },
+          "parentPhone": {
+            "type": "string",
+            "title": "家长-手机号"
+          }
+        },
+        "title": "监护人信息"
+      },
+      "v1StoreParentInfoReply": {
+        "type": "object",
+        "title": "响应-更新监护人信息",
+        "properties": {}
+      },
+      "v1QueryParentInfoReply": {
+        "type": "object",
+        "properties": {
+          "parentInfo": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/v1ParentInfo"
+            },
+            "title": "监护人信息"
+          }
+        },
+        "title": "响应-查询监护人信息"
+      },
+      "v1StoreParentInfoReq": {
+        "type": "object",
+        "properties": {
+          "parentInfo": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/v1ParentInfo"
+            },
+            "title": "监护人信息"
+          }
+        },
+        "title": "请求-更新监护人信息"
+      }
+    },
+    "securitySchemes": {}
+  },
+  "servers": [],
+  "security": []
+}

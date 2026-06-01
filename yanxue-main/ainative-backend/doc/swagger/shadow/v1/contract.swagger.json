@@ -1,0 +1,880 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/contract.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Contract"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/api/shadow/v1/exportContractList": {
+      "post": {
+        "summary": "导出合同列表",
+        "operationId": "Contract_ExportContractList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ExportContractListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ExportContractListReq"
+            }
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/generateContractByUserInfo": {
+      "post": {
+        "summary": "生成合同",
+        "operationId": "Contract_GenerateContractByUserInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GenerateContractByUserInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GenerateContractByUserInfoReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/importContractUserInfoByCsvFile": {
+      "post": {
+        "summary": "导入创建合同的用户信息",
+        "operationId": "Contract_ImportContractUserInfoByCsvFile",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ImportContractUserInfoByCsvFileReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ImportContractUserInfoByCsvFileReq"
+            }
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/queryAsyncTaskResult": {
+      "get": {
+        "summary": "查询异步任务结果",
+        "operationId": "Contract_QueryAsyncTaskResult",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryAsyncTaskResultReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "description": "异步任务ID",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/queryContractList": {
+      "post": {
+        "summary": "查询合同列表",
+        "operationId": "Contract_QueryContractList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryContractListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryContractListReq"
+            }
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/queryContractTemplateList": {
+      "post": {
+        "summary": "查询合同模版列表",
+        "operationId": "Contract_QueryContractTemplateList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryContractTemplateListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryContractTemplateListReq"
+            }
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/queryTopicList": {
+      "get": {
+        "summary": "查询主题列表",
+        "operationId": "Contract_QueryTopicList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryTopicListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/revokeSignFlow": {
+      "post": {
+        "summary": "撤销签署流程",
+        "operationId": "Contract_RevokeSignFlow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RevokeSignFlowReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1RevokeSignFlowReq"
+            }
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/storeContractTemplate": {
+      "post": {
+        "summary": "添加合同模版（有则更新，无则新增）",
+        "operationId": "Contract_StoreContractTemplate",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreContractTemplateReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreContractTemplateReq"
+            }
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/updateContractTemplateStatus": {
+      "post": {
+        "summary": "修改合同模版状态",
+        "operationId": "Contract_UpdateContractTemplateStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateContractTemplateStatusReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateContractTemplateStatusReq"
+            }
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/urgeSignFlow": {
+      "post": {
+        "summary": "催签流程中签署人",
+        "operationId": "Contract_UrgeSignFlow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UrgeSignFlowReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UrgeSignFlowReq"
+            }
+          }
+        ],
+        "tags": [
+          "Contract"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1ContractItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "signFlowId": {
+          "type": "string",
+          "title": "E签宝合同ID"
+        },
+        "parentName": {
+          "type": "string",
+          "title": "家长姓名"
+        },
+        "parentPhone": {
+          "type": "string",
+          "title": "家长电话"
+        },
+        "childName": {
+          "type": "string",
+          "title": "孩子姓名"
+        },
+        "childPhone": {
+          "type": "string",
+          "title": "孩子电话"
+        },
+        "childId": {
+          "type": "string",
+          "title": "孩子身份证"
+        },
+        "userSource": {
+          "type": "string",
+          "title": "用户来源"
+        },
+        "topic": {
+          "type": "string",
+          "title": "合同主题"
+        },
+        "activityStartDate": {
+          "type": "string",
+          "title": "营期开始时间"
+        },
+        "activityEndDate": {
+          "type": "string",
+          "title": "营期结束时间"
+        },
+        "purchaseChannel": {
+          "type": "string",
+          "title": "购买渠道"
+        },
+        "childGrade": {
+          "type": "string",
+          "title": "孩子年级"
+        },
+        "childGender": {
+          "type": "string",
+          "title": "孩子性别"
+        },
+        "cost": {
+          "type": "string",
+          "title": "参营费用"
+        },
+        "costCapital": {
+          "type": "string",
+          "title": "参营费用大写"
+        },
+        "payEndDate": {
+          "type": "string",
+          "title": "支付截止时间"
+        },
+        "contractStatus": {
+          "type": "integer",
+          "format": "int32",
+          "title": "合同状态（0-草稿 1-签署中 2-完成 3-撤销 5-过期 7-拒签）"
+        },
+        "contractLink": {
+          "type": "string",
+          "title": "合同链接"
+        },
+        "contractType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "合同类型：1：单日营；2：多日营"
+        },
+        "courseAppointmentId": {
+          "type": "string",
+          "title": "课程预约ID"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      }
+    },
+    "v1ContractTemplateItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "templateType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "模版类型：1：单日营；2：多日营"
+        },
+        "templateName": {
+          "type": "string",
+          "title": "合同模板名称"
+        },
+        "templateUrl": {
+          "type": "string",
+          "title": "合同模板地址"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "操作人"
+        },
+        "updatedByName": {
+          "type": "string",
+          "title": "操作人名称"
+        }
+      }
+    },
+    "v1ExportContractListReply": {
+      "type": "object",
+      "properties": {
+        "downloadUrl": {
+          "type": "string",
+          "title": "下载链接"
+        }
+      }
+    },
+    "v1ExportContractListReq": {
+      "type": "object",
+      "properties": {
+        "childName": {
+          "type": "string",
+          "title": "孩子姓名"
+        },
+        "parentPhone": {
+          "type": "string",
+          "title": "家长电话"
+        },
+        "topic": {
+          "type": "string",
+          "title": "合同主题"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "合同状态"
+        },
+        "activityStartDate": {
+          "type": "string",
+          "title": "营期开始时间"
+        }
+      }
+    },
+    "v1GenerateContractByUserInfoReply": {
+      "type": "object",
+      "properties": {
+        "asyncTaskId": {
+          "type": "string",
+          "title": "异步任务ID"
+        }
+      }
+    },
+    "v1GenerateContractByUserInfoReq": {
+      "type": "object",
+      "properties": {
+        "courseAppointmentId": {
+          "type": "string",
+          "title": "课程预约ID"
+        },
+        "parentName": {
+          "type": "string",
+          "title": "家长姓名"
+        },
+        "parentPhone": {
+          "type": "string",
+          "title": "家长手机号"
+        },
+        "childName": {
+          "type": "string",
+          "title": "孩子姓名"
+        },
+        "childId": {
+          "type": "string",
+          "title": "孩子身份证号"
+        },
+        "activityStartDate": {
+          "type": "string",
+          "title": "活动开始日期"
+        },
+        "activityEndDate": {
+          "type": "string",
+          "title": "活动结束日期"
+        },
+        "cost": {
+          "type": "string",
+          "title": "活动费用"
+        },
+        "costCapital": {
+          "type": "string",
+          "title": "活动费用大写"
+        },
+        "payEndDate": {
+          "type": "string",
+          "title": "付款截止日期"
+        }
+      }
+    },
+    "v1ImportContractUserInfoByCsvFileReply": {
+      "type": "object",
+      "properties": {
+        "asyncTaskId": {
+          "type": "string",
+          "title": "异步任务ID"
+        }
+      }
+    },
+    "v1ImportContractUserInfoByCsvFileReq": {
+      "type": "object",
+      "properties": {
+        "fileUrl": {
+          "type": "string",
+          "title": "文件地址"
+        }
+      }
+    },
+    "v1QueryAsyncTaskResultReply": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "title": "任务ID"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态：0-待处理 1-执行中 2-成功 3-失败"
+        },
+        "errorInfo": {
+          "type": "string",
+          "title": "错误信息"
+        }
+      }
+    },
+    "v1QueryContractListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ContractItem"
+          },
+          "title": "合同列表"
+        }
+      }
+    },
+    "v1QueryContractListReq": {
+      "type": "object",
+      "properties": {
+        "childName": {
+          "type": "string",
+          "title": "孩子姓名"
+        },
+        "parentPhone": {
+          "type": "string",
+          "title": "家长电话"
+        },
+        "topic": {
+          "type": "string",
+          "title": "合同主题"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "合同状态"
+        },
+        "activityStartDate": {
+          "type": "string",
+          "title": "营期开始时间"
+        },
+        "contractType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "合同类型: 1：单日营；2：多日营"
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "v1QueryContractTemplateListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ContractTemplateItem"
+          },
+          "title": "合同模板列表"
+        },
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        }
+      }
+    },
+    "v1QueryContractTemplateListReq": {
+      "type": "object",
+      "properties": {
+        "templateName": {
+          "type": "string",
+          "title": "合同模板名称"
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "每页数量"
+        }
+      }
+    },
+    "v1QueryTopicListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "主题列表"
+        }
+      }
+    },
+    "v1RevokeSignFlowReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功"
+        }
+      }
+    },
+    "v1RevokeSignFlowReq": {
+      "type": "object",
+      "properties": {
+        "signFlowId": {
+          "type": "string",
+          "title": "合同签署流程ID"
+        },
+        "revokeReason": {
+          "type": "string",
+          "title": "撤销原因"
+        }
+      }
+    },
+    "v1StoreContractTemplateReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        }
+      }
+    },
+    "v1StoreContractTemplateReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "模版ID"
+        },
+        "templateName": {
+          "type": "string",
+          "title": "合同模板名称"
+        },
+        "templateUrl": {
+          "type": "string",
+          "title": "合同模板地址"
+        },
+        "templateType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "合同模板类型"
+        }
+      }
+    },
+    "v1UpdateContractTemplateStatusReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功"
+        }
+      }
+    },
+    "v1UpdateContractTemplateStatusReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1:删除"
+        }
+      }
+    },
+    "v1UrgeSignFlowReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功"
+        }
+      }
+    },
+    "v1UrgeSignFlowReq": {
+      "type": "object",
+      "properties": {
+        "signFlowId": {
+          "type": "string",
+          "title": "合同签署流程ID"
+        },
+        "psnAccount": {
+          "type": "string",
+          "title": "被催签人账号（手机号）"
+        }
+      }
+    }
+  }
+}

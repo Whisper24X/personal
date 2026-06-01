@@ -1,0 +1,18 @@
+---
+description: Five-partition layout, optional six-layer wording, and layer roles for frontend/
+globs: frontend/**/*.{vue,ts}
+alwaysApply: false
+---
+
+# Layers (five-partition)
+
+Top-level buckets: `app/` (bootstrap, router, global stores, shells), `pages/` (route shells), `features/` (domain logic, co-located UI), `api/` (HTTP + contracts), `shared/` (design-system UI, pure utils, shared types).
+
+**Optional wording** (for alignment with `docs/dev-spec/frontend/ARCHITECTURE.md` and **ARCHITECTURE_app / ARCHITECTURE_shadow**): dependency flows **top → down**: 装配 (app) → 页面 (pages) → 业务组件与组合式 (features) → 状态 (Pinia in `app/stores` or `features/<domain>/stores`) → 请求与契约 (api) → 共享与横切 (shared). Five partitions remain the **physical** layout; the six-layer phrase is for cross-doc alignment only.
+
+- Domain and feature code live under `features/<domain>/`; do not place business UI in `api/` or unrelated `shared/` buckets.
+- **Pages** stay thin; heavy logic belongs in `features/*/composables` or domain modules.
+- **SSE / Workers**: co-locate with the owning feature, not ad-hoc globals.
+- **Auth / route guards**: centralize in `app/router` (or equivalent); do not duplicate “may enter app” checks across every page.
+
+Normative diagram, data flow, dependency matrix, CLI rules: `.agents/skills/frontend-architecture/references/spa-architecture.md`. Optional directory-tree narrative for this repo: `docs/technical/frontend-architecture-feasibility-analysis.md` (background, non-normative).
