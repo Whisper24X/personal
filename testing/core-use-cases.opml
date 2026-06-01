@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>AINative 核心用例与测试策略</title>
+  </head>
+  <body>
+    <outline text="无 PRD 核心用例与测试策略">
+      <outline text="原则">
+        <outline text="分层：P0 发布阻塞 / P1 回归主路径 / P2 扩展与质量"/>
+        <outline text="依据：前端路由、Auth、AppModule、功能模块图"/>
+      </outline>
+      <outline text="环境与前置">
+        <outline text="本地：pnpm dev；backend :9000；docker-compose DB/Redis"/>
+        <outline text="数据：测试账号；注册用唯一用户名"/>
+        <outline text="手工：浏览器；curl/Bruno"/>
+        <outline text="E2E：Playwright；Vite 端口 8000；E2E_TEST_* 环境变量"/>
+      </outline>
+      <outline text="P0 核心用例（必须通过）">
+        <outline text="UC-01 用户注册：/login 注册 → 自动登录"/>
+        <outline text="UC-02 用户登录：会话与受保护区域"/>
+        <outline text="UC-03 登录失败：错误提示，不进入已登录态"/>
+        <outline text="UC-04 刷新会话：POST /v1/auth/refresh"/>
+        <outline text="UC-05 当前用户：GET /v1/auth/me"/>
+        <outline text="UC-06 未登录访问控制：重定向 /login"/>
+        <outline text="UC-07 主导航冒烟（已登录）">
+          <outline text="/home /dashboard /kanban /knowledge-base"/>
+          <outline text="/skills /mcp /automations /git"/>
+          <outline text="/business-lines /business-lines/invite"/>
+          <outline text="/tasks /goals /settings /projects/workflows"/>
+        </outline>
+        <outline text="UC-08 后端健康：GET :9000/"/>
+      </outline>
+      <outline text="P1 主业务路径">
+        <outline text="UC-10 业务线"/>
+        <outline text="UC-11 项目与工作流"/>
+        <outline text="UC-12 任务与详情"/>
+        <outline text="UC-13 目标"/>
+        <outline text="UC-14 修改资料或密码"/>
+        <outline text="UC-15 登出"/>
+        <outline text="UC-16 业务线邀请接受"/>
+        <outline text="UC-17 业务线成员与权限"/>
+        <outline text="UC-18 新建项目"/>
+        <outline text="UC-19 新建任务"/>
+        <outline text="UC-20～27 系统分层页：home/dashboard/kanban/kb/skills/mcp/auto/git/settings"/>
+      </outline>
+      <outline text="P2 扩展与质量">
+        <outline text="通知、队列深度；自动化业务；Git 凭证"/>
+        <outline text="可观测性"/>
+      </outline>
+      <outline text="与自动化衔接">
+        <outline text="单元：*.spec.ts"/>
+        <outline text="E2E：frontend/e2e/smoke.spec.ts"/>
+        <outline text="后端 e2e：需独立环境"/>
+      </outline>
+      <outline text="风险：无 PRD 仅保证链路可用，非业务规则正确性"/>
+    </outline>
+  </body>
+</opml>

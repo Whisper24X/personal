@@ -1,0 +1,41 @@
+# 结构化用例：每条用例含 id、name、steps、then（可断言）
+# Then 格式：selector + type + value（避免 AI 预期结果幻觉）
+
+- id: demo_03_structured_case
+  name: 结构化用例 + 治理层演示
+  steps:
+    - "登录"
+    - "进入渠道订单管理"
+    - "点击渠道配置"
+  then:
+    - selector: "[role=dialog] .el-table, .el-drawer .el-table"
+      type: visible
+    - selector: "button:has-text('新增')"
+      type: visible
+
+- id: demo_06_real_path
+  name: 仅走真实用户路径
+  steps:
+    - "登录"
+    - "进入渠道订单管理"
+    - "点击渠道配置"
+  then:
+    - selector: "[role=dialog], .el-drawer"
+      type: visible
+    - selector: "button:has-text('新增')"
+      type: visible
+    - selector: ".el-table"
+      type: visible
+
+- id: demo_08_assertable_result
+  name: 预期结果可断言（selector + type + value）
+  steps:
+    - "打开渠道配置弹窗"
+  then:
+    - selector: "button:has-text('新增')"
+      type: visible
+    - selector: ".el-table"
+      type: count
+      value: 1
+    - selector: "[role=dialog]"
+      type: visible

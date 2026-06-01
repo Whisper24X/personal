@@ -1,0 +1,10 @@
+{
+  "name": "page-agent-demo",
+  "version": "1.0.0",
+  "description": "Page Agent UI 自动化 Demo - 用自然语言跑 UI 自动化脚本",
+  "private": true,
+  "scripts": {
+    "dev": "npx serve . -p 3000",
+    "start": "npm run dev"
+  }
+}

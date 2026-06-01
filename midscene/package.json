@@ -1,0 +1,22 @@
+{
+  "name": "midscene-demo",
+  "version": "1.0.0",
+  "description": "Midscene 视觉驱动 UI 自动化 Demo",
+  "type": "module",
+  "scripts": {
+    "demo": "npx tsx demo.ts",
+    "demo:baidu": "npx tsx demo-baidu.ts",
+    "demo:cursor": "npx tsx demo-cursor-cli.ts",
+    "test:shadow": "npx tsx e2e/run-shadow-tests.ts"
+  },
+  "keywords": ["midscene", "ui-automation", "playwright"],
+  "license": "MIT",
+  "devDependencies": {
+    "@midscene/web": "^1.0.0",
+    "@playwright/test": "^1.49.0",
+    "dotenv": "^16.4.5",
+    "playwright": "^1.49.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

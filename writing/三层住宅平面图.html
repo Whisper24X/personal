@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>三层住宅平面图 上北下南</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#eceae3;font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif;padding:20px;}
+h1{text-align:center;font-size:21px;color:#1e293b;margin-bottom:4px;}
+.sub{text-align:center;font-size:12px;color:#64748b;margin-bottom:14px;}
+
+.plans{display:flex;gap:60px;justify-content:center;align-items:flex-start;}
+.pc{display:flex;flex-direction:column;align-items:center;}
+.fl{font-size:17px;font-weight:700;color:#1e293b;margin-bottom:2px;}
+.fs{font-size:11px;color:#64748b;margin-bottom:8px;}
+
+/* canvas container */
+.cv{position:relative;}
+
+/* room base */
+.rm{position:absolute;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;text-align:center;border:2.5px solid #334155;}
+.rn{font-weight:700;font-size:12px;line-height:1.3;}
+.rs{font-size:10px;color:#475569;margin-top:2px;line-height:1.4;}
+
+/* outer wall */
+.ow{position:absolute;border:6px solid #1e293b;pointer-events:none;z-index:5;}
+
+/* stair / balcony */
+.stair{position:absolute;border:2px dashed #7c3aed;background:#ede9fe;
+       display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.balc{position:absolute;border:2px dashed #22c55e;background:#d1fae5;
+      display:flex;align-items:center;justify-content:center;font-size:11px;
+      font-weight:700;color:#166534;}
+
+/* door / window badges */
+.db{position:absolute;z-index:15;background:#f97316;color:#fff;
+    font-size:8px;font-weight:700;padding:1px 3px;border-radius:2px;white-space:nowrap;}
+.wb{position:absolute;z-index:15;background:#3b82f6;color:#fff;
+    font-size:8px;font-weight:700;padding:1px 3px;border-radius:2px;white-space:nowrap;}
+.wh{position:absolute;background:#3b82f6;z-index:9;border-radius:1px;}  /* window stripe */
+.dh{position:absolute;background:#eceae3;z-index:8;}                     /* door gap */
+
+/* direction labels */
+.dn{position:absolute;z-index:20;font-size:11px;font-weight:700;
+    padding:3px 8px;border-radius:4px;white-space:nowrap;}
+.dn-n{background:#1d4ed8;color:#fff;}   /* north = top */
+.dn-s{background:#ef4444;color:#fff;}   /* south = bottom = front */
+.dn-w{background:#16a34a;color:#fff;}   /* west = left, side road */
+.dn-e{background:#94a3b8;color:#fff;}   /* east = right, attached */
+
+/* compass */
+.cmp{position:absolute;z-index:30;width:56px;height:56px;border-radius:50%;
+     background:#fff;border:2px solid #334155;box-shadow:0 2px 6px rgba(0,0,0,.2);}
+.cmp svg{width:52px;height:52px;}
+
+/* dim labels */
+.dh-label{position:absolute;font-size:10px;color:#475569;text-align:center;z-index:20;}
+.dv-label{position:absolute;font-size:10px;color:#475569;writing-mode:vertical-rl;z-index:20;}
+
+/* road banner */
+.road{background:#b6c8d9;text-align:center;font-weight:700;color:#1e3a5f;
+      padding:7px;border-radius:5px;margin-top:12px;font-size:13px;}
+
+/* color classes */
+.c-hall  {background:#fff8ed;}
+.c-kit   {background:#ecfdf5;}
+.c-bed   {background:#eef2ff;}
+.c-bath  {background:#e0f2fe;}
+.c-store {background:#fefce8;}
+.c-fam   {background:#fffbeb;}
+.c-old   {background:#dbeafe;}
+
+/* legend + tables */
+.legend{display:flex;flex-wrap:wrap;gap:7px 18px;justify-content:center;
+        background:#fff;border-radius:8px;border:1px solid #e2e8f0;
+        padding:10px;margin:16px auto;max-width:960px;font-size:11px;}
+.li{display:flex;align-items:center;gap:5px;}
+.sw{width:16px;height:10px;border:1px solid #94a3b8;}
+.spec{max-width:960px;margin:0 auto;}
+.spec h2{font-size:14px;color:#1e293b;margin:12px 0 6px;border-left:4px solid #3b82f6;padding-left:8px;}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;}
+th{background:#334155;color:#fff;padding:5px 7px;text-align:left;}
+td{padding:4px 7px;border-bottom:1px solid #e2e8f0;}
+tr:nth-child(even) td{background:#f8fafc;}
+</style>
+</head>
+<body>
+<h1>三层住宅专业平面图　10m × 20m　上北下南</h1>
+<p class="sub">比例 1:50 (40px=1m) · 右侧贴邻 · 楼梯外置左上角 · 每层独立厨房 · 二/三楼完全相同</p>
+
+<div class="plans">
+
+<!-- ======= 一楼 ======= -->
+<!-- canvas: 560w × 920h
+     plan body: left=100, top=40, w=400, h=800  (north=top, south=bottom)
+     rooms from north(top) to south(bottom):
+       后部服务区(north): top=40, h=180  [y=40-220]
+       WC+套浴: top=220, h=100          [y=220-320]
+       厨房+老人房: top=320, h=200       [y=320-520]
+       大通厅(south): top=520, h=320    [y=520-840]  ← 入口在最底部
+     external stair: left=0, top=40, w=100, h=200 (left-north, matches building y=40-240)
+-->
+<div class="pc">
+  <div class="fl">一楼</div>
+  <div class="fs">客餐一体大厅(南) · 老人套房 · 厨房 · 后部服务区(北)</div>
+  <div class="cv" style="width:570px;height:920px;">
+
+    <!-- dim top (北 side) -->
+    <div class="dh-label" style="left:100px;top:6px;width:400px;">
+      &#8596; 10,000 mm（10m）
+    </div>
+    <!-- dim right -->
+    <div class="dv-label" style="right:4px;top:40px;height:800px;display:flex;align-items:center;">
+      20,000 mm（20m）
+    </div>
+
+    <!-- NORTH label (top) -->
+    <div class="dn dn-n" style="left:170px;top:22px;">&#9650; 北 / 后 / 后院</div>
+
+    <!-- external stair (upper-left = north-west corner) -->
+    <div class="stair" style="left:0;top:40px;width:100px;height:200px;">
+      <div style="font-size:9px;font-weight:700;color:#6d28d9;line-height:1.7;">
+        外置楼梯<br>2.5×5m<br><span style="font-weight:400;color:#7c3aed;">不计面积</span>
+      </div>
+    </div>
+    <!-- stair door gap on left wall (north end of building) -->
+    <div class="dh" style="left:97px;top:180px;width:6px;height:50px;"></div>
+
+    <!-- 后部服务区 (NORTH end, top) -->
+    <div class="rm c-store" style="left:100px;top:40px;width:400px;height:180px;">
+      <div class="rn" style="color:#854d0e;">后部服务区　(北端)</div>
+      <div class="rs">储物 + 洗衣 + 热水器 + 设备间</div>
+      <div class="rs">10 × 4.5m = 45 &#13217;</div>
+    </div>
+    <!-- 窗 W6: north wall top -->
+    <div class="wh" style="left:160px;top:37px;width:120px;height:5px;"></div>
+    <div class="wb" style="left:160px;top:20px;">W6 后窗 1.2m</div>
+    <!-- 后门 D6 -->
+    <div class="dh" style="left:310px;top:37px;width:60px;height:6px;"></div>
+    <div class="db" style="left:310px;top:20px;">D6 后门 1.0m</div>
+
+    <!-- 公卫+套浴 strip -->
+    <div class="rm c-bath" style="left:100px;top:220px;width:160px;height:100px;">
+      <div class="rn" style="color:#0369a1;font-size:11px;">老人套浴</div>
+      <div class="rs">3×2.5m　窗 W5</div>
+    </div>
+    <div class="rm c-bath" style="left:260px;top:220px;width:100px;height:100px;">
+      <div class="rn" style="color:#0369a1;font-size:11px;">公共卫生间</div>
+      <div class="rs">2.5×2.5m　D5</div>
+    </div>
+    <div class="rm c-store" style="left:360px;top:220px;width:140px;height:100px;">
+      <div class="rn" style="color:#854d0e;font-size:10px;">杂物/设备</div>
+      <div class="rs">3.5×2.5m</div>
+    </div>
+    <!-- W5 left window for bath -->
+    <div class="wh" style="left:97px;top:240px;width:5px;height:40px;"></div>
+    <div class="wb" style="left:30px;top:245px;">W5<br>0.6m</div>
+
+    <!-- 老人卧室 (left) + 厨房 (right) -->
+    <div class="rm c-old" style="left:100px;top:320px;width:220px;height:200px;">
+      <div class="rn" style="color:#1e40af;">老人卧室</div>
+      <div class="rs">5.5×5m = 27.5 &#13217;</div>
+      <div class="rs">左窗 W4　套浴门 D4　房门 D2</div>
+    </div>
+    <div class="rm c-kit" style="left:320px;top:320px;width:180px;height:200px;">
+      <div class="rn" style="color:#166534;">厨　房</div>
+      <div class="rs">4.5×5m = 22.5 &#13217;</div>
+      <div class="rs">后窗 W3　推拉门 D3</div>
+    </div>
+    <!-- W4 left window old room -->
+    <div class="wh" style="left:97px;top:360px;width:5px;height:80px;"></div>
+    <div class="wb" style="left:30px;top:365px;">W4<br>1.5m×1.2m</div>
+    <!-- W3 back window kitchen (top wall of kitchen zone) -->
+    <div class="wh" style="left:360px;top:37px;width:80px;height:5px;"></div>
+    <!-- already covered by W6 area; label differently -->
+    <div class="wb" style="left:370px;top:220px;">W3 厨窗</div>
+    <!-- D3 kitchen door gap (vertical wall at x=220) -->
+    <div class="dh" style="left:317px;top:360px;width:6px;height:50px;"></div>
+    <div class="db" style="left:245px;top:362px;">D3 厨 0.9m</div>
+    <!-- D2 old room door (horizontal wall at y=320 = top of old room) -->
+    <div class="dh" style="left:130px;top:317px;width:60px;height:6px;"></div>
+    <div class="db" style="left:130px;top:303px;">D2 老人房 0.9m</div>
+    <!-- D4 suite bath door (inside old room, internal) -->
+    <div class="db" style="left:102px;top:395px;">D4 套浴 0.8m</div>
+    <div class="dh" style="left:100px;top:408px;width:6px;height:40px;"></div>
+
+    <!-- 大通厅 (SOUTH, bottom = 前) -->
+    <div class="rm c-hall" style="left:100px;top:520px;width:400px;height:320px;">
+      <div class="rn" style="font-size:19px;color:#92400e;">客 餐 一 体 大 厅　(南端/前)</div>
+      <div class="rs">客厅 + 餐厅一体化　开放贯通</div>
+      <div class="rs" style="margin-top:4px;font-weight:700;color:#b45309;">10 × 8m = 80 &#13217;</div>
+      <div class="rs" style="color:#ef4444;margin-top:6px;">&#9660; 主入口 D1 在最底部（南墙）</div>
+      <div class="rs">左墙开大窗 W7、前墙开窗 W1 W2</div>
+    </div>
+    <!-- W1 W2 front windows (SOUTH wall = bottom of canvas at y=840) -->
+    <div class="wh" style="left:110px;top:837px;width:90px;height:5px;"></div>
+    <div class="wb" style="left:110px;top:843px;">W1 1.8m×1.5m</div>
+    <div class="wh" style="left:390px;top:837px;width:90px;height:5px;"></div>
+    <div class="wb" style="left:390px;top:843px;">W2 1.8m×1.5m</div>
+    <!-- W7 left wall large window (living hall section) -->
+    <div class="wh" style="left:97px;top:560px;width:5px;height:160px;"></div>
+    <div class="wb" style="left:25px;top:610px;">W7<br>落地窗<br>2.4m×2.5m</div>
+    <!-- D1 main entry (SOUTH wall, bottom) -->
+    <div class="dh" style="left:240px;top:837px;width:80px;height:6px;"></div>
+    <div class="db" style="left:248px;top:850px;">D1 主入口 1.0m×2.2m &#9660;</div>
+
+    <!-- right side attached marker -->
+    <div style="position:absolute;right:6px;top:40px;height:800px;writing-mode:vertical-rl;
+                font-size:9px;color:#94a3b8;display:flex;align-items:center;z-index:20;">
+      右侧 / 东 / 贴邻建筑无窗
+    </div>
+
+    <!-- OUTER WALL -->
+    <div class="ow" style="left:100px;top:40px;width:400px;height:800px;"></div>
+
+    <!-- inner walls -->
+    <div style="position:absolute;left:100px;top:220px;width:400px;height:3px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:100px;top:320px;width:400px;height:3px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:100px;top:520px;width:400px;height:3px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:260px;top:220px;width:3px;height:100px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:360px;top:220px;width:3px;height:100px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:320px;top:320px;width:3px;height:200px;background:#334155;z-index:4;"></div>
+
+    <!-- SOUTH label (bottom) -->
+    <div class="dn dn-s" style="left:170px;top:860px;">&#9660; 南 / 前 / 大马路 / 主入口</div>
+
+    <!-- WEST label -->
+    <div class="dn dn-w" style="left:100px;top:670px;transform:rotate(-90deg);transform-origin:left center;white-space:nowrap;">
+      &#9664; 西 / 左侧临路 / 开窗
+    </div>
+
+    <!-- Compass (right upper area) -->
+    <div class="cmp" style="right:6px;top:46px;">
+      <svg viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="26,3 21,26 26,21 31,26" fill="#1d4ed8"/>
+        <polygon points="26,49 21,26 26,31 31,26" fill="#ef4444"/>
+        <text x="26" y="12" text-anchor="middle" font-size="9" font-weight="700" fill="#1d4ed8">N</text>
+        <text x="26" y="47" text-anchor="middle" font-size="8" fill="#ef4444">S</text>
+        <text x="5"  y="29" font-size="8" fill="#475569">W</text>
+        <text x="43" y="29" font-size="8" fill="#475569">E</text>
+        <circle cx="26" cy="26" r="2.5" fill="#334155"/>
+      </svg>
+    </div>
+
+  </div><!-- cv 1F -->
+  <!-- ROAD banner below 1F plan -->
+  <div class="road" style="width:500px;margin-top:0;">&#9660; 前方大马路 / 停车区 / 主入口（南向）&#9660;</div>
+</div><!-- pc 1F -->
+
+
+<!-- ======= 二/三楼 ======= -->
+<!-- canvas: 570w × 1010h
+     plan body: left=100, top=40, w=400, h=800
+     balcony: top=840, h=80  (SOUTH/BOTTOM)
+     rooms from north(top) to south(bottom):
+       后卫浴+储物: top=40, h=120   [y=40-160]
+       卧室C+D: top=160, h=180      [y=160-340]
+       家庭厅(right)+卫生间+厨房(left): top=340, h=280  [y=340-620]
+       卧室A+B: top=620, h=220      [y=620-840]  ← SOUTH/FRONT
+       阳台: top=840, h=80          [y=840-920]  ← SOUTH projection
+-->
+<div class="pc">
+  <div class="fl">二楼 / 三楼（完全相同）</div>
+  <div class="fs">楼梯上来先到过道，再分流至4卧室与家庭厅；卫生间已优化为紧凑尺度</div>
+  <div class="cv" style="width:570px;height:1010px;">
+
+    <div class="dh-label" style="left:100px;top:6px;width:400px;">&#8596; 10,000 mm（10m）</div>
+    <div class="dv-label" style="right:4px;top:40px;height:800px;display:flex;align-items:center;">20,000 mm（20m）</div>
+
+    <!-- BALCONY (NORTH, rear projection) -->
+    <div class="balc" style="left:100px;top:0;width:400px;height:40px;">
+      &#9650; 后门阳台　10m × 1m = 10 &#13217;　北向
+    </div>
+
+    <!-- NORTH label -->
+    <div class="dn dn-n" style="left:170px;top:44px;">&#9650; 北 / 后 / 后院</div>
+
+    <!-- external stair (upper-left = north-west) -->
+    <div class="stair" style="left:0;top:40px;width:100px;height:200px;">
+      <div style="font-size:9px;font-weight:700;color:#6d28d9;line-height:1.7;">
+        外置楼梯<br>2.5×5m<br><span style="font-weight:400;color:#7c3aed;">不计面积</span>
+      </div>
+    </div>
+    <div class="dh" style="left:97px;top:180px;width:6px;height:50px;"></div>
+    <div class="db" style="left:18px;top:164px;">上楼入户门</div>
+
+    <!-- 后卫浴+储物 (NORTH, top) -->
+    <div class="rm c-bath" style="left:100px;top:40px;width:200px;height:120px;">
+      <div class="rn" style="color:#0369a1;font-size:11px;">后卫浴　(北端)</div>
+      <div class="rs">5×3m = 15 &#13217;</div>
+      <div class="rs">后窗 W15　门 D14</div>
+    </div>
+    <div class="rm c-bed" style="left:300px;top:40px;width:200px;height:120px;">
+      <div class="rn" style="color:#3730a3;font-size:11px;">卧室 C　(北端)</div>
+      <div class="rs">5×3m = 15 &#13217;</div>
+      <div class="rs">后门 D7 通后阳台　门 D15</div>
+    </div>
+    <!-- north wall windows -->
+    <div class="wh" style="left:120px;top:37px;width:80px;height:5px;"></div>
+    <div class="wb" style="left:120px;top:20px;">W15 0.6m</div>
+    <div class="wh" style="left:320px;top:37px;width:40px;height:5px;"></div>
+    <div class="wb" style="left:320px;top:20px;">W16 0.6m</div>
+    <div class="dh" style="left:380px;top:37px;width:80px;height:6px;"></div>
+    <div class="db" style="left:382px;top:20px;">D7 后门 1.8m</div>
+    <!-- doors to back zone from corridor / bedroom D -->
+    <div class="dh" style="left:120px;top:158px;width:50px;height:5px;"></div>
+    <div class="db" style="left:120px;top:145px;">D14 0.8m</div>
+    <div class="dh" style="left:320px;top:158px;width:50px;height:5px;"></div>
+    <div class="db" style="left:320px;top:145px;">D15 0.8m</div>
+
+    <!-- 过道（楼梯落位） + 卧室D -->
+    <div class="rm c-fam" style="left:100px;top:160px;width:200px;height:80px;">
+      <div class="rn" style="color:#92400e;">前厅 / 过道</div>
+      <div class="rs">5×2m = 10 &#13217;</div>
+      <div class="rs">上楼先到此，再进入各房间</div>
+    </div>
+    <div class="rm c-bed" style="left:100px;top:240px;width:200px;height:100px;">
+      <div class="rn" style="color:#3730a3;">卧室 D</div>
+      <div class="rs">5×2.5m = 12.5 &#13217;</div>
+      <div class="rs">内门 D13</div>
+    </div>
+    <!-- D12 D13 from family hall -->
+    <div class="dh" style="left:250px;top:187px;width:6px;height:40px;"></div>
+    <div class="db" style="left:188px;top:190px;">D12 过道→家庭厅</div>
+    <div class="dh" style="left:150px;top:237px;width:60px;height:6px;"></div>
+    <div class="db" style="left:148px;top:223px;">D13 D卧 0.9m</div>
+
+    <!-- 卫生间 (left) + 厨房 (left below) + 家庭厅 (right, tall) -->
+    <div class="rm c-bath" style="left:100px;top:340px;width:100px;height:80px;">
+      <div class="rn" style="color:#0369a1;font-size:11px;">卫生间</div>
+      <div class="rs">2.5×2m = 5 &#13217;</div>
+      <div class="rs">左窗 W12　干湿分离</div>
+    </div>
+    <div class="rm c-kit" style="left:100px;top:420px;width:160px;height:200px;">
+      <div class="rn" style="color:#166534;">厨　房</div>
+      <div class="rs">4×5m = 20 &#13217;</div>
+      <div class="rs">左窗 W11　门 D11</div>
+    </div>
+    <div class="rm c-fam" style="left:260px;top:340px;width:240px;height:280px;">
+      <div class="rn" style="font-size:14px;color:#92400e;">家庭厅</div>
+      <div class="rs">6×7m = 42 &#13217;</div>
+      <div class="rs">书房/休闲/儿童</div>
+      <div class="rs">连通四卧室（A/B/C/D）</div>
+    </div>
+    <!-- W11 W12 left wall windows -->
+    <div class="wh" style="left:97px;top:360px;width:5px;height:32px;"></div>
+    <div class="wb" style="left:28px;top:374px;">W12<br>0.6m</div>
+    <div class="wh" style="left:97px;top:500px;width:5px;height:80px;"></div>
+    <div class="wb" style="left:28px;top:510px;">W11<br>1.2m×0.9m</div>
+    <!-- D11 kitchen to family hall -->
+    <div class="dh" style="left:257px;top:500px;width:6px;height:50px;"></div>
+    <div class="db" style="left:186px;top:506px;">D11 厨 0.9m</div>
+    <!-- WC door from family hall -->
+    <div class="dh" style="left:197px;top:360px;width:6px;height:36px;"></div>
+    <div class="db" style="left:122px;top:362px;">卫生间门</div>
+
+    <!-- 卧室A + B (SOUTH end, near balcony) -->
+    <div class="rm c-bed" style="left:100px;top:620px;width:200px;height:220px;">
+      <div class="rn" style="color:#3730a3;">卧室 A　(南端)</div>
+      <div class="rs">5×5.5m = 27.5 &#13217;</div>
+      <div class="rs">前窗 W8　左窗 W9</div>
+      <div class="rs">内门 D8</div>
+    </div>
+    <div class="rm c-bed" style="left:300px;top:620px;width:200px;height:220px;">
+      <div class="rn" style="color:#3730a3;">卧室 B　(南端)</div>
+      <div class="rs">5×5.5m = 27.5 &#13217;</div>
+      <div class="rs">前窗 W10</div>
+      <div class="rs">内门 D10</div>
+    </div>
+    <!-- D8 D10 from family hall (top of A/B = y=620) -->
+    <div class="dh" style="left:150px;top:617px;width:60px;height:6px;"></div>
+    <div class="db" style="left:148px;top:603px;">D8 A卧 0.9m</div>
+    <div class="dh" style="left:320px;top:617px;width:60px;height:6px;"></div>
+    <div class="db" style="left:318px;top:603px;">D10 B卧 0.9m</div>
+    <!-- W8 W10 front windows (south wall = y=840) -->
+    <div class="wh" style="left:118px;top:837px;width:90px;height:5px;"></div>
+    <div class="wb" style="left:118px;top:843px;">W8 1.5m×1.5m</div>
+    <div class="wh" style="left:320px;top:837px;width:90px;height:5px;"></div>
+    <div class="wb" style="left:320px;top:843px;">W10 1.5m×1.5m</div>
+    <!-- W9 left wall bedroom A -->
+    <div class="wh" style="left:97px;top:660px;width:5px;height:80px;"></div>
+    <div class="wb" style="left:28px;top:676px;">W9<br>1.2m×1.2m</div>
+    <!-- 南侧不设阳台，保留卧室采光窗 -->
+
+    <!-- OUTER WALL -->
+    <div class="ow" style="left:100px;top:40px;width:400px;height:800px;"></div>
+
+    <!-- inner walls -->
+    <div style="position:absolute;left:100px;top:160px;width:400px;height:3px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:300px;top:40px;width:3px;height:120px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:100px;top:240px;width:200px;height:3px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:100px;top:340px;width:400px;height:3px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:300px;top:160px;width:3px;height:80px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:200px;top:340px;width:3px;height:80px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:260px;top:340px;width:3px;height:280px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:100px;top:420px;width:160px;height:3px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:100px;top:620px;width:400px;height:3px;background:#334155;z-index:4;"></div>
+    <div style="position:absolute;left:300px;top:620px;width:3px;height:220px;background:#334155;z-index:4;"></div>
+
+    <!-- right attached marker -->
+    <div style="position:absolute;right:6px;top:40px;height:800px;writing-mode:vertical-rl;
+                font-size:9px;color:#94a3b8;display:flex;align-items:center;z-index:20;">
+      右侧 / 东 / 贴邻建筑无窗
+    </div>
+
+    <!-- WEST label -->
+    <div class="dn dn-w" style="left:100px;top:760px;transform:rotate(-90deg);transform-origin:left center;white-space:nowrap;">
+      &#9664; 西 / 左侧临路 / 开窗
+    </div>
+
+    <!-- SOUTH label -->
+    <div class="dn dn-s" style="left:180px;top:930px;">&#9660; 南 / 前 / 大马路</div>
+
+    <!-- Compass -->
+    <div class="cmp" style="right:6px;top:46px;">
+      <svg viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="26,3 21,26 26,21 31,26" fill="#1d4ed8"/>
+        <polygon points="26,49 21,26 26,31 31,26" fill="#ef4444"/>
+        <text x="26" y="12" text-anchor="middle" font-size="9" font-weight="700" fill="#1d4ed8">N</text>
+        <text x="26" y="47" text-anchor="middle" font-size="8" fill="#ef4444">S</text>
+        <text x="5"  y="29" font-size="8" fill="#475569">W</text>
+        <text x="43" y="29" font-size="8" fill="#475569">E</text>
+        <circle cx="26" cy="26" r="2.5" fill="#334155"/>
+      </svg>
+    </div>
+
+  </div><!-- cv 2F/3F -->
+  <div class="road" style="width:500px;margin-top:0;">&#9660; 前方大马路 / 停车区 / 主入口（南向）&#9660;</div>
+</div><!-- pc 2F/3F -->
+
+</div><!-- plans -->
+
+<!-- 图例 -->
+<div class="legend">
+  <div class="li"><div class="sw" style="background:#fff8ed;"></div>客餐一体大厅</div>
+  <div class="li"><div class="sw" style="background:#ecfdf5;"></div>厨房（每层1个）</div>
+  <div class="li"><div class="sw" style="background:#eef2ff;"></div>卧室（共4间/层）</div>
+  <div class="li"><div class="sw" style="background:#e0f2fe;"></div>卫浴</div>
+  <div class="li"><div class="sw" style="background:#dbeafe;"></div>老人房</div>
+  <div class="li"><div class="sw" style="background:#fffbeb;"></div>家庭厅</div>
+  <div class="li"><div class="sw" style="background:#fefce8;"></div>储物/设备</div>
+  <div class="li"><div class="sw" style="background:#ede9fe;border:1px dashed #7c3aed;"></div>外置楼梯</div>
+  <div class="li"><div class="sw" style="background:#d1fae5;border:1px dashed #22c55e;"></div>阳台</div>
+  <div class="li"><div style="width:16px;height:10px;background:#f97316;"></div><b>D</b> 门（橙）</div>
+  <div class="li"><div style="width:16px;height:10px;background:#3b82f6;"></div><b>W</b> 窗（蓝）</div>
+  <div class="li"><div style="width:16px;height:10px;background:#1d4ed8;"></div>N = 北/后（上）</div>
+  <div class="li"><div style="width:16px;height:10px;background:#ef4444;"></div>S = 南/前（下）</div>
+</div>
+
+</body>
+</html>

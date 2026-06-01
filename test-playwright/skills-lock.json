@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "test-cases": {
+      "source": "cexll/myclaude",
+      "sourceType": "github",
+      "computedHash": "a1d6bb3b2333a9d7b13160b6ce942f1dcd148acdff52ff657bcc12cc4ad44a09"
+    },
+    "webapp-testing": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "cf8e5916d474886bd67b09691247f43f331523008b7d366064bc607ab42d6302"
+    }
+  }
+}

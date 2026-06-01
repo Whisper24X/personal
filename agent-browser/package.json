@@ -1,0 +1,7 @@
+{
+  "name": "agent-browser-tc",
+  "private": true,
+  "devDependencies": {
+    "agent-browser": "0.21.4"
+  }
+}

@@ -1,0 +1,1131 @@
+{
+  "export": {
+    "sourceFile": "core-use-cases.xmind",
+    "sourcePath": "/Users/yangcong/AI-testing/testing/core-use-cases.xmind",
+    "format": "XMind Zen (ZIP with content.json)",
+    "exportedAt": "2026-04-07T08:45:37.399753+00:00"
+  },
+  "manifest": {
+    "file-entries": {
+      "content.json": {},
+      "metadata.json": {}
+    }
+  },
+  "metadata": {},
+  "content": [
+    {
+      "id": "aaf19cdd-8822-4962-b906-5e823d4e4032",
+      "class": "sheet",
+      "title": "核心用例与测试策略",
+      "topicPositioning": "fixed",
+      "relationships": [],
+      "rootTopic": {
+        "id": "336b9d96-cabf-48c5-8ea8-f51620db85b5",
+        "class": "topic",
+        "title": "无 PRD 核心用例与测试策略",
+        "structureClass": "org.xmind.ui.logic.right",
+        "titleUnedited": true,
+        "children": {
+          "attached": [
+            {
+              "id": "00e5922f-fa33-46d3-8380-16defba67e94",
+              "class": "topic",
+              "title": "原则",
+              "titleUnedited": true,
+              "children": {
+                "attached": [
+                  {
+                    "id": "f42c9e05-42e0-48b0-8bf4-48ceac3d50cc",
+                    "class": "topic",
+                    "title": "分层：P0 发布阻塞，P1 回归主路径，P2 扩展与质量",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "8fdeed51-2bbb-419d-986b-bc8ae6ffad0a",
+                    "class": "topic",
+                    "title": "依据：前端功能、认证、AppModule、功能模块图",
+                    "titleUnedited": true
+                  }
+                ]
+              }
+            },
+            {
+              "id": "ba9c2163-ef5b-40bd-b252-5a6ff8c864ad",
+              "class": "topic",
+              "title": "环境与前置",
+              "titleUnedited": true,
+              "children": {
+                "attached": [
+                  {
+                    "id": "5a35a7a5-111d-4b0b-91ef-7b3278454971",
+                    "class": "topic",
+                    "title": "本地：pnpm dev；backend :9000；docker-compose DB/Redis",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "1bd42528-08d2-4be0-bdbb-a9d5a0aa1199",
+                    "class": "topic",
+                    "title": "数据：测试账号；注册用唯一用户名",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "97f862c9-496a-4645-904b-37a515136735",
+                    "class": "topic",
+                    "title": "手工：浏览器；curl/Bruno",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "adcbe201-876a-4369-a4aa-a413f3e20484",
+                    "class": "topic",
+                    "title": "E2E：Playwright；本地前端 8000 端口；测试用环境变量",
+                    "titleUnedited": true
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2ba14c35-c60c-4f92-b5cb-285798886850",
+              "class": "topic",
+              "title": "P0：核心用例（必须通过）",
+              "titleUnedited": true,
+              "children": {
+                "attached": [
+                  {
+                    "id": "2865d0ef-c876-42a1-8473-07092875f9f7",
+                    "class": "topic",
+                    "title": "[P0] UC-01 用户注册",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "d2d2a0d7-69e4-4ae1-98db-487b2fbb5f8e",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 前后端与数据库已按 环境与前置 就绪；测试用户名在系统中尚不存在（或使用随机后缀保证唯一）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "cebdd621-85af-434d-8a81-f26328661451",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 浏览器打开 登录页。\n2. 切换至「注册」模式。\n3. 填写用户名、密码（不少于 6 位）、确认密码；可选填写昵称。\n4. 提交注册表单。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "e7047754-d40b-42f9-bd4b-f7ec75190ea0",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 界面提示注册成功；随后自动完成登录。\n2. 跳转至登录后默认落地页（与 resolveAuthenticatedRedirectPath 行为一致），进入已登录态。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "a7861f83-60cd-4386-9590-e2312dbdf852",
+                    "class": "topic",
+                    "title": "[P0] UC-02 用户登录",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "0cbed7d8-f68b-4025-938e-4c7c89508180",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 系统中已存在可登录用户账号；前后端可用。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "61860316-3d21-4efe-95ba-fdfcf2e1e201",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 打开 登录页。\n2. 输入已存在用户的用户名与正确密码。\n3. 点击登录。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "38ab44fe-a83e-4c47-9c12-60f296649081",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 前端保存访问令牌（及刷新令牌，若返回）；可进入受保护页面。\n2. 无未捕获的全局致命错误导致白屏。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "2bafc5e9-060e-4d65-a4b0-8a71ca4dcc6b",
+                    "class": "topic",
+                    "title": "[P0] UC-03 登录失败（错误凭据）",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "6a3d6d99-b566-49e7-bf55-355ccddeb7d5",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 前后端可用；准备一个不存在的用户名或错误密码用于尝试。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "0b4c20dc-5c5b-4423-9f26-96c7d9fab7cc",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 打开 登录页。\n2. 输入不存在的用户名或错误密码。\n3. 点击登录。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "179a4bb7-3dcd-4665-856b-04317b7f5a04",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 展示明确失败提示（如「登录失败」类文案）。\n2. 不进入已登录态；本地无有效会话。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "ca5b0fa6-0ee0-4dcc-b760-a3af5851195a",
+                    "class": "topic",
+                    "title": "[P0] UC-04 刷新会话",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "9d2329fd-5e3c-4d98-b679-850505afb6ba",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已完成登录，且本地持有 refresh token（以实际前端实现为准）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "d24df4f0-8460-429e-8b38-96842dc48946",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 在已登录状态下，触发刷新访问令牌流程（如前端静默刷新、或手动调用刷新接口）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "97f85942-238e-46c6-a02d-179560f2be5a",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 调用后端接口（Bearer 为 refresh token）返回 HTTP 200，响应中含新的 access token（及可选新的 refresh token）。\n2. 业务请求可使用新 access token 继续访问。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "a3a91dc3-4b13-4d8f-bacd-47ca58c35e96",
+                    "class": "topic",
+                    "title": "[P0] UC-05 获取当前用户",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "db1f464a-ec47-4582-b674-5e9d9ef784b6",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；持有有效 access token。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "986c97a4-4490-4a30-b97c-5a53be88a0cf",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 使用当前会话请求 调用后端接口（或通过前端触发拉取当前用户信息）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "a08a43cf-457d-45a1-aeb2-d6f93cb01053",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. HTTP 200；响应体为当前用户信息与 JWT sub 一致。\n2. 前端用户态展示与接口一致（若页面有展示）。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "0ded2941-80e2-4044-9329-86691c4a607c",
+                    "class": "topic",
+                    "title": "[P0] UC-06 未登录访问控制",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "93158242-83e0-411e-b9f2-c0f3fc092333",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 浏览器无有效登录会话（清除本地存储或使用无痕模式）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "284ef8e3-109f-4314-8200-891cb3f5b82b",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 直接访问根路径 站点根路径 或任一需登录的路由（如 工作台）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "fc712800-83b6-435d-b769-e2d4793c2a74",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 导航至 登录页，或 URL 带 redirect 等查询参数指向原目标（与 auth-guard 一致）。\n2. 未登录用户不可浏览需登录页的主要内容区。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "7fda19c3-487d-4901-a040-a716c59328e8",
+                    "class": "topic",
+                    "title": "[P0] UC-07 主导航冒烟（已登录）",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "d58934ba-04bb-413a-a6f1-664000da0629",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；账号具备访问各菜单所需能力（若存在权限控制，以实际角色为准）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "a236a84a-995e-4c3f-9559-f6c777f2bdbf",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 在已登录状态下，依次访问下列路径（可分多次会话执行）：首页、工作台、看板页、知识库页、技能页、MCP 页、自动化页、Git 集成页、业务线管理页、业务线邀请页、任务页、目标页、设置页、项目工作流页（必要时带上 项目 ID 查询参数）。\n2. 观察页面加载与浏览器控制台。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "982d60d4-83b2-4cda-9c11-8521ffdffb0d",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 每个路径下页面可完成加载，无持续白屏。\n2. 控制台无持续报错（允许与权限相关的预期提示或空态）。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "876290fc-37b3-47c1-aa6a-98bf471a6e83",
+                    "class": "topic",
+                    "title": "[P0] UC-08 后端健康检查",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "88768b20-acb2-4080-8868-e8da94ead50d",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 后端进程已启动；已知根 URL（本地默认 本地后端（默认 9000））。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "482b93bd-396c-4045-a33c-b47612aaa162",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 对后端根路径发起 GET 请求（浏览器或 curl）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "8f84fe31-7f8e-40c9-bb16-7fe1f44b8b57",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. HTTP 200；响应为服务端信息类 JSON（见 HomeController）。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "401d81a4-22f9-409c-90ac-11c90e034231",
+              "class": "topic",
+              "title": "P1：主业务路径（建议每版本回归）",
+              "titleUnedited": true,
+              "children": {
+                "attached": [
+                  {
+                    "id": "7aafca81-b83e-450b-be7e-d72b0c79c213",
+                    "class": "topic",
+                    "title": "[P1] UC-10 业务线管理",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "e1b6fa67-ee40-4ab6-80c8-37337e4403d7",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；具备业务线相关菜单/能力（以实际权限为准）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "6152f370-1a92-49ef-a6ed-6755a2dce82e",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 进入业务线管理页面（如 业务线管理页）。\n2. 查看列表；如有「新建/编辑」，打开表单并尝试保存（最小操作以不破坏数据为前提）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "88edc5a7-fcf2-4a7a-a66c-3e1d23d75bb0",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 列表或空态可正常展示；表单可打开与提交（成功或返回可理解的校验/权限提示）。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "5ef87bd8-71f5-4bd0-a8cf-3c3b41c3ed77",
+                    "class": "topic",
+                    "title": "[P1] UC-11 项目与工作流",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "c2016d83-7ea6-42f0-8983-d6fcdda505ba",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；存在可进入的项目或工作流入口（或空态可接受）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "011c04b6-be57-458a-86bd-945a18847770",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 从工作台进入项目相关入口，或直接访问 项目工作流页（可带 项目 ID）。\n2. 确认工作流相关界面是否加载。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "6c379e3e-a9a6-462a-bc28-2721ddf484be",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 工作流相关 UI 可打开；无持续白屏与未处理异常。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "eeb9ed80-a29a-49fc-9eac-d374cea4ab7d",
+                    "class": "topic",
+                    "title": "[P1] UC-12 任务列表与任务详情",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "4ec64521-01c7-4b36-87a8-3be621088203",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；准备一个有效任务 id（或从列表点击进入）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "634b52f9-a90e-479c-8b2a-0d3934abf3ea",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 任务页。\n2. 进入某条任务的详情 任务详情页。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "f2547a36-7a1a-4a99-9719-87eedcc93d5f",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 列表页加载；详情页在有效 id 下可展示任务信息或合理空态/错误提示。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "fa569921-4b37-4227-ab5e-021f4a56def2",
+                    "class": "topic",
+                    "title": "[P1] UC-13 目标（需求）链路",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "e40bb8c8-1431-4a2c-88f1-28dcda64308d",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；可选：已知 项目 ID 用于项目目标列表。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "a7914c06-8866-41c1-bf46-b88debd1e322",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 目标页 或 某项目下的目标列表页。\n2. 若有目标，进入 目标详情页 查看详情。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "37e7aa8a-fe81-4fc3-a229-14d2b2d711d4",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 各页面可加载；详情在有效 goalId 下可展示或合理提示。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "1551a607-9021-419e-ae06-3569a38d54a7",
+                    "class": "topic",
+                    "title": "[P1] UC-14 修改个人资料或密码",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "5a57ff55-b685-4ec7-8a65-a959698f6d93",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "4c220f70-4fe2-40f6-b25b-e37f44bc4455",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 进入设置或个人资料相关页面（如 设置页）。\n2. 修改资料；若修改密码，按界面要求填写旧密码与新密码并提交。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "465ecea7-1450-4ad8-8ef6-baecfbd4c21d",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 修改成功有反馈；改密码时未提供旧密码或旧密码错误时，有明确错误提示（与 auth.service update 一致）。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "b8be20a7-09e6-4dc9-ac08-72ac3005cfe1",
+                    "class": "topic",
+                    "title": "[P1] UC-15 登出",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "96151d1a-d5f1-4b8d-90ed-f27ee94098ee",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "12fc797e-6a1f-408d-8f1e-72b39403bb7c",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 在界面执行登出（以产品入口为准）。\n2. 再次访问此前需登录的页面（如 工作台）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "72964158-9206-4182-84c7-c1e1892bb88f",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 调用后端接口 返回成功（若前端调用）；本地会话清除。\n2. 再次访问受保护路由时需重新登录。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "6b02376b-f226-4212-871c-5329436cab8f",
+                    "class": "topic",
+                    "title": "[P1] UC-16 接受业务线邀请",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "fee1623c-292e-423d-82af-d521f190ea85",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 已生成有效业务线邀请（含 token；可由具备权限的用户在业务线管理内创建邀请，或由测试环境预置）。\n2. 使用尚未加入该业务线的账号，或按产品规则允许重复校验的场景。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "6554a312-81e0-45e3-8c75-2fb38eead2c6",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 在浏览器打开邀请落地页：业务线邀请页，URL 查询参数中带 token（与后端 调用后端接口 约定一致）。\n2. 在页面执行「接受邀请」或等价操作。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "7492597d-7492-4ffd-bed7-0a947c5bb950",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 邀请合法且未过期时：提示成功；展示已加入角色等信息（与前端 invite.vue 行为一致）；可按引导进入业务线管理 业务线管理页。\n2. token 缺失、无效或已失效时：有明确错误提示，无未处理异常白屏。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "7607ad0c-f30b-4e44-8fd6-169ab0523c9a",
+                    "class": "topic",
+                    "title": "[P1] UC-17 业务线管理页：成员与权限",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "c67c7834-58a3-4961-a041-8d27550685f9",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；对至少一条业务线具备管理或成员查看相关能力（以权限配置为准）。\n2. 已进入业务线管理页 业务线管理页，且工作区已选中目标业务线（与 BusinessLineManagementPanel 数据一致）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "7f19b6f2-38f6-470f-a143-ca7cb085bc04",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 在业务线管理页切换至成员相关区域（如「成员」Tab 或侧栏入口）。\n2. 查看成员列表或空态；若具备权限，打开成员权限/角色相关弹窗或子页（最小操作：打开即关闭，不强制改数据）。\n3. （可选）切换至权限或业务线角色相关 Tab，确认界面可加载。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "59c6fb61-4c49-4eba-970e-07d8c737f987",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 成员列表、权限与角色相关区块可加载；无持续白屏。\n2. 无权限时展示可理解的提示，而非静默失败；有权限时操作有明确成功或校验反馈。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "d36c6365-fd07-4387-9622-cddb115b3723",
+                    "class": "topic",
+                    "title": "[P1] UC-18 新建项目",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "85b3d56e-5e87-4071-8afb-8cc9daa8cb45",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；具备创建项目能力（与前端 canCreateProject 站点根路径 createProjectItem 权限一致）。\n2. 已存在至少一条业务线，且当前工作区已选中将作为项目归属的业务线（在 业务线管理页 BusinessLineManagementPanel 中可操作）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "f40ec3fe-b184-4c73-a3d8-c36f60a7aa00",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 打开 业务线管理页，确认左侧或顶栏已选中目标业务线。\n2. 进入 「项目」 主 Tab（与面板内 projects 分区一致），点击 「新建项目」。\n3. 在表单中填写项目名称、Git 仓库地址、默认分支（默认可为 main）；按需填写描述。\n4. 提交保存（内部调用 projectsApi.create，对应后端 调用后端接口）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "1dc53b8a-6500-4ab3-9856-749f3e18fe2e",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 校验通过时：提示「新建项目成功」或等价反馈；项目列表刷新，新项目出现在当前业务线下。\n2. 缺少必填项、仓库不可用或权限不足时：界面展示可理解的错误/校验信息，无未捕获异常白屏。\n3. （可选）填写仓库地址后若触发分支探测/补全，界面行为正常或可忽略（与 inspect-repository 能力一致时）。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "3189998f-d309-45b8-9ee5-d1cc9b381fe7",
+                    "class": "topic",
+                    "title": "[P1] UC-19 新建任务",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "d75e9d08-19c6-4098-8163-44ec301057ff",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；具备创建任务能力（与 TaskCreatePanel 中 createTask 与 BUTTON_ACCESS_CONFIG.createTask 一致）。\n2. 已在左侧栏或 URL 选定目标 项目 ID（未选项目时界面会提示先选择项目）。\n3. 对话模式：业务线/项目侧已具备可用的 Agent CLI 与配置（否则界面会提示先完成配置）。工作流模式：目标项目下存在可选的工作流模板（或接受「无模板」时的校验提示）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "83e0b533-851a-4af7-ad89-c429fb7c72ca",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 任务页（页面主体为 TaskCreatePanel）。\n2. 确认当前项目上下文（侧栏选中或 ?项目 ID= 与布局一致）。\n3. 选择任务模式：对话或工作流；按模式填写 提示词（prompt）；对话模式选择 Agent CLI 与配置、基准分支等；工作流模式选择 工作流模板。\n4. 提交创建（tasksApi.create → 调用后端接口）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "dde133f6-7db6-48a8-a15b-24f4c31412bf",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 校验通过时：提示创建成功并跳转至任务详情 任务详情页（通常带 项目 ID 查询参数）；任务可在侧栏最近任务等入口出现。\n2. 缺少项目、提示词、CLI/模板等必填项时：表单级提示清晰，不提交；接口失败时有错误提示，无白屏。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "a170d655-dec6-424a-bbd8-ef8b8e2450d8",
+                    "class": "topic",
+                    "title": "[P1] UC-20 首页与工作台",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "00a5812e-ee1d-4241-81fb-d297ccb78ac1",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；具备进入首页与工作台的访问能力（与路由 system.ts 中 首页、工作台 一致）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "ef5f1eca-0170-4de6-b4aa-52b7d17ef62d",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 首页。\n2. 访问 工作台（可按工作区习惯携带 项目 ID 查询参数）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "018c4734-c685-4d3a-880d-70b76cc216ce",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 两路径页面可完成加载，无持续白屏；控制台无未处理致命错误。\n2. 图 3 映射：聚合工作台与导航入口，后端依赖多域（见功能模块图说明）。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "c3797b9c-4d1f-4442-b1f9-782192ac769b",
+                    "class": "topic",
+                    "title": "[P1] UC-21 看板",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "e660e876-30c8-4816-9446-18decf01f0b4",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；具备看板路由访问权限。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "fd54685c-dae1-4171-a464-33b130f12e50",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 看板页。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "43c39f2f-8874-4ff3-82e5-4ee65bc5d04e",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 页面可加载；无持续白屏；允许业务空态或权限提示。\n2. 图 3 映射：任务/执行域（Tasks 等）相关展示。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "b0691499-0b0c-42a1-b2c5-c84a5439f10e",
+                    "class": "topic",
+                    "title": "[P1] UC-22 知识库",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "8b5745c5-c5fc-46c5-9eb9-197ad10090eb",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "408a5798-3b81-4d97-bb36-9175a3381beb",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 知识库页。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "98476d1a-a054-4c13-a28f-ed0b426c9564",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 页面可加载；无持续白屏；允许空态或权限相关提示。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "a507a004-0d3a-4bbb-9566-7231f428ee3b",
+                    "class": "topic",
+                    "title": "[P1] UC-23 技能",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "83e70570-8951-4969-baa3-18273e418cd1",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "3c38a6ea-8d22-41a7-880a-b9ff350eb2b9",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 技能页。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "fc3ac683-cbb9-4e42-9fa5-bcfdab95e262",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 页面可加载；无持续白屏；列表或空态合理。\n2. 图 3 映射：Skills 域。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "d2daa5c1-dba8-4b03-81df-5aa1783347f9",
+                    "class": "topic",
+                    "title": "[P1] UC-24 MCP",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "ce4e374c-f6c8-4173-bc2d-482c5b21efaf",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "bdd51759-4af7-4fbc-81a2-65a929d996bf",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 MCP 页。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "53de5f63-db19-465d-ae49-1bdff55402e8",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 页面可加载；无持续白屏；配置列表或空态可接受。\n2. 图 3 映射：Mcps 域。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "a9254862-013f-4d23-aeac-3e7063175305",
+                    "class": "topic",
+                    "title": "[P1] UC-25 自动化",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "fa52dd98-9d93-448d-a188-03389d599c6c",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "8e99acb9-4f48-442f-b02b-5d56ce127a9a",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 自动化页。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "5976d94e-8862-4640-9961-2d3215f7faed",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 页面可加载；无持续白屏；自动化列表或空态可接受。\n2. 图 3 映射：Automations 域。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "9e146810-4b5e-43c3-be91-b7f95575a003",
+                    "class": "topic",
+                    "title": "[P1] UC-26 Git 集成页",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "888ce4bf-b75f-4d5b-abb7-00f132b33b19",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录；已选择项目上下文（以实际侧栏/项目 ID 为准）。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "9cba87e0-14c4-4df2-adf0-8b4c1ecb2d30",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 Git 集成页。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "15f045c0-fd44-4085-82c8-6d923f3346b8",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 页面可加载；无持续白屏；无凭证或空仓库时的提示可接受。\n2. 图 3 映射：Git、Projects 相关能力。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "7d3faedf-a64a-479f-a98e-4078d51ae1e3",
+                    "class": "topic",
+                    "title": "[P1] UC-27 通用设置页",
+                    "titleUnedited": true,
+                    "children": {
+                      "attached": [
+                        {
+                          "id": "674fa67c-bfcc-444f-932e-30b38d52c669",
+                          "class": "topic",
+                          "title": "前置条件\n\n1. 用户已登录。",
+                          "titleUnedited": true,
+                          "children": {
+                            "attached": [
+                              {
+                                "id": "e16a79d4-a025-40e5-ad66-06281c4f5eff",
+                                "class": "topic",
+                                "title": "执行步骤\n\n1. 访问 设置页（账号/通用/通知等分区以页面为准）。",
+                                "titleUnedited": true,
+                                "children": {
+                                  "attached": [
+                                    {
+                                      "id": "f5e9bb4e-656d-4a1a-ad8a-43b82313101c",
+                                      "class": "topic",
+                                      "title": "预期结果\n\n1. 设置页可加载；分区可切换；无持续白屏。\n2. 与 UC-14（资料/密码）互补：本用例强调设置壳与分区可达。",
+                                      "titleUnedited": true
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "e360368e-70f1-4915-9ea6-a9938b7734f7",
+              "class": "topic",
+              "title": "P2：扩展与质量",
+              "titleUnedited": true,
+              "children": {
+                "attached": [
+                  {
+                    "id": "bda19d43-22e1-492f-8f01-5bb408412297",
+                    "class": "topic",
+                    "title": "通知：列表与推送深度场景（Notifications）按需补充；入口若与仪表盘聚合则以环境为准。",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "33f08560-e4c9-4303-b00f-3a844a3f29f8",
+                    "class": "topic",
+                    "title": "队列与任务执行：Worker/Queue 与任务长时间运行（Queue、Tasks 子流程）按需补充。",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "8571cb5c-6b8e-40ea-aa16-1100c81578c4",
+                    "class": "topic",
+                    "title": "自动化：除 UC-25 入口外，复杂「创建—查询—状态变更」仍在此层扩展。",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "de0e4d1f-ca03-46da-831f-6aaeea94e56e",
+                    "class": "topic",
+                    "title": "Git：除 UC-26 页加载外，远端凭证与合并推送等需独立环境再测。",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "61f3adfd-c9b7-47e7-8e64-36339347a1f3",
+                    "class": "topic",
+                    "title": "可观测性：慢接口、日志落盘（ObservabilityModule）按需。",
+                    "titleUnedited": true
+                  }
+                ]
+              }
+            },
+            {
+              "id": "560256f5-dc04-40f1-b07e-5e5ede339571",
+              "class": "topic",
+              "title": "与现有自动化衔接",
+              "titleUnedited": true,
+              "children": {
+                "attached": [
+                  {
+                    "id": "532efa75-a7e5-4fb7-a41d-f01c26985288",
+                    "class": "topic",
+                    "title": "单元测试：仓库内已有大量 *.spec.ts，不重复覆盖相同纯逻辑。",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "e162c7bf-9c5f-4c27-8e80-32f522e83d19",
+                    "class": "topic",
+                    "title": "E2E：见 frontend/e2e，覆盖 P0 子集（登录页、未登录重定向、可选登录与健康检查）。",
+                    "titleUnedited": true
+                  },
+                  {
+                    "id": "71fd9f38-eed5-42ec-b729-9a1d0451f265",
+                    "class": "topic",
+                    "title": "后端 e2e：见 backend/package.json 中 test:e2e，需独立环境与 Docker compose 时再纳入 CI。",
+                    "titleUnedited": true
+                  }
+                ]
+              }
+            },
+            {
+              "id": "003f5b06-7ad9-422b-b2e9-d74cbcac63bf",
+              "class": "topic",
+              "title": "风险说明",
+              "titleUnedited": true,
+              "children": {
+                "attached": [
+                  {
+                    "id": "79fa584d-1ff6-4da1-9f5d-ab79b40ac236",
+                    "class": "topic",
+                    "title": "无 PRD 时，本节 P0/P1 用例不保证业务规则正确性（例如看板列与工作流状态是否一致），仅保证链路可用；PRD 就绪后升级「预期结果」与「当前验收说明」。",
+                    "titleUnedited": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

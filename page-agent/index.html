@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Page Agent UI 自动化 Demo</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: #f8f9fa;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 1rem 0; }
+    .layout {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .panel {
+      background: #fff;
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .panel h2 { font-size: 0.95rem; margin: 0 0 0.5rem 0; color: #333; }
+    label { display: block; margin-bottom: 0.25rem; font-weight: 500; font-size: 0.9rem; }
+    #instruction {
+      width: 100%;
+      min-height: 2.5rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    #scriptMode {
+      width: 100%;
+      min-height: 120px;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      resize: vertical;
+    }
+    .actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    button {
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      border: 1px solid #333;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    button.secondary { background: #fff; color: #333; }
+    #log {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background: #f5f5f5;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      max-height: 120px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    iframe {
+      width: 100%;
+      min-height: 420px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
+    .tabs button { padding: 0.35rem 0.75rem; font-size: 0.85rem; }
+    .tabs button.active { background: #333; color: #fff; }
+    .tabs button:not(.active) { background: #eee; color: #333; border-color: #ccc; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <h1>Page Agent UI 自动化 Demo</h1>
+
+    <div class="panel">
+      <h2>执行指令</h2>
+      <div class="tabs">
+        <button type="button" id="tabSingle" class="active">单条指令</button>
+        <button type="button" id="tabScript">脚本模式（多条）</button>
+      </div>
+      <div id="contentSingle" class="tab-content active">
+        <label for="instruction">自然语言指令（在当前页 iframe 中执行）</label>
+        <input type="text" id="instruction" placeholder="例如：在用户名输入框输入 admin" />
+        <div class="actions">
+          <button type="button" id="runBtn">执行</button>
+        </div>
+      </div>
+      <div id="contentScript" class="tab-content">
+        <label for="scriptMode">每行一条指令，将按顺序执行</label>
+        <textarea id="scriptMode" placeholder="在用户名输入框输入 admin\n在密码输入框输入 123456\n点击登录按钮"></textarea>
+        <div class="actions">
+          <button type="button" id="runScriptBtn">顺序执行</button>
+        </div>
+      </div>
+      <div id="log"></div>
+    </div>
+
+    <div class="panel">
+      <h2>被测页面（iframe）</h2>
+      <iframe id="targetFrame" src="test-page.html" title="被测页面"></iframe>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const PAGE_AGENT_CDN = 'https://cdn.jsdelivr.net/npm/page-agent@1.5.6/dist/iife/page-agent.demo.js';
+      const PAGE_AGENT_CN = 'https://registry.npmmirror.com/page-agent/1.5.6/files/dist/iife/page-agent.demo.js';
+
+      const frame = document.getElementById('targetFrame');
+      const instructionInput = document.getElementById('instruction');
+      const scriptInput = document.getElementById('scriptMode');
+      const runBtn = document.getElementById('runBtn');
+      const runScriptBtn = document.getElementById('runScriptBtn');
+      const logEl = document.getElementById('log');
+      const tabSingle = document.getElementById('tabSingle');
+      const tabScript = document.getElementById('tabScript');
+      const contentSingle = document.getElementById('contentSingle');
+      const contentScript = document.getElementById('contentScript');
+
+      let agentScriptLoaded = false;
+
+      function log(msg) {
+        const line = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+        logEl.textContent = (logEl.textContent ? logEl.textContent + '\n' : '') + line;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function getDoc() {
+        try {
+          return frame.contentDocument || frame.contentWindow.document;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function getWin() {
+        try {
+          return frame.contentWindow;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function injectPageAgentScript() {
+        return new Promise(function (resolve, reject) {
+          const doc = getDoc();
+          const win = getWin();
+          if (!doc || !win) {
+            reject(new Error('无法访问 iframe，请确保通过同源方式打开（如 npm run dev）'));
+            return;
+          }
+          if (win.PageAgent) {
+            resolve(win);
+            return;
+          }
+          const script = doc.createElement('script');
+          script.src = PAGE_AGENT_CDN;
+          script.crossOrigin = 'anonymous';
+          script.onload = function () {
+            agentScriptLoaded = true;
+            if (win.PageAgent) resolve(win);
+            else reject(new Error('PageAgent 未挂载到 window'));
+          };
+          script.onerror = function () {
+            script.src = PAGE_AGENT_CN;
+            script.onerror = function () { reject(new Error('Page Agent 脚本加载失败')); };
+          };
+          doc.head.appendChild(script);
+        });
+      }
+
+      function runInFrame(instruction) {
+        const win = getWin();
+        if (!win) return Promise.reject(new Error('无法访问 iframe'));
+        win.__pageAgentInstruction = instruction;
+        win.__pageAgentLanguage = 'zh-CN';
+        const script = getDoc().createElement('script');
+        script.textContent = [
+          '(function(){',
+          '  var instruction = window.__pageAgentInstruction;',
+          '  var language = window.__pageAgentLanguage || "zh-CN";',
+          '  if (typeof PageAgent === "undefined") { console.error("PageAgent not found"); return; }',
+          '  var agent = new PageAgent({ language: language });',
+          '  agent.execute(instruction).catch(function(e) { console.error(e); });',
+          '})();'
+        ].join('\n');
+        getDoc().body.appendChild(script);
+        getDoc().body.removeChild(script);
+        return Promise.resolve();
+      }
+
+      function executeOne(instruction) {
+        instruction = (instruction || '').trim();
+        if (!instruction) {
+          log('请输入指令');
+          return;
+        }
+        runBtn.disabled = true;
+        log('执行: ' + instruction);
+        injectPageAgentScript()
+          .then(function (win) {
+            return runInFrame(instruction);
+          })
+          .then(function () {
+            log('已发送，Agent 正在执行…');
+          })
+          .catch(function (err) {
+            log('错误: ' + (err && err.message ? err.message : String(err)));
+          })
+          .finally(function () {
+            runBtn.disabled = false;
+          });
+      }
+
+      function executeScript() {
+        const text = (scriptInput.value || '').trim();
+        const lines = text.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+        if (lines.length === 0) {
+          log('请在脚本框中输入至少一条指令（每行一条）');
+          return;
+        }
+        runScriptBtn.disabled = true;
+        log('开始顺序执行 ' + lines.length + ' 条指令');
+
+        function runNext(index) {
+          if (index >= lines.length) {
+            log('全部执行完毕');
+            runScriptBtn.disabled = false;
+            return;
+          }
+          var instruction = lines[index];
+          log('[' + (index + 1) + '/' + lines.length + '] ' + instruction);
+          injectPageAgentScript()
+            .then(function () { return runInFrame(instruction); })
+            .then(function () {
+              setTimeout(function () { runNext(index + 1); }, 2000);
+            })
+            .catch(function (err) {
+              log('错误: ' + (err && err.message ? err.message : String(err)));
+              runScriptBtn.disabled = false;
+            });
+        }
+
+        runNext(0);
+      }
+
+      runBtn.addEventListener('click', function () { executeOne(instructionInput.value); });
+      runScriptBtn.addEventListener('click', executeScript);
+      instructionInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') executeOne(instructionInput.value);
+      });
+
+      tabSingle.addEventListener('click', function () {
+        tabSingle.classList.add('active');
+        tabScript.classList.remove('active');
+        contentSingle.classList.add('active');
+        contentScript.classList.remove('active');
+      });
+      tabScript.addEventListener('click', function () {
+        tabScript.classList.add('active');
+        tabSingle.classList.remove('active');
+        contentScript.classList.add('active');
+        contentSingle.classList.remove('active');
+      });
+
+      frame.addEventListener('load', function () {
+        log('被测页面已加载，可输入指令执行');
+      });
+    })();
+  </script>
+</body>
+</html>

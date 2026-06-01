@@ -1,0 +1,5 @@
+# 本地密钥与登录态（勿提交）
+local-env.sh
+.agent-browser-secrets/
+
+node_modules/
