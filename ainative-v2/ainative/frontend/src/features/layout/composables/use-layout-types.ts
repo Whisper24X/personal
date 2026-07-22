@@ -4,6 +4,7 @@ import { STORAGE_KEYS } from '@shared/types/common/storage'
 export type ProjectItem = {
   id: string
   name: string
+  slug?: string
   to: string
   businessLineId: string
   description?: string | null

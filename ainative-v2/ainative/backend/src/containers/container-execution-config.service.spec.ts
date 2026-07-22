@@ -43,6 +43,7 @@ describe('ContainerExecutionConfigService', () => {
       '/workspace/backend/node_modules',
       '/workspace/frontend/node_modules',
       '/workspace/logs',
+      '/var/lib/ainative-runner-cache',
     ]);
   });
 
@@ -79,6 +80,7 @@ describe('ContainerExecutionConfigService', () => {
       '/workspace/backend/node_modules',
       '/workspace/frontend/node_modules',
       '/workspace/logs',
+      '/var/lib/ainative-runner-cache',
     ]);
     expect(service.getRunnerCpuLimit()).toBeUndefined();
     expect(service.resourceLimitsForProfile()).toEqual({});
@@ -141,6 +143,16 @@ describe('ContainerExecutionConfigService', () => {
       GITLAB_TOKEN: 'token-value',
     });
     expect(service.getRunnerEnv()).toEqual({});
+  });
+
+  it('should expose stable package manager caches for runner dependency reuse', () => {
+    const service = createService({});
+
+    expect(service.getRunnerDependencyCacheEnv()).toEqual({
+      PNPM_STORE_DIR: '/var/lib/ainative-runner-cache/pnpm-store',
+      npm_config_cache: '/var/lib/ainative-runner-cache/npm-cache',
+      YARN_CACHE_FOLDER: '/var/lib/ainative-runner-cache/yarn-cache',
+    });
   });
 
   it('should default shouldAddHostDockerInternalGateway to true', () => {

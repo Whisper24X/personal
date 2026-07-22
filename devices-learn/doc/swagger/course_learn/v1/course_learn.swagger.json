@@ -1,0 +1,194 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "course_learn/v1/course_learn.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "CourseLearn"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/api/course/topic/score/byIds": {
+      "post": {
+        "summary": "知识点进度",
+        "operationId": "CourseLearn_GetTopicScoreByIds",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetTopicScoreByIdsReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetTopicScoreByIdsRequest"
+            }
+          }
+        ],
+        "tags": [
+          "CourseLearn"
+        ]
+      }
+    },
+    "/devices-learn/course/topic/finished/byCvsIds": {
+      "get": {
+        "summary": "cvs册下知识点完成情况",
+        "operationId": "CourseLearn_GetTopicFinishedByCvsIds",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetTopicFinishedByCvsIdsReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "stageId",
+            "description": "学段ID",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "subjectId",
+            "description": "学科ID",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "semesterId",
+            "description": "册ID",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "publisherId",
+            "description": "出版社ID",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "CourseLearn"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "GetTopicScoreByIdsReplyTopicScoreInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "知识点ID"
+        },
+        "score": {
+          "type": "number",
+          "format": "float",
+          "title": "知识点进度值"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1GetTopicFinishedByCvsIdsReply": {
+      "type": "object",
+      "properties": {
+        "topicTotal": {
+          "type": "integer",
+          "format": "int32",
+          "title": "知识点总数"
+        },
+        "topicFinished": {
+          "type": "integer",
+          "format": "int32",
+          "title": "已完成知识点数"
+        }
+      }
+    },
+    "v1GetTopicScoreByIdsReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/GetTopicScoreByIdsReplyTopicScoreInfo"
+          },
+          "title": "知识点进度列表"
+        }
+      }
+    },
+    "v1GetTopicScoreByIdsRequest": {
+      "type": "object",
+      "properties": {
+        "topicIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "知识点ID列表"
+        }
+      }
+    }
+  }
+}

@@ -128,6 +128,19 @@ export const tasksApi = {
     })
   },
 
+  reportPreviewDiagnostic(
+    taskId: string,
+    payload: {
+      kind: 'platform-hmr-relay-failed' | 'workspace-runtime-error'
+      message?: string
+      summary?: string
+      dedupeKey?: string
+      detail?: Record<string, unknown> | null
+    },
+  ) {
+    return apiHttp.post<void>(`/tasks/${taskId}/preview-diagnostics`, payload)
+  },
+
   worktreeFiles(taskId: string, prefix?: string) {
     return apiHttp.get<string[]>(`/tasks/${taskId}/worktree-files`, {
       prefix,

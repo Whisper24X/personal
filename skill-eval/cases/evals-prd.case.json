@@ -1,0 +1,25 @@
+{
+  "id": "evals-prd",
+  "title": "evals skill 评审 PRD：结构合规 + 缺陷识别",
+  "skill": "ainative-skill/skills/evals",
+  "injectSkill": "../../ainative-skill/skills/evals/SKILL.md",
+  "fixtures": [
+    { "from": "../fixtures/sample-prd.md", "to": "sample-prd.md" }
+  ],
+  "prompt": "请评审下面这份 PRD（已随附在工作区 sample-prd.md，内容如下）。\n\n----- PRD 内容开始 -----\n# 优惠券系统 PRD\n\n## 功能需求\n1. 运营创建优惠券：名称、面额、有效期。\n2. 学员领取优惠券。\n3. 学员下单时选择优惠券抵扣。\n4. 优惠券使用后状态变为已使用。\n\n## 验收标准\n- 优惠券能正常使用。\n- 下单后金额正确。\n----- PRD 内容结束 -----",
+  "model": "auto",
+  "timeoutMs": 240000,
+  "assertions": [
+    { "type": "contains", "value": "Summary" },
+    { "type": "contains", "value": "Issues" },
+    { "type": "contains", "value": "Recommendations" },
+    { "type": "regex", "value": "需求难度评级[:：]\\s*L[1-4]" },
+    { "type": "regex", "value": "P[0-3]" },
+    { "type": "not_contains", "value": "已保存到文件" },
+    {
+      "type": "judge",
+      "rubric": "被测输出是一份 PRD 评审。评分要点（满分 1.0）：1) 是否包含 Summary/Strengths/Issues/Recommendations 四部分；2) 是否识别出该 PRD 缺少『非功能需求/权限角色/数据模型字段』等关键章节；3) 是否指出验收标准模糊不可量化；4) 每条 Issue 是否有 P0-P3 分级。命中越多分越高，至少命中 3 项才算 pass。",
+      "passScore": 0.75
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 import { spawn } from 'child_process';
+import { promises as fs } from 'fs';
+import path from 'path';
 import {
   BadRequestException,
   ConflictException,
@@ -50,6 +52,24 @@ import { ProjectAccessService } from './project-access.service';
 import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
 import { ProjectRepositoryProvisioningService } from './project-repository-provisioning.service';
 import { RepositoryProvisioningStatus } from './domain/repository-provisioning-status.enum';
+import {
+  computeSubRepoFingerprint,
+  resolveSubRepoConfigs,
+} from '../git/sub-repo.types';
+import { isSnapshotSyncEnabled } from '../git/snapshot-sync.types';
+import { isWorkspaceManaged } from '../git/workspace-native.types';
+import {
+  assertGitRefSlugSegment,
+  buildProjectWorkspaceBranch,
+} from '../git/git-ref-name.util';
+import { SubtreeSnapshotService } from '../git/subtree-snapshot.service';
+import { ProjectGitLockService } from '../git/project-git-lock.service';
+import { SubRepoValidationService } from '../git/sub-repo-validation.service';
+import { RunnerGenerationService } from '../business-lines/runner-generation.service';
+import {
+  RUNNER_SNAPSHOT_GENERATOR_VERSION,
+  type RunnerSnapshotRefreshState,
+} from '../business-lines/runner-snapshot-freshness';
 
 export type EnsureProjectRepositoryOptions = {
   syncRemote?: boolean;
@@ -75,6 +95,10 @@ export class ProjectsService {
     private readonly projectAccessService: ProjectAccessService,
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
     private readonly projectRepositoryProvisioningService: ProjectRepositoryProvisioningService,
+    private readonly subtreeSnapshotService: SubtreeSnapshotService,
+    private readonly gitLockService: ProjectGitLockService,
+    private readonly subRepoValidationService: SubRepoValidationService,
+    private readonly runnerGenerationService: RunnerGenerationService,
   ) {}
 
   async create(
@@ -85,6 +109,26 @@ export class ProjectsService {
       createProjectDto.businessLineId,
       currentUser,
       'businessLine.project.create',
+    );
+
+    const businessLine = await this.businessLineRepository.findById(
+      createProjectDto.businessLineId,
+    );
+    if (!businessLine) {
+      throw new NotFoundException('Business line not found');
+    }
+
+    const projectSlug = assertGitRefSlugSegment(
+      createProjectDto.slug,
+      '项目标识',
+    );
+    const businessLineSlug = assertGitRefSlugSegment(
+      businessLine.slug,
+      '业务线标识',
+    );
+    const defaultBranch = buildProjectWorkspaceBranch(
+      businessLineSlug,
+      projectSlug,
     );
 
     const existedProject =
@@ -99,12 +143,35 @@ export class ProjectsService {
       );
     }
 
-    await this.validateGitRepositoryAccessible(createProjectDto.gitUrl);
+    const existedSlugProject =
+      await this.projectRepository.findByBusinessLineIdAndSlug(
+        createProjectDto.businessLineId,
+        projectSlug,
+      );
+
+    if (existedSlugProject) {
+      throw new ConflictException(
+        'Project slug already exists in business line',
+      );
+    }
 
     const userId = currentUser?.sub;
     if (!userId) {
       throw new BadRequestException('Invalid user session');
     }
+
+    const configJson = this.sanitizeProjectConfigJson(
+      createProjectDto.configJson,
+    ) ?? {
+      subtreeMode: 'workspace-native',
+    };
+    if (!configJson.subtreeMode) {
+      configJson.subtreeMode = 'workspace-native';
+    }
+
+    await this.subRepoValidationService.validateConfiguredSubRepositories(
+      configJson,
+    );
 
     let project: Project;
 
@@ -112,10 +179,11 @@ export class ProjectsService {
       project = await this.projectRepository.create({
         businessLineId: createProjectDto.businessLineId,
         name: createProjectDto.name,
+        slug: projectSlug,
         description: createProjectDto.description ?? null,
-        gitUrl: createProjectDto.gitUrl,
-        defaultBranch: createProjectDto.defaultBranch ?? 'main',
-        configJson: this.sanitizeProjectConfigJson(createProjectDto.configJson),
+        gitUrl: '',
+        defaultBranch,
+        configJson,
         repositoryProvisioningStatus: RepositoryProvisioningStatus.Pending,
         repositoryProvisioningError: null,
         repositoryProvisionedAt: null,
@@ -183,6 +251,146 @@ export class ProjectsService {
     return updated;
   }
 
+  async regenerateRunnerConfig(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    accepted: true;
+    projectId: string;
+    queuedAt: string;
+  }> {
+    await this.projectAccessService.assertCanRegenerateRunnerConfig(
+      projectId,
+      currentUser,
+    );
+    const project = await this.getProjectOrThrow(projectId);
+    const currentConfig = (project.configJson ?? {}) as Record<string, unknown>;
+    const containerRuntime = this.toObjectRecord(
+      currentConfig.containerRuntime,
+    );
+    const existingOrchestration = this.toObjectRecord(
+      containerRuntime?.runnerOrchestration,
+    );
+
+    if (existingOrchestration?.manuallyLocked === true) {
+      throw new ConflictException('当前项目使用手写 Runner 配置，自动重跑已禁用');
+    }
+
+    const queuedAt = new Date().toISOString();
+    const refreshState: RunnerSnapshotRefreshState = {
+      fingerprint: this.readRunnerSnapshotFingerprint(currentConfig),
+      generatorVersion: RUNNER_SNAPSHOT_GENERATOR_VERSION,
+      attemptedAt: queuedAt,
+      forceRequestedAt: queuedAt,
+      lastOutcome: 'skipped',
+      lastError: null,
+    };
+    await this.updateRunnerSnapshotRefreshState(project, refreshState);
+
+    void this.regenerateRunnerConfigInternal(projectId, {
+      force: true,
+      enhancedRetry: true,
+      reason: 'manual_reset_config',
+      generatorVersion: RUNNER_SNAPSHOT_GENERATOR_VERSION,
+    }).catch((error) => {
+      this.logger.error(
+        `runner_regenerate_background_failed projectId=${projectId} error=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+
+    return {
+      accepted: true,
+      projectId,
+      queuedAt,
+    };
+  }
+
+  async regenerateRunnerConfigInternal(
+    projectId: Project['id'],
+    options?: {
+      force?: boolean;
+      enhancedRetry?: boolean;
+      reason?: string;
+      generatorVersion?: string;
+    },
+  ): Promise<{
+    written: boolean;
+    skipped: boolean;
+    status?: string;
+    error?: string;
+    project: Project;
+  }> {
+    const project = await this.getProjectOrThrow(projectId);
+    const currentConfig = (project.configJson ?? {}) as Record<string, unknown>;
+    const containerRuntime = this.toObjectRecord(
+      currentConfig.containerRuntime,
+    );
+    const existingOrchestration = this.toObjectRecord(
+      containerRuntime?.runnerOrchestration,
+    );
+
+    if (existingOrchestration?.manuallyLocked === true) {
+      return {
+        written: false,
+        skipped: true,
+        status: 'manual_locked',
+        error: '当前项目使用手写 Runner 配置，自动重跑已禁用',
+        project,
+      };
+    }
+
+    const existingRefreshState = this.toObjectRecord(
+      containerRuntime?.runnerSnapshotRefreshState,
+    ) as RunnerSnapshotRefreshState | null;
+    const refreshState: RunnerSnapshotRefreshState = {
+      fingerprint: this.readRunnerSnapshotFingerprint(currentConfig),
+      generatorVersion:
+        options?.generatorVersion ?? RUNNER_SNAPSHOT_GENERATOR_VERSION,
+      attemptedAt:
+        existingRefreshState?.attemptedAt ?? new Date().toISOString(),
+      ...(options?.force
+        ? {
+            forceRequestedAt:
+              existingRefreshState?.forceRequestedAt ?? new Date().toISOString(),
+          }
+        : {}),
+      lastOutcome: 'skipped',
+      lastError: null,
+    };
+    if (!existingRefreshState) {
+      await this.updateRunnerSnapshotRefreshState(project, refreshState);
+    }
+
+    const generation = await this.runnerGenerationService.generateForProject(
+      projectId,
+      {
+        enhancedRetry: options?.enhancedRetry === true,
+        triggerReason: options?.reason,
+      },
+    );
+    const refreshedProject = await this.getProjectOrThrow(projectId);
+
+    await this.updateRunnerSnapshotRefreshState(refreshedProject, {
+      ...refreshState,
+      lastOutcome: generation.written
+        ? 'written'
+        : generation.skipped
+          ? 'skipped'
+          : 'failed',
+      lastError: generation.error ?? null,
+    });
+
+    return {
+      written: generation.written,
+      skipped: generation.skipped,
+      status: generation.status,
+      error: generation.error,
+      project: await this.getProjectOrThrow(projectId),
+    };
+  }
+
   private mapDatabaseErrorToHttpException(
     error: unknown,
     context: string,
@@ -209,6 +417,43 @@ export class ProjectsService {
     return new InternalServerErrorException(
       `${context}: ${this.truncateError(message)}`,
     );
+  }
+
+  private async updateRunnerSnapshotRefreshState(
+    project: Project,
+    refreshState: RunnerSnapshotRefreshState,
+  ): Promise<void> {
+    const configJson = (project.configJson ?? {}) as Record<string, unknown>;
+    const containerRuntime =
+      this.toObjectRecord(configJson.containerRuntime) ?? {};
+
+    await this.projectRepository.update(project.id, {
+      configJson: {
+        ...configJson,
+        containerRuntime: {
+          ...containerRuntime,
+          runnerSnapshotRefreshState: refreshState,
+        },
+      },
+    });
+  }
+
+  private readRunnerSnapshotFingerprint(
+    configJson: Record<string, unknown>,
+  ): string | undefined {
+    const subRepos = resolveSubRepoConfigs(configJson);
+    if (subRepos.length === 0) {
+      return undefined;
+    }
+    return computeSubRepoFingerprint(subRepos);
+  }
+
+  private toObjectRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    return value as Record<string, unknown>;
   }
 
   async inspectRepository(
@@ -264,6 +509,7 @@ export class ProjectsService {
         paginationOptions,
         businessLineId: query.businessLineId,
         keyword: query.keyword,
+        includeWorkspaceManaged: true,
       });
     }
 
@@ -294,11 +540,23 @@ export class ProjectsService {
       projectIds: accessibleProjectIds,
       businessLineIds: manageableBusinessLineIds,
       keyword: query.keyword,
+      includeWorkspaceManaged: true,
       businessLineId: query.businessLineId,
     });
   }
 
   async findById(
+    id: Project['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<Project | null> {
+    return this.ensureCanAccessProject(id, currentUser);
+  }
+
+  /**
+   * Internal: find project by ID without workspace-managed rejection.
+   * Used by deploy/info endpoints that legitimately need to access hidden projects.
+   */
+  async findByIdInternal(
     id: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<Project | null> {
@@ -314,6 +572,10 @@ export class ProjectsService {
       id,
       currentUser,
     );
+
+    if (updateProjectDto.slug !== undefined) {
+      throw new BadRequestException('Project slug cannot be changed');
+    }
 
     const nextBusinessLineId =
       updateProjectDto.businessLineId ?? currentProject.businessLineId;
@@ -345,26 +607,18 @@ export class ProjectsService {
         ? this.sanitizeProjectConfigJson(updateProjectDto.configJson)
         : undefined;
 
-    const nextDefaultBranch =
-      updateProjectDto.defaultBranch !== undefined
-        ? updateProjectDto.defaultBranch.trim()
-        : undefined;
-    const currentDefaultBranch = currentProject.defaultBranch?.trim() || '';
-    const shouldCheckoutDefaultBranch =
-      nextDefaultBranch !== undefined &&
-      nextDefaultBranch !== currentDefaultBranch;
+    if (nextConfigJson !== undefined) {
+      await this.subRepoValidationService.validateConfiguredSubRepositories(
+        nextConfigJson,
+      );
+    }
+
     const updatePayload = {
       ...(updateProjectDto.name !== undefined
         ? { name: updateProjectDto.name }
         : {}),
       ...(updateProjectDto.description !== undefined
         ? { description: updateProjectDto.description }
-        : {}),
-      ...(updateProjectDto.gitUrl !== undefined
-        ? { gitUrl: updateProjectDto.gitUrl }
-        : {}),
-      ...(nextDefaultBranch !== undefined
-        ? { defaultBranch: nextDefaultBranch }
         : {}),
       ...(nextConfigJson !== undefined ? { configJson: nextConfigJson } : {}),
       ...(updateProjectDto.businessLineId !== undefined
@@ -382,6 +636,31 @@ export class ProjectsService {
 
       if (!updatedProject) {
         throw new NotFoundException('Project not found');
+      }
+
+      if (updateProjectDto.configJson !== undefined) {
+        const subRepos = resolveSubRepoConfigs(updatedProject.configJson);
+        if (subRepos.length > 0) {
+          this.projectRepositoryProvisioningService
+            .markPendingAndEnqueue(updatedProject.id)
+            .catch((err) => {
+              this.logger.warn(
+                `sub_repo_async_provision_failed projectId=${id} error=${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            });
+
+          this.runnerGenerationService
+            .generateForProject(updatedProject.id)
+            .catch((err) => {
+              this.logger.warn(
+                `runner_generation_trigger_failed projectId=${id} error=${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            });
+        }
       }
 
       if (updatedProject.businessLineId !== currentProject.businessLineId) {
@@ -405,52 +684,6 @@ export class ProjectsService {
 
       return updatedProject;
     };
-
-    if (shouldCheckoutDefaultBranch && nextDefaultBranch) {
-      return this.projectRepositoryWorkspaceService.runWithProjectRepositoryLock(
-        id,
-        currentUser,
-        { syncRemote: true },
-        async ({ repositoryRoot }) => {
-          let switchedToNextDefaultBranch = false;
-
-          try {
-            await this.projectRepositoryWorkspaceService.checkoutBranch(
-              repositoryRoot,
-              nextDefaultBranch,
-            );
-            switchedToNextDefaultBranch = true;
-
-            return await persistProjectUpdate(repositoryRoot);
-          } catch (error) {
-            if (switchedToNextDefaultBranch && currentDefaultBranch) {
-              try {
-                await this.projectRepositoryWorkspaceService.checkoutBranch(
-                  repositoryRoot,
-                  currentDefaultBranch,
-                );
-              } catch (rollbackError) {
-                this.logger.warn(
-                  `project_default_branch_checkout_rollback_failed ${JSON.stringify(
-                    {
-                      projectId: id,
-                      targetBranch: nextDefaultBranch,
-                      rollbackBranch: currentDefaultBranch,
-                      errorMessage:
-                        rollbackError instanceof Error
-                          ? rollbackError.message
-                          : String(rollbackError),
-                    },
-                  )}`,
-                );
-              }
-            }
-
-            throw error;
-          }
-        },
-      );
-    }
 
     return persistProjectUpdate();
   }
@@ -507,6 +740,43 @@ export class ProjectsService {
         !Array.isArray(containerRuntime.ephemeralMcp)
       ) {
         nextContainerRuntime.ephemeralMcp = containerRuntime.ephemeralMcp;
+      }
+
+      // Per-project runner runtime overrides
+      const PASSTHROUGH_SCALARS: string[] = [
+        'sandboxProfile',
+        'platform',
+        'networkMode',
+        'exposeHostIp',
+      ];
+      for (const key of PASSTHROUGH_SCALARS) {
+        if (
+          containerRuntime[key] !== undefined &&
+          containerRuntime[key] !== null
+        ) {
+          nextContainerRuntime[key] = containerRuntime[key];
+        }
+      }
+
+      const PASSTHROUGH_NUMBERS: string[] = [
+        'startTimeoutMs',
+        'exposeContainerPort',
+      ];
+      for (const key of PASSTHROUGH_NUMBERS) {
+        if (
+          typeof containerRuntime[key] === 'number' &&
+          containerRuntime[key] > 0
+        ) {
+          nextContainerRuntime[key] = containerRuntime[key];
+        }
+      }
+
+      if (
+        containerRuntime.resourceLimits &&
+        typeof containerRuntime.resourceLimits === 'object' &&
+        !Array.isArray(containerRuntime.resourceLimits)
+      ) {
+        nextContainerRuntime.resourceLimits = containerRuntime.resourceLimits;
       }
 
       if (Object.keys(nextContainerRuntime).length > 0) {
@@ -859,6 +1129,18 @@ export class ProjectsService {
     );
   }
 
+  async assertWorkspaceProjectByBusinessLineCapability(
+    businessLineId: Project['businessLineId'],
+    currentUser: JwtPayloadType,
+    capability: string,
+  ): Promise<Project> {
+    return this.projectAccessService.assertWorkspaceProjectByBusinessLineCapability(
+      businessLineId,
+      currentUser,
+      capability,
+    );
+  }
+
   private async ensureCanViewProjectRoleConfig(
     projectId: Project['id'],
     currentUser: JwtPayloadType,
@@ -868,6 +1150,8 @@ export class ProjectsService {
     if (!project) {
       throw new NotFoundException('Project not found');
     }
+
+    this.rejectIfWorkspaceManaged(project);
 
     if (this.isAdmin(currentUser)) {
       return project;
@@ -908,6 +1192,8 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
+    this.rejectIfWorkspaceManaged(project);
+
     return project;
   }
 
@@ -944,6 +1230,12 @@ export class ProjectsService {
     );
   }
 
+  private rejectIfWorkspaceManaged(project: Project): void {
+    if (isWorkspaceManaged(project)) {
+      throw new NotFoundException('Project not found');
+    }
+  }
+
   private isAdmin(currentUser: JwtPayloadType): boolean {
     return currentUser.roles?.includes('admin') ?? false;
   }
@@ -976,6 +1268,7 @@ export class ProjectsService {
     actorProjectMember: ProjectMember | null;
   }> {
     const project = await this.ensureCanAccessProject(projectId, currentUser);
+    this.rejectIfWorkspaceManaged(project);
 
     if (this.isAdmin(currentUser)) {
       return {
@@ -1089,6 +1382,108 @@ export class ProjectsService {
     throw new BadRequestException(
       `Git repository is unreachable or unauthorized: ${this.truncateError(result.stderr)}`,
     );
+  }
+
+  private async ensureProjectRepository(
+    project: Project,
+    options: EnsureProjectRepositoryOptions = {},
+  ): Promise<string> {
+    const repositoryRoot =
+      await this.projectRepositoryWorkspaceService.ensureProjectRepository(
+        project,
+        options,
+      );
+
+    if (isSnapshotSyncEnabled(project)) {
+      const subRepos = resolveSubRepoConfigs(project.configJson);
+      if (subRepos.length > 0) {
+        await this.gitLockService.withProjectGitLock(project.id, () =>
+          this.subtreeSnapshotService.syncSubtreeSnapshots(
+            project.id,
+            repositoryRoot,
+            subRepos,
+          ),
+        );
+      }
+    } else {
+      await this.syncSubRepositories(project, repositoryRoot, options);
+    }
+
+    return repositoryRoot;
+  }
+
+  private async syncSubRepositories(
+    project: Project,
+    repositoryRoot: string,
+    options: EnsureProjectRepositoryOptions = {},
+  ): Promise<void> {
+    const subRepos = resolveSubRepoConfigs(project.configJson);
+    if (subRepos.length === 0) return;
+
+    const shouldSyncRemote = options.syncRemote ?? true;
+
+    for (const sub of subRepos) {
+      const subRepoPath = path.join(repositoryRoot, sub.prefix);
+      const subGitDir = path.join(subRepoPath, '.git');
+      const hasGit = await this.pathExists(subGitDir);
+      const resolvedUrl = this.resolveGitRemoteUrl(sub.url);
+
+      if (!hasGit) {
+        await fs.rm(subRepoPath, { recursive: true, force: true });
+        await fs.mkdir(path.dirname(subRepoPath), { recursive: true });
+
+        const cloneResult = await this.runCommand('git', [
+          'clone',
+          '--origin',
+          'origin',
+          '--branch',
+          sub.branch,
+          resolvedUrl,
+          subRepoPath,
+        ]);
+
+        if (!cloneResult.success) {
+          this.logger.warn(
+            `sub_repo_clone_failed prefix=${sub.prefix} error=${cloneResult.stderr}`,
+          );
+          continue;
+        }
+      } else if (shouldSyncRemote) {
+        await this.runCommand('git', [
+          '-C',
+          subRepoPath,
+          'remote',
+          'set-url',
+          'origin',
+          resolvedUrl,
+        ]);
+      }
+
+      if (shouldSyncRemote) {
+        const fetchResult = await this.runCommand('git', [
+          '-C',
+          subRepoPath,
+          'fetch',
+          '--all',
+          '--prune',
+        ]);
+
+        if (!fetchResult.success) {
+          this.logger.warn(
+            `sub_repo_fetch_failed prefix=${sub.prefix} error=${fetchResult.stderr}`,
+          );
+        }
+      }
+    }
+  }
+
+  private async pathExists(targetPath: string): Promise<boolean> {
+    try {
+      await fs.access(targetPath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private extractRepositoryName(gitUrl: string): string | null {
@@ -1338,8 +1733,6 @@ export class ProjectsService {
     businessLineId: Project['businessLineId'],
     role: ProjectMemberRole,
   ): Promise<ProjectCustomRole> {
-    await this.ensureDefaultProjectCustomRoles(businessLineId);
-
     const template = getProjectDefaultRoleTemplate(role);
     const roles = await this.ensureDefaultProjectCustomRoles(businessLineId);
     const customRole =

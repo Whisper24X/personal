@@ -100,8 +100,8 @@ describe('TaskTerminalService', () => {
     const { service, inspectTaskContainer } = createService({
       assertCanAccessTaskProject,
       inspectTaskContainer: jest.fn().mockResolvedValue({
+        kind: 'running',
         containerId: 'container-1',
-        running: true,
         accessMetadata: null,
       }),
     });
@@ -161,9 +161,8 @@ describe('TaskTerminalService', () => {
         },
       }),
       inspectTaskContainer: jest.fn().mockResolvedValue({
-        containerId: 'container-1',
-        running: false,
-        accessMetadata: null,
+        kind: 'missing',
+        slotState: 'none',
       }),
     });
 

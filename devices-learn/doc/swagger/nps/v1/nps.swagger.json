@@ -1,0 +1,1052 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "nps/v1/nps.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Nps"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/api/nps/popup/answer/submit": {
+      "post": {
+        "summary": "用户弹窗答案提交",
+        "operationId": "Nps_SubmitNpsAnswer",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SubmitNpsAnswerReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SubmitNpsAnswerRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/api/nps/popup/info": {
+      "get": {
+        "summary": "获取用户弹窗信息",
+        "operationId": "Nps_GetNpsPopup",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsPopupReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/deepUseUser/list": {
+      "post": {
+        "summary": "查询nps深度使用用户列表--shadow",
+        "operationId": "Nps_GetNpsDeepUseUserListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsDeepUseUserListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsDeepUseUserListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/desktopVersion/list": {
+      "post": {
+        "summary": "查询nps桌面版本列表--shadow",
+        "operationId": "Nps_GetNpsDesktopVersionListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsDesktopVersionListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsDesktopVersionListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/generateSummary": {
+      "post": {
+        "summary": "生成nps汇总数据--shadow",
+        "operationId": "Nps_GenerateNpsSummaryShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GenerateNpsSummaryReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GenerateNpsSummaryRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/modelDevice/list": {
+      "post": {
+        "summary": "查询nps设备型号列表--shadow",
+        "operationId": "Nps_GetNpsModelDeviceListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsModelDeviceListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsModelDeviceListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/newOldUser/list": {
+      "post": {
+        "summary": "查询nps新老用户列表--shadow",
+        "operationId": "Nps_GetNpsNewOldUserListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsNewOldUserListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsNewOldUserListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/onionVersion/list": {
+      "post": {
+        "summary": "查询nps洋葱学园版本列表--shadow",
+        "operationId": "Nps_GetNpsOnionVersionListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsOnionVersionListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsOnionVersionListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/popup/user/list": {
+      "post": {
+        "summary": "用户弹窗反馈列表--shadow",
+        "operationId": "Nps_ListNpsShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListNpsReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ListNpsRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/stageTrend/list": {
+      "post": {
+        "summary": "查询nps学段走势图--shadow",
+        "operationId": "Nps_GetStageNpsTrendListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetStageNpsTrendListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetStageNpsTrendListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/trend/list": {
+      "post": {
+        "summary": "查询nps走势图--shadow",
+        "operationId": "Nps_GetNpsTrendListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsTrendListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsTrendListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    },
+    "/devices-learn/shadow/nps/wordCloud/list": {
+      "post": {
+        "summary": "查询nps词云--shadow",
+        "operationId": "Nps_GetNpsWordCloudShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsWordCloudReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetNpsWordCloudRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nps"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\n The JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1FeedBackItem": {
+      "type": "object",
+      "properties": {
+        "feedBackContent": {
+          "type": "string",
+          "title": "反馈内容"
+        },
+        "feedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "反馈数量"
+        }
+      }
+    },
+    "v1GenerateNpsSummaryReply": {
+      "type": "object"
+    },
+    "v1GenerateNpsSummaryRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "summaryTimeRangeType": {
+          "type": "string",
+          "title": "汇总时间范围类型：week、month"
+        }
+      }
+    },
+    "v1GetNpsDeepUseUserListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsDeepUseUserList"
+          },
+          "title": "nps新老用户数据列表"
+        }
+      }
+    },
+    "v1GetNpsDeepUseUserListRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "searchRange": {
+          "type": "string",
+          "title": "查询范围：week、month"
+        }
+      }
+    },
+    "v1GetNpsDesktopVersionListReply": {
+      "type": "object",
+      "properties": {
+        "totalNpsScore": {
+          "type": "string",
+          "title": "总NPS分数"
+        },
+        "totalFeedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总反馈人数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsDesktopVersionItem"
+          },
+          "title": "nps桌面版本数据列表"
+        }
+      }
+    },
+    "v1GetNpsDesktopVersionListRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "searchRange": {
+          "type": "string",
+          "title": "查询范围：week、month"
+        }
+      }
+    },
+    "v1GetNpsModelDeviceListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsModelDeviceList"
+          },
+          "title": "nps设备数据列表"
+        }
+      }
+    },
+    "v1GetNpsModelDeviceListRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "searchRange": {
+          "type": "string",
+          "title": "查询范围：week、month"
+        }
+      }
+    },
+    "v1GetNpsNewOldUserListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsNewOldUserList"
+          },
+          "title": "nps新老用户数据列表"
+        }
+      }
+    },
+    "v1GetNpsNewOldUserListRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "searchRange": {
+          "type": "string",
+          "title": "查询范围：week、month"
+        }
+      }
+    },
+    "v1GetNpsOnionVersionListReply": {
+      "type": "object",
+      "properties": {
+        "totalNpsScore": {
+          "type": "string",
+          "title": "总NPS分数"
+        },
+        "totalFeedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总反馈人数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsOnionVersionItem"
+          },
+          "title": "nps洋葱版本数据列表"
+        }
+      }
+    },
+    "v1GetNpsOnionVersionListRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "searchRange": {
+          "type": "string",
+          "title": "查询范围：week、month"
+        }
+      }
+    },
+    "v1GetNpsPopupReply": {
+      "type": "object",
+      "properties": {
+        "popupLogId": {
+          "type": "string",
+          "title": "弹窗记录ID"
+        },
+        "isPopup": {
+          "type": "boolean",
+          "title": "是否需要弹窗"
+        }
+      }
+    },
+    "v1GetNpsTrendListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsTrendData"
+          },
+          "title": "nps趋势数据列表"
+        }
+      }
+    },
+    "v1GetNpsTrendListRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "searchRange": {
+          "type": "string",
+          "title": "查询范围：week、month"
+        }
+      }
+    },
+    "v1GetNpsWordCloudReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsWordCloudItem"
+          },
+          "title": "nps词云数据列表"
+        }
+      }
+    },
+    "v1GetNpsWordCloudRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "feedBackLevel": {
+          "type": "string",
+          "title": "反馈等级：good、bad、middle"
+        },
+        "npsWordCloudType": {
+          "type": "string",
+          "title": "词云类型：scene、stage"
+        }
+      }
+    },
+    "v1GetStageNpsTrendListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1StageNpsTrendData"
+          },
+          "title": "nps学段走势数据列表"
+        }
+      }
+    },
+    "v1GetStageNpsTrendListRequest": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "title": "开始时间：格式：2006-01-02"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间：格式：2006-01-02"
+        },
+        "searchRange": {
+          "type": "string",
+          "title": "查询范围：week、month"
+        }
+      }
+    },
+    "v1ListNpsReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "title": "反馈列表"
+        }
+      }
+    },
+    "v1ListNpsRequest": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "每页数量"
+        },
+        "stage": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段: 0-全部 1-小学 2-初中 3-高中 4-中职"
+        },
+        "startTime": {
+          "type": "string",
+          "title": "开始时间"
+        },
+        "endTime": {
+          "type": "string",
+          "title": "结束时间"
+        }
+      }
+    },
+    "v1NpsDeepUseUserItem": {
+      "type": "object",
+      "properties": {
+        "npsScore": {
+          "type": "string",
+          "title": "NPS分数"
+        },
+        "feedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "反馈人数"
+        },
+        "timeRange": {
+          "type": "string",
+          "title": "时间范围：格式：2014.2.12-2014.2.25"
+        }
+      }
+    },
+    "v1NpsDeepUseUserList": {
+      "type": "object",
+      "properties": {
+        "userType": {
+          "type": "string",
+          "title": "用户类型：3天\u003c激活时间\u003c7天  新用户、60天\u003c激活时间\u003c=365天  老用户、365天\u003c激活时间  老用户"
+        },
+        "npsList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsDeepUseUserItem"
+          },
+          "title": "nps新老用户数据列表"
+        }
+      }
+    },
+    "v1NpsDesktopVersionItem": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "title": "版本号"
+        },
+        "npsScore": {
+          "type": "string",
+          "title": "NPS分数"
+        },
+        "feedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "反馈人数"
+        }
+      }
+    },
+    "v1NpsModelDeviceItem": {
+      "type": "object",
+      "properties": {
+        "npsScore": {
+          "type": "string",
+          "title": "NPS分数"
+        },
+        "feedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "反馈人数"
+        },
+        "timeRange": {
+          "type": "string",
+          "title": "时间范围：格式：2014.2.12-2014.2.25"
+        }
+      }
+    },
+    "v1NpsModelDeviceList": {
+      "type": "object",
+      "properties": {
+        "modelDevice": {
+          "type": "string",
+          "title": "设备类型：Q20, S30"
+        },
+        "npsList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsModelDeviceItem"
+          },
+          "title": "nps设备数据列表"
+        }
+      }
+    },
+    "v1NpsNewOldUserItem": {
+      "type": "object",
+      "properties": {
+        "npsScore": {
+          "type": "string",
+          "title": "NPS分数"
+        },
+        "feedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "反馈人数"
+        },
+        "timeRange": {
+          "type": "string",
+          "title": "时间范围：格式：2014.2.12-2014.2.25"
+        }
+      }
+    },
+    "v1NpsNewOldUserList": {
+      "type": "object",
+      "properties": {
+        "userType": {
+          "type": "string",
+          "title": "用户类型：3天\u003c激活时间\u003c=30天 新用户、60天\u003c激活时间 老用户"
+        },
+        "npsList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NpsNewOldUserItem"
+          },
+          "title": "nps新老用户数据列表"
+        }
+      }
+    },
+    "v1NpsOnionVersionItem": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "title": "版本号"
+        },
+        "npsScore": {
+          "type": "string",
+          "title": "NPS分数"
+        },
+        "feedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "反馈人数"
+        }
+      }
+    },
+    "v1NpsTrendData": {
+      "type": "object",
+      "properties": {
+        "timeRange": {
+          "type": "string",
+          "title": "时间范围：格式：2014.2.12-2014.2.25"
+        },
+        "promotersNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "好评人数(9-10)"
+        },
+        "middleNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "中评人数(7-8)"
+        },
+        "detractorsNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "差评人数(1-6)"
+        },
+        "totalNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总人数"
+        },
+        "npsScore": {
+          "type": "string",
+          "title": "NPS分数"
+        }
+      }
+    },
+    "v1NpsWordCloudItem": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "type": "string",
+          "title": "学段：小学、初中、高中、中职"
+        },
+        "scene": {
+          "type": "string",
+          "title": "场景：教材同步学/毕业年级总复习、日常练习、作业题型速攻、pk赛、考前突击、试卷真题、期末诊疗"
+        },
+        "feedBackList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1FeedBackItem"
+          },
+          "title": "反馈内容"
+        }
+      }
+    },
+    "v1StageNpsTrendData": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "type": "string",
+          "title": "学段：小学、初中、高中、中职"
+        },
+        "npsList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1StageNpsTrendItem"
+          },
+          "title": "nps学段走势数据列表"
+        }
+      }
+    },
+    "v1StageNpsTrendItem": {
+      "type": "object",
+      "properties": {
+        "npsScore": {
+          "type": "string",
+          "title": "NPS分数"
+        },
+        "feedBackNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "反馈人数"
+        },
+        "timeRange": {
+          "type": "string",
+          "title": "时间范围：格式：2014.2.12-2014.2.25"
+        }
+      }
+    },
+    "v1SubmitNpsAnswerReply": {
+      "type": "object"
+    },
+    "v1SubmitNpsAnswerRequest": {
+      "type": "object",
+      "properties": {
+        "popupLogId": {
+          "type": "string",
+          "title": "弹窗记录ID"
+        },
+        "score": {
+          "type": "integer",
+          "format": "int32",
+          "title": "NPS评分(0-10)"
+        },
+        "problemList": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "反馈问题列表"
+        }
+      }
+    }
+  }
+}

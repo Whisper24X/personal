@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import AppSelect from '@shared/components/select'
-import BusinessLineFormModal from '@pages/business-lines/components/BusinessLineFormModal.vue'
+import BusinessLineFormModal from '@features/business-lines/modals/BusinessLineFormModal.vue'
 import { ConfirmActionModal } from '@features/business-lines'
 import { formatBlmDate as formatDate } from '@features/business-lines/blmProjectDisplayUtils'
 import { useBusinessLinesPage } from '@features/business-lines/use-business-lines-page'
@@ -297,6 +297,7 @@ const vm = useBusinessLinesPage()
       :mode="vm.lineFormMode"
       :submitting="vm.savingLine"
       :initial-name="vm.lineFormInitialName"
+      :initial-slug="vm.lineFormInitialSlug"
       :initial-description="vm.lineFormInitialDescription"
       @update:open="vm.lineFormModalOpen = $event"
       @submit="vm.submitLineForm"

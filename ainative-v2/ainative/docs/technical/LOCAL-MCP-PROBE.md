@@ -6,11 +6,13 @@
 
 ### 任务 Runner 与「会话 MCP」对照
 
-| 维度 | 本地 MCP 探测（本文） | 任务详情里的容器 Agent（Runner） |
-|------|----------------------|-----------------------------------|
-| 进程位置 | Nest 宿主机 / 控制面 | 任务容器内 `docker exec` → 各 CLI |
-| MCP 配置来源 | 项目本地 MCP 文件 + 所选 Agent 工具配置（用于环境对齐） | **`containerRuntime.ephemeralMcp`** 由控制在 Runner 内按需拉起 HTTP MCP 并注入 URL 环境变量（见 [runner-ephemeral-mcp.md](./runner-ephemeral-mcp.md)）；或在 **Docker 宿主机**跑 MCP 并通过 **`containerRuntime.env` 注入 URL**；可选 worktree 内 `.codex` 当文件与 cwd 在挂载内可用 |
-| 与「聊天里 list_mcp_resources」的关系 | **无关** | **无关**；任务内以 CLI + 可达 URL 为准 |
+
+| 维度                           | 本地 MCP 探测（本文）                       | 任务详情里的容器 Agent（Runner）                                                                                                                                                                                                                  |
+| ---------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 进程位置                         | Nest 宿主机 / 控制面                      | 任务容器内 `docker exec` → 各 CLI                                                                                                                                                                                                             |
+| MCP 配置来源                     | 项目本地 MCP 文件 + 所选 Agent 工具配置（用于环境对齐） | `**containerRuntime.ephemeralMcp`** 由控制在 Runner 内按需拉起 HTTP MCP 并注入 URL 环境变量（见 [runner-ephemeral-mcp.md](./runner-ephemeral-mcp.md)）；或在 **Docker 宿主机**跑 MCP 并通过 `**containerRuntime.env` 注入 URL**；可选 worktree 内 `.codex` 当文件与 cwd 在挂载内可用 |
+| 与「聊天里 list_mcp_resources」的关系 | **无关**                              | **无关**；任务内以 CLI + 可达 URL 为准                                                                                                                                                                                                             |
+
 
 ### 任务详情聊天里「没有 list_pages」说明什么
 
@@ -18,13 +20,13 @@
 - **验证 Runner 内 MCP 是否生效**：看 **Runner 日志**与 **CLI 的 JSON 输出**，不要以任务页聊天侧是否列出工具为准（详见 `backend/docs/task-container-execution-boundaries.md` 中 **Task detail UI chat vs container Agent CLI MCP**）。
 - **若必须让任务聊天也能调 MCP**：属于 **会话网关 / 前端** 的产品需求（桥接或透传），本仓库 Runner 配置无法单独实现。
 
-排查「任务里 MCP 不生效」时：若使用 **ephemeral**，确认模板 **健康检查路径**、Runner 镜像内 **`curl`**、以及 Codex / Agent 是否引用注入的 `AINATIVE_EPHEMERAL_MCP_*_URL`；若使用**宿主机 MCP**，确认 **bridge** 下 `host.docker.internal` 是否启用、**MCP 是否监听在宿主机可访问地址**、以及 Agent 配置里的 URL 是否误写成仅宿主机可达的地址（参见 `backend/docs/task-container-execution-boundaries.md`）。
+排查「任务里 MCP 不生效」时：若使用 **ephemeral**，确认模板 **健康检查路径**、Runner 镜像内 `**curl`**、以及 Codex / Agent 是否引用注入的 `AINATIVE_EPHEMERAL_MCP_*_URL`；若使用**宿主机 MCP**，确认 **bridge** 下 `host.docker.internal` 是否启用、**MCP 是否监听在宿主机可访问地址**、以及 Agent 配置里的 URL 是否误写成仅宿主机可达的地址（参见 `backend/docs/task-container-execution-boundaries.md`）。
 
 ---
 
 ## 目标
 
-- 针对**项目维度**解析出的本地 MCP 条目（名称、`sourcePath`、服务端配置），验证能否完成 MCP 握手并 **`listTools`**。
+- 针对**项目维度**解析出的本地 MCP 条目（名称、`sourcePath`、服务端配置），验证能否完成 MCP 握手并 `**listTools`**。
 - **stdio**：子进程环境 = 上述 Agent 环境 + MCP 配置中的 `env`。
 - **远程 URL**（`url` 存在）：按 `type === 'sse'` 走 SSE，否则走 Streamable HTTP；支持自定义 `headers`。
 
@@ -62,29 +64,35 @@ flowchart TD
   L --> Y["抛出 BadRequestException"]
 ```
 
+
+
 ## 核心实现
 
-| 项目 | 说明 |
-|------|------|
-| 服务类 | `backend/src/business-lines/local-mcp-probe.service.ts`（`LocalMcpProbeService`） |
-| SDK | `@modelcontextprotocol/sdk`：`Client` + `StdioClientTransport` / `SSEClientTransport` / `StreamableHTTPClientTransport` |
-| 环境对齐 | `AgentCliSmokeTestService.buildProbeEnvironmentForAgentToolConfig({ toolId, configJson })` |
-| 超时 | 默认与 Agent CLI 嗅探共用同一套上限；优先读 `AINATIVE_LOCAL_MCP_PROBE_TIMEOUT_MS`，未设置则回落到 `AINATIVE_AGENT_CLI_SMOKE_TEST_TIMEOUT_MS` 的解析结果（见 `resolveLocalMcpProbeTimeoutMs`） |
+
+| 项目   | 说明                                                                                                                                                            |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 服务类  | `backend/src/business-lines/local-mcp-probe.service.ts`（`LocalMcpProbeService`）                                                                               |
+| SDK  | `@modelcontextprotocol/sdk`：`Client` + `StdioClientTransport` / `SSEClientTransport` / `StreamableHTTPClientTransport`                                        |
+| 环境对齐 | `AgentCliSmokeTestService.buildProbeEnvironmentForAgentToolConfig({ toolId, configJson })`                                                                    |
+| 超时   | 默认与 Agent CLI 嗅探共用同一套上限；优先读 `AINATIVE_LOCAL_MCP_PROBE_TIMEOUT_MS`，未设置则回落到 `AINATIVE_AGENT_CLI_SMOKE_TEST_TIMEOUT_MS` 的解析结果（见 `resolveLocalMcpProbeTimeoutMs`） |
+
 
 ## 配置分类（`classifyMcpServerConfig`）
 
-- 有 **`url`**：`type` 为 `sse` → `transport: sse`；否则 → `transport: http`；均可带 `headers`。
-- 无 `url`：必须提供 **`command`**（stdio）；`args` 为字符串数组，`env` 为 string 键值对。
+- 有 `**url**`：`type` 为 `sse` → `transport: sse`；否则 → `transport: http`；均可带 `headers`。
+- 无 `url`：必须提供 `**command**`（stdio）；`args` 为字符串数组，`env` 为 string 键值对。
 - 既无 `url` 又无 `command`：返回 `400`，提示占位条目无法探测。
 
 ## 与 Agent CLI 配置的一致性警告（非阻断）
 
 在探测成功或失败时都可能附带 `warnings`：
 
-| 代码 | 含义（简述） |
-|------|----------------|
-| `AGENT_MCP_CONFIG_MAY_NOT_REFERENCE_BUSINESS_LINE_FILE` | Claude：`mcp_config` 列表中可能未包含当前业务线 MCP 配置文件解析路径 |
+
+| 代码                                                              | 含义（简述）                                                             |
+| --------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `AGENT_MCP_CONFIG_MAY_NOT_REFERENCE_BUSINESS_LINE_FILE`         | Claude：`mcp_config` 列表中可能未包含当前业务线 MCP 配置文件解析路径                     |
 | `AGENT_GEMINI_MCP_MAY_NOT_REFERENCE_BUSINESS_LINE_FILE_OR_NAME` | Gemini：`extensions` 与 `allowed_mcp_server_names` 可能都未引用当前文件或 MCP 名 |
+
 
 ## 错误码
 
@@ -115,9 +123,11 @@ flowchart TD
 
 ## 环境变量
 
-| 变量 | 作用 |
-|------|------|
+
+| 变量                                    | 作用                                                     |
+| ------------------------------------- | ------------------------------------------------------ |
 | `AINATIVE_LOCAL_MCP_PROBE_TIMEOUT_MS` | MCP 探测超时（毫秒，有与 smoke 相同的上限）；未设置则沿用 Agent CLI 嗅探测试的超时配置 |
+
 
 ## 模块归属
 

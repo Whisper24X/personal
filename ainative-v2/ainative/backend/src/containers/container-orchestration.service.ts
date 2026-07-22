@@ -1,29 +1,95 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { createServer } from 'net';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Project } from '../projects/domain/project';
 import { Task } from '../tasks/domain/task';
+import {
+  TaskEnvironmentCoreMode,
+  TaskPreviewStatus,
+} from '../tasks/dto/task-environment.dto';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
+import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
 import { ContainerExecutionConfigService } from './container-execution-config.service';
 import { DatabaseIsolationService } from './database-isolation.service';
 import {
   IsolatedRunnerContainerService,
   RunnerManagedVolumeMount,
 } from './isolated-runner-container.service';
+import {
+  RunnerRuntimeReadinessAssessment,
+  RunnerRuntimeReadinessService,
+} from './runner-runtime-readiness.service';
 import { SlotAccessMetadata } from './domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { buildPreviewUrl } from './preview-url';
 import { ProjectRunnerImageService } from './project-runner-image.service';
 import { RunnerOrchestrationService } from './runner-orchestration.service';
+import { RunnerOrchestrationConfig } from './runner-orchestration.types';
 import { DatabaseIsolationConfig } from './types/database-isolation.types';
+import { isWorkspaceNativeEnabled } from '../git/snapshot-sync.types';
+import {
+  BusinessLineWorkspaceConfig,
+  RunnerConfigCacheMeta,
+} from '../git/workspace-native.types';
+import { assessRunnerSnapshotFreshness } from '../business-lines/runner-snapshot-freshness';
+import { resolveSubRepoConfigs } from '../git/sub-repo.types';
+
+type RunnerOrchestrationSource =
+  | 'taskSnapshot'
+  | 'projectConfig'
+  | 'businessLineCache'
+  | 'default'
+  | 'coreOnly';
+
+type ResolvedRunnerOrchestrationResult = {
+  orchestration: RunnerOrchestrationConfig | null;
+  source: RunnerOrchestrationSource;
+  previewConfig: {
+    service: string;
+    path?: string;
+  } | null;
+  previewEnabled: boolean;
+  coreMode: TaskEnvironmentCoreMode;
+  warnings: string[];
+};
+
+type ManagedVolumeDescriptor = {
+  name: string;
+  target: string;
+  labels: Record<string, string>;
+  preserveOnCleanup?: boolean;
+};
+
+type StartupManagedVolumePlan = {
+  taskScopedTargets: string[];
+  mounts: ManagedVolumeDescriptor[];
+};
+
+export type InspectTaskContainerResult =
+  | {
+      kind: 'running';
+      containerId: string;
+      accessMetadata: SlotAccessMetadata | null;
+    }
+  | {
+      kind: 'missing';
+      slotState: 'none' | 'released-stale';
+    };
+
+export type TaskContainerRuntimeState =
+  | {
+      kind: 'running';
+      containerId: string;
+      accessMetadata: SlotAccessMetadata | null;
+      runtimeReadiness: RunnerRuntimeReadinessAssessment;
+    }
+  | {
+      kind: 'missing';
+      slotState: 'none' | 'released-stale';
+    };
 
 @Injectable()
 export class ContainerOrchestrationService
@@ -45,6 +111,8 @@ export class ContainerOrchestrationService
     private readonly taskRepository: TaskRepository,
     private readonly dbIsolationService: DatabaseIsolationService,
     private readonly runnerOrchestration?: RunnerOrchestrationService,
+    private readonly businessLineRepository?: BusinessLineRepository,
+    private readonly runnerRuntimeReadiness?: RunnerRuntimeReadinessService,
   ) {}
 
   onModuleInit(): void {
@@ -77,10 +145,14 @@ export class ContainerOrchestrationService
     const { task, project, worktreePath } = params;
     const trackProjectSlot = params.trackProjectSlot !== false;
     const containerName = this.config.resolveContainerName(task);
-    const previewConfig = this.resolvePreviewConfig(project);
+    const resolvedOrchestration = await this.resolveRunnerOrchestrationForTask({
+      task,
+      project,
+      allowDefaultFallback: true,
+    });
     const runtimeExposure = this.resolveRuntimeExposure(
       project,
-      Boolean(previewConfig),
+      resolvedOrchestration.previewEnabled,
     );
     const sandboxProfile = this.config.getSandboxProfile(project);
     const runnerPlatform = this.config.getRunnerPlatform(project);
@@ -126,7 +198,7 @@ export class ContainerOrchestrationService
           const derivedAccessMetadata = this.buildAccessMetadata({
             project,
             runtimeExposure,
-            previewConfig,
+            previewConfig: resolvedOrchestration.previewConfig,
             publishedPort: this.selectPublishedPort(
               existing.publishedPorts,
               runtimeExposure,
@@ -134,7 +206,9 @@ export class ContainerOrchestrationService
           });
           const existingAccessMetadata =
             derivedAccessMetadata ??
-            (previewConfig ? (existingSlot?.accessMetadata ?? null) : null);
+            (resolvedOrchestration.previewEnabled
+              ? (existingSlot?.accessMetadata ?? null)
+              : null);
           if (existingAccessMetadata) {
             await this.slotRepository.updateContainerRuntimeByTaskId(task.id, {
               containerId: existing.id,
@@ -159,7 +233,7 @@ export class ContainerOrchestrationService
               task.id,
               existing.id,
             );
-            if (previewConfig) {
+            if (resolvedOrchestration.previewEnabled) {
               this.logger.warn(
                 `reuse_runner_container_metadata_missing ${JSON.stringify({
                   taskId: task.id,
@@ -210,7 +284,9 @@ export class ContainerOrchestrationService
           })}`,
         );
       }
-      await this.isolatedRunner.remove(containerName);
+      await this.isolatedRunner.remove(containerName, {
+        preserveManagedVolumeTargets: this.preserveManagedVolumeTarget,
+      });
     }
 
     try {
@@ -224,7 +300,9 @@ export class ContainerOrchestrationService
             action: 'remove_before_recreate',
           })}`,
         );
-        await this.isolatedRunner.remove(containerName);
+        await this.isolatedRunner.remove(containerName, {
+          preserveManagedVolumeTargets: this.preserveManagedVolumeTarget,
+        });
         existing = null;
       } else if (existing?.running) {
         this.logger.warn(
@@ -246,7 +324,9 @@ export class ContainerOrchestrationService
           project,
           worktreePath,
           runtimeExposure,
-          previewConfig,
+          previewConfig: resolvedOrchestration.previewConfig,
+          orchestration: resolvedOrchestration.orchestration,
+          coreMode: resolvedOrchestration.coreMode,
         },
       );
       if (trackProjectSlot) {
@@ -304,19 +384,17 @@ export class ContainerOrchestrationService
   async inspectTaskContainer(params: {
     task: Task;
     project: Project;
-  }): Promise<{
-    containerId: string;
-    running: boolean;
-    paused: boolean;
-    accessMetadata: SlotAccessMetadata | null;
-  } | null> {
+  }): Promise<InspectTaskContainerResult> {
     const inspection = await this.isolatedRunner.inspect(
       this.config.resolveContainerName(params.task),
     );
     if (!inspection) {
       const slot = await this.slotRepository.findByTaskId(params.task.id);
       if (!slot?.containerId) {
-        return null;
+        return {
+          kind: 'missing',
+          slotState: 'none',
+        };
       }
 
       this.logger.warn(
@@ -328,28 +406,143 @@ export class ContainerOrchestrationService
         })}`,
       );
       await this.releaseSlotAndStopHeartbeat(params.task.id);
-      return null;
+      return {
+        kind: 'missing',
+        slotState: 'released-stale',
+      };
     }
 
-    const previewConfig = this.resolvePreviewConfig(params.project);
+    if (!inspection.running) {
+      const slot = await this.slotRepository.findByTaskId(params.task.id);
+      if (slot?.containerId) {
+        this.logger.warn(
+          `runner_container_not_running_release_slot ${JSON.stringify({
+            taskId: params.task.id,
+            projectId: params.task.projectId,
+            containerId: inspection.id,
+            action: 'release_slot',
+          })}`,
+        );
+        await this.releaseSlotAndStopHeartbeat(params.task.id);
+        return {
+          kind: 'missing',
+          slotState: 'released-stale',
+        };
+      }
+
+      return {
+        kind: 'missing',
+        slotState: 'none',
+      };
+    }
+
+    const resolvedOrchestration = await this.resolveRunnerOrchestrationForTask(
+      {
+        task: params.task,
+        project: params.project,
+        allowDefaultFallback: true,
+      },
+      { suppressUnavailableError: true },
+    );
     const runtimeExposure = this.resolveRuntimeExposure(
       params.project,
-      Boolean(previewConfig),
+      resolvedOrchestration.previewEnabled,
     );
+    const slot = await this.slotRepository.findByTaskId(params.task.id);
+    const derivedAccessMetadata = this.buildAccessMetadata({
+      project: params.project,
+      runtimeExposure,
+      previewConfig: resolvedOrchestration.previewConfig,
+      publishedPort: this.selectPublishedPort(
+        inspection.publishedPorts,
+        runtimeExposure,
+      ),
+    });
 
     return {
+      kind: 'running',
       containerId: inspection.id,
-      running: inspection.running,
-      paused: inspection.paused,
-      accessMetadata: this.buildAccessMetadata({
+      accessMetadata: derivedAccessMetadata
+        ? {
+            ...(slot?.accessMetadata ?? {}),
+            ...derivedAccessMetadata,
+          }
+        : (slot?.accessMetadata ?? null),
+    };
+  }
+
+  async inspectTaskContainerRuntimeState(params: {
+    task: Task;
+    project: Project;
+  }): Promise<TaskContainerRuntimeState> {
+    const container = await this.inspectTaskContainer(params);
+    if (container.kind !== 'running') {
+      return container;
+    }
+
+    const resolved = await this.resolveRunnerOrchestrationForTask(
+      {
+        task: params.task,
         project: params.project,
-        runtimeExposure,
-        previewConfig,
-        publishedPort: this.selectPublishedPort(
-          inspection.publishedPorts,
-          runtimeExposure,
-        ),
-      }),
+        allowDefaultFallback: true,
+      },
+      { suppressUnavailableError: true },
+    );
+
+    const runtimeCoreMode =
+      container.accessMetadata?.coreMode === TaskEnvironmentCoreMode.coreOnly
+        ? TaskEnvironmentCoreMode.coreOnly
+        : resolved.coreMode;
+    const runtimePreviewConfigured = Boolean(
+      container.accessMetadata?.previewConfigured ?? resolved.previewEnabled,
+    );
+    const runtimePreviewFallbackUsed =
+      container.accessMetadata?.previewFallbackUsed ?? false;
+
+    const runtimeReadiness = this.runnerRuntimeReadiness
+      ? await this.runnerRuntimeReadiness.assess({
+          containerId: container.containerId,
+          orchestration: resolved.orchestration,
+          previewConfig: resolved.previewConfig,
+          previewUrl: container.accessMetadata?.previewUrl ?? null,
+          coreMode: runtimeCoreMode,
+          previewConfigured: runtimePreviewConfigured,
+          previewFallbackUsed: runtimePreviewFallbackUsed,
+        })
+      : {
+          preview: {
+            status:
+              runtimeCoreMode === TaskEnvironmentCoreMode.coreOnly ||
+              !runtimePreviewConfigured ||
+              !resolved.previewConfig ||
+              !resolved.orchestration
+                ? runtimePreviewFallbackUsed
+                  ? TaskPreviewStatus.failed
+                  : TaskPreviewStatus.unavailable
+                : container.accessMetadata?.previewUrl
+                  ? TaskPreviewStatus.ready
+                  : TaskPreviewStatus.provisioning,
+            url: container.accessMetadata?.previewUrl ?? null,
+            partial: false,
+            reason:
+              container.accessMetadata?.previewUrl &&
+              runtimeCoreMode !== TaskEnvironmentCoreMode.coreOnly
+                ? ('http-ready' as const)
+                : runtimePreviewFallbackUsed
+                  ? ('failed' as const)
+                  : runtimeCoreMode === TaskEnvironmentCoreMode.coreOnly
+                    ? ('unavailable' as const)
+                    : null,
+          },
+          serviceStatuses: [],
+          routeDiagnostics: [],
+        };
+
+    return {
+      kind: 'running',
+      containerId: container.containerId,
+      accessMetadata: container.accessMetadata,
+      runtimeReadiness,
     };
   }
 
@@ -378,7 +571,9 @@ export class ContainerOrchestrationService
         containerName,
       })}`,
     );
-    await this.isolatedRunner.remove(containerName);
+    await this.isolatedRunner.remove(containerName, {
+      preserveManagedVolumeTargets: this.preserveManagedVolumeTarget,
+    });
     await this.releaseSlotAndStopHeartbeat(taskId);
     this.logger.log(
       `remove_runner_container_done ${JSON.stringify({
@@ -415,7 +610,9 @@ export class ContainerOrchestrationService
       const taskId = match[1];
       if (!validTaskIds.has(taskId)) {
         this.logger.warn(`Removing orphan runner container ${name}`);
-        await this.isolatedRunner.remove(name);
+        await this.isolatedRunner.remove(name, {
+          preserveManagedVolumeTargets: this.preserveManagedVolumeTarget,
+        });
       }
     }
   }
@@ -432,7 +629,9 @@ export class ContainerOrchestrationService
       const task = await this.taskRepository.findById(slot.taskId);
       if (task) {
         const containerName = this.config.resolveContainerName(task);
-        await this.isolatedRunner.remove(containerName);
+        await this.isolatedRunner.remove(containerName, {
+          preserveManagedVolumeTargets: this.preserveManagedVolumeTarget,
+        });
       }
       await this.slotRepository.releaseSlotByTaskId(slot.taskId);
       this.stopSlotHeartbeat(slot.taskId);
@@ -448,9 +647,9 @@ export class ContainerOrchestrationService
       const task = await this.taskRepository.findById(slot.taskId);
       if (!task || task.status === TaskStatus.done || slot.expiresAt < now) {
         if (task) {
-          await this.isolatedRunner.remove(
-            this.config.resolveContainerName(task),
-          );
+          await this.isolatedRunner.remove(this.config.resolveContainerName(task), {
+            preserveManagedVolumeTargets: this.preserveManagedVolumeTarget,
+          });
         }
         await this.releaseSlotAndStopHeartbeat(slot.taskId);
         continue;
@@ -509,6 +708,8 @@ export class ContainerOrchestrationService
     project: Project;
     worktreePath: string;
     runtimeExposure: RuntimeExposure;
+    orchestration: RunnerOrchestrationConfig | null;
+    coreMode: TaskEnvironmentCoreMode;
     previewConfig: {
       service: string;
       path?: string;
@@ -517,94 +718,190 @@ export class ContainerOrchestrationService
     containerId: string;
     accessMetadata: SlotAccessMetadata | null;
   }> {
-    const retries = params.runtimeExposure ? this.maxPortAllocationAttempts : 1;
+    const startupContext = await this.buildRunnerStartupContext(params);
+    return this.startRunnerModeWithRetries(params, startupContext, {
+      coreMode: params.coreMode,
+      runtimeExposure:
+        params.coreMode === TaskEnvironmentCoreMode.preview
+          ? params.runtimeExposure
+          : null,
+    });
+  }
+
+  private async buildRunnerStartupContext(params: {
+    task: Task;
+    containerName: string;
+    runnerImage: string;
+    project: Project;
+    worktreePath: string;
+    runtimeExposure: RuntimeExposure;
+    previewConfig: {
+      service: string;
+      path?: string;
+    } | null;
+    orchestration: RunnerOrchestrationConfig | null;
+  }): Promise<{
+    runnerConfig: ReturnType<
+      RunnerOrchestrationService['buildProjectRunnerConfigFile']
+    > | null;
+    managedVolumePlan: StartupManagedVolumePlan;
+    containerEnv: Record<string, string>;
+    repositoryGitPath?: string;
+  }> {
+    const dependencyCacheEnv =
+      typeof this.config.getRunnerDependencyCacheEnv === 'function'
+        ? this.config.getRunnerDependencyCacheEnv(params.project)
+        : {
+            PNPM_STORE_DIR: '/var/lib/ainative-runner-cache/pnpm-store',
+            npm_config_cache: '/var/lib/ainative-runner-cache/npm-cache',
+            YARN_CACHE_FOLDER: '/var/lib/ainative-runner-cache/yarn-cache',
+          };
+    let runnerConfig =
+      this.runnerOrchestration && params.orchestration
+        ? this.runnerOrchestration.buildProjectRunnerConfigFileFromOrchestration(
+            params.project,
+            params.orchestration,
+          )
+        : null;
+    if (runnerConfig) {
+      runnerConfig = {
+        ...runnerConfig,
+        runtime: {
+          ...runnerConfig.runtime,
+          env: {
+            ...(runnerConfig.runtime.env ?? {}),
+            ...dependencyCacheEnv,
+          },
+        },
+      };
+    }
+
+    const managedVolumeTargets =
+      this.runnerOrchestration?.buildManagedVolumeTargetsFromOrchestration(
+        this.config.getRunnerWorkspace(),
+        params.orchestration,
+      ) ??
+      this.config.getRunnerManagedVolumeTargets(
+        this.config.getRunnerWorkspace(),
+        params.project,
+      );
+    const managedVolumePlan = await this.buildManagedVolumePlan({
+      task: params.task,
+      project: params.project,
+      containerName: params.containerName,
+      worktreePath: params.worktreePath,
+      targets: managedVolumeTargets,
+      orchestration: params.orchestration,
+    });
+    const previewBridgeUrl = this.config.getPreviewBridgeScriptUrl();
+    const containerEnv: Record<string, string> = {
+      ...this.config.getRunnerBootstrapEnv(),
+      ...dependencyCacheEnv,
+      ...this.config.getRunnerEnv(params.project),
+      AINATIVE_RUNNER_LISTEN_PORT: String(
+        this.config.getRunnerExposeContainerPort(params.project),
+      ),
+      ...(previewBridgeUrl
+        ? { AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL: previewBridgeUrl }
+        : {}),
+      ...(runnerConfig
+        ? {
+            AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
+          }
+        : {}),
+    };
+    const dbIsolation = (params.project.configJson as Record<string, unknown>)
+      ?.databaseIsolation as DatabaseIsolationConfig | undefined;
+    if (dbIsolation?.enabled) {
+      const taskDbName = `task_${params.task.id}_${dbIsolation.postgres.sourceDatabase}`;
+      const adminPassword = (
+        params.project.configJson as Record<string, unknown>
+      )?.dbIsolationAdminPassword as string;
+      await this.dbIsolationService.ensureTaskDatabase(
+        dbIsolation,
+        adminPassword,
+        taskDbName,
+        dbIsolation.dataImport?.tables ?? [],
+      );
+      containerEnv[dbIsolation.envVar] = taskDbName;
+    }
+
+    const repositoryGitPath = await this.resolveRepositoryGitPath(
+      params.worktreePath,
+    );
+    return {
+      runnerConfig,
+      managedVolumePlan,
+      containerEnv,
+      repositoryGitPath,
+    };
+  }
+
+  private async startRunnerModeWithRetries(
+    params: {
+      task: Task;
+      containerName: string;
+      runnerImage: string;
+      project: Project;
+      worktreePath: string;
+      runtimeExposure: RuntimeExposure;
+      previewConfig: {
+        service: string;
+        path?: string;
+      } | null;
+    },
+    startupContext: {
+      runnerConfig: ReturnType<
+        RunnerOrchestrationService['buildProjectRunnerConfigFile']
+      > | null;
+      managedVolumePlan: StartupManagedVolumePlan;
+      containerEnv: Record<string, string>;
+      repositoryGitPath?: string;
+    },
+    mode: {
+      coreMode: TaskEnvironmentCoreMode;
+      runtimeExposure: RuntimeExposure;
+    },
+  ): Promise<{
+    containerId: string;
+    accessMetadata: SlotAccessMetadata | null;
+  }> {
+    const retries = mode.runtimeExposure ? this.maxPortAllocationAttempts : 1;
     let lastError: unknown;
 
     for (let attempt = 0; attempt < retries; attempt += 1) {
       const publishedPorts =
-        params.runtimeExposure &&
+        mode.runtimeExposure &&
         this.config.getRunnerNetworkMode(params.project) === 'bridge' &&
         this.config.shouldExposeSandboxPort(params.project)
           ? [
               {
-                hostIp: params.runtimeExposure.bindHostIp,
+                hostIp: mode.runtimeExposure.bindHostIp,
                 hostPort: await this.allocatePublishedPort(
-                  params.runtimeExposure.bindHostIp,
+                  mode.runtimeExposure.bindHostIp,
                 ),
-                containerPort: params.runtimeExposure.containerPort,
+                containerPort: mode.runtimeExposure.containerPort,
               },
             ]
           : [];
 
       try {
-        const runnerConfig =
-          this.runnerOrchestration?.buildProjectRunnerConfigFile(
-            params.project,
-          ) ?? null;
-        const managedVolumeTargets =
-          this.runnerOrchestration?.buildManagedVolumeTargets(
-            this.config.getRunnerWorkspace(),
-            params.project,
-          ) ??
-          this.config.getRunnerManagedVolumeTargets(
-            this.config.getRunnerWorkspace(),
-            params.project,
-          );
-        const previewBridgeUrl = this.config.getPreviewBridgeScriptUrl();
-        const containerEnv = {
-          ...this.config.getRunnerBootstrapEnv(),
-          ...this.config.getRunnerEnv(params.project),
-          AINATIVE_RUNNER_LISTEN_PORT: String(
-            this.config.getRunnerExposeContainerPort(params.project),
-          ),
-          ...(previewBridgeUrl
-            ? { AINATIVE_PREVIEW_BRIDGE_SCRIPT_URL: previewBridgeUrl }
-            : {}),
-          ...(runnerConfig
-            ? {
-                AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
-              }
-            : {}),
-        };
-        const dbIsolation = (
-          params.project.configJson as Record<string, unknown>
-        )?.databaseIsolation as DatabaseIsolationConfig | undefined;
-        if (dbIsolation?.enabled) {
-          const taskDbName = `task_${params.task.id}_${dbIsolation.postgres.sourceDatabase}`;
-          const adminPassword = (
-            params.project.configJson as Record<string, unknown>
-          )?.dbIsolationAdminPassword as string;
-          await this.dbIsolationService.ensureTaskDatabase(
-            dbIsolation,
-            adminPassword,
-            taskDbName,
-            dbIsolation.dataImport?.tables ?? [],
-          );
-          containerEnv[dbIsolation.envVar] = taskDbName;
-        }
-
-        const repositoryGitPath = await this.resolveRepositoryGitPath(
-          params.worktreePath,
-        );
         const result = await this.isolatedRunner.run({
           containerName: params.containerName,
           image: params.runnerImage,
           worktreePath: params.worktreePath,
           workspaceMount: this.config.getRunnerWorkspace(),
-          command: this.config.usesSandboxEntrypoint(params.project)
-            ? ['/usr/local/bin/ainative-runner-entrypoint']
-            : ['sleep', 'infinity'],
+          command:
+            this.config.usesSandboxEntrypoint(params.project)
+              ? ['/usr/local/bin/ainative-runner-entrypoint']
+              : ['sleep', 'infinity'],
           sharedVolumeMounts: this.mergeSharedVolumeMounts([
-            ...(runnerConfig?.runtime.sharedVolumes ?? []),
+            ...(startupContext.runnerConfig?.runtime.sharedVolumes ?? []),
             ...this.buildProjectOAuthCredentialVolumeMounts(params.project.id),
           ]),
-          managedVolumeMounts: this.buildManagedVolumeMounts({
-            task: params.task,
-            containerName: params.containerName,
-            targets: managedVolumeTargets,
-          }),
+          managedVolumeMounts: startupContext.managedVolumePlan.mounts,
           readOnlyBindMounts: [],
-          env: containerEnv,
+          env: startupContext.containerEnv,
           cpuLimit: this.config.getRunnerCpuLimit(params.project),
           resourceLimits: this.config.resourceLimitsForProfile(params.project),
           readinessProbeUrl: this.config.getRunnerReadinessProbeUrl(
@@ -616,17 +913,27 @@ export class ContainerOrchestrationService
           publishedPorts,
           addHostDockerInternalGateway:
             this.config.shouldAddHostDockerInternalGateway(params.project),
-          repositoryGitPath,
+          repositoryGitPath: startupContext.repositoryGitPath,
         });
+
         const mapping = result.publishedPorts[0];
+        const baseAccessMetadata =
+          mode.coreMode === TaskEnvironmentCoreMode.preview
+            ? this.buildAccessMetadata({
+                project: params.project,
+                runtimeExposure: mode.runtimeExposure,
+                previewConfig: params.previewConfig,
+                publishedPort: mapping,
+              })
+            : null;
         return {
           containerId: result.containerId,
-          accessMetadata: this.buildAccessMetadata({
-            project: params.project,
-            runtimeExposure: params.runtimeExposure,
-            previewConfig: params.previewConfig,
-            publishedPort: mapping,
-          }),
+          accessMetadata: {
+            ...(baseAccessMetadata ?? {}),
+            coreMode: mode.coreMode,
+            previewConfigured: Boolean(params.previewConfig),
+            previewFallbackUsed: false,
+          },
         };
       } catch (error) {
         lastError = error;
@@ -645,22 +952,240 @@ export class ContainerOrchestrationService
       : new Error('Failed to start runner container');
   }
 
-  private buildManagedVolumeMounts(params: {
+  private async buildManagedVolumePlan(params: {
     task: Task;
+    project: Project;
     containerName: string;
+    worktreePath: string;
     targets: string[];
-  }): RunnerManagedVolumeMount[] {
-    return params.targets.map((target) => ({
-      name: this.buildManagedVolumeName(params.containerName, target),
+    orchestration: RunnerOrchestrationConfig | null;
+  }): Promise<StartupManagedVolumePlan> {
+    const mounts: ManagedVolumeDescriptor[] = [];
+    const taskScopedTargets: string[] = [];
+    const sharedNodeModulesEnabled =
+      isWorkspaceNativeEnabled(params.project) &&
+      this.config.getSandboxProfile(params.project) === 'preview-web' &&
+      Boolean(params.orchestration);
+
+    for (const target of params.targets) {
+      const sharedRunnerCache = this.buildSharedRunnerCacheVolumeMount({
+        task: params.task,
+        project: params.project,
+        target,
+      });
+      if (sharedRunnerCache) {
+        mounts.push(sharedRunnerCache);
+        continue;
+      }
+      const sharedDescriptor = sharedNodeModulesEnabled
+        ? await this.buildSharedNodeModulesVolumeMount({
+            task: params.task,
+            project: params.project,
+            worktreePath: params.worktreePath,
+            target,
+            orchestration: params.orchestration,
+          })
+        : null;
+      if (sharedDescriptor) {
+        mounts.push(sharedDescriptor);
+        continue;
+      }
+      taskScopedTargets.push(target);
+      mounts.push(
+        this.buildTaskScopedManagedVolumeMount(
+          params.task,
+          params.containerName,
+          target,
+        ),
+      );
+    }
+
+    return { mounts, taskScopedTargets };
+  }
+
+  private buildSharedRunnerCacheVolumeMount(params: {
+    task: Task;
+    project: Project;
+    target: string;
+  }): ManagedVolumeDescriptor | null {
+    if (params.target !== '/var/lib/ainative-runner-cache') {
+      return null;
+    }
+    const runtimePlatform =
+      this.config.getRunnerPlatform(params.project)?.trim() || 'default';
+    const digest = createHash('sha1')
+      .update(params.task.projectId)
+      .update('\0')
+      .update(runtimePlatform)
+      .digest('hex')
+      .slice(0, 24);
+    return {
+      name: `ainative-runner-cache-${digest}`,
+      target: params.target,
+      preserveOnCleanup: true,
+      labels: {
+        'ainative.runner-managed': 'true',
+        'ainative.cache-kind': 'runner-cache',
+        'ainative.project-id': params.task.projectId,
+        'ainative.task-id': params.task.id,
+        'ainative.mount-target': params.target,
+        'ainative.runtime-platform': runtimePlatform,
+      },
+    };
+  }
+
+  private buildTaskScopedManagedVolumeMount(
+    task: Task,
+    containerName: string,
+    target: string,
+  ): ManagedVolumeDescriptor {
+    return {
+      name: this.buildManagedVolumeName(containerName, target),
       target,
       labels: {
         'ainative.runner-managed': 'true',
-        'ainative.container-name': params.containerName,
-        'ainative.project-id': params.task.projectId,
-        'ainative.task-id': params.task.id,
+        'ainative.container-name': containerName,
+        'ainative.project-id': task.projectId,
+        'ainative.task-id': task.id,
         'ainative.mount-target': target,
       },
-    }));
+    };
+  }
+
+  private async buildSharedNodeModulesVolumeMount(params: {
+    task: Task;
+    project: Project;
+    worktreePath: string;
+    target: string;
+    orchestration: RunnerOrchestrationConfig | null;
+  }): Promise<ManagedVolumeDescriptor | null> {
+    if (!params.target.endsWith('/node_modules') || !params.orchestration) {
+      return null;
+    }
+
+    const workspaceMount = this.config.getRunnerWorkspace().replace(/\/+$/, '');
+    const relativeTarget = params.target
+      .replace(new RegExp(`^${workspaceMount}`), '')
+      .replace(/^\/+/, '')
+      .replace(/\/node_modules$/, '');
+    if (!relativeTarget) {
+      return null;
+    }
+
+    const service = params.orchestration.services.find((item) => {
+      const workdir = item.workdir.replace(/^\/+/, '').replace(/\/+$/, '');
+      return (
+        workdir === relativeTarget &&
+        this.isNodeInstallCommand(item.installCommand ?? '')
+      );
+    });
+    if (!service) {
+      return null;
+    }
+
+    const lockfileInfo = await this.resolveNodeDependencyCacheKey({
+      worktreePath: params.worktreePath,
+      serviceWorkdir: service.workdir,
+    });
+    if (!lockfileInfo) {
+      return null;
+    }
+
+    const runtimePlatform =
+      this.config.getRunnerPlatform(params.project)?.trim() || 'default';
+    const repoPrefix = this.extractRepoPrefixFromWorkdir(service.workdir);
+    const digest = createHash('sha1')
+      .update(params.task.projectId)
+      .update('\0')
+      .update(repoPrefix)
+      .update('\0')
+      .update(lockfileInfo.packageManager)
+      .update('\0')
+      .update(lockfileInfo.lockfileDigest)
+      .update('\0')
+      .update(runtimePlatform)
+      .digest('hex')
+      .slice(0, 24);
+
+    return {
+      name: `ainative-deps-${digest}`,
+      target: params.target,
+      preserveOnCleanup: true,
+      labels: {
+        'ainative.runner-managed': 'true',
+        'ainative.cache-kind': 'node_modules',
+        'ainative.project-id': params.task.projectId,
+        'ainative.task-id': params.task.id,
+        'ainative.mount-target': params.target,
+        'ainative.repo-prefix': repoPrefix,
+        'ainative.lockfile-digest': lockfileInfo.lockfileDigest,
+        'ainative.runtime-platform': runtimePlatform,
+        'ainative.package-manager': lockfileInfo.packageManager,
+      },
+    };
+  }
+
+  private async resolveNodeDependencyCacheKey(params: {
+    worktreePath: string;
+    serviceWorkdir: string;
+  }): Promise<
+    | {
+        packageManager: 'pnpm' | 'yarn' | 'npm';
+        lockfileDigest: string;
+      }
+    | null
+  > {
+    const workdir = path.join(
+      params.worktreePath,
+      params.serviceWorkdir.replace(/^\/+/, ''),
+    );
+    const candidates: Array<{
+      fileName: string;
+      packageManager: 'pnpm' | 'yarn' | 'npm';
+    }> = [
+      { fileName: 'pnpm-lock.yaml', packageManager: 'pnpm' },
+      { fileName: 'yarn.lock', packageManager: 'yarn' },
+      { fileName: 'package-lock.json', packageManager: 'npm' },
+    ];
+    for (const candidate of candidates) {
+      try {
+        const content = await fs.readFile(
+          path.join(workdir, candidate.fileName),
+          'utf-8',
+        );
+        const lockfileDigest = createHash('sha1')
+          .update(content)
+          .digest('hex')
+          .slice(0, 24);
+        return {
+          packageManager: candidate.packageManager,
+          lockfileDigest,
+        };
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  private isNodeInstallCommand(command: string): boolean {
+    const normalized = command.trim().toLowerCase();
+    return (
+      normalized.startsWith('pnpm ') ||
+      normalized.startsWith('npm ') ||
+      normalized.startsWith('yarn ')
+    );
+  }
+
+  private extractRepoPrefixFromWorkdir(workdir: string): string {
+    return (
+      workdir
+        .replace(/^\/+/, '')
+        .split('/')
+        .filter(Boolean)[0]
+        ?.toLowerCase()
+        .replace(/[^a-z0-9_.-]+/g, '-') || 'workspace'
+    );
   }
 
   private buildProjectOAuthCredentialVolumeMounts(projectId: string): {
@@ -720,6 +1245,16 @@ export class ContainerOrchestrationService
 
     return `${containerName}-${normalizedTarget}`;
   }
+
+  private preserveManagedVolumeTarget = (
+    target: string,
+    _labels?: Record<string, string> | null,
+  ): boolean => {
+    return (
+      target.endsWith('/node_modules') ||
+      target === '/var/lib/ainative-runner-cache'
+    );
+  };
 
   private resolveRuntimeExposure(
     project: Project,
@@ -939,8 +1474,361 @@ export class ContainerOrchestrationService
     );
   }
 
-  private resolvePreviewConfig(project: Project) {
-    return this.runnerOrchestration?.resolvePreviewConfig(project) ?? null;
+  async resolvePreviewConfigForTask(params: {
+    task: Task;
+    project: Project;
+    allowDefaultFallback?: boolean;
+    suppressUnavailableError?: boolean;
+  }): Promise<{
+    service: string;
+    path?: string;
+  } | null> {
+    const resolved = await this.resolveRunnerOrchestrationForTask({
+      ...params,
+      allowDefaultFallback: params.allowDefaultFallback ?? true,
+    }, {
+      suppressUnavailableError: params.suppressUnavailableError,
+    });
+    return resolved.previewConfig;
+  }
+
+  private async resolveRunnerOrchestrationForTask(params: {
+    task: Task;
+    project: Project;
+    allowDefaultFallback: boolean;
+  }, options?: {
+    suppressUnavailableError?: boolean;
+  }): Promise<ResolvedRunnerOrchestrationResult> {
+    if (!this.runnerOrchestration) {
+      return {
+        orchestration: null,
+        source: 'default',
+        previewConfig: null,
+        previewEnabled: false,
+        coreMode: TaskEnvironmentCoreMode.coreOnly,
+        warnings: [],
+      };
+    }
+
+    if (!isWorkspaceNativeEnabled(params.project)) {
+      const orchestration = params.allowDefaultFallback
+        ? this.runnerOrchestration.buildEffectiveOrchestration(params.project)
+        : this.runnerOrchestration.readConfiguredOrchestration(params.project);
+      return this.buildResolvedOrchestrationResult({
+        orchestration,
+        source: 'default',
+      });
+    }
+
+    const warnings: string[] = [];
+    const taskSnapshot = this.readTaskRunnerSnapshot(params.task, params.project);
+    if (taskSnapshot) {
+      return this.buildResolvedOrchestrationResult({
+        orchestration: taskSnapshot,
+        source: 'taskSnapshot',
+        warnings,
+      });
+    }
+
+    const projectSnapshot = this.readProjectRunnerSnapshot(
+      params.project,
+      warnings,
+    );
+    if (projectSnapshot) {
+      this.logger.warn(
+        `workspace_native_runner_using_project_config ${JSON.stringify({
+          taskId: params.task.id,
+          projectId: params.project.id,
+        })}`,
+      );
+      return this.buildResolvedOrchestrationResult({
+        orchestration: projectSnapshot,
+        source: 'projectConfig',
+        warnings,
+      });
+    }
+
+    const businessLineSnapshot = await this.readBusinessLineRunnerSnapshot(
+      params.project.businessLineId,
+      params.project,
+      warnings,
+    );
+    if (businessLineSnapshot) {
+      this.logger.warn(
+        `workspace_native_runner_using_business_line_cache ${JSON.stringify({
+          taskId: params.task.id,
+          projectId: params.project.id,
+          businessLineId: params.project.businessLineId,
+        })}`,
+      );
+      return this.buildResolvedOrchestrationResult({
+        orchestration: businessLineSnapshot,
+        source: 'businessLineCache',
+        warnings,
+      });
+    }
+
+    const coreOnly = this.buildCoreOnlyOrchestration();
+    const fallbackReason =
+      this.describeWorkspaceRunnerUnavailableReason(params.project) ??
+      'Workspace-native preview orchestration unavailable; falling back to core-only runner mode.';
+    warnings.push(fallbackReason);
+    this.logger.warn(
+      `workspace_native_runner_fallback_core_only ${JSON.stringify({
+        taskId: params.task.id,
+        projectId: params.project.id,
+        reason: fallbackReason,
+      })}`,
+    );
+    if (!options?.suppressUnavailableError) {
+      return this.buildResolvedOrchestrationResult({
+        orchestration: coreOnly,
+        source: 'coreOnly',
+        warnings,
+      });
+    }
+    return this.buildResolvedOrchestrationResult({
+      orchestration: coreOnly,
+      source: 'coreOnly',
+      warnings,
+    });
+  }
+
+  private readTaskRunnerSnapshot(
+    task: Task,
+    project: Project,
+  ): RunnerOrchestrationConfig | null {
+    const runnerState = this.toObjectRecord(
+      (task.configJson as Record<string, unknown> | null | undefined)?.runner,
+    );
+    if (runnerState?.status !== 'ready') {
+      return null;
+    }
+
+    const snapshot =
+      this.runnerOrchestration?.normalizeConfigSnapshot(
+        this.toObjectRecord(runnerState.configSnapshot),
+      ) ?? null;
+    if (!snapshot) {
+      return null;
+    }
+    if (
+      this.isRunnablePreviewOrchestration(
+        snapshot as Record<string, unknown>,
+        project,
+      )
+    ) {
+      return snapshot;
+    }
+    const freshness = assessRunnerSnapshotFreshness({
+      runnerOrchestration: snapshot as Record<string, unknown>,
+      subRepos: resolveSubRepoConfigs(project.configJson),
+    });
+    this.logger.warn(
+      `workspace_native_task_runner_snapshot_stale ${JSON.stringify({
+        taskId: task.id,
+        projectId: project.id,
+        reasons: freshness.reasons,
+      })}`,
+    );
+    return null;
+  }
+
+  private readProjectRunnerSnapshot(
+    project: Project,
+    warnings?: string[],
+  ): RunnerOrchestrationConfig | null {
+    if (!this.runnerOrchestration) {
+      return null;
+    }
+    const projectConfig = (project.configJson ?? {}) as Record<string, unknown>;
+    const containerRuntime = this.toObjectRecord(projectConfig.containerRuntime);
+    const orchestration = this.toObjectRecord(containerRuntime?.runnerOrchestration);
+    if (!orchestration) {
+      return null;
+    }
+    const snapshot = this.runnerOrchestration.normalizeConfigSnapshot(orchestration);
+    if (!snapshot) {
+      return null;
+    }
+    if (
+      !this.isRunnablePreviewOrchestration(
+        snapshot as Record<string, unknown>,
+        project,
+      )
+    ) {
+      const freshness = assessRunnerSnapshotFreshness({
+        runnerOrchestration: snapshot as Record<string, unknown>,
+        subRepos: resolveSubRepoConfigs(project.configJson),
+      });
+      warnings?.push(
+        `projectConfig stale: ${freshness.reasons.join(', ') || 'unknown'}`,
+      );
+      this.logger.warn(
+        `workspace_native_project_runner_snapshot_stale ${JSON.stringify({
+          projectId: project.id,
+          reasons: freshness.reasons,
+        })}`,
+      );
+      return null;
+    }
+    return snapshot;
+  }
+
+  private readTaskRunnerFingerprint(task: Task): string | null {
+    const runnerState = this.toObjectRecord(
+      (task.configJson as Record<string, unknown> | null | undefined)?.runner,
+    );
+    const fingerprint = runnerState?.fingerprint;
+    return typeof fingerprint === 'string' && fingerprint.trim()
+      ? fingerprint.trim()
+      : null;
+  }
+
+  private async readBusinessLineRunnerSnapshot(
+    businessLineId: string,
+    project?: Project,
+    warnings?: string[],
+  ): Promise<RunnerOrchestrationConfig | null> {
+    if (!this.businessLineRepository || !this.runnerOrchestration) {
+      return null;
+    }
+
+    const businessLine =
+      await this.businessLineRepository.findById(businessLineId);
+    const config = (businessLine?.configJson ??
+      {}) as Partial<BusinessLineWorkspaceConfig>;
+    const status = config.runnerConfigStatus ?? '';
+    if (status !== 'ready') {
+      warnings?.push(`businessLineCache status=${status || 'unknown'}`);
+      return null;
+    }
+    const meta = this.toObjectRecord(
+      config.runnerConfigCacheMeta,
+    ) as RunnerConfigCacheMeta | null;
+    const snapshot = this.runnerOrchestration.normalizeConfigSnapshot(
+      this.toObjectRecord(config.runnerConfigCache),
+    );
+    if (!snapshot || !project) {
+      return snapshot;
+    }
+    if (
+      !this.isRunnablePreviewOrchestration(
+        {
+          ...(snapshot as Record<string, unknown>),
+          generatedMeta: {
+            ...(this.readGeneratedMeta(snapshot as Record<string, unknown>) ?? {}),
+            ...(meta ?? {}),
+          },
+        },
+        project,
+      )
+    ) {
+      const freshness = assessRunnerSnapshotFreshness({
+        runnerOrchestration: snapshot as Record<string, unknown>,
+        subRepos: resolveSubRepoConfigs(project.configJson),
+      });
+      warnings?.push(
+        `businessLineCache stale: ${freshness.reasons.join(', ') || 'unknown'}`,
+      );
+      return null;
+    }
+    if (meta?.verificationStatus && meta.verificationStatus !== 'passed') {
+      warnings?.push(`businessLineCache verification=${meta.verificationStatus}`);
+    }
+    if (meta?.coverageStatus && meta.coverageStatus !== 'valid') {
+      warnings?.push(`businessLineCache coverage=${meta.coverageStatus}`);
+    }
+    return snapshot;
+  }
+
+  private describeWorkspaceRunnerUnavailableReason(
+    project: Project,
+  ): string | null {
+    const projectConfig = (project.configJson ?? {}) as Record<string, unknown>;
+    const containerRuntime = this.toObjectRecord(projectConfig.containerRuntime);
+    const orchestration = this.toObjectRecord(containerRuntime?.runnerOrchestration);
+    if (orchestration) {
+      const freshness = assessRunnerSnapshotFreshness({
+        runnerOrchestration: orchestration,
+        subRepos: resolveSubRepoConfigs(project.configJson),
+      });
+      const meta = this.readGeneratedMeta(orchestration);
+      if (freshness.state !== 'usable') {
+        if (meta?.verificationStatus && meta.verificationStatus !== 'passed') {
+          return 'Runner 配置未通过验证，将以 core-only 模式启动；可通过重置配置恢复预览编排。';
+        }
+        if (meta?.coverageStatus && meta.coverageStatus !== 'valid') {
+          return 'Runner 配置覆盖不完整，将以 core-only 模式启动；可通过重置配置恢复预览编排。';
+        }
+        return '任务 Runner 配置结构已过期，将以 core-only 模式启动；可通过重置配置恢复预览编排。';
+      }
+    }
+    return '任务创建时未生成可用预览编排，将以 core-only 模式启动；可通过重置配置恢复预览编排。';
+  }
+
+  private buildResolvedOrchestrationResult(params: {
+    orchestration: RunnerOrchestrationConfig | null;
+    source: RunnerOrchestrationSource;
+    warnings?: string[];
+  }): ResolvedRunnerOrchestrationResult {
+    const previewConfig =
+      this.runnerOrchestration?.resolvePreviewConfigFromOrchestration(
+        params.orchestration,
+      ) ?? null;
+    const previewEnabled = Boolean(
+      params.orchestration?.services?.length && previewConfig,
+    );
+    return {
+      orchestration: params.orchestration,
+      source: params.source,
+      previewConfig: previewEnabled ? previewConfig : null,
+      previewEnabled,
+      coreMode: previewEnabled
+        ? TaskEnvironmentCoreMode.preview
+        : TaskEnvironmentCoreMode.coreOnly,
+      warnings: params.warnings ?? [],
+    };
+  }
+
+  private buildCoreOnlyOrchestration(): RunnerOrchestrationConfig {
+    return {
+      services: [],
+      routes: [],
+    };
+  }
+
+  private isRunnablePreviewOrchestration(
+    orchestration: Record<string, unknown>,
+    project: Project,
+  ): boolean {
+    if (orchestration.manuallyLocked === true) {
+      return Array.isArray(orchestration.services) && orchestration.services.length > 0;
+    }
+    const freshness = assessRunnerSnapshotFreshness({
+      runnerOrchestration: orchestration,
+      subRepos: resolveSubRepoConfigs(project.configJson),
+    });
+    return (
+      Array.isArray(orchestration.services) &&
+      orchestration.services.length > 0 &&
+      !freshness.reasons.includes('subrepo-fingerprint-mismatch')
+    );
+  }
+
+  private readGeneratedMeta(
+    orchestration: Record<string, unknown>,
+  ): RunnerConfigCacheMeta | null {
+    return this.toObjectRecord(orchestration.generatedMeta) as
+      | RunnerConfigCacheMeta
+      | null;
+  }
+
+  private toObjectRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
   }
 
   private async resolveRepositoryGitPath(

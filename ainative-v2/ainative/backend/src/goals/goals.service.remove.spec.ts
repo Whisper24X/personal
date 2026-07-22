@@ -45,6 +45,12 @@ describe('GoalsService.remove', () => {
       taskProvisioningService as never,
       {} as never,
       goalsMetrics,
+      {
+        branchIncludesTopLevelPrefixes: jest.fn(),
+        embedSubReposOntoBranch: jest.fn(),
+      } as never,
+      {} as never,
+      {} as never,
     );
 
     return {

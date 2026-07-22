@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { spawn } from 'child_process';
+import { access } from 'fs/promises';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -22,6 +23,10 @@ import { GitCreateBranchResultDto } from './dto/git-create-branch-result.dto';
 import { GitBranchMergeResultDto } from './dto/git-branch-merge-result.dto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectRepositoryWorkspaceService } from '../projects/project-repository-workspace.service';
+import { WorkspaceRepositoryService } from './workspace-repository.service';
+import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
+import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
+import { AccessService } from '../access/access.service';
 
 type GitCommitAuthor = {
   name: string;
@@ -38,52 +43,155 @@ export class GitService {
 
   constructor(
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
+    private readonly workspaceRepoService: WorkspaceRepositoryService,
+    private readonly projectRepository: ProjectRepository,
+    private readonly projectWorkspacePaths: ProjectWorkspacePathsService,
+    private readonly accessService: AccessService,
   ) {}
 
   async listBranches(
     projectId: string,
     currentUser: JwtPayloadType,
   ): Promise<GitBranchesDto> {
-    const { repositoryRoot, defaultBranch } = await this.resolveProjectContext(
-      projectId,
-      currentUser,
-      { syncRemote: true },
-    );
+    const ctx = await this.resolveBranchContext(projectId, currentUser, {
+      syncRemote: true,
+    });
+
+    if (!ctx.repositoryRoot) {
+      return {
+        defaultBranch: ctx.defaultBranch,
+        currentBranch: ctx.defaultBranch,
+        localBranches: [ctx.defaultBranch],
+        remoteBranches: [],
+      };
+    }
+
     const snapshot = await this.readBranchSnapshot(
-      repositoryRoot,
-      defaultBranch,
+      ctx.repositoryRoot,
+      ctx.defaultBranch,
     );
 
     return {
-      defaultBranch,
+      defaultBranch: ctx.defaultBranch,
       currentBranch: snapshot.currentBranch,
       localBranches: snapshot.localBranches,
       remoteBranches: snapshot.remoteBranches,
     };
   }
 
+  async listWorkspaceBranches(
+    businessLineId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitBranchesDto> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.read',
+    );
+
+    const workspaceProject =
+      await this.projectRepository.findWorkspaceManagedByBusinessLineId(
+        businessLineId,
+      );
+
+    if (!workspaceProject) {
+      const defaultBranch = this.workspaceRepoService.getBaseBranch();
+      return {
+        defaultBranch,
+        currentBranch: defaultBranch,
+        localBranches: [defaultBranch],
+        remoteBranches: [],
+      };
+    }
+
+    return this.listBranches(workspaceProject.id, currentUser);
+  }
+
   async listBranchesDetail(
     projectId: string,
     currentUser: JwtPayloadType,
   ): Promise<GitBranchesDetailDto> {
-    const { repositoryRoot, defaultBranch } = await this.resolveProjectContext(
-      projectId,
-      currentUser,
-      { syncRemote: true },
-    );
+    const ctx = await this.resolveBranchContext(projectId, currentUser, {
+      syncRemote: true,
+    });
+
+    if (!ctx.repositoryRoot) {
+      return {
+        branches: [
+          {
+            name: ctx.defaultBranch,
+            type: 'local' as const,
+            isCurrent: true,
+            ahead: 0,
+            behind: 0,
+            lastCommit: {
+              sha: '',
+              shortSha: '',
+              message: '仓库尚未同步',
+              author: '',
+              committedAt: new Date().toISOString(),
+            },
+          },
+        ],
+      };
+    }
+
     const snapshot = await this.readBranchSnapshot(
-      repositoryRoot,
-      defaultBranch,
+      ctx.repositoryRoot,
+      ctx.defaultBranch,
     );
     const branches = await this.readBranchDetails(
-      repositoryRoot,
-      defaultBranch,
+      ctx.repositoryRoot,
+      ctx.defaultBranch,
       snapshot,
     );
 
     return {
       branches,
     };
+  }
+
+  private async resolveBranchContext(
+    projectId: string,
+    currentUser: JwtPayloadType,
+    options: { syncRemote?: boolean } = {},
+  ): Promise<{ repositoryRoot: string | null; defaultBranch: string }> {
+    try {
+      const ctx = await this.resolveProjectContext(
+        projectId,
+        currentUser,
+        options,
+      );
+      return ctx;
+    } catch (err) {
+      this.logger.warn(
+        `resolveBranchContext failed for project ${projectId}, ` +
+          `will try local state: ${err instanceof Error ? err.message : String(err)}`,
+      );
+
+      const project = await this.projectRepository.findById(projectId);
+      if (!project) {
+        return {
+          repositoryRoot: null,
+          defaultBranch: this.fallbackDefaultBranch,
+        };
+      }
+
+      const repositoryRoot =
+        this.projectWorkspacePaths.resolveRepositoryRoot(project);
+      const defaultBranch =
+        this.projectRepositoryWorkspaceService.resolveEffectiveDefaultBranch(
+          project,
+        ) || this.fallbackDefaultBranch;
+
+      const hasLocalGit = await this.checkPathExists(
+        path.join(repositoryRoot, '.git'),
+      );
+      if (hasLocalGit) {
+        return { repositoryRoot, defaultBranch };
+      }
+      return { repositoryRoot: null, defaultBranch };
+    }
   }
 
   async pullMain(
@@ -919,7 +1027,9 @@ export class GitService {
       { syncRemote: false },
       async ({ project, repositoryRoot }) => {
         const defaultBranch =
-          project.defaultBranch?.trim() || this.fallbackDefaultBranch;
+          this.projectRepositoryWorkspaceService.resolveEffectiveDefaultBranch(
+            project,
+          ) || this.fallbackDefaultBranch;
 
         const snapshot = await this.readBranchSnapshot(
           repositoryRoot,
@@ -1501,7 +1611,9 @@ export class GitService {
       );
 
     const defaultBranch =
-      project.defaultBranch?.trim() || this.fallbackDefaultBranch;
+      this.projectRepositoryWorkspaceService.resolveEffectiveDefaultBranch(
+        project,
+      ) || this.fallbackDefaultBranch;
 
     return {
       repositoryRoot,
@@ -1964,6 +2076,15 @@ export class GitService {
     }
 
     return `${summary}: ${normalizedDetails.slice(0, 500)}...`;
+  }
+
+  private async checkPathExists(p: string): Promise<boolean> {
+    try {
+      await access(p);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async runCommand(

@@ -6,7 +6,8 @@ import type {
   GoalSourceDoc,
   PlanGranularity,
 } from '@/types/api/goals'
-import type { Task } from '@/types/api/tasks'
+import type { ProjectDocContent } from '@/types/api/project-docs'
+import type { Task, TaskGitActionResult } from '@/types/api/tasks'
 import { apiHttp, type InfinityPaginationResponse } from './http'
 
 export const goalsApi = {
@@ -33,7 +34,8 @@ export const goalsApi = {
   },
 
   create(payload: {
-    projectId: string
+    projectId?: string
+    businessLineId?: string
     title: string
     gitBaseBranch: string
     summary?: string
@@ -106,6 +108,14 @@ export const goalsApi = {
     )
   },
 
+  readPrdDoc(goalId: string) {
+    return apiHttp.get<ProjectDocContent>(`/goals/${goalId}/prd-doc`)
+  },
+
+  updatePrdDoc(goalId: string, payload: { content: string }) {
+    return apiHttp.patch<ProjectDocContent>(`/goals/${goalId}/prd-doc`, payload)
+  },
+
   generatePlan(
     goalId: string,
     payload?: {
@@ -139,6 +149,11 @@ export const goalsApi = {
       message: string
       conflicts?: string[]
     }>(`/goals/${goalId}/plan-items/${planItemId}/merge-into-goal`, {})
+  },
+
+  /** 将需求分支推送到 workspace-native 子仓 */
+  pushSubrepos(goalId: string) {
+    return apiHttp.post<TaskGitActionResult>(`/goals/${goalId}/push-subrepos`, {})
   },
 
   patchPlanSubTask(

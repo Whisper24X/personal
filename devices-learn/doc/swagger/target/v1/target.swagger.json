@@ -1,0 +1,284 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "target/v1/target.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Target"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/target/school/scoresTotalSubject": {
+      "get": {
+        "summary": "查询学校各科满分分数选项",
+        "operationId": "Target_GetSchoolScoresTotalSubject",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetSchoolScoresTotalSubjectReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "schoolId",
+            "description": "学校配置ID",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Target"
+        ]
+      }
+    },
+    "/devices-learn/target/user/create": {
+      "post": {
+        "summary": "创建用户学习目标",
+        "operationId": "Target_CreateUserLearnTarget",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UserLearnTargetInfo"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateUserLearnTargetRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Target"
+        ]
+      }
+    },
+    "/devices-learn/target/user/info": {
+      "get": {
+        "summary": "查询用户学习目标",
+        "operationId": "Target_GetUserLearnTarget",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UserLearnTargetInfo"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Target"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "targetv1ScoresTotalSubject": {
+      "type": "object",
+      "properties": {
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "subjectName": {
+          "type": "string",
+          "title": "学科名称"
+        },
+        "scoresTotal": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科总分"
+        }
+      }
+    },
+    "v1CreateUserLearnTargetRequest": {
+      "type": "object",
+      "properties": {
+        "schoolId": {
+          "type": "string",
+          "title": "学校配置ID"
+        },
+        "schoolName": {
+          "type": "string",
+          "title": "学校名称"
+        },
+        "schoolSystem": {
+          "type": "string",
+          "format": "int64",
+          "title": "学制年限"
+        },
+        "scoresAdmission": {
+          "type": "string",
+          "format": "int64",
+          "title": "最近一年录取分数线"
+        },
+        "scoresTotalSubject": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/targetv1ScoresTotalSubject"
+          },
+          "title": "各科满分分数"
+        }
+      }
+    },
+    "v1GetSchoolScoresTotalSubjectReply": {
+      "type": "object",
+      "properties": {
+        "scoresTotalSubject": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1GetSchoolScoresTotalSubjectReplyScoresTotalSubject"
+          },
+          "title": "各科满分分数选项列表"
+        }
+      }
+    },
+    "v1GetSchoolScoresTotalSubjectReplyScoresTotalSubject": {
+      "type": "object",
+      "properties": {
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "subjectName": {
+          "type": "string",
+          "title": "学科名称"
+        },
+        "scoresOption": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": "学科满分分数选项"
+        }
+      }
+    },
+    "v1UserLearnTargetInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "记录ID"
+        },
+        "userId": {
+          "type": "string",
+          "title": "用户ID"
+        },
+        "schoolId": {
+          "type": "string",
+          "title": "学校配置ID"
+        },
+        "schoolName": {
+          "type": "string",
+          "title": "学校名称"
+        },
+        "schoolSystem": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学制年限"
+        },
+        "scoresTotal": {
+          "type": "integer",
+          "format": "int32",
+          "title": "最近一年中考总分"
+        },
+        "scoresAdmission": {
+          "type": "integer",
+          "format": "int32",
+          "title": "最近一年录取分数线"
+        },
+        "scoresTarget": {
+          "type": "integer",
+          "format": "int32",
+          "title": "用户目标分数线"
+        },
+        "scoresTotalSubject": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/targetv1ScoresTotalSubject"
+          },
+          "title": "各科满分分数"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态 -1:删除 0:无效 1:有效"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      }
+    }
+  }
+}

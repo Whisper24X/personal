@@ -32,6 +32,39 @@ export enum TaskPreviewStatus {
   failed = 'failed',
 }
 
+export enum TaskEnvironmentCoreMode {
+  preview = 'preview',
+  coreOnly = 'core-only',
+}
+
+export enum TaskEnvironmentServicePhase {
+  pending = 'pending',
+  installing = 'installing',
+  starting = 'starting',
+  listening = 'listening',
+  failed = 'failed',
+  unknown = 'unknown',
+}
+
+export enum TaskEnvironmentDiagnosticStatus {
+  passed = 'passed',
+  failed = 'failed',
+  skipped = 'skipped',
+}
+
+export enum TaskWorkspaceStatus {
+  provisioning = 'provisioning',
+  ready = 'ready',
+  failed = 'failed',
+}
+
+export enum TaskWorkspaceSnapshotStatus {
+  pending = 'pending',
+  pushing = 'pushing',
+  pushed = 'pushed',
+  failed = 'failed',
+}
+
 export class TaskEnvironmentStepDto {
   @ApiProperty({ type: String })
   key: string;
@@ -66,6 +99,74 @@ export class TaskEnvironmentPreviewDto {
     enumName: 'TaskPreviewStatus',
   })
   status: TaskPreviewStatus;
+
+  @ApiPropertyOptional({ type: Boolean })
+  partial?: boolean;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  reason?:
+    | 'http-ready'
+    | 'port-listening-only'
+    | 'unavailable'
+    | 'failed'
+    | null;
+}
+
+export class TaskEnvironmentServiceStatusDto {
+  @ApiProperty({ type: String })
+  name: string;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  port?: number | null;
+
+  @ApiProperty({
+    enum: TaskEnvironmentServicePhase,
+    enumName: 'TaskEnvironmentServicePhase',
+  })
+  phase: TaskEnvironmentServicePhase;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  message?: string | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  exitCode?: number | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  updatedAt?: string | null;
+
+  @ApiPropertyOptional({ type: Boolean })
+  isPrimaryPreview?: boolean;
+}
+
+export class TaskEnvironmentRouteDiagnosticDto {
+  @ApiProperty({ type: String })
+  path: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  service?: string | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  port?: number | null;
+
+  @ApiProperty({
+    enum: TaskEnvironmentDiagnosticStatus,
+    enumName: 'TaskEnvironmentDiagnosticStatus',
+  })
+  status: TaskEnvironmentDiagnosticStatus;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  statusCode?: number | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  error?: string | null;
+}
+
+export class TaskEnvironmentStartupFailureDto {
+  @ApiProperty({ type: TaskEnvironmentServiceStatusDto, isArray: true })
+  services: TaskEnvironmentServiceStatusDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  lastError?: string | null;
 }
 
 export class TaskEnvironmentDto {
@@ -90,11 +191,67 @@ export class TaskEnvironmentDto {
   @ApiProperty({ type: Date })
   updatedAt: Date;
 
+  @ApiPropertyOptional({
+    enum: TaskWorkspaceStatus,
+    enumName: 'TaskWorkspaceStatus',
+    nullable: true,
+  })
+  workspaceStatus?: TaskWorkspaceStatus | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  workspaceError?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  workspaceStage?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  workspaceMessage?: string | null;
+
+  @ApiPropertyOptional({
+    enum: TaskWorkspaceSnapshotStatus,
+    enumName: 'TaskWorkspaceSnapshotStatus',
+    nullable: true,
+  })
+  workspaceSnapshotStatus?: TaskWorkspaceSnapshotStatus | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  workspaceSnapshotError?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  workspaceSnapshotPushedAt?: string | null;
+
   @ApiPropertyOptional({ type: TaskEnvironmentRuntimeDto, nullable: true })
   runtime?: TaskEnvironmentRuntimeDto | null;
 
   @ApiProperty({ type: TaskEnvironmentPreviewDto })
   preview: TaskEnvironmentPreviewDto;
+
+  @ApiPropertyOptional({
+    enum: TaskEnvironmentCoreMode,
+    enumName: 'TaskEnvironmentCoreMode',
+    nullable: true,
+  })
+  coreMode?: TaskEnvironmentCoreMode | null;
+
+  @ApiPropertyOptional({
+    type: TaskEnvironmentServiceStatusDto,
+    isArray: true,
+    nullable: true,
+  })
+  serviceStatuses?: TaskEnvironmentServiceStatusDto[] | null;
+
+  @ApiPropertyOptional({
+    type: TaskEnvironmentRouteDiagnosticDto,
+    isArray: true,
+    nullable: true,
+  })
+  routeDiagnostics?: TaskEnvironmentRouteDiagnosticDto[] | null;
+
+  @ApiPropertyOptional({
+    type: TaskEnvironmentStartupFailureDto,
+    nullable: true,
+  })
+  startupFailureSnapshot?: TaskEnvironmentStartupFailureDto | null;
 
   @ApiProperty({ type: TaskEnvironmentStepDto, isArray: true })
   steps: TaskEnvironmentStepDto[];

@@ -220,6 +220,11 @@ export const ACCESS_CAPABILITY_CONFIG = {
     description: '任务管理项可用',
     scope: 'project',
   },
+  'project.task.manage': {
+    label: '任务管理',
+    description: '创建、编辑、删除任务',
+    scope: 'project',
+  },
   'project.kanban.read': {
     label: '看板',
     description: '看板管理项可用',
@@ -437,7 +442,7 @@ export const BUTTON_ACCESS_CONFIG = {
   },
   deleteTask: {
     label: '删除任务',
-    capabilities: ['project.task.read'],
+    capabilities: ['project.task.manage'],
   },
   replyTask: {
     label: '补充任务信息',

@@ -30,9 +30,11 @@ import {
   ALL_BUSINESS_LINE_CAPABILITIES,
   ALL_PROJECT_CAPABILITIES,
   BUSINESS_LINE_CREATE_CAPABILITY,
+  PROJECT_ROLE_CAPABILITIES,
   normalizeBusinessLineCapabilities,
   normalizeProjectCapabilities,
 } from './access.constants';
+import { ProjectMemberRole } from '../projects/dto/project-member-role.enum';
 
 @Injectable()
 export class AccessService {
@@ -113,6 +115,7 @@ export class AccessService {
 
       let resolvedBusinessLineId = query.businessLineId;
       const resolvedProjectId = query.projectId;
+      let resolvedProject: Project | null = null;
       let businessRole: string | null = null;
       let projectRole: string | null = null;
 
@@ -147,6 +150,7 @@ export class AccessService {
         if (!project) {
           throw new NotFoundException('Project not found');
         }
+        resolvedProject = project;
 
         if (
           resolvedBusinessLineId &&
@@ -168,8 +172,17 @@ export class AccessService {
           const isVisibleByProject = projectMembershipByProjectId.has(
             project.id,
           );
+          const hasBusinessLineMembership =
+            businessMembershipByBusinessLineId.has(project.businessLineId);
+          const isWorkspaceManagedVisible =
+            this.isWorkspaceManagedProject(project) &&
+            hasBusinessLineMembership;
 
-          if (!isVisibleByBusinessLine && !isVisibleByProject) {
+          if (
+            !isVisibleByBusinessLine &&
+            !isVisibleByProject &&
+            !isWorkspaceManagedVisible
+          ) {
             throw new ForbiddenException('forbiddenProject');
           }
         }
@@ -238,6 +251,8 @@ export class AccessService {
         } else {
           const membership =
             projectMembershipByProjectId.get(resolvedProjectId);
+          const isWorkspaceManaged =
+            resolvedProject && this.isWorkspaceManagedProject(resolvedProject);
           projectRole = membership
             ? await diagnostics.measure(
                 'projectRole',
@@ -255,11 +270,19 @@ export class AccessService {
                   projectRoleName: result ?? null,
                 }),
               )
-            : null;
+            : isWorkspaceManaged && businessRole
+              ? this.resolveWorkspaceManagedProjectRole(businessRole)
+              : null;
 
-          for (const capability of projectCapabilityMap.get(
-            resolvedProjectId,
-          ) ?? []) {
+          const projectCapabilities =
+            projectCapabilityMap.get(resolvedProjectId) ??
+            (isWorkspaceManaged && resolvedBusinessLineId
+              ? this.resolveWorkspaceManagedProjectCapabilities(
+                  businessCapabilityMap.get(resolvedBusinessLineId) ?? [],
+                )
+              : []);
+
+          for (const capability of projectCapabilities) {
             capabilities.add(capability);
           }
         }
@@ -608,6 +631,43 @@ export class AccessService {
       'project.automation.view',
       'project.workflow.view',
     ].includes(capability);
+  }
+
+  private isWorkspaceManagedProject(project: Project): boolean {
+    const config = project.configJson;
+    return (
+      Boolean(config && typeof config === 'object') &&
+      (config as Record<string, unknown>).workspaceManaged === true
+    );
+  }
+
+  private resolveWorkspaceManagedProjectCapabilities(
+    businessCapabilities: string[],
+  ): string[] {
+    const canManageProjects = businessCapabilities.some((capability) =>
+      [
+        'businessLine.project.list.all',
+        'businessLine.project.create',
+        'businessLine.project.update',
+        'businessLine.project.delete',
+      ].includes(capability),
+    );
+
+    if (canManageProjects) {
+      return [...ALL_PROJECT_CAPABILITIES];
+    }
+
+    return normalizeProjectCapabilities(
+      PROJECT_ROLE_CAPABILITIES[ProjectMemberRole.viewer],
+    );
+  }
+
+  private resolveWorkspaceManagedProjectRole(
+    businessRole: string,
+  ): ProjectMemberRole {
+    return ['owner', 'admin'].includes(businessRole)
+      ? ProjectMemberRole.owner
+      : ProjectMemberRole.viewer;
   }
 
   private async resolveVisibleProjectIds({

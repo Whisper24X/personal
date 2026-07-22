@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package api.user.v1;
+
+import "descriptor/descriptor.proto";
+import "google/api/annotations.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/user/v1;v1";
+
+service User {
+  // 查询用户是否能够续购
+  rpc QueryIfUserCanRenewal(QueryIfUserCanRenewalReq) returns (QueryIfUserCanRenewalReply) {
+    option (google.api.http) = {get: "/devices-learn/user/v1/queryIfUserCanRenewal"};
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 查询用户学霸之魂基础信息
+  rpc QueryScholarBasicInfo(QueryScholarBasicInfoReq) returns (QueryScholarBasicInfoReply) {
+    option (google.api.http) = {get: "/devices-learn/user/v1/queryScholarBasicInfo"};
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+}
+
+message QueryScholarBasicInfoReq {}
+
+message QueryScholarBasicInfoReply {
+  string activeStatus = 1; // 学霸之魂状态: SCHOLAR_OFFLINE: 唤醒状态-沉睡; SCHOLAR_INACTIVE: 唤醒状态-未唤醒; SCHOLAR_ACTIVE: 唤醒状态-已唤醒
+  int32 continuedDays = 2; // 学霸之魂连续唤醒天数
+}
+
+message QueryIfUserCanRenewalReq {}
+
+message QueryIfUserCanRenewalReply {
+  bool canRenewal = 1; // 是否可以续费
+}

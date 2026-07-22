@@ -1,0 +1,23 @@
+schema: spec-driven
+
+context: |
+  项目：谛听 diting — local-first AI 工程执行控制器
+  栈：TypeScript、Fastify、packages/core、@diting/plugin-api、SQLite(node:sqlite)、React
+  开发规范索引：docs/dev-spec/README.md（Git、OpenSpec 工作流、双轨文档、插件、工作流提示词、测试）
+  工程规范真源：openspec/specs/（已实现行为，SHALL/MUST）
+  Git 提交门禁：docs/dev-spec/repo/git-commit-quality-gates.md（husky + commitlint + 根 quality-gate）
+  Git 提交说明格式：docs/dev-spec/repo/git-commit-convention.md（Conventional Commits，Agent 起草 commit 前须预检）
+  参考文档：docs/architecture/diting-*.md（叙事与运维，README 入口）
+  目标与差距：openspec/design/；待办：docs/architecture/diting-open-tasks.md
+  插件默认栈：log → task-integration → environment → execution(codex+cursor) → quality → observability-governance
+  外置插件：DITING_PLUGIN_*_PACKAGE 非空时整 kind 替换内置实现
+  归档后叙事同步：openspec-archive-sync-docs skill（配合 openspec-archive-change）
+
+rules:
+  specs:
+    - 正文中文；标识符、路径、环境变量、HTTP 路径保留英文
+    - 每条 Requirement 使用 SHALL/MUST，且至少一个 #### Scenario
+    - 未实现能力不得写入 spec，应写在 openspec/design/ 或 diting-open-tasks.md
+    - 变更 spec 时评估是否需同步更新对应 docs/architecture/diting-*.md
+  proposal:
+    - Capabilities 节必须列出新建/修改的 spec 目录名（kebab-case）

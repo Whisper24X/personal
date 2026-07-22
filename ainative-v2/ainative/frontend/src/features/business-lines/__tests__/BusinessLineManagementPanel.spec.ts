@@ -21,6 +21,7 @@ const {
   },
   businessLinesApi: {
     detail: vi.fn(),
+    runnerStatus: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     updateDefaultAgentCliTool: vi.fn(),
@@ -223,6 +224,16 @@ beforeEach(() => {
     description: 'Retail team',
     defaultAgentCliToolId: null,
   })
+  businessLinesApi.runnerStatus.mockResolvedValue({
+    status: 'ready',
+    statusLabel: 'verified ready',
+    source: 'fallback',
+    verificationStatus: 'passed',
+    verificationDurationMs: 120,
+    probeStatus: 'passed',
+    probeDurationMs: 120,
+    warningCount: 0,
+  })
 
   businessLinesApi.listCustomRoles.mockResolvedValue([
     {
@@ -339,6 +350,103 @@ beforeEach(() => {
 })
 
 describe('BusinessLineManagementPanel', () => {
+  it('shows runner verification status summary', async () => {
+    businessLinesApi.runnerStatus.mockResolvedValue({
+      status: 'needsManualReview',
+      statusLabel: 'needs manual review',
+      source: 'ai-full-scan',
+      verificationStatus: 'failed',
+      verificationError: 'preview unreachable',
+      probeStatus: 'failed',
+      routeProbeResults: [
+        {
+          path: '/trip-shadow/',
+          service: 'trip-shadow',
+          port: 5173,
+          status: 'failed',
+          statusCode: 502,
+          error: 'HTTP 502',
+        },
+      ],
+      fullScanAttempted: true,
+      warningCount: 1,
+      latestWarning: 'Runtime probe failed',
+    })
+
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [createPinia()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(businessLinesApi.runnerStatus).toHaveBeenCalledWith('line-1')
+    expect(wrapper.text()).toContain('Runner Verification')
+    expect(wrapper.text()).toContain('Runner 自动验证失败')
+    expect(wrapper.text()).toContain('preview unreachable')
+    expect(wrapper.text()).toContain('verification: failed')
+    expect(wrapper.text()).toContain('full scan: attempted')
+    expect(wrapper.text()).toContain('/trip-shadow/')
+    expect(wrapper.text()).toContain('service=trip-shadow')
+    expect(wrapper.text()).toContain('HTTP 502')
+  })
+
+  it('polls runner status while verification is running and stops at ready', async () => {
+    vi.useFakeTimers()
+    businessLinesApi.runnerStatus
+      .mockResolvedValueOnce({
+        status: 'verifying',
+        statusLabel: 'verifying',
+        source: 'ai-full-scan',
+        verificationStatus: 'running',
+        warningCount: 0,
+      })
+      .mockResolvedValueOnce({
+        status: 'ready',
+        statusLabel: 'verified ready',
+        source: 'ai-full-scan',
+        verificationStatus: 'passed',
+        probeStatus: 'passed',
+        warningCount: 0,
+      })
+
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [createPinia()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    try {
+      await flushPromises()
+
+      expect(businessLinesApi.runnerStatus).toHaveBeenCalledTimes(1)
+      expect(wrapper.text()).toContain('Runner 后台验证中')
+
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+
+      expect(businessLinesApi.runnerStatus).toHaveBeenCalledTimes(2)
+      expect(wrapper.text()).toContain('Runner verified ready')
+
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+
+      expect(businessLinesApi.runnerStatus).toHaveBeenCalledTimes(2)
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it('shows a close icon in page mode and returns to home', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {
@@ -568,7 +676,7 @@ describe('BusinessLineManagementPanel', () => {
     expect(wrapper.text()).toContain('项目')
     expect(wrapper.text()).not.toContain('成员')
     expect(wrapper.text()).toContain('暂无查看项目列表权限')
-    expect(wrapper.text()).toContain('新建项目')
+    expect(wrapper.text()).toContain('新增项目')
     expect(projectsApi.list).not.toHaveBeenCalled()
   })
 
@@ -624,7 +732,7 @@ describe('BusinessLineManagementPanel', () => {
 
     const newProjectButton = wrapper
       .findAll('button')
-      .find((button) => button.text().trim() === '新建项目')
+      .find((button) => button.text().trim() === '新增项目')
 
     expect(newProjectButton).toBeDefined()
     await newProjectButton!.trigger('click')
@@ -636,6 +744,10 @@ describe('BusinessLineManagementPanel', () => {
       description: 'Console app',
       gitUrl: 'git@gitlab.example.com:group/guard-console.git',
       defaultBranch: 'main',
+      configJson: {
+        subtreeMode: 'workspace-native',
+        subRepos: undefined,
+      },
     })
     await flushPromises()
 
@@ -645,6 +757,10 @@ describe('BusinessLineManagementPanel', () => {
       description: 'Console app',
       gitUrl: 'git@gitlab.example.com:group/guard-console.git',
       defaultBranch: 'main',
+      configJson: {
+        subtreeMode: 'workspace-native',
+        subRepos: undefined,
+      },
     })
     expect(wrapper.emitted('request-refresh')).toBeTruthy()
   })
@@ -691,7 +807,7 @@ describe('BusinessLineManagementPanel', () => {
     expect(wrapper.findComponent({ name: 'ProjectFormModal' }).props('open')).toBe(true)
   })
 
-  it('opens runtime settings modal from the projects tab and saves configJson overrides', async () => {
+  it('opens database isolation modal from the projects tab', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {
       props: buildProps(true),
@@ -704,43 +820,19 @@ describe('BusinessLineManagementPanel', () => {
     })
     await flushPromises()
 
-    const runtimeSettingsButton = wrapper
+    const dbSettingsButton = wrapper
       .findAll('button')
-      .find((button) => button.text().trim() === '容器设置')
+      .find((button) => button.text().trim() === '数据库配置')
 
-    expect(runtimeSettingsButton).toBeDefined()
-    await runtimeSettingsButton!.trigger('click')
+    expect(dbSettingsButton).toBeDefined()
+    await dbSettingsButton!.trigger('click')
     await flushPromises()
 
-    const runtimeSettingsModal = wrapper.findComponent({
-      name: 'ProjectRuntimeSettingsModal',
+    const dbSettingsModal = wrapper.findComponent({
+      name: 'DatabaseIsolationSettingsModal',
     })
-    expect(runtimeSettingsModal.exists()).toBe(true)
-
-    runtimeSettingsModal.vm.$emit('submit', {
-      containerRuntime: {
-        env: {
-          NODE_ENV: 'development',
-        },
-      },
-    })
-    await flushPromises()
-
-    expect(projectsApi.update).toHaveBeenCalledWith('project-1', {
-      name: 'Guard Backend',
-      description: 'Main service',
-      gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
-      defaultBranch: 'main',
-      configJson: {
-        containerRuntime: {
-          env: {
-            NODE_ENV: 'development',
-          },
-        },
-      },
-    })
-    expect(wrapper.findComponent({ name: 'ProjectRuntimeSettingsModal' }).props('open')).toBe(false)
-    expect(wrapper.emitted('request-refresh')).toBeTruthy()
+    expect(dbSettingsModal.exists()).toBe(true)
+    expect(dbSettingsModal.props('open')).toBe(true)
   })
 
   it('shows clearer project action labels and runtime summary on project cards', async () => {
@@ -756,8 +848,8 @@ describe('BusinessLineManagementPanel', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('容器设置：当前使用默认容器配置')
-    expect(wrapper.text()).toContain('容器设置')
+    expect(wrapper.text()).toContain('服务编排：自动生成')
+    expect(wrapper.text()).toContain('数据库配置')
     expect(wrapper.text()).toContain('编辑基础信息')
   })
 

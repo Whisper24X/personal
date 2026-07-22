@@ -171,11 +171,14 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
       runtimeConfig.env = parsedEnv.env
     }
 
-    const parsedRunnerOrchestration = parseRunnerOrchestrationInput(
-      form.containerRunnerOrchestration,
-    )
-    if (parsedRunnerOrchestration.config) {
-      runtimeConfig.runnerOrchestration = parsedRunnerOrchestration.config
+    // Only include runnerOrchestration if user explicitly provided JSON in the form.
+    // The field is hidden in normal UI flow, so this preserves existing auto-generated config.
+    const rawOrchestration = form.containerRunnerOrchestration.trim()
+    if (rawOrchestration) {
+      const parsedRunnerOrchestration = parseRunnerOrchestrationInput(rawOrchestration)
+      if (parsedRunnerOrchestration.config) {
+        runtimeConfig.runnerOrchestration = parsedRunnerOrchestration.config
+      }
     }
 
     return Object.keys(runtimeConfig).length > 0 ? runtimeConfig : undefined
@@ -199,12 +202,33 @@ export const useProjectContainerRuntimeForm = (form: ProjectContainerRuntimeForm
 
   const buildProjectConfigJson = (currentConfigJson?: Record<string, unknown> | null) => {
     const nextConfigJson = isObjectRecord(currentConfigJson) ? { ...currentConfigJson } : {}
-    delete nextConfigJson.runnerTemplate
-    delete nextConfigJson.runnerImageBuild
-    const containerRuntime = buildContainerRuntimeConfig()
+    const formRuntime = buildContainerRuntimeConfig()
 
-    if (containerRuntime) {
-      nextConfigJson.containerRuntime = containerRuntime
+    const existingRuntime = isObjectRecord(nextConfigJson.containerRuntime)
+      ? (nextConfigJson.containerRuntime as Record<string, unknown>)
+      : {}
+
+    // Merge strategy: start with all existing containerRuntime fields (preserves
+    // runnerOrchestration, ephemeralMcp, databaseIsolation, etc.), then overlay
+    // only the fields this form manages (env, and optionally runnerOrchestration).
+    const merged: Record<string, unknown> = { ...existingRuntime }
+
+    if (formRuntime) {
+      if (formRuntime.env) {
+        merged.env = formRuntime.env
+      } else {
+        delete merged.env
+      }
+      if (formRuntime.runnerOrchestration) {
+        merged.runnerOrchestration = formRuntime.runnerOrchestration
+      }
+    } else {
+      // Form produced no env and no orchestration — clear env but keep everything else
+      delete merged.env
+    }
+
+    if (Object.keys(merged).length > 0) {
+      nextConfigJson.containerRuntime = merged
     } else {
       delete nextConfigJson.containerRuntime
     }

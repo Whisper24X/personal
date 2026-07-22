@@ -6,8 +6,10 @@ export class BusinessLineMapper {
     const domainEntity = new BusinessLine();
     domainEntity.id = raw.id;
     domainEntity.name = raw.name;
+    domainEntity.slug = raw.slug;
     domainEntity.description = raw.description;
     domainEntity.defaultAgentCliToolId = raw.defaultAgentCliToolId;
+    domainEntity.configJson = raw.configJson;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
 
@@ -20,9 +22,11 @@ export class BusinessLineMapper {
       persistenceEntity.id = domainEntity.id;
     }
     persistenceEntity.name = domainEntity.name;
+    persistenceEntity.slug = domainEntity.slug;
     persistenceEntity.description = domainEntity.description;
     persistenceEntity.defaultAgentCliToolId =
       domainEntity.defaultAgentCliToolId;
+    persistenceEntity.configJson = domainEntity.configJson;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
 

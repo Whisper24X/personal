@@ -14,7 +14,6 @@ const props = defineProps<{
   canCreateProjectItem: boolean
   canUpdateProjectItem: boolean
   canDeleteProjectItem: boolean
-  summarizeProjectRuntime: (project: ProjectItem) => string
 }>()
 
 const emit = defineEmits<{
@@ -79,7 +78,7 @@ const resolveProvisioningStatus = (
             :disabled="!activeLineId"
             @click="emit('create-project')"
           >
-            新建项目
+            新增项目
           </button>
         </div>
       </div>
@@ -101,7 +100,7 @@ const resolveProvisioningStatus = (
           v-model="projectQuery"
           type="search"
           class="mt-4 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-          placeholder="按项目名 / ID / 描述 / Git 地址搜索"
+          placeholder="按项目名 / ID / 描述搜索"
         />
 
         <div v-if="loadingProjects" class="mt-4 text-sm text-muted-foreground">加载项目中...</div>
@@ -141,19 +140,14 @@ const resolveProvisioningStatus = (
                   </span>
                 </div>
                 <p class="text-xs text-muted-foreground">{{ project.description || '暂无描述' }}</p>
-                <p class="font-mono text-[11px] text-muted-foreground">{{ project.gitUrl }}</p>
-                <p class="text-xs text-muted-foreground">默认分支：{{ project.defaultBranch }}</p>
                 <p
-                  v-if="
-                    resolveProvisioningStatus(project) === 'failed' &&
-                    project.repositoryProvisioningError
-                  "
+                  v-if="resolveProvisioningStatus(project) === 'failed' && project.repositoryProvisioningError"
                   class="text-xs text-destructive"
                 >
                   失败原因：{{ project.repositoryProvisioningError }}
                 </p>
                 <p class="text-xs text-muted-foreground">
-                  容器设置：{{ summarizeProjectRuntime(project) }}
+                  服务编排：自动生成
                 </p>
               </div>
 
@@ -169,14 +163,6 @@ const resolveProvisioningStatus = (
                   @click.stop="emit('retry-provisioning', project)"
                 >
                   重试仓库准备
-                </button>
-                <button
-                  v-if="canUpdateProjectItem"
-                  type="button"
-                  class="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
-                  @click.stop="emit('open-runtime', project)"
-                >
-                  容器设置
                 </button>
                 <button
                   v-if="canUpdateProjectItem"

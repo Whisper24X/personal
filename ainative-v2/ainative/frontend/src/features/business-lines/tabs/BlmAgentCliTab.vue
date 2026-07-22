@@ -69,7 +69,7 @@ const currentDefaultAgentCliToolLabel = computed(() => {
         <div>
           <p class="text-sm font-semibold">默认 Agent CLI</p>
           <p class="mt-1 text-xs text-muted-foreground">
-            任务创建、Goal 创建和工作流节点新建时会优先选中这个工具。
+            任务创建、Goal 创建、工作流节点新建和 Runner 配置生成时会优先选中这个工具；若存在 Runner generation 专用配置，则以专用配置为准。
           </p>
         </div>
         <div class="text-sm font-semibold text-foreground">

@@ -23,6 +23,8 @@ import { TaskNode } from './domain/task-node';
 import { SlowApiDiagnosticsSession } from '../observability/slow-api-diagnostics';
 import { TaskEnvironmentDto } from './dto/task-environment.dto';
 import { TaskEnvironmentService } from './application/task-environment.service';
+import { ReportPreviewDiagnosticDto } from './dto/report-preview-diagnostic.dto';
+import { TaskPreviewDiagnosticService } from './application/task-preview-diagnostic.service';
 
 @Injectable()
 export class TasksService implements OnModuleInit, OnModuleDestroy {
@@ -35,6 +37,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     private readonly taskStatusService: TaskStatusService,
     private readonly taskOutputService: TaskOutputService,
     private readonly taskEnvironmentService: TaskEnvironmentService,
+    private readonly taskPreviewDiagnosticService: TaskPreviewDiagnosticService,
   ) {}
 
   onModuleInit(): void {
@@ -209,6 +212,18 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     currentUser: JwtPayloadType,
   ): Promise<TaskLog[]> {
     return this.taskQueryService.listLogs(taskId, query, currentUser);
+  }
+
+  async reportPreviewDiagnostic(
+    taskId: Task['id'],
+    dto: ReportPreviewDiagnosticDto,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.taskPreviewDiagnosticService.reportDiagnostic(
+      taskId,
+      dto,
+      currentUser,
+    );
   }
 
   async listWorktreeFiles(

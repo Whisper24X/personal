@@ -1,0 +1,276 @@
+syntax = "proto3";
+
+package api.diagnosis.v1;
+
+import "descriptor/descriptor.proto";
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/diagnosis/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.diagnosis.v1";
+
+service Diagnosis {
+  // 可选择教材cvs列表
+  rpc DiagnosisCvsList(DiagnosisCvsListRequest) returns (DiagnosisCvsListReply) {
+    option (google.api.http) = {get: "/devices-learn/diagnosis/user/select/textbook/cvs/list"};
+  }
+  // 查询当前支持的全部年级
+  rpc DiagnosisSchoolYearList(DiagnosisSchoolYearListRequest) returns (DiagnosisSchoolYearListReply) {
+    option (google.api.http) = {get: "/devices-learn/diagnosis/schoolYear/list"};
+  }
+  // 根据学科学段年级获取教材信息
+  rpc GetTextbookIdsBySchoolYear(GetTextbookIdsBySchoolYearRequest) returns (GetTextbookIdsBySchoolYearReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/diagnosis/textbook/ids/by/schoolYear"
+      body: "*"
+    };
+  }
+  // 用户选择的教材上报
+  rpc UserSelectTextbookReport(UserSelectTextbookReportRequest) returns (ReplyEmpty) {
+    option (google.api.http) = {
+      post: "/devices-learn/diagnosis/user/select/textbook/report"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 用户最后一次选择的教材
+  rpc GetUserSelectTextbookLast(GetUserSelectTextbookLastRequest) returns (GetUserSelectTextbookLastReply) {
+    option (google.api.http) = {get: "/devices-learn/diagnosis/user/select/textbook/last/info"};
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 用户所选试卷重做
+  rpc UserSelectExamRedo(UserSelectExamRedoRequest) returns (ReplyEmpty) {
+    option (google.api.http) = {
+      post: "/devices-learn/diagnosis/user/select/exam/redo"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 根据cvs选项获取当前所选教材试卷信息
+  rpc UserSelectExamInfo(UserSelectExamInfoRequest) returns (UserSelectExamInfoReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/diagnosis/user/select/textbook/exam/info"
+      body: "*"
+    };
+  }
+  // 用户当前所选教材完成情况
+  rpc UserSelectExamFinishInfo(UserSelectExamFinishInfoRequest) returns (UserSelectExamFinishInfoReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/diagnosis/user/select/textbook/exam/finish/info"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 用户所选教材对应的试卷结果报告
+  rpc UserExamResultReport(UserExamResultReportRequest) returns (UserExamResultReportReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/diagnosis/user/select/exam/result/report"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 用户诊疗完成同步
+  rpc UserExamFinishNotice(UserExamFinishNoticeRequest) returns (ReplyEmpty) {
+    option (google.api.http) = {
+      post: "/devices-learn/diagnosis/user/exam/finish/notice"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+}
+
+message UserExamFinishNoticeRequest {
+  message Custom {
+    string examId = 1 [(validate.rules).string = {
+      min_len: 1
+      max_len: 64
+    }]; // 试卷ID
+    int32 stageId = 2 [(validate.rules).int32 = {gte: 1}]; // 学段ID
+    int32 subjectId = 3 [(validate.rules).int32 = {gte: 1}]; // 学科ID
+    int32 semesterId = 4 [(validate.rules).int32 = {gte: 1}]; // 册ID
+    int32 publisherId = 5 [(validate.rules).int32 = {gte: 1}]; // 出版社ID
+  }
+  string userId = 1 [(validate.rules).string = {
+    min_len: 1
+    max_len: 64
+  }]; // 用户ID
+  Custom custom = 2; // 试卷及教材信息
+}
+
+message ReplyEmpty {}
+
+message DiagnosisCvsListRequest {}
+message DiagnosisCvsListReply {
+  message Info {
+    int32 stageId = 1; // 学段ID
+    int32 subjectId = 2; // 学科ID
+    int32 semesterId = 3; // 册ID
+    int32 publisherId = 4; // 出版社ID
+    string stageName = 5; // 学段名称
+    string subjectName = 6; // 学科名称
+    string semesterName = 7; // 册名称
+    string publisherName = 8; // 出版社简称
+    string publisherFullName = 9; // 出版社全称
+  }
+  repeated Info list = 1; // 教材cvs列表
+}
+
+message DiagnosisSchoolYearListRequest {}
+message DiagnosisSchoolYearListReply {
+  message YearInfo {
+    message SubjectInfo {
+      int32 stageId = 1; // 学段ID
+      int32 subjectId = 2; // 学科ID
+    }
+    string schoolYear = 1; // 年级
+    repeated SubjectInfo subjects = 2; // 学科列表
+  }
+  repeated YearInfo list = 1; // 年级列表
+}
+
+message GetTextbookIdsBySchoolYearRequest {
+  int32 stageId = 1 [(validate.rules).int32 = {gte: 1}]; // 学段ID
+  int32 subjectId = 2 [(validate.rules).int32 = {gte: 1}]; // 学科ID
+  string schoolYear = 3 [(validate.rules).string = {min_len: 1}]; // 年级
+}
+message GetTextbookIdsBySchoolYearReply {
+  int32 stageId = 1; // 学段ID
+  int32 subjectId = 2; // 学科ID
+  int32 semesterId = 3; // 册ID
+  int32 publisherId = 4; // 出版社ID
+}
+
+message UserSelectTextbookReportRequest {
+  int32 stageId = 1 [(validate.rules).int32 = {gte: 1}]; // 学段ID
+  int32 subjectId = 2 [(validate.rules).int32 = {gte: 1}]; // 学科ID
+  int32 semesterId = 3 [(validate.rules).int32 = {gte: 1}]; // 册ID
+  int32 publisherId = 4 [(validate.rules).int32 = {gte: 1}]; // 出版社ID
+}
+
+message GetUserSelectTextbookLastRequest {}
+message GetUserSelectTextbookLastReply {
+  bool isSelect = 1; // 是否已选择教材
+  UserSelectTextbookReportRequest selectInfo = 2; // 所选教材信息
+}
+
+message UserSelectExamRedoRequest {
+  string examId = 1 [(validate.rules).string = {min_len: 1}]; // 试卷ID
+}
+
+message UserSelectExamInfoRequest {
+  int32 stageId = 1 [(validate.rules).int32 = {gte: 1}]; // 学段ID
+  int32 subjectId = 2 [(validate.rules).int32 = {gte: 1}]; // 学科ID
+  int32 semesterId = 3 [(validate.rules).int32 = {gte: 1}]; // 册ID
+  int32 publisherId = 4 [(validate.rules).int32 = {gte: 1}]; // 出版社ID
+}
+message UserSelectExamInfoReply {
+  repeated ExamInfo list = 1; // 试卷列表
+}
+
+message UserSelectExamFinishInfoRequest {
+  int32 stageId = 1 [(validate.rules).int32 = {gte: 1}]; // 学段ID
+  int32 subjectId = 2 [(validate.rules).int32 = {gte: 1}]; // 学科ID
+  int32 semesterId = 3 [(validate.rules).int32 = {gte: 1}]; // 册ID
+  int32 publisherId = 4 [(validate.rules).int32 = {gte: 1}]; // 出版社ID
+}
+message UserSelectExamFinishInfoReply {
+  repeated ExamInfo examList = 1; // 试卷列表
+  repeated ExamAnswerProgressInfo examAnswerProgress = 2; // 试卷答案进度
+}
+
+message ExamAnswerProgressInfo {
+  string examinationId = 1; // 试卷ID
+  string status = 2; // 诊断状态 - NO_START: 未开始.  - DIAGNOSING: 诊断中.  - REVIEWING: 复习中.  - FINISHED: 复习完成.
+  string lastSubmitTime = 3; // 试卷的最后提交时间
+  int32 doneCount = 4; // 做题数量
+  int32 wrongCount = 5; // 错题数量
+  int32 reviewCount = 6; // 复习数量
+  int32 doneUserCount = 7; // 参与人数
+}
+
+message UserExamResultReportRequest {
+  int32 stageId = 1 [(validate.rules).int32 = {gte: 1}]; // 学段ID
+  int32 subjectId = 2 [(validate.rules).int32 = {gte: 1}]; // 学科ID
+  int32 semesterId = 3 [(validate.rules).int32 = {gte: 1}]; // 册ID
+  int32 publisherId = 4 [(validate.rules).int32 = {gte: 1}]; // 出版社ID
+  string examId = 5; // 试卷ID
+  string userId = 6; // 用户ID
+}
+
+message UserExamResultReportReply {
+  message ExamResultReport {
+    message ProblemReport {
+      message TopicProgress {
+        string id = 1; // 知识点ID
+        float progress = 2; // 知识点进度值
+      }
+      message ProblemChangeAnswerInfo {
+        string problemId = 1; // 变式题主习题ID
+        string status = 2; // 变式题答案状态 no_answer:未作答 yes:答对 no:答错
+      }
+      string problemId = 1; // 习题ID
+      string status = 2; // no_answer:未作答 yes:答对 no:答错 yes_no:半对半错
+      float score = 3; // 用户得分
+      bool isMaster = 4; // 是否掌握
+      float reviewProgressProblem = 5; // 复习进度--考点总进度
+      int32 problemChangeAnswerYesNum = 6; // 关联变式题做对数
+      repeated TopicProgress topicProgressList = 7; // 关联各知识点进度
+      repeated ProblemChangeAnswerInfo problemChangeAnswers = 8; //  关联变式题答案
+    }
+    string lastSubmitTime = 1; // 试卷的最后提交时间
+    int32 answerTime = 2; // 答题时长  单位秒
+    repeated ProblemReport items = 3; // 考点报告列表
+  }
+  ExamInfo examInfo = 1; // 试卷信息
+  ExamResultReport resultReport = 2; // 试卷结果报告
+}
+
+message ExamInfo {
+  string id = 1; // 试卷ID
+  string name = 2; // 试卷名称
+  int32 stageId = 3; // 学段ID
+  int32 subjectId = 4; // 学科ID
+  int32 semesterId = 5; // 学期ID
+  int32 publisherId = 6; // 出版社ID
+  string examType = 7; // 考试类型  期中试卷 期末试卷 月考试卷
+  string difficulty = 8; // 难度（中文）: 基础、中等、困难.
+  repeated ProblemInfo items = 9; // 考点列表
+}
+
+message TopicVideos {
+  string topicId = 1; // 知识点ID
+  string videoType = 2; // 视频类型：whole-完整，clip-片段；值为 whole 时，视频时间没有意义.
+  float videoStartTime = 3; // 视频开始时间，单位s
+  float videoEndTime = 4; // 视频结束时间，单位s
+}
+
+message ProblemInfo {
+  string id = 1; // 记录ID
+  string problemId = 2; // 习题ID
+  int32 order = 3; // 序号
+  float score = 4; // 分数
+  string description = 5; // 考点描述
+  string frequency = 6; // 考频（中文）: 高频 超高频
+  string problemExamTypeName = 7; // 习题的考试类型  中文
+  bool tryout = 8; // 是否试用
+  repeated string topicIds = 9; // 关联的知识点ID列表
+  repeated TopicInfo topics = 10; // 关联的知识点详情列表
+  repeated ProblemChangeGroup versionProblemGroups = 11; // 关联的变式题组列表
+  repeated TopicVideos topicVideos = 12; // 关联知识点视频配置信息
+}
+
+message TopicInfo {
+  string id = 1; // 知识点ID
+  string name = 2; // 知识点名称
+  string description = 3; // 知识点描述
+}
+
+message ProblemChangeGroup {
+  string name = 1; // 变式题名称
+  repeated ProblemChangeInfo versionProblems = 2; // 包含的变式题信息
+}
+
+message ProblemChangeInfo {
+  string problemId = 1; // 主习题ID
+}

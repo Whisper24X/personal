@@ -16,11 +16,19 @@ import { BusinessLineRoleCatalogService } from './business-line-role-catalog.ser
 import { BusinessLineRoleTemplateService } from './business-line-role-template.service';
 import { BusinessLinesService } from './business-lines.service';
 import { BusinessLinesController } from './business-lines.controller';
+import { RunnerGenerationService } from './runner-generation.service';
+import { AiRunnerConfigGenerator } from './ai-runner-config-generator';
+import { RunnerOrchestrationSyncService } from './runner-orchestration-sync.service';
+import { WorkspaceNativeMigrationService } from './workspace-native-migration.service';
 import { RelationalBusinessLinePersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
 import { UsersModule } from '../users/users.module';
 import { RelationalProjectPersistenceModule } from '../projects/infrastructure/persistence/relational/relational-persistence.module';
 import { AccessModule } from '../access/access.module';
 import { AgentExecutionModule } from '../agent-execution/agent-execution.module';
+import { ProjectWorkspaceModule } from '../project-workspace/project-workspace.module';
+import { WorkspaceNativeModule } from '../git/workspace-native.module';
+import { ContainersModule } from '../containers/containers.module';
+import { RunnerConfigProbeService } from './runner-config-probe.service';
 
 @Module({
   imports: [
@@ -30,6 +38,9 @@ import { AgentExecutionModule } from '../agent-execution/agent-execution.module'
     UsersModule,
     AccessModule,
     forwardRef(() => AgentExecutionModule),
+    ProjectWorkspaceModule,
+    WorkspaceNativeModule,
+    ContainersModule,
   ],
   controllers: [BusinessLinesController],
   providers: [
@@ -45,11 +56,17 @@ import { AgentExecutionModule } from '../agent-execution/agent-execution.module'
     BusinessLineProjectRoleCatalogService,
     BusinessLineRoleCatalogService,
     BusinessLineRoleTemplateService,
+    RunnerGenerationService,
+    AiRunnerConfigGenerator,
+    RunnerOrchestrationSyncService,
+    RunnerConfigProbeService,
+    WorkspaceNativeMigrationService,
   ],
   exports: [
     BusinessLinesService,
     BusinessLineAgentToolConfigService,
     RelationalBusinessLinePersistenceModule,
+    RunnerGenerationService,
   ],
 })
 export class BusinessLinesModule {}

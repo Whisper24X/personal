@@ -4,8 +4,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import {
   buildGoalGitBranchName,
@@ -17,17 +21,25 @@ import { ProjectsService } from '../projects/projects.service';
 import { buildPullRequestUrl } from '../git/pull-request-url.util';
 import { GitService } from '../git/git.service';
 import { GitBranchMergeResultDto } from '../git/dto/git-branch-merge-result.dto';
+import { WorkspaceRepositoryService } from '../git/workspace-repository.service';
+import { resolveSubRepoConfigs, SubRepoConfig } from '../git/sub-repo.types';
+import { isWorkspaceNativeEnabled } from '../git/snapshot-sync.types';
+import { ProjectRepositoryWorkspaceService } from '../projects/project-repository-workspace.service';
+import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
+import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
 import type { Task } from '../tasks/domain/task';
+import { WorkspaceNativeDeployService } from '../tasks/application/workspace-native-deploy.service';
+import { TaskGitActionResultDto } from '../tasks/dto/task-git.dto';
 import { TaskMode } from '../tasks/dto/task-mode.enum';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskProvisioningService } from '../tasks/application/task-provisioning.service';
-import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { GoalSourceDocsService } from './goal-source-docs.service';
 import { GoalRepository } from './infrastructure/persistence/goal.repository';
 import { Goal } from './domain/goal';
 import { GoalPlanItem } from './domain/goal-plan-item';
 import { GoalPlanSubTask } from './domain/goal-plan-sub-task';
+import type { Project } from '../projects/domain/project';
 import { GoalStatus } from './dto/goal-status.enum';
 import { GoalPlanItemStatus } from './dto/goal-plan-item-status.enum';
 import { CreateGoalDto } from './dto/create-goal.dto';
@@ -37,6 +49,7 @@ import { AddSourceDocDto } from './dto/add-source-doc.dto';
 import { UnpackGoalInputZipDto } from './dto/unpack-goal-input-zip.dto';
 import { GeneratePrdDto } from './dto/generate-prd.dto';
 import { GeneratePlanDto } from './dto/generate-plan.dto';
+import { UpdateGoalPrdDocDto } from './dto/update-goal-prd-doc.dto';
 import { PatchPlanItemDto } from './dto/patch-plan-item.dto';
 import { PatchPlanSubTaskDto } from './dto/patch-plan-sub-task.dto';
 import { MaterializeTasksDto } from './dto/materialize-tasks.dto';
@@ -147,8 +160,88 @@ export class GoalsService {
     private readonly taskProvisioningService: TaskProvisioningService,
     private readonly goalSourceDocsService: GoalSourceDocsService,
     private readonly goalsMetrics: GoalsMetricsService,
+    private readonly workspaceRepositoryService: WorkspaceRepositoryService,
     private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
+    private readonly businessLineRepository: BusinessLineRepository,
+    @Optional()
+    private readonly projectRepositoryWorkspaceService?: ProjectRepositoryWorkspaceService,
+    @Optional()
+    private readonly workspaceNativeDeployService?: WorkspaceNativeDeployService,
   ) {}
+
+  private async resolveWorkspaceNativeSubRepos(
+    project: Project,
+  ): Promise<SubRepoConfig[]> {
+    let subRepos = resolveSubRepoConfigs(
+      project.configJson as Record<string, unknown>,
+    );
+    if (subRepos.length === 0) {
+      const businessLine = await this.businessLineRepository.findById(
+        project.businessLineId,
+      );
+      if (businessLine) {
+        subRepos = resolveSubRepoConfigs(
+          businessLine.configJson as Record<string, unknown>,
+        );
+      }
+    }
+    return subRepos;
+  }
+
+  /**
+   * Demand branch for workspace-native projects must contain embedded sub-repo prefixes
+   * before functional groups or tasks branch from it.
+   */
+  private async ensureDemandBranchEmbeddedIfNeededForWorkspaceNative(params: {
+    projectId: Project['id'];
+    demandGitBranch: string;
+    /** Sync origin remote-tracking for this ref before inspecting demand branch (typically gitBaseBranch). */
+    gitBaseBranch: string;
+    currentUser: JwtPayloadType;
+  }): Promise<void> {
+    const workspaceProject = await this.projectsService.findByIdInternal(
+      params.projectId,
+      params.currentUser,
+    );
+    if (!workspaceProject || !isWorkspaceNativeEnabled(workspaceProject)) {
+      return;
+    }
+
+    const subRepos =
+      await this.resolveWorkspaceNativeSubRepos(workspaceProject);
+    if (!subRepos.length) {
+      return;
+    }
+
+    const repositoryRoot =
+      this.projectWorkspacePathsService.resolveRepositoryRoot(workspaceProject);
+    const prefixes = subRepos.map((s) => s.prefix);
+    const hasAll =
+      await this.workspaceRepositoryService.branchIncludesTopLevelPrefixes(
+        repositoryRoot,
+        params.demandGitBranch,
+        params.gitBaseBranch,
+        prefixes,
+      );
+    if (hasAll) {
+      return;
+    }
+
+    try {
+      await this.workspaceRepositoryService.embedSubReposOntoBranch(
+        repositoryRoot,
+        params.demandGitBranch,
+        subRepos,
+        params.gitBaseBranch,
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`embed_subrepos_onto_demand_branch_failed ${msg}`);
+      throw new BadRequestException(
+        `无法在需求分支上写入子仓，请检查子仓配置或网络：${msg}`,
+      );
+    }
+  }
 
   private async persistGoalDocToGit(
     goal: Goal,
@@ -248,6 +341,278 @@ export class GoalsService {
     return goal;
   }
 
+  async readPrdDoc(
+    goalId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const goal = await this.assertGoalAccess(goalId, currentUser);
+    return this.readPrdDocForGoal(goal, currentUser);
+  }
+
+  async updatePrdDoc(
+    goalId: string,
+    dto: UpdateGoalPrdDocDto,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const goal = await this.assertGoalAccess(goalId, currentUser);
+    return this.savePrdDocOnGoalBranch(goal, dto.content, currentUser);
+  }
+
+  private async readPrdDocForGoal(
+    goal: Goal,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const prdDocPath = goal.prdDocPath?.trim();
+    const gitBranch = goal.gitBranch?.trim();
+    if (!prdDocPath) {
+      throw new BadRequestException('缺少 PRD 文档路径');
+    }
+    if (!gitBranch) {
+      throw new BadRequestException('需求未配置 Git 分支，无法读取 PRD');
+    }
+
+    return this.projectDocsService.readDocFromBranch(
+      goal.projectId,
+      prdDocPath,
+      gitBranch,
+      currentUser,
+    );
+  }
+
+  private async savePrdDocOnGoalBranch(
+    goal: Goal,
+    content: string,
+    currentUser: JwtPayloadType,
+    pathOverride?: string,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    if (!this.projectRepositoryWorkspaceService) {
+      throw new ConflictException('Project repository service unavailable');
+    }
+
+    const prdDocPath = pathOverride?.trim() || goal.prdDocPath?.trim();
+    const gitBranch = goal.gitBranch?.trim();
+    if (!prdDocPath) {
+      throw new BadRequestException('缺少 PRD 文档路径');
+    }
+    if (!gitBranch) {
+      throw new BadRequestException('需求未配置 Git 分支，无法保存 PRD');
+    }
+
+    return this.projectRepositoryWorkspaceService.runWithProjectRepositoryLock(
+      goal.projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ project, repositoryRoot }) => {
+        const worktreePath = await this.ensureGoalPrdWorktree({
+          goal,
+          project,
+          repositoryRoot,
+          gitBranch,
+        });
+        const savedDoc = await this.projectDocsService.saveDocInRepositoryRoot(
+          worktreePath,
+          { path: prdDocPath, content },
+          { overwrite: true },
+        );
+        await this.commitGoalPrdWorktreeChanges({
+          worktreePath,
+          docPath: savedDoc.path,
+          goal,
+          currentUser,
+        });
+        return savedDoc;
+      },
+    );
+  }
+
+  private async ensureGoalPrdWorktree(params: {
+    goal: Goal;
+    project: Project;
+    repositoryRoot: string;
+    gitBranch: string;
+  }): Promise<string> {
+    const worktreePath = this.resolveGoalPrdWorktreePath(
+      params.project,
+      params.goal,
+    );
+    const hasWorktreeGit = await this.pathExists(
+      path.join(worktreePath, '.git'),
+    );
+
+    if (hasWorktreeGit) {
+      const currentBranch = await this.runGitCommand(worktreePath, [
+        'rev-parse',
+        '--abbrev-ref',
+        'HEAD',
+      ]);
+      if (currentBranch.stdout.trim() === params.gitBranch) {
+        return worktreePath;
+      }
+
+      await this.runGitCommand(params.repositoryRoot, [
+        'worktree',
+        'remove',
+        '--force',
+        worktreePath,
+      ]);
+    }
+
+    await fs.rm(worktreePath, { recursive: true, force: true });
+    await this.runGitCommand(params.repositoryRoot, ['worktree', 'prune']);
+    await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+
+    const localBranch = await this.runGitCommand(params.repositoryRoot, [
+      'rev-parse',
+      '--verify',
+      `refs/heads/${params.gitBranch}`,
+    ]);
+    const addArgs = localBranch.success
+      ? ['worktree', 'add', '--force', worktreePath, params.gitBranch]
+      : [
+          'worktree',
+          'add',
+          '--force',
+          '-b',
+          params.gitBranch,
+          worktreePath,
+          `origin/${params.gitBranch}`,
+        ];
+    const addResult = await this.runGitCommand(params.repositoryRoot, addArgs);
+    if (!addResult.success) {
+      throw new BadRequestException(
+        `无法创建 PRD 临时 worktree：${addResult.stderr || 'git worktree add failed'}`,
+      );
+    }
+
+    return worktreePath;
+  }
+
+  private resolveGoalPrdWorktreePath(project: Project, goal: Goal): string {
+    return path.join(
+      this.projectWorkspacePathsService.resolveWorktreeBaseDir(project),
+      '.goal-prd',
+      goal.id,
+    );
+  }
+
+  private async commitGoalPrdWorktreeChanges(params: {
+    worktreePath: string;
+    docPath: string;
+    goal: Goal;
+    currentUser: JwtPayloadType;
+  }): Promise<void> {
+    const gitDocPath = `docs/${params.docPath}`;
+    const statusResult = await this.runGitCommand(params.worktreePath, [
+      'status',
+      '--porcelain',
+      '--',
+      gitDocPath,
+    ]);
+    if (!statusResult.success) {
+      throw new BadRequestException(
+        `读取 PRD 临时 worktree 状态失败：${statusResult.stderr}`,
+      );
+    }
+    if (!statusResult.stdout.trim()) {
+      return;
+    }
+
+    const addResult = await this.runGitCommand(params.worktreePath, [
+      'add',
+      '--',
+      gitDocPath,
+    ]);
+    if (!addResult.success) {
+      throw new BadRequestException(`暂存 PRD 文件失败：${addResult.stderr}`);
+    }
+
+    const gitName = params.currentUser.username || 'ainative-user';
+    const gitEmail = `${params.currentUser.username || params.currentUser.sub}@ainative.local`;
+    const commitResult = await this.runGitCommand(params.worktreePath, [
+      '-c',
+      `user.name=${gitName}`,
+      '-c',
+      `user.email=${gitEmail}`,
+      'commit',
+      '-m',
+      `chore(goal): update PRD ${params.goal.id}`,
+    ]);
+    if (!commitResult.success) {
+      throw new BadRequestException(
+        `提交 PRD 文件失败：${commitResult.stderr}`,
+      );
+    }
+  }
+
+  private async pathExists(targetPath: string): Promise<boolean> {
+    try {
+      await fs.access(targetPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async runGitCommand(
+    cwd: string,
+    args: string[],
+  ): Promise<{ success: boolean; stdout: string; stderr: string }> {
+    return new Promise((resolve) => {
+      const childProcess = spawn('git', ['-C', cwd, ...args], {
+        env: process.env,
+        stdio: 'pipe',
+      });
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+
+      childProcess.stdout.on('data', (chunk: Buffer) => {
+        stdoutChunks.push(chunk);
+      });
+      childProcess.stderr.on('data', (chunk: Buffer) => {
+        stderrChunks.push(chunk);
+      });
+      childProcess.on('error', (error) => {
+        resolve({
+          success: false,
+          stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
+          stderr:
+            Buffer.concat(stderrChunks).toString('utf-8') || error.message,
+        });
+      });
+      childProcess.on('close', (code) => {
+        resolve({
+          success: code === 0,
+          stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
+          stderr: Buffer.concat(stderrChunks).toString('utf-8'),
+        });
+      });
+    });
+  }
+
   private async completeGoalWhenAllPlanSubTasksMerged(
     goal: Goal,
     planItems: GoalPlanItem[],
@@ -341,7 +706,7 @@ export class GoalsService {
         }
         if (st.status !== GoalPlanItemStatus.branchMerged) {
           throw new BadRequestException(
-            `请先将前置功能组「${predGroup.title}」的子任务「${st.title}」对应分支合并入需求分支，并在任务计划中标记为「分支已合并」后再继续`,
+            `请先将前置功能组「${predGroup.title}」的子任务「${st.title}」对应分支通过任务计划「合并分支」并入该功能组分支，并标记为「分支已合并」后再继续`,
           );
         }
       }
@@ -396,6 +761,27 @@ export class GoalsService {
   }
 
   /**
+   * 子任务级依赖未满足「分支已合并」时的提示。
+   * 同组：合并目标是本功能组分支，且需推送远端以便后续物化拉到最新 tip。
+   * 跨组：前置须先并回其功能组；整体流程上依赖「前置功能组并入需求分支」。
+   */
+  private messageForUnmergedPlanSubTaskDependency(
+    predTitle: string,
+    samePlanGroup: boolean,
+  ): string {
+    if (samePlanGroup) {
+      return (
+        `请先将前置子任务「${predTitle}」对应分支通过任务计划「合并分支」并入本功能组分支，并标记为「分支已合并」；` +
+        `合并后请将功能组分支推送至远端，再为本项新建任务`
+      );
+    }
+    return (
+      `请先将前置子任务「${predTitle}」对应分支并入其所属功能组分支，并标记为「分支已合并」；` +
+      `若依赖跨功能组，请确保前置功能组已整体并入需求分支后，再为本项新建任务`
+    );
+  }
+
+  /**
    * 首次确认功能组下子任务时，若功能组尚无 Git 分支则在仓库创建并落库。
    */
   private async ensurePlanItemGitBranchIfMissing(
@@ -420,6 +806,14 @@ export class GoalsService {
     }
     const base = goal.gitBranch.trim();
     const name = buildPlanItemGitBranchName(base, parent.itemOrder);
+
+    await this.ensureDemandBranchEmbeddedIfNeededForWorkspaceNative({
+      projectId: goal.projectId,
+      demandGitBranch: base,
+      gitBaseBranch: goal.gitBaseBranch,
+      currentUser,
+    });
+
     try {
       await this.gitService.createBranch(
         goal.projectId,
@@ -448,11 +842,17 @@ export class GoalsService {
   }
 
   async create(dto: CreateGoalDto, currentUser: JwtPayloadType): Promise<Goal> {
-    await this.projectsService.assertProjectCapability(
-      dto.projectId,
-      currentUser,
-      'project.task.read',
-    );
+    const project = dto.businessLineId
+      ? await this.projectsService.assertWorkspaceProjectByBusinessLineCapability(
+          dto.businessLineId,
+          currentUser,
+          'businessLine.read',
+        )
+      : await this.projectsService.assertProjectCapability(
+          dto.projectId ?? '',
+          currentUser,
+          'project.task.read',
+        );
     const storedAgent = resolveGoalAgentCliOptions({
       agentCliId: dto.agentCliId,
       agentCliConfigId: dto.agentCliConfigId,
@@ -462,15 +862,22 @@ export class GoalsService {
     const gitBranch = buildGoalGitBranchName();
 
     await this.gitService.createBranch(
-      dto.projectId,
+      project.id,
       gitBranch,
       gitBaseBranch,
       currentUser,
     );
 
+    await this.ensureDemandBranchEmbeddedIfNeededForWorkspaceNative({
+      projectId: project.id,
+      demandGitBranch: gitBranch,
+      gitBaseBranch,
+      currentUser,
+    });
+
     const g = await this.goalRepository.create({
       id: goalId,
-      projectId: dto.projectId,
+      projectId: project.id,
       title: dto.title,
       summary: dto.summary ?? null,
       status: GoalStatus.draft,
@@ -1200,6 +1607,10 @@ export class GoalsService {
     return next;
   }
 
+  /**
+   * 任务计划物化：任务分支自功能组分支开出；`gitBaseBranch` 为功能组分支供后续「合并分支」合回组线。
+   * 主仓两阶段合并：子任务合并 → 功能组分支 →（组级）功能组并入需求分支；同组后继任务依赖已推送的功能组 tip。
+   */
   async materializeTasks(
     goalId: string,
     dto: MaterializeTasksDto,
@@ -1324,7 +1735,10 @@ export class GoalsService {
         }
         if (predItem.status !== GoalPlanItemStatus.branchMerged) {
           throw new BadRequestException(
-            `请先将前置子任务「${predItem.title}」对应分支合并入需求分支，并标记为「分支已合并」后再为本项新建任务`,
+            this.messageForUnmergedPlanSubTaskDependency(
+              predItem.title,
+              predItem.goalPlanItemId === item.goalPlanItemId,
+            ),
           );
         }
       }
@@ -1406,6 +1820,104 @@ export class GoalsService {
   async listGoalTasks(goalId: string, currentUser: JwtPayloadType) {
     await this.assertGoalAccess(goalId, currentUser);
     return this.taskRepository.findByGoalId(goalId);
+  }
+
+  async pushDemandBranchToSubRepos(
+    goalId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskGitActionResultDto> {
+    const goal = await this.assertGoalAccess(goalId, currentUser);
+    const demandBranch = goal.gitBranch?.trim();
+    if (!demandBranch) {
+      throw new BadRequestException('需求尚未设置需求分支，无法推送');
+    }
+
+    const [groups, tasks] = await Promise.all([
+      this.goalRepository.listPlanItemsWithSubTasks(goalId),
+      this.taskRepository.findByGoalId(goalId),
+    ]);
+
+    const countableGroups = groups.filter((group) =>
+      (group.subTasks ?? []).some(
+        (subTask) => subTask.status !== GoalPlanItemStatus.cancelled,
+      ),
+    );
+    if (countableGroups.length === 0) {
+      throw new BadRequestException('需求下没有有效功能组，无法推送');
+    }
+
+    const unmergedGroup = countableGroups.find(
+      (group) => !group.groupMergedIntoGoalAt,
+    );
+    if (unmergedGroup) {
+      throw new BadRequestException(
+        `功能组「${unmergedGroup.title}」尚未并入需求分支，请先完成合并`,
+      );
+    }
+
+    if (tasks.length === 0) {
+      throw new BadRequestException('需求下尚无已物化任务，无法推送');
+    }
+    const unfinishedTask = tasks.find(
+      (task) => task.status !== TaskStatus.done,
+    );
+    if (unfinishedTask) {
+      throw new BadRequestException(
+        `任务「${unfinishedTask.title}」尚未完成，请先完成所有已物化任务`,
+      );
+    }
+
+    const project = await this.projectsService.findByIdInternal(
+      goal.projectId,
+      currentUser,
+    );
+    if (!project || !isWorkspaceNativeEnabled(project)) {
+      throw new BadRequestException(
+        '仅 workspace-native 项目支持从需求分支推送到子仓',
+      );
+    }
+
+    const subRepos = await this.resolveWorkspaceNativeSubRepos(project);
+    if (subRepos.length === 0) {
+      throw new BadRequestException('项目未配置子仓，无法推送');
+    }
+
+    if (
+      !this.projectRepositoryWorkspaceService ||
+      !this.workspaceNativeDeployService
+    ) {
+      throw new ConflictException('Workspace-native push service unavailable');
+    }
+
+    return this.projectRepositoryWorkspaceService.runWithProjectRepositoryLock(
+      goal.projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ project, repositoryRoot }) => {
+        const demandWorktreeRoot =
+          await this.projectRepositoryWorkspaceService!.ensureBranchWorktree({
+            project,
+            repositoryRoot,
+            branchName: demandBranch,
+            namespace: 'goal-branches',
+          });
+
+        try {
+          return await this.workspaceNativeDeployService!.pushBranchToSubReposFromRoot(
+            {
+              repositoryRoot: demandWorktreeRoot,
+              branch: demandBranch,
+              subRepos,
+              requireCleanWorktree: true,
+            },
+          );
+        } catch (error) {
+          throw new BadRequestException(
+            error instanceof Error ? error.message : '需求分支推送失败',
+          );
+        }
+      },
+    );
   }
 
   /**

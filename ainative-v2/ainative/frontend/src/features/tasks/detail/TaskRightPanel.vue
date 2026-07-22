@@ -7,7 +7,11 @@ import TaskGitPanel from './TaskGitPanel.vue'
 import TaskTerminalPanel from './TaskTerminalPanel.vue'
 import TaskLogsPanel from './TaskLogsPanel.vue'
 import TaskDeployPanel from './TaskDeployPanel.vue'
-import type { TaskEnvironmentPreview, TaskLog } from '@/types/api/tasks'
+import type {
+  TaskEnvironmentPreview,
+  TaskEnvironmentServiceStatus,
+  TaskLog,
+} from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskDetailRightPanel',
@@ -26,6 +30,7 @@ const props = withDefaults(
     previewEnabled?: boolean
     terminalEnabled?: boolean
     preview?: TaskEnvironmentPreview | null
+    serviceStatuses?: TaskEnvironmentServiceStatus[] | null
     formatDate: (value?: string) => string
     /** 产物面板当前展示的文件路径（工作区预览） */
     artifactFilePath?: string | null
@@ -44,6 +49,7 @@ const props = withDefaults(
     previewEnabled: false,
     terminalEnabled: false,
     preview: null,
+    serviceStatuses: () => [],
     artifactFilePath: null,
     artifactOpenNonce: 0,
     artifactNodeId: null,
@@ -188,7 +194,9 @@ watch(
 
       <TaskPreviewPanel
         v-else-if="activeTab === 'preview' && props.previewEnabled"
+        :task-id="props.taskId"
         :preview="props.preview"
+        :service-statuses="props.serviceStatuses ?? []"
         :logs="props.logs"
         :format-date="props.formatDate"
       />

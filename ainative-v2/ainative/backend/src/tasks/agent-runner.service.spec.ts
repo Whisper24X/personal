@@ -39,6 +39,7 @@ const createProject = (configJson?: Record<string, unknown>): Project => ({
   id: 'project-1',
   businessLineId: 'business-line-1',
   name: 'AINative',
+  slug: 'ainative',
   description: null,
   gitUrl: 'https://example.com/repo.git',
   defaultBranch: 'main',
@@ -2032,6 +2033,321 @@ describe('AgentRunnerService', () => {
       success: false,
       prompt: 'continue prompt',
       clearPreviousSessionId: true,
+    });
+  });
+
+  it('should retry rate limited runner executions and return the succeeding attempt', async () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+    const callbacks = {
+      onRetryScheduled: jest.fn(),
+    };
+
+    jest.spyOn(serviceAny, 'resolveRunnerConfig').mockResolvedValue({
+      adapter: 'codex',
+      command: 'codex',
+      args: ['exec', '--json', '--skip-git-repo-check', '-'],
+      cwd: '/tmp/worktree',
+      env: {},
+    });
+    jest.spyOn(serviceAny, 'resolvePrompt').mockReturnValue('Run task');
+    jest
+      .spyOn(serviceAny, 'resolveContainerExecRefForTask')
+      .mockResolvedValue(null);
+    jest.spyOn(serviceAny, 'resolveRetryJitterMs').mockReturnValue(0);
+    const delay = jest.spyOn(serviceAny, 'delay').mockResolvedValue(undefined);
+    const runWithConfig = jest
+      .spyOn(serviceAny, 'runWithConfig')
+      .mockResolvedValueOnce({
+        success: false,
+        interrupted: false,
+        adapter: 'codex',
+        exitCode: 1,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json', '--skip-git-repo-check', '-'],
+        cwd: '/tmp/worktree',
+        durationMs: 120,
+        stdout: '',
+        stderr:
+          'exceeded retry limit, last status: 429 Too Many Requests, request id: req-1',
+        prompt: 'Run task',
+        sessionId: null,
+        errorMessage: 'Agent execution exited with code 1',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        interrupted: false,
+        adapter: 'codex',
+        exitCode: 0,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json', '--skip-git-repo-check', '-'],
+        cwd: '/tmp/worktree',
+        durationMs: 180,
+        stdout: '{"event":"session.started","session_id":"thread-2"}',
+        stderr: '',
+        prompt: 'Run task',
+        sessionId: 'thread-2',
+      });
+
+    const result = await service.executeAgentNode({
+      task: createTask(),
+      node: createNode(),
+      project: createProject({
+        agentAdapter: 'codex',
+      }),
+      callbacks,
+    });
+
+    expect(runWithConfig).toHaveBeenCalledTimes(2);
+    expect(delay).toHaveBeenCalledWith(2_000);
+    expect(callbacks.onRetryScheduled).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attempt: 1,
+        nextAttempt: 2,
+        maxAttempts: 3,
+        delayMs: 2_000,
+        reason: 'rate_limit',
+        diagnostic: expect.stringContaining('req-1'),
+      }),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      attemptCount: 2,
+      retryCount: 1,
+      sessionId: 'thread-2',
+    });
+  });
+
+  it('should stop retrying after the rate limit retry budget is exhausted', async () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+    const callbacks = {
+      onRetryScheduled: jest.fn(),
+    };
+    const rateLimitResult = {
+      success: false,
+      interrupted: false,
+      adapter: 'codex' as const,
+      exitCode: 1,
+      signal: null,
+      command: 'codex',
+      args: ['exec', '--json', '--skip-git-repo-check', '-'],
+      cwd: '/tmp/worktree',
+      durationMs: 120,
+      stdout: '',
+      stderr:
+        'exceeded retry limit, last status: 429 Too Many Requests, request id: req-final',
+      prompt: 'Run task',
+      sessionId: null,
+      errorMessage: 'Agent execution exited with code 1',
+    };
+
+    jest.spyOn(serviceAny, 'resolveRunnerConfig').mockResolvedValue({
+      adapter: 'codex',
+      command: 'codex',
+      args: ['exec', '--json', '--skip-git-repo-check', '-'],
+      cwd: '/tmp/worktree',
+      env: {},
+    });
+    jest.spyOn(serviceAny, 'resolvePrompt').mockReturnValue('Run task');
+    jest
+      .spyOn(serviceAny, 'resolveContainerExecRefForTask')
+      .mockResolvedValue(null);
+    jest.spyOn(serviceAny, 'resolveRetryJitterMs').mockReturnValue(0);
+    const delay = jest.spyOn(serviceAny, 'delay').mockResolvedValue(undefined);
+    const runWithConfig = jest
+      .spyOn(serviceAny, 'runWithConfig')
+      .mockResolvedValue(rateLimitResult);
+
+    const result = await service.executeAgentNode({
+      task: createTask(),
+      node: createNode(),
+      project: createProject({
+        agentAdapter: 'codex',
+      }),
+      callbacks,
+    });
+
+    expect(runWithConfig).toHaveBeenCalledTimes(3);
+    expect(delay).toHaveBeenNthCalledWith(1, 2_000);
+    expect(delay).toHaveBeenNthCalledWith(2, 6_000);
+    expect(callbacks.onRetryScheduled).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({
+      success: false,
+      attemptCount: 3,
+      retryCount: 2,
+      retryReason: 'rate_limit',
+      retryDiagnostic: expect.stringContaining('req-final'),
+    });
+  });
+
+  it('should not retry non-rate-limit runner failures', async () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+    const callbacks = {
+      onRetryScheduled: jest.fn(),
+    };
+
+    jest.spyOn(serviceAny, 'resolveRunnerConfig').mockResolvedValue({
+      adapter: 'codex',
+      command: 'codex',
+      args: ['exec', '--json', '--skip-git-repo-check', '-'],
+      cwd: '/tmp/worktree',
+      env: {},
+    });
+    jest.spyOn(serviceAny, 'resolvePrompt').mockReturnValue('Run task');
+    jest
+      .spyOn(serviceAny, 'resolveContainerExecRefForTask')
+      .mockResolvedValue(null);
+    const delay = jest.spyOn(serviceAny, 'delay').mockResolvedValue(undefined);
+    const runWithConfig = jest
+      .spyOn(serviceAny, 'runWithConfig')
+      .mockResolvedValue({
+        success: false,
+        interrupted: false,
+        adapter: 'codex',
+        exitCode: 1,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json', '--skip-git-repo-check', '-'],
+        cwd: '/tmp/worktree',
+        durationMs: 120,
+        stdout: '',
+        stderr: 'Error: network timeout',
+        prompt: 'Run task',
+        sessionId: null,
+        errorMessage: 'Agent execution exited with code 1',
+      });
+
+    const result = await service.executeAgentNode({
+      task: createTask(),
+      node: createNode(),
+      project: createProject({
+        agentAdapter: 'codex',
+      }),
+      callbacks,
+    });
+
+    expect(runWithConfig).toHaveBeenCalledTimes(1);
+    expect(delay).not.toHaveBeenCalled();
+    expect(callbacks.onRetryScheduled).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: false,
+      attemptCount: 1,
+      retryCount: 0,
+    });
+  });
+
+  it('should resume the extracted Codex session when retrying a rate limited attempt', async () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    jest
+      .spyOn(serviceAny, 'resolveRunnerConfig')
+      .mockImplementation(
+        async (
+          _project: Project,
+          _task: Task,
+          node: TaskNode,
+        ) => ({
+          adapter: 'codex',
+          command: 'codex',
+          args: node.agentCliSessionId
+            ? [
+                'exec',
+                'resume',
+                '--json',
+                '--skip-git-repo-check',
+                node.agentCliSessionId,
+                '-',
+              ]
+            : ['exec', '--json', '--skip-git-repo-check', '-'],
+          cwd: '/tmp/worktree',
+          env: {},
+        }),
+      );
+    jest.spyOn(serviceAny, 'resolvePrompt').mockReturnValue('Run task');
+    jest
+      .spyOn(serviceAny, 'resolveContainerExecRefForTask')
+      .mockResolvedValue(null);
+    jest.spyOn(serviceAny, 'resolveRetryJitterMs').mockReturnValue(0);
+    jest.spyOn(serviceAny, 'delay').mockResolvedValue(undefined);
+    const runWithConfig = jest
+      .spyOn(serviceAny, 'runWithConfig')
+      .mockResolvedValueOnce({
+        success: false,
+        interrupted: false,
+        adapter: 'codex',
+        exitCode: 1,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json', '--skip-git-repo-check', '-'],
+        cwd: '/tmp/worktree',
+        durationMs: 120,
+        stdout: '{"event":"session.started","session_id":"thread-retry"}',
+        stderr: '429 Too Many Requests',
+        prompt: 'Run task',
+        sessionId: 'thread-retry',
+        errorMessage: 'Agent execution exited with code 1',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        interrupted: false,
+        adapter: 'codex',
+        exitCode: 0,
+        signal: null,
+        command: 'codex',
+        args: [
+          'exec',
+          'resume',
+          '--json',
+          '--skip-git-repo-check',
+          'thread-retry',
+          '-',
+        ],
+        cwd: '/tmp/worktree',
+        durationMs: 180,
+        stdout: '{"event":"done"}',
+        stderr: '',
+        prompt: 'Run task',
+        sessionId: 'thread-retry',
+      });
+
+    const result = await service.executeAgentNode({
+      task: createTask(),
+      node: createNode(),
+      project: createProject({
+        agentAdapter: 'codex',
+      }),
+    });
+
+    expect(runWithConfig).toHaveBeenCalledTimes(2);
+    const secondRunConfig = runWithConfig.mock.calls[1]?.[0] as {
+      args: string[];
+    };
+    expect(secondRunConfig.args).toEqual([
+      'exec',
+      'resume',
+      '--json',
+      '--skip-git-repo-check',
+      'thread-retry',
+      '-',
+    ]);
+    expect(result).toMatchObject({
+      success: true,
+      attemptCount: 2,
+      retryCount: 1,
+      sessionId: 'thread-retry',
     });
   });
 

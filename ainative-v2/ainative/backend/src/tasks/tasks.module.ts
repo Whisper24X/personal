@@ -35,7 +35,10 @@ import { TaskEnvironmentService } from './application/task-environment.service';
 import { RelationalGoalPersistenceModule } from '../goals/infrastructure/persistence/relational/relational-persistence.module';
 import { TaskGoalService } from './application/task-goal.service';
 import { TaskProvisioningService } from './application/task-provisioning.service';
+import { WorkspaceNativeTaskService } from './application/workspace-native-task.service';
+import { WorkspaceNativeDeployService } from './application/workspace-native-deploy.service';
 import { MemoryModule } from '../memory/memory.module';
+import { TaskPreviewDiagnosticService } from './application/task-preview-diagnostic.service';
 
 @Module({
   imports: [
@@ -77,6 +80,9 @@ import { MemoryModule } from '../memory/memory.module';
     TaskEnvironmentService,
     TaskGoalService,
     TaskProvisioningService,
+    TaskPreviewDiagnosticService,
+    WorkspaceNativeTaskService,
+    WorkspaceNativeDeployService,
     TerminalGateway,
   ],
   exports: [

@@ -1,0 +1,13 @@
+{
+  "name": "testing",
+  "version": "1.0.0",
+  "description": "接口自动化测试项目 - 基于 Apifox CLI",
+  "scripts": {
+    "test": "apifox run --access-token $APIFOX_ACCESS_TOKEN -r cli,html",
+    "test:ci": "apifox run --access-token $APIFOX_ACCESS_TOKEN -r cli,html --ignore-redirects",
+    "test:help": "apifox run -h"
+  },
+  "keywords": ["apifox", "api-testing", "automation"],
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "id": "evals-prd",
+    "title": "evals skill 评审 PRD：结构合规 + 缺陷识别",
+    "skill": "ainative-skill/skills/evals",
+    "model": "auto",
+    "passed": true,
+    "latencyMs": 0,
+    "exitCode": 0,
+    "assertions": [
+      {
+        "type": "contains",
+        "value": "Summary",
+        "pass": true,
+        "detail": "应包含 \"Summary\""
+      },
+      {
+        "type": "contains",
+        "value": "Issues",
+        "pass": true,
+        "detail": "应包含 \"Issues\""
+      },
+      {
+        "type": "contains",
+        "value": "Recommendations",
+        "pass": true,
+        "detail": "应包含 \"Recommendations\""
+      },
+      {
+        "type": "regex",
+        "value": "需求难度评级[:：]\\s*L[1-4]",
+        "pass": true,
+        "detail": "应匹配 /需求难度评级[:：]\\s*L[1-4]/"
+      },
+      {
+        "type": "regex",
+        "value": "P[0-3]",
+        "pass": true,
+        "detail": "应匹配 /P[0-3]/"
+      },
+      {
+        "type": "not_contains",
+        "value": "已保存到文件",
+        "pass": true,
+        "detail": "不应包含 \"已保存到文件\""
+      },
+      {
+        "type": "judge",
+        "rubric": "被测输出是一份 PRD 评审。评分要点（满分 1.0）：1) 是否包含 Summary/Strengths/Issues/Recommendations 四部分；2) 是否识别出该 PRD 缺少『非功能需求/权限角色/数据模型字段』等关键章节；3) 是否指出验收标准模糊不可量化；4) 每条 Issue 是否有 P0-P3 分级。命中越多分越高，至少命中 3 项才算 pass。",
+        "passScore": 0.75,
+        "pass": true,
+        "detail": "judge ≥ 0.75 (得分 1: mock judge)"
+      }
+    ],
+    "output": "## Summary\n本文档为优惠券系统 PRD，覆盖创建、领取、抵扣三个功能点。\n\n## Strengths\n- 功能流程基本闭环\n\n## Issues\n- **[P0] 缺失非功能需求章节**：未定义并发、防重复使用、性能指标\n- **[P1] 缺少数据模型与字段定义**：优惠券实体字段缺失\n- **[P1] 缺少权限/角色**：未说明运营与学员权限边界\n- **[P2] 验收标准模糊**：\"正常使用\"/\"金额正确\" 不可量化\n\n## Recommendations\n- 补充非功能需求章节，明确并发与防重控制\n- 增加数据模型与字段定义\n\n## 需求难度评级：L2\n",
+    "startedAt": "2026-06-15T08:53:40.204Z"
+  }
+]

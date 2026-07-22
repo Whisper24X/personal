@@ -5,6 +5,7 @@ export type RunnerServiceConfig = {
   workdir: string;
   command: string;
   port?: number;
+  readinessPath?: string;
   env?: Record<string, string>;
   installCommand?: string;
   installCheckPath?: string;

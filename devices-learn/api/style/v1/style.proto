@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package api.style.v1;
+
+import "descriptor/descriptor.proto";
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/style/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.style.v1";
+
+service Style {
+  // 获取学习风格问卷
+  rpc GetLearnStylePaper(GetLearnStylePaperRequest) returns (GetLearnStylePaperReply) {
+    option (google.api.http) = {get: "/devices-learn/style/paper"};
+  }
+  // 创建用户学习风格
+  rpc CreateUserStyle(CreateUserStyleRequest) returns (UserStyleInfo) {
+    option (google.api.http) = {
+      post: "/devices-learn/style/user/create"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 查询用户学习风格
+  rpc GetUserStyle(GetUserStyleRequest) returns (UserStyleInfo) {
+    option (google.api.http) = {get: "/devices-learn/style/user/info"};
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+}
+
+message GetLearnStylePaperRequest {}
+
+message PaperStide {
+  message AnswerOption {
+    string value = 1 [(validate.rules).string = {min_len: 1}]; // 选项值: V-视觉 A-听觉 K-动觉
+    string description = 2 [(validate.rules).string = {min_len: 1}]; // 选项描述
+  }
+  int32 stide = 1; // 题号
+  string theme = 2 [(validate.rules).string = {min_len: 1}]; // 题目
+  repeated AnswerOption answerOption = 3; // 答案选项
+}
+
+message GetLearnStylePaperReply {
+  string description = 1; // 问卷说明
+  repeated PaperStide list = 2; // 问卷题目列表
+}
+
+message Answers {
+  int32 stide = 1; // 题号
+  string answer = 2 [(validate.rules).string = {min_len: 1}]; // 答案: V-视觉 A-听觉 K-动觉
+}
+
+message CreateUserStyleRequest {
+  repeated Answers answers = 1 [(validate.rules).repeated = {min_items: 1}]; // 用户答案列表
+}
+
+message GetUserStyleRequest {}
+
+message UserStyleInfo {
+  string id = 1; // 记录ID
+  string userId = 2; // 用户ID
+  int32 vision = 3; // 视觉值
+  int32 audition = 4; // 听觉值
+  int32 kinesthesis = 5; // 动觉值
+  string style = 6; // 风格结果: default/vision/audition/kinesthesis
+  repeated string styleLearnMethod = 7; // 风格学习方法
+  repeated Answers answers = 8; // 用户答案
+  int32 status = 9; // 状态 -1:删除 0:无效 1:有效
+  string createdAt = 10; // 创建时间
+  string updatedAt = 11; // 更新时间
+}

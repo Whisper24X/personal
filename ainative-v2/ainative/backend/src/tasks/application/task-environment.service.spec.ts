@@ -2,12 +2,17 @@ import { ConflictException } from '@nestjs/common';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import {
+  TaskEnvironmentCoreMode,
+  TaskEnvironmentDiagnosticStatus,
   TaskEnvironmentStage,
+  TaskEnvironmentServicePhase,
   TaskEnvironmentStatus,
+  TaskPreviewStatus,
+  TaskWorkspaceStatus,
 } from '../dto/task-environment.dto';
 import { TaskEnvironmentService } from './task-environment.service';
 
-const createTask = () => ({
+const createTask = (overrides: Record<string, unknown> = {}) => ({
   id: 'task-1',
   projectId: 'project-1',
   businessLineId: 'business-line-1',
@@ -25,9 +30,10 @@ const createTask = () => ({
   createdAt: new Date('2026-04-08T00:00:00.000Z'),
   updatedAt: new Date('2026-04-08T00:00:00.000Z'),
   deletedAt: null,
+  ...overrides,
 });
 
-const createProject = () => ({
+const createProject = (overrides: Record<string, unknown> = {}) => ({
   id: 'project-1',
   businessLineId: 'business-line-1',
   name: 'AINative Project',
@@ -38,6 +44,7 @@ const createProject = () => ({
   createdAt: new Date('2026-04-08T00:00:00.000Z'),
   updatedAt: new Date('2026-04-08T00:00:00.000Z'),
   deletedAt: null,
+  ...overrides,
 });
 
 const createCurrentUser = () => ({
@@ -47,9 +54,14 @@ const createCurrentUser = () => ({
   exp: 9999999999,
 });
 
-const createService = () => {
-  const task = createTask();
-  const project = createProject();
+const createService = (
+  options: {
+    task?: ReturnType<typeof createTask>;
+    project?: ReturnType<typeof createProject>;
+  } = {},
+) => {
+  const task = options.task ?? createTask();
+  const project = options.project ?? createProject();
   const taskAccessService = {
     assertCanAccessTaskProject: jest.fn().mockResolvedValue({ task, project }),
     getProjectByIdOrThrow: jest.fn().mockResolvedValue(project),
@@ -68,20 +80,28 @@ const createService = () => {
   };
   const taskRepository = {
     findById: jest.fn().mockResolvedValue(task),
+    update: jest.fn().mockResolvedValue(task),
   };
   const projectExecutionSlotRepository = {
     claimSlotWithinLimit: jest.fn(),
+    findByTaskId: jest.fn().mockResolvedValue(null),
   };
   const containerExecutionConfig = {
     getSlotTtlMs: jest.fn().mockReturnValue(5_000),
     getMaxContainersPerProject: jest.fn().mockReturnValue(2),
   };
   const containerOrchestration = {
-    inspectTaskContainer: jest.fn().mockResolvedValue(null),
+    inspectTaskContainer: jest
+      .fn()
+      .mockResolvedValue({ kind: 'missing', slotState: 'none' }),
+    inspectTaskContainerRuntimeState: jest
+      .fn()
+      .mockResolvedValue({ kind: 'missing', slotState: 'none' }),
     ensureContainer: jest.fn().mockResolvedValue({
       containerId: 'container-1',
     }),
     removeContainerForTask: jest.fn().mockResolvedValue(undefined),
+    resolvePreviewConfigForTask: jest.fn().mockResolvedValue(null),
   };
 
   const service = new TaskEnvironmentService(
@@ -140,6 +160,89 @@ describe('TaskEnvironmentService', () => {
     expect(containerOrchestration.ensureContainer).not.toHaveBeenCalled();
   });
 
+  it('should expose workspace-native provisioning status without starting runtime', async () => {
+    const task = createTask({
+      configJson: {
+        workspaceStatus: 'provisioning',
+        workspaceStage: 'fetching_sub_repos',
+        workspaceMessage: '正在拉取子仓代码',
+        workspaceSnapshotStatus: 'pending',
+        workspaceSnapshot: {
+          taskBranch: 'feature/task-1',
+          snapshotCommitSha: 'abc123',
+        },
+      },
+    });
+    const project = createProject({
+      configJson: {
+        subtreeMode: 'workspace-native',
+      },
+    });
+    const {
+      service,
+      taskRuntimeOrchestrator,
+      projectExecutionSlotRepository,
+      containerOrchestration,
+    } = createService({ task, project });
+    const currentUser = createCurrentUser();
+
+    const result = await service.getEnvironment(task.id, currentUser as never);
+
+    expect(result.status).toBe(TaskEnvironmentStatus.starting);
+    expect(result.stage).toBe(TaskEnvironmentStage.workspacePreparing);
+    expect(result.workspaceStatus).toBe(TaskWorkspaceStatus.provisioning);
+    expect(result.workspaceStage).toBe('fetching_sub_repos');
+    expect(result.workspaceMessage).toBe('正在拉取子仓代码');
+    expect(result.workspaceSnapshotStatus).toBe('pending');
+    expect(result.message).toBe('正在拉取子仓代码');
+    expect(taskRuntimeOrchestrator.prepareTaskRuntime).not.toHaveBeenCalled();
+    expect(
+      projectExecutionSlotRepository.claimSlotWithinLimit,
+    ).not.toHaveBeenCalled();
+    expect(containerOrchestration.ensureContainer).not.toHaveBeenCalled();
+  });
+
+  it('should expose workspace-native failure status without starting runtime', async () => {
+    const task = createTask({
+      configJson: {
+        workspaceStatus: 'failed',
+        workspaceStage: 'failed',
+        workspaceMessage: '任务工作区准备失败',
+        workspaceError: 'git worktree add failed',
+        workspaceSnapshotStatus: 'failed',
+        workspaceSnapshotError: 'push failed',
+        workspaceSnapshot: {
+          taskBranch: 'feature/task-1',
+          snapshotCommitSha: 'abc123',
+        },
+      },
+    });
+    const project = createProject({
+      configJson: {
+        subtreeMode: 'workspace-native',
+      },
+    });
+    const { service, taskRuntimeOrchestrator, containerOrchestration } =
+      createService({ task, project });
+    const currentUser = createCurrentUser();
+
+    const result = await service.startEnvironment(
+      task.id,
+      currentUser as never,
+    );
+
+    expect(result.status).toBe(TaskEnvironmentStatus.failed);
+    expect(result.workspaceStatus).toBe(TaskWorkspaceStatus.failed);
+    expect(result.workspaceStage).toBe('failed');
+    expect(result.workspaceMessage).toBe('任务工作区准备失败');
+    expect(result.workspaceError).toBe('git worktree add failed');
+    expect(result.workspaceSnapshotStatus).toBe('failed');
+    expect(result.workspaceSnapshotError).toBe('push failed');
+    expect(result.steps[0].status).toBe('error');
+    expect(taskRuntimeOrchestrator.prepareTaskRuntime).not.toHaveBeenCalled();
+    expect(containerOrchestration.ensureContainer).not.toHaveBeenCalled();
+  });
+
   it('should treat an existing task slot as idempotent and continue startup', async () => {
     const {
       service,
@@ -150,13 +253,22 @@ describe('TaskEnvironmentService', () => {
     } = createService();
     const currentUser = createCurrentUser();
 
-    containerOrchestration.inspectTaskContainer
-      .mockResolvedValueOnce(null)
+    containerOrchestration.inspectTaskContainerRuntimeState
+      .mockResolvedValueOnce({ kind: 'missing', slotState: 'none' })
       .mockResolvedValueOnce({
+        kind: 'running',
         containerId: 'container-1',
-        running: true,
-        paused: false,
         accessMetadata: null,
+        runtimeReadiness: {
+          preview: {
+            status: TaskPreviewStatus.unavailable,
+            url: null,
+            partial: false,
+            reason: 'unavailable',
+          },
+          serviceStatuses: [],
+          routeDiagnostics: [],
+        },
       });
     projectExecutionSlotRepository.claimSlotWithinLimit.mockResolvedValue(
       'existing',
@@ -272,39 +384,58 @@ describe('TaskEnvironmentService', () => {
     expect(result.status).toBe(TaskEnvironmentStatus.stopped);
     expect(result.stage).toBe(TaskEnvironmentStage.stopped);
     expect(result.message).toBe('执行环境已释放');
+    expect(result.preview.status).toBe('unavailable');
   });
 
   it('should report not_started when the runner container exists but is paused', async () => {
-    const { service, task, containerOrchestration, taskLogRepository } =
-      createService();
+    const {
+      service,
+      task,
+      containerOrchestration,
+      projectExecutionSlotRepository,
+      taskLogRepository,
+    } = createService();
     const currentUser = createCurrentUser();
 
     taskLogRepository.findLatestByTaskId.mockResolvedValue([]);
-    containerOrchestration.inspectTaskContainer.mockResolvedValue({
+    projectExecutionSlotRepository.findByTaskId.mockResolvedValue({
+      taskId: task.id,
+      projectId: task.projectId,
       containerId: 'cid-paused',
-      running: false,
-      paused: true,
       accessMetadata: null,
+    });
+    containerOrchestration.inspectTaskContainerRuntimeState.mockResolvedValue({
+      kind: 'missing',
+      slotState: 'released-stale',
     });
 
     const result = await service.getEnvironment(task.id, currentUser as never);
 
     expect(result.status).toBe(TaskEnvironmentStatus.notStarted);
-    expect(result.message).toContain('暂停');
+    expect(result.message).toContain('未运行');
     expect(result.runtime?.containerId).toBe('cid-paused');
   });
 
   it('should report not_started when the runner container exists but is not running', async () => {
-    const { service, task, containerOrchestration, taskLogRepository } =
-      createService();
+    const {
+      service,
+      task,
+      containerOrchestration,
+      projectExecutionSlotRepository,
+      taskLogRepository,
+    } = createService();
     const currentUser = createCurrentUser();
 
     taskLogRepository.findLatestByTaskId.mockResolvedValue([]);
-    containerOrchestration.inspectTaskContainer.mockResolvedValue({
+    projectExecutionSlotRepository.findByTaskId.mockResolvedValue({
+      taskId: task.id,
+      projectId: task.projectId,
       containerId: 'cid-exited',
-      running: false,
-      paused: false,
       accessMetadata: null,
+    });
+    containerOrchestration.inspectTaskContainerRuntimeState.mockResolvedValue({
+      kind: 'missing',
+      slotState: 'released-stale',
     });
 
     const result = await service.getEnvironment(task.id, currentUser as never);
@@ -362,6 +493,76 @@ describe('TaskEnvironmentService', () => {
     expect(result.status).toBe(TaskEnvironmentStatus.stopped);
   });
 
+  it('should keep preview provisioning when container is running but preview services are not ready yet', async () => {
+    const { service, task, containerOrchestration, taskLogRepository } =
+      createService();
+    const currentUser = createCurrentUser();
+
+    taskLogRepository.findLatestByTaskId.mockResolvedValue([]);
+    containerOrchestration.resolvePreviewConfigForTask.mockResolvedValue({
+      service: 'yanxue',
+      path: '/api/',
+    });
+    containerOrchestration.inspectTaskContainerRuntimeState.mockResolvedValue({
+      kind: 'running',
+      containerId: 'container-1',
+      accessMetadata: {
+        previewUrl: 'http://localhost:39144/api/',
+        coreMode: TaskEnvironmentCoreMode.preview,
+        previewConfigured: true,
+        previewFallbackUsed: false,
+      },
+      runtimeReadiness: {
+        preview: {
+          status: TaskPreviewStatus.provisioning,
+          url: null,
+          partial: false,
+          reason: null,
+        },
+        serviceStatuses: [
+          {
+            name: 'yanxue',
+            port: 8000,
+            phase: TaskEnvironmentServicePhase.starting,
+            message: null,
+            exitCode: null,
+            updatedAt: null,
+            isPrimaryPreview: true,
+          },
+        ],
+        routeDiagnostics: [
+          {
+            path: '/api/',
+            service: 'yanxue',
+            port: 8000,
+            status: TaskEnvironmentDiagnosticStatus.failed,
+            statusCode: null,
+            error: 'connection refused',
+          },
+        ],
+      },
+    });
+
+    const result = await service.getEnvironment(task.id, currentUser as never);
+
+    expect(result.status).toBe(TaskEnvironmentStatus.ready);
+    expect(result.preview.status).toBe(TaskPreviewStatus.provisioning);
+    expect(result.preview.url).toBeNull();
+    expect(result.serviceStatuses).toEqual([
+      expect.objectContaining({
+        name: 'yanxue',
+        phase: TaskEnvironmentServicePhase.starting,
+        isPrimaryPreview: true,
+      }),
+    ]);
+    expect(result.routeDiagnostics).toEqual([
+      expect.objectContaining({
+        path: '/api/',
+        status: TaskEnvironmentDiagnosticStatus.failed,
+      }),
+    ]);
+  });
+
   it('should reject environment termination when the task is running', async () => {
     const { service, task, taskNodeRepository, containerOrchestration } =
       createService();
@@ -379,5 +580,68 @@ describe('TaskEnvironmentService', () => {
     expect(
       containerOrchestration.removeContainerForTask,
     ).not.toHaveBeenCalled();
+  });
+
+  it('should await workspace-native provisioning before prepareTaskRuntime', async () => {
+    jest.useFakeTimers();
+    try {
+      const {
+        service,
+        task,
+        project,
+        taskAccessService,
+        taskRuntimeOrchestrator,
+        taskRepository,
+        projectExecutionSlotRepository,
+      } = createService();
+
+      projectExecutionSlotRepository.claimSlotWithinLimit.mockResolvedValue(
+        undefined as never,
+      );
+
+      const wsProject = {
+        ...project,
+        configJson: { subtreeMode: 'workspace-native' as const },
+      };
+      const provisioningTask = {
+        ...task,
+        configJson: { workspaceStatus: 'provisioning' },
+      };
+      const readyTask = {
+        ...task,
+        configJson: { workspaceStatus: 'ready' },
+      };
+
+      taskAccessService.assertCanAccessTaskProject.mockResolvedValue({
+        task: provisioningTask,
+        project: wsProject,
+      });
+
+      taskRepository.findById
+        .mockResolvedValueOnce(provisioningTask as never)
+        .mockResolvedValueOnce(provisioningTask as never)
+        .mockResolvedValue(readyTask as never);
+
+      taskRuntimeOrchestrator.prepareTaskRuntime.mockResolvedValue({
+        task: readyTask as never,
+        project: wsProject as never,
+      });
+
+      const currentUser = createCurrentUser();
+      const done = service.startEnvironment(task.id, currentUser as never);
+
+      await jest.advanceTimersByTimeAsync(750);
+      await jest.advanceTimersByTimeAsync(750);
+      await jest.advanceTimersByTimeAsync(750);
+
+      await done;
+
+      expect(taskRuntimeOrchestrator.prepareTaskRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({ id: readyTask.id }),
+        currentUser as never,
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

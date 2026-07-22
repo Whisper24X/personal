@@ -11,6 +11,13 @@ export class Project {
   @ApiProperty({ type: String, example: 'AINative Web' })
   name: string;
 
+  @ApiProperty({
+    type: String,
+    example: 'admin-console',
+    description: '项目在 ainative-workspace 中的稳定标识',
+  })
+  slug: string;
+
   @ApiProperty({ type: String, required: false, nullable: true })
   description?: string | null;
 

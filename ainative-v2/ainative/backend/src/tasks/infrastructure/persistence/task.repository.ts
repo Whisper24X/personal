@@ -76,5 +76,15 @@ export abstract class TaskRepository {
     payload: Partial<Task>,
   ): Promise<NullableType<Task>>;
 
+  /**
+   * Atomically acquire a git operation lock.
+   * Sets configJson.gitOperation to the provided value ONLY IF no operation
+   * is currently running. Returns true if acquired, false if already locked.
+   */
+  abstract acquireGitOperationLock(
+    id: Task['id'],
+    gitOperation: Record<string, unknown>,
+  ): Promise<boolean>;
+
   abstract remove(id: Task['id']): Promise<void>;
 }

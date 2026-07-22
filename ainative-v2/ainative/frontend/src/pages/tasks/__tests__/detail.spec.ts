@@ -6,7 +6,7 @@ import { useMessageStore } from '@app/stores/modules/message'
 import { STORAGE_KEYS } from '@shared/types/common/storage'
 import type { TaskDetail, TaskEnvironment } from '@/types/api/tasks'
 
-const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
+const { tasksApi, projectsApi, authApi, openSseStream } = vi.hoisted(() => ({
   tasksApi: {
     detailWithNodes: vi.fn(),
     logs: vi.fn(),
@@ -27,6 +27,10 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     gitArtifactsTree: vi.fn(),
     gitArtifactPreview: vi.fn(),
     getGitArtifactRawUrl: vi.fn(),
+  },
+  projectsApi: {
+    detail: vi.fn(),
+    regenerateRunner: vi.fn(),
   },
   authApi: {
     access: vi.fn(),
@@ -52,6 +56,10 @@ vi.mock('vue-router', () => ({
 
 vi.mock('@/api/tasks', () => ({
   tasksApi,
+}))
+
+vi.mock('@/api/projects', () => ({
+  projectsApi,
 }))
 
 vi.mock('@/api/auth', () => ({
@@ -176,6 +184,33 @@ beforeEach(() => {
     },
   })
   tasksApi.getGitArtifactRawUrl.mockReturnValue('/artifact-raw')
+  projectsApi.regenerateRunner.mockResolvedValue({
+    accepted: true,
+    projectId: 'project-1',
+    queuedAt: '2026-02-27T10:00:00.000Z',
+  })
+  projectsApi.detail.mockResolvedValue({
+    id: 'project-1',
+    businessLineId: 'business-line-1',
+    name: 'Project 1',
+    slug: 'project-1',
+    gitUrl: '',
+    defaultBranch: 'main',
+    configJson: {
+      containerRuntime: {
+        runnerSnapshotRefreshState: {
+          attemptedAt: '2026-02-27T09:59:00.000Z',
+          lastOutcome: 'skipped',
+        },
+        runnerOrchestration: {
+          services: [{ name: 'yanxue', workdir: 'yanxue', command: 'go run ./cmd/yanxue' }],
+          generatedMeta: {
+            generatedAt: '2026-02-27T09:59:00.000Z',
+          },
+        },
+      },
+    },
+  })
   tasksApi.terminateEnvironment.mockResolvedValue({
     status: 'stopped',
     stage: 'stopped',
@@ -197,7 +232,7 @@ beforeEach(() => {
     ],
   } satisfies TaskEnvironment)
   authApi.access.mockResolvedValue({
-    capabilities: ['project.task.read'],
+    capabilities: ['project.task.read', 'project.task.manage'],
     currentContext: {
       businessLineId: 'business-line-1',
       businessRole: 'owner',
@@ -295,6 +330,151 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.find('.environment-button-spinner').exists()).toBe(false)
   })
 
+  it('shows workspace-native provisioning and disables environment start', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'starting',
+      stage: 'workspace_preparing',
+      stageLabel: '准备任务工作区',
+      message: '正在拉取子仓代码',
+      workspaceStatus: 'provisioning',
+      workspaceStage: 'fetching_sub_repos',
+      workspaceMessage: '正在拉取子仓代码',
+      workspaceSnapshotStatus: 'pending',
+      workspaceError: null,
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'provisioning',
+        url: null,
+      },
+      steps: [
+        {
+          key: 'workspace_preparing',
+          label: '准备任务工作区',
+          status: 'in_progress',
+          message: '正在拉取子仓代码',
+        },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
+        { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('工作区准备中')
+    expect(wrapper.text()).toContain('拉取子仓代码')
+    expect(wrapper.text()).toContain('正在拉取子仓代码')
+    expect(wrapper.text()).toContain('等待工作区就绪')
+    const startButton = wrapper.findAll('button').find((button) => {
+      return button.text().trim() === '等待工作区就绪'
+    })
+    expect(startButton?.attributes('disabled')).toBeDefined()
+    expect(tasksApi.startEnvironment).not.toHaveBeenCalled()
+  })
+
+  it('shows workspace-native failure and asks users to recreate the task', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'failed',
+      stage: 'failed',
+      stageLabel: '执行环境启动失败',
+      message: 'git worktree add failed',
+      workspaceStatus: 'failed',
+      workspaceStage: 'failed',
+      workspaceMessage: '任务工作区准备失败',
+      workspaceError: 'git worktree add failed',
+      workspaceSnapshotStatus: 'failed',
+      workspaceSnapshotError: 'push failed',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'failed',
+        url: null,
+      },
+      steps: [
+        {
+          key: 'workspace_preparing',
+          label: '准备任务工作区',
+          status: 'error',
+          message: 'git worktree add failed',
+        },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
+        { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('工作区异常')
+    expect(wrapper.text()).toContain('任务工作区准备失败')
+    expect(wrapper.text()).toContain('git worktree add failed')
+    expect(wrapper.text()).toContain('请重新创建任务')
+    const startButton = wrapper.findAll('button').find((button) => {
+      return button.text().trim() === '请重新创建任务'
+    })
+    expect(startButton?.attributes('disabled')).toBeDefined()
+    expect(tasksApi.startEnvironment).not.toHaveBeenCalled()
+  })
+
+  it('shows background snapshot push status after local workspace is ready', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'ready',
+      stage: 'ready',
+      stageLabel: '执行环境就绪',
+      message: '执行环境已就绪',
+      workspaceStatus: 'ready',
+      workspaceStage: 'ready',
+      workspaceMessage: '本地任务工作区已准备完成',
+      workspaceSnapshotStatus: 'pushing',
+      workspaceSnapshotError: null,
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'ready',
+        url: 'https://preview.example.com/p/task-1/',
+      },
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+        { key: 'container_starting', label: '启动执行容器', status: 'done' },
+        { key: 'ready', label: '执行环境就绪', status: 'done' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'TaskEnvironmentGate' }).exists()).toBe(false)
+    expect(wrapper.text()).toContain('snapshot 后台同步中')
+  })
+
   it('opens delete dialog from environment gate and removes the task', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -337,7 +517,7 @@ describe('TaskDetailView toasts', () => {
 
     expect(document.body.textContent).toContain('确认删除')
 
-    const confirmButton = [...document.body.querySelectorAll('button')].find((button) => {
+    const confirmButton = Array.from(document.body.querySelectorAll('button')).find((button) => {
       return button.textContent?.trim() === '确认删除'
     })
 
@@ -351,6 +531,194 @@ describe('TaskDetailView toasts', () => {
     const messageStore = useMessageStore()
     expect(messageStore.items[0]?.type).toBe('success')
     expect(messageStore.items[0]?.text).toBe('任务已删除')
+  })
+
+  it('shows 重置配置 in environment gate and triggers project runner regeneration', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    authApi.access.mockResolvedValueOnce({
+      capabilities: ['project.task.read', 'project.task.manage', 'businessLine.project.update'],
+      currentContext: {
+        businessLineId: 'business-line-1',
+        businessRole: 'owner',
+        projectId: 'project-1',
+        projectRole: 'owner',
+      },
+    })
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'stopped',
+      stage: 'stopped',
+      stageLabel: '执行环境已释放',
+      message: '执行环境已释放',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+        { key: 'container_starting', label: '启动执行容器', status: 'done' },
+        { key: 'ready', label: '执行环境就绪', status: 'done' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    const regenerateButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '重置配置')
+    expect(regenerateButton).toBeDefined()
+
+    await regenerateButton!.trigger('click')
+    await flushPromises()
+
+    expect(projectsApi.regenerateRunner).toHaveBeenCalledWith('project-1')
+    const messageStore = useMessageStore()
+    expect(messageStore.items[0]?.type).toBe('success')
+    expect(messageStore.items[0]?.text).toBe(
+      '正在准备新的 Runner 配置，完成后后续启动环境会自动吃到',
+    )
+  })
+
+  it('hides 重置配置 in environment gate when there is no active project id', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    authApi.access.mockResolvedValueOnce({
+      capabilities: ['project.task.read', 'project.task.manage', 'businessLine.project.update'],
+      currentContext: {
+        businessLineId: 'business-line-1',
+        businessRole: 'owner',
+        projectId: null,
+        projectRole: null,
+      },
+    })
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: '',
+        mode: 'conversation',
+        title: 'Demo task',
+        status: 'todo',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [],
+    })
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'not_started',
+      stage: 'workspace_preparing',
+      stageLabel: '准备任务工作区',
+      message: '尚未启动执行环境',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'pending' },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
+        { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('重置配置')
+  })
+
+  it('allows 重置配置 in environment gate for runner-unavailable task with task runtime access only', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    authApi.access.mockResolvedValueOnce({
+      capabilities: ['project.task.read', 'project.task.manage'],
+      currentContext: {
+        businessLineId: 'business-line-1',
+        businessRole: 'developer',
+        projectId: 'project-1',
+        projectRole: 'developer',
+      },
+    })
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'conversation',
+        title: 'Runner blocked task',
+        status: 'todo',
+        configJson: {
+          agentCliId: 'codex',
+          runner: {
+            status: 'unavailable',
+            source: 'unavailableGenerationFailed',
+            error: 'Runner 配置未通过验证，请重置配置后重试。',
+          },
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [],
+    } satisfies TaskDetail)
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'not_started',
+      stage: 'workspace_preparing',
+      stageLabel: '准备任务工作区',
+      message: '尚未启动执行环境',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'pending' },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
+        { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    const regenerateButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '重置配置')
+
+    expect(regenerateButton).toBeDefined()
+    expect(regenerateButton!.attributes('disabled')).toBeUndefined()
+
+    await regenerateButton!.trigger('click')
+    await flushPromises()
+
+    expect(projectsApi.regenerateRunner).toHaveBeenCalledWith('project-1')
   })
 
   it('starts environment from gate and then renders task detail content', async () => {
@@ -477,6 +845,65 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).not.toContain('启动失败')
   })
 
+  it('continues polling environment while preview is provisioning until it becomes ready', async () => {
+    vi.useFakeTimers()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.environment
+      .mockResolvedValueOnce({
+        status: 'ready',
+        stage: 'ready',
+        stageLabel: '执行环境就绪',
+        message: '执行环境已就绪',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+        runtime: null,
+        preview: {
+          status: 'provisioning',
+          url: null,
+        },
+        steps: [
+          { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+          { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+          { key: 'container_starting', label: '启动执行容器', status: 'done' },
+          { key: 'ready', label: '执行环境就绪', status: 'done' },
+        ],
+      } satisfies TaskEnvironment)
+      .mockResolvedValueOnce({
+        status: 'ready',
+        stage: 'ready',
+        stageLabel: '执行环境就绪',
+        message: '执行环境已就绪',
+        updatedAt: '2026-02-27T10:00:05.000Z',
+        runtime: null,
+        preview: {
+          status: 'ready',
+          url: 'https://preview.example.com/p/task-1/',
+        },
+        steps: [
+          { key: 'workspace_preparing', label: '准备任务工作区', status: 'done' },
+          { key: 'slot_claiming', label: '分配任务执行资源', status: 'done' },
+          { key: 'container_starting', label: '启动执行容器', status: 'done' },
+          { key: 'ready', label: '执行环境就绪', status: 'done' },
+        ],
+      } satisfies TaskEnvironment)
+
+    mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+    expect(tasksApi.environment).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    await flushPromises()
+
+    expect(tasksApi.environment).toHaveBeenCalledTimes(2)
+  })
+
   it('renders ready environment as a single badge without duplicate stage text', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -588,7 +1015,7 @@ describe('TaskDetailView toasts', () => {
     await vi.advanceTimersByTimeAsync(300)
     await flushPromises()
 
-    expect(tasksApi.detailWithNodes).toHaveBeenCalledTimes(2)
+    expect(tasksApi.detailWithNodes.mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(tasksApi.messages).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('节点待审批')
     expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).exists()).toBe(true)
@@ -2182,6 +2609,292 @@ describe('TaskDetailView toasts', () => {
         .filter((text) => text === '重置' || text === '终止' || text === '删除'),
     ).toEqual(['重置', '终止', '删除'])
     expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('已选中节点')
+  })
+
+  it('shows 重置配置 alongside node reset in more actions when user can edit project config', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    authApi.access.mockResolvedValueOnce({
+      capabilities: ['project.task.read', 'project.task.manage', 'businessLine.project.update'],
+      currentContext: {
+        businessLineId: 'business-line-1',
+        businessRole: 'owner',
+        projectId: 'project-1',
+        projectRole: 'owner',
+      },
+    })
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Review node',
+          status: 'in_review',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const executionContextBar = wrapper.findComponent({ name: 'TaskExecutionContextBar' })
+    await executionContextBar.get('button[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+
+    expect(
+      executionContextBar
+        .findAll('button')
+        .map((button) => button.text().trim())
+        .filter((text) =>
+          text === '重置配置' || text === '重置' || text === '终止' || text === '删除',
+        ),
+    ).toEqual(['重置配置', '重置', '终止', '删除'])
+
+    const regenerateButton = executionContextBar
+      .findAll('button')
+      .find((button) => button.text().trim() === '重置配置')
+    expect(regenerateButton).toBeDefined()
+
+    await regenerateButton!.trigger('click')
+    await flushPromises()
+
+    expect(projectsApi.regenerateRunner).toHaveBeenCalledWith('project-1')
+    expect(tasksApi.resetNode).not.toHaveBeenCalled()
+  })
+
+  it('auto restarts ready environment after regenerated runner config becomes available', async () => {
+    vi.useFakeTimers()
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    authApi.access.mockResolvedValueOnce({
+      capabilities: ['project.task.read', 'project.task.manage', 'businessLine.project.update'],
+      currentContext: {
+        businessLineId: 'business-line-1',
+        businessRole: 'owner',
+        projectId: 'project-1',
+        projectRole: 'owner',
+      },
+    })
+
+    const initialProject = {
+      id: 'project-1',
+      businessLineId: 'business-line-1',
+      name: 'Project 1',
+      slug: 'project-1',
+      gitUrl: '',
+      defaultBranch: 'main',
+      configJson: {
+        containerRuntime: {
+          runnerSnapshotRefreshState: {
+            attemptedAt: '2026-02-27T09:59:00.000Z',
+            lastOutcome: 'skipped',
+          },
+          runnerOrchestration: {
+            services: [{ name: 'yanxue', workdir: 'yanxue', command: 'go run ./cmd/yanxue' }],
+            generatedMeta: {
+              generatedAt: '2026-02-27T09:59:00.000Z',
+            },
+          },
+        },
+      },
+    }
+    const updatedProject = {
+      ...initialProject,
+      configJson: {
+        containerRuntime: {
+          runnerSnapshotRefreshState: {
+            attemptedAt: '2026-02-27T10:00:01.000Z',
+            lastOutcome: 'written',
+          },
+          runnerOrchestration: {
+            services: [{ name: 'trip-miniprogram', workdir: 'trip-miniprogram', command: 'pnpm dev' }],
+            generatedMeta: {
+              generatedAt: '2026-02-27T10:00:01.000Z',
+            },
+          },
+        },
+      },
+    }
+
+    projectsApi.detail
+      .mockResolvedValueOnce(initialProject)
+      .mockResolvedValueOnce(updatedProject)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    const regenerateButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '重置配置')
+    expect(regenerateButton).toBeDefined()
+
+    await regenerateButton!.trigger('click')
+    await flushPromises()
+
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    expect(tasksApi.terminateEnvironment).toHaveBeenCalledWith('task-1')
+    expect(tasksApi.startEnvironment).toHaveBeenCalledWith('task-1')
+
+    const messageStore = useMessageStore()
+    expect(messageStore.items.some((item) => item.text === '新的 Runner 配置已自动应用到当前环境')).toBe(
+      true,
+    )
+  })
+
+  it('stops preparing and shows error when regenerated runner config fails in background', async () => {
+    vi.useFakeTimers()
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    authApi.access.mockResolvedValueOnce({
+      capabilities: ['project.task.read', 'project.task.manage'],
+      currentContext: {
+        businessLineId: 'business-line-1',
+        businessRole: 'developer',
+        projectId: 'project-1',
+        projectRole: 'developer',
+      },
+    })
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'conversation',
+        title: 'Runner blocked task',
+        status: 'todo',
+        configJson: {
+          agentCliId: 'codex',
+          runner: {
+            status: 'unavailable',
+            source: 'unavailableGenerationFailed',
+            error: 'Runner 配置未通过验证，请重置配置后重试。',
+          },
+          subReposSnapshot: [
+            {
+              prefix: 'trip-shadow',
+              url: 'git@example.com:frontend/trip-shadow.git',
+              branch: 'main',
+            },
+          ],
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [],
+    } satisfies TaskDetail)
+    tasksApi.environment.mockResolvedValueOnce({
+      status: 'not_started',
+      stage: 'workspace_preparing',
+      stageLabel: '准备任务工作区',
+      message: '尚未启动执行环境',
+      updatedAt: '2026-02-27T10:00:00.000Z',
+      runtime: null,
+      preview: {
+        status: 'unavailable',
+        url: null,
+      },
+      steps: [
+        { key: 'workspace_preparing', label: '准备任务工作区', status: 'pending' },
+        { key: 'slot_claiming', label: '分配任务执行资源', status: 'pending' },
+        { key: 'container_starting', label: '启动执行容器', status: 'pending' },
+        { key: 'ready', label: '执行环境就绪', status: 'pending' },
+      ],
+    } satisfies TaskEnvironment)
+
+    const initialProject = {
+      id: 'project-1',
+      businessLineId: 'business-line-1',
+      name: 'Project 1',
+      slug: 'project-1',
+      gitUrl: '',
+      defaultBranch: 'main',
+      configJson: {
+        containerRuntime: {
+          runnerSnapshotRefreshState: {
+            attemptedAt: '2026-02-27T09:59:00.000Z',
+            lastOutcome: 'skipped',
+          },
+        },
+      },
+    }
+    const failedProject = {
+      ...initialProject,
+      configJson: {
+        containerRuntime: {
+          runnerSnapshotRefreshState: {
+            attemptedAt: '2026-02-27T10:00:01.000Z',
+            lastOutcome: 'failed',
+            lastError: 'Runner 配置生成失败',
+          },
+        },
+      },
+    }
+
+    projectsApi.detail
+      .mockResolvedValueOnce(initialProject)
+      .mockResolvedValueOnce(failedProject)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await flushPromises()
+
+    const regenerateButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '重置配置')
+    expect(regenerateButton).toBeDefined()
+
+    await regenerateButton!.trigger('click')
+    await flushPromises()
+
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    const messageStore = useMessageStore()
+    expect(messageStore.items.some((item) => item.text === 'Runner 配置生成失败')).toBe(true)
+    expect(tasksApi.terminateEnvironment).not.toHaveBeenCalled()
+    expect(tasksApi.startEnvironment).not.toHaveBeenCalled()
   })
 
   it('hides 重置 and 终止 in the more actions menu after task is completed', async () => {

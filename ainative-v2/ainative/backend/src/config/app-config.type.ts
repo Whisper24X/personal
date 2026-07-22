@@ -12,4 +12,8 @@ export type AppConfig = {
   httpAccessLoggingEnabled: boolean;
   /** Goal 目标层功能总开关（关闭时 Goal API 返回 404） */
   goalsEnabled: boolean;
+  /** ainative-workspace Git 仓库 SSH 地址 */
+  workspaceGitUrl: string;
+  /** ainative-workspace 模板基线分支 */
+  workspaceBaseBranch: string;
 };

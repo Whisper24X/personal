@@ -131,6 +131,37 @@ describe('IsolatedRunnerContainerService', () => {
     expect(runArgs).not.toContain('host.docker.internal');
   });
 
+  it('should use image default entrypoint when requested', async () => {
+    const service = new IsolatedRunnerContainerService();
+    const execDockerCapture = jest.fn().mockResolvedValueOnce('container-1\n');
+    (service as any).execDockerCapture = execDockerCapture;
+    (service as any).execDocker = jest.fn().mockResolvedValue(undefined);
+    (service as any).inspectById = jest.fn().mockResolvedValue({
+      id: 'container-1',
+      status: 'running',
+      running: true,
+      image: 'ainative/runner:latest',
+      platform: 'linux/amd64',
+      publishedPorts: [],
+    });
+
+    await service.run({
+      containerName: 'ainative-runner-probe',
+      image: 'ainative/runner:latest',
+      worktreePath: '/tmp/worktrees/probe',
+      workspaceMount: '/workspace',
+      useImageDefaultCommand: true,
+      startTimeoutMs: 1000,
+      networkMode: 'bridge',
+    });
+
+    const runArgs = execDockerCapture.mock.calls.find(
+      (c) => c[0][0] === 'run',
+    )?.[0] as string[];
+    expect(runArgs.slice(-1)).toEqual(['ainative/runner:latest']);
+    expect(runArgs).not.toEqual(expect.arrayContaining(['sleep', 'infinity']));
+  });
+
   it('should remove managed volumes after removing the container', async () => {
     const service = new IsolatedRunnerContainerService();
     const execDocker = jest.fn().mockResolvedValue(undefined);

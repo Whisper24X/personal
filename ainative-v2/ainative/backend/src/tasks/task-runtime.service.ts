@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
@@ -8,6 +8,22 @@ import { ProjectWorkspacePathsService } from '../project-workspace/project-works
 import { ProjectRepositoryWorkspaceService } from '../projects/project-repository-workspace.service';
 import { Task } from './domain/task';
 import { resolveGitRemoteUrlWithHttpAuth } from '../git/git-remote-auth.util';
+import {
+  resolveSubRepoConfigs,
+  buildSubRepoExcludePathspecs,
+  type SubRepoConfig,
+} from '../git/sub-repo.types';
+import {
+  isSnapshotSyncEnabled,
+  hasSubRepoMode,
+  isWorkspaceNativeEnabled,
+} from '../git/snapshot-sync.types';
+import { ProjectGitStateRepository } from '../projects/project-git-state.repository';
+import { WorkspaceRepositoryService } from '../git/workspace-repository.service';
+import {
+  SubRepoDeployBranch,
+  TaskDeleteStatus,
+} from '../git/workspace-native.types';
 
 type EnsureTaskRuntimeResult = {
   gitBranch: string;
@@ -19,6 +35,7 @@ type EnsureTaskRuntimeResult = {
 type CleanupTaskRuntimeResult = {
   cleaned: boolean;
   errorMessage?: string;
+  deleteStatus?: TaskDeleteStatus;
 };
 
 type GitDiffArtifact = {
@@ -29,6 +46,7 @@ type GitDiffArtifact = {
 
 @Injectable()
 export class TaskRuntimeService {
+  private readonly logger = new Logger(TaskRuntimeService.name);
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly gitlabHttpAuthHost = 'gitlab.yc345.tv';
   private readonly maxDiffLength = 120_000;
@@ -37,12 +55,18 @@ export class TaskRuntimeService {
     private readonly configService: ConfigService,
     private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
+    private readonly gitStateRepository: ProjectGitStateRepository,
+    private readonly workspaceRepoService: WorkspaceRepositoryService,
   ) {}
 
   async ensureRuntime(
     task: Task,
     project: Project,
   ): Promise<EnsureTaskRuntimeResult> {
+    if (isWorkspaceNativeEnabled(project) && this.isWorkspaceNativeTask(task)) {
+      return this.ensureWorkspaceNativeRuntime(task, project);
+    }
+
     const gitBranch = this.resolveBranch(task, project);
     const gitBaseBranch = this.resolveGitBaseBranch(task, project);
     const allowedRoot = await this.resolveCanonicalPath(
@@ -68,6 +92,28 @@ export class TaskRuntimeService {
         branch: gitBranch,
         gitBaseBranch,
       });
+
+      if (!isSnapshotSyncEnabled(project)) {
+        await this.ensureSubRepoWorktrees({
+          project,
+          worktreePath: gitWorktree,
+          branch: gitBranch,
+        });
+      } else {
+        const currentState = await this.gitStateRepository.getState(project.id);
+        const alreadyActiveForThisTask =
+          currentState.gitPhase === 'task_active' &&
+          currentState.activeTaskId === task.id;
+
+        if (!alreadyActiveForThisTask) {
+          await this.gitStateRepository.transitionPhase(
+            project.id,
+            currentState.gitPhase,
+            'task_active',
+          );
+          await this.gitStateRepository.setActiveTask(project.id, task.id);
+        }
+      }
     }
 
     return {
@@ -78,13 +124,213 @@ export class TaskRuntimeService {
     };
   }
 
+  /**
+   * workspace-native 模式：worktree 已由 WorkspaceRepositoryService.createTaskWorktree 创建，
+   * 此处只验证 worktree 目录存在并返回已知路径。
+   */
+  private async ensureWorkspaceNativeRuntime(
+    task: Task,
+    project: Project,
+  ): Promise<EnsureTaskRuntimeResult> {
+    const worktreeIdentifier = this.resolveGitWorktreeIdentifier(task);
+    const worktreePath = this.resolveGitWorktreePath(task, project);
+    const gitBranch = task.gitBranch ?? this.resolveBranch(task, project);
+    const gitBaseBranch =
+      task.gitBaseBranch ?? this.resolveGitBaseBranch(task, project);
+    const workspaceStatus = this.readWorkspaceStatus(task);
+
+    if (workspaceStatus === 'provisioning') {
+      throw new ConflictException(
+        'workspace-native workspace is still provisioning; retry after workspace is ready.',
+      );
+    }
+
+    if (workspaceStatus === 'failed') {
+      const workspaceError = this.readWorkspaceError(task);
+      throw new ConflictException(
+        workspaceError
+          ? `workspace-native workspace provisioning failed: ${workspaceError}`
+          : 'workspace-native workspace provisioning failed. Task may need to be recreated.',
+      );
+    }
+
+    const exists = await this.pathExists(worktreePath);
+    if (!exists) {
+      throw new Error(
+        workspaceStatus === 'ready'
+          ? `workspace-native worktree missing after provisioning ready at ${worktreePath}. Task may need to be recreated.`
+          : `workspace-native worktree not found at ${worktreePath}. Task may need to be recreated.`,
+      );
+    }
+
+    return {
+      gitBranch,
+      gitBaseBranch,
+      gitWorktree: worktreeIdentifier,
+      worktreePath,
+    };
+  }
+
+  private readWorkspaceStatus(
+    task: Task,
+  ): 'provisioning' | 'ready' | 'failed' | undefined {
+    const config = task.configJson;
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return undefined;
+    }
+    const status = (config as Record<string, unknown>).workspaceStatus;
+    return status === 'provisioning' ||
+      status === 'ready' ||
+      status === 'failed'
+      ? status
+      : undefined;
+  }
+
+  private readWorkspaceError(task: Task): string | undefined {
+    const config = task.configJson;
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return undefined;
+    }
+    const error = (config as Record<string, unknown>).workspaceError;
+    return typeof error === 'string' && error.trim() ? error.trim() : undefined;
+  }
+
+  /**
+   * workspace-native 模式的 runtime 清理：
+   * 1. 删除 worktree
+   * 2. 删除本地 task branch
+   * 3. 删除远端 workspace task branch
+   * 4. 删除子仓远端 task branches（如有部署过）
+   */
+  private async cleanupWorkspaceNativeRuntime(
+    task: Task,
+    project: Project,
+    options?: { force?: boolean },
+  ): Promise<CleanupTaskRuntimeResult> {
+    const taskBranch = task.gitBranch?.trim();
+    if (!taskBranch) {
+      return { cleaned: true };
+    }
+
+    const repositoryRoot = this.resolveRepositoryRoot(project);
+    const worktreePath = this.resolveGitWorktreePath(task, project);
+
+    const taskConfigJson = (task.configJson ?? {}) as Record<string, unknown>;
+    const subRepoDeployBranches = (taskConfigJson.subRepoDeployBranches ??
+      []) as SubRepoDeployBranch[];
+
+    const deployBranchesForCleanup = subRepoDeployBranches.map((b) => ({
+      prefix: b.prefix,
+      url: b.url,
+      remoteBranch: b.remoteBranch,
+    }));
+
+    try {
+      const result = await this.workspaceRepoService.removeTaskWorktree(
+        repositoryRoot,
+        taskBranch,
+        worktreePath,
+        deployBranchesForCleanup.length > 0
+          ? deployBranchesForCleanup
+          : undefined,
+        options?.force ? { force: true } : undefined,
+      );
+
+      const warnings: string[] = [];
+      const openMrs: { prefix: string; url: string; mrUrl: string }[] = [];
+      const remoteFailures: string[] = [];
+
+      if (!result.worktreeRemoved) {
+        warnings.push('worktree not found or already removed');
+      }
+      if (!result.remoteBranchDeleted) {
+        remoteFailures.push('remote workspace branch deletion failed');
+      }
+      for (const sub of result.subRepoBranchResults) {
+        if (!sub.deleted) {
+          if (sub.blockedByMR) {
+            openMrs.push({
+              prefix: sub.prefix,
+              url: sub.url,
+              mrUrl: sub.mrUrl ?? '',
+            });
+          } else {
+            remoteFailures.push(
+              `sub-repo ${sub.prefix} branch ${sub.remoteBranch}: ${sub.error ?? 'deletion failed'}`,
+            );
+          }
+        }
+      }
+
+      if (!options?.force && openMrs.length > 0) {
+        warnings.push('blocked_by_open_mr');
+        return {
+          cleaned: false,
+          errorMessage: 'blocked_by_open_mr',
+          deleteStatus: {
+            status: 'failed',
+            warnings,
+            openMrs,
+          },
+        };
+      }
+
+      if (!options?.force && remoteFailures.length > 0) {
+        warnings.push('blocked_by_remote_failure', ...remoteFailures);
+        return {
+          cleaned: false,
+          errorMessage: 'blocked_by_remote_failure',
+          deleteStatus: {
+            status: 'failed',
+            warnings,
+            openMrs: openMrs.length > 0 ? openMrs : undefined,
+          },
+        };
+      }
+
+      warnings.push(...remoteFailures);
+
+      if (warnings.length) {
+        this.logger.warn(
+          `workspace-native cleanup warnings for task ${task.id}: ${warnings.join('; ')}`,
+        );
+      }
+
+      return {
+        cleaned: true,
+        deleteStatus: {
+          status: 'done',
+          warnings: warnings.length > 0 ? warnings : undefined,
+        },
+      };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `workspace-native cleanup failed for task ${task.id}: ${errMsg}`,
+      );
+      return {
+        cleaned: false,
+        errorMessage: errMsg,
+        deleteStatus: {
+          status: 'failed',
+          warnings: [errMsg],
+        },
+      };
+    }
+  }
+
   async cleanupRuntime(
     task: Task,
     project: Project,
     options?: {
       deleteBranch?: boolean;
+      force?: boolean;
     },
   ): Promise<CleanupTaskRuntimeResult> {
+    if (isWorkspaceNativeEnabled(project) && this.isWorkspaceNativeTask(task)) {
+      return this.cleanupWorkspaceNativeRuntime(task, project, options);
+    }
+
     const worktreeIdentifier = task.gitWorktree?.trim();
     const shouldDeleteBranch = this.shouldDeleteTaskBranch(
       task,
@@ -226,22 +472,54 @@ export class TaskRuntimeService {
     }
   }
 
-  async collectGitDiffArtifact(task: Task): Promise<GitDiffArtifact | null> {
-    const worktreePath = task.gitWorktree?.trim();
-
-    if (!worktreePath) {
+  async collectGitDiffArtifact(
+    task: Task,
+    project: Project,
+  ): Promise<GitDiffArtifact | null> {
+    const worktreeIdentifier = task.gitWorktree?.trim();
+    if (!worktreeIdentifier) {
       return null;
     }
 
-    const hasGit = await this.pathExists(path.join(worktreePath, '.git'));
+    const worktreePath = this.resolveGitWorktreePath(task, project);
+
+    const allowedRoot = await this.resolveCanonicalPath(
+      this.resolveWorktreeAllowedRoot(project),
+    );
+    const resolvedWorktree = await this.resolveCanonicalPath(worktreePath);
+    if (!this.isPathWithinAllowedRoot(resolvedWorktree, allowedRoot)) {
+      this.logger.warn(
+        `collectGitDiffArtifact: worktree path ${worktreePath} is outside allowed root, skipping`,
+      );
+      return null;
+    }
+
+    const hasGit = await this.pathExists(path.join(resolvedWorktree, '.git'));
     if (!hasGit) {
       return null;
     }
 
+    const managedSubRepos = hasSubRepoMode(project);
+    const excludePathspecs = managedSubRepos
+      ? []
+      : buildSubRepoExcludePathspecs(resolveSubRepoConfigs(project.configJson));
+
     const [statusResult, diffResult, branchResult, headResult, subjectResult] =
       await Promise.all([
-        this.runCommand('git', ['-C', worktreePath, 'status', '--short']),
-        this.runCommand('git', ['-C', worktreePath, 'diff', '--no-color']),
+        this.runCommand('git', [
+          '-C',
+          worktreePath,
+          'status',
+          '--short',
+          ...excludePathspecs,
+        ]),
+        this.runCommand('git', [
+          '-C',
+          worktreePath,
+          'diff',
+          '--no-color',
+          ...excludePathspecs,
+        ]),
         this.runCommand('git', [
           '-C',
           worktreePath,
@@ -388,9 +666,24 @@ export class TaskRuntimeService {
     return !protectedBranches.has(branch);
   }
 
+  private isWorkspaceNativeTask(task: Task): boolean {
+    const config = task.configJson as
+      | Record<string, unknown>
+      | null
+      | undefined;
+    return Boolean(config?.workspaceSnapshot);
+  }
+
   private resolveGitBaseBranch(task: Task, project: Project): string {
     if (task.gitBaseBranch?.trim()) {
       return task.gitBaseBranch.trim();
+    }
+
+    if (isWorkspaceNativeEnabled(project)) {
+      return (
+        project.defaultBranch?.trim() ||
+        this.workspaceRepoService.getBaseBranch()
+      );
     }
 
     return project.defaultBranch || 'main';
@@ -597,6 +890,136 @@ export class TaskRuntimeService {
     await this.enforceRuntimeDirectorySecurity(worktreePath, allowedRoot);
   }
 
+  private async ensureSubRepoWorktrees({
+    project,
+    worktreePath,
+    branch,
+  }: {
+    project: Project;
+    worktreePath: string;
+    branch: string;
+  }): Promise<void> {
+    const subRepos = resolveSubRepoConfigs(project.configJson);
+    if (subRepos.length === 0) return;
+
+    await this.writeDynamicGitignore(worktreePath, subRepos);
+
+    const repositoryRoot = this.resolveRepositoryRoot(project);
+
+    for (const sub of subRepos) {
+      const subRepoBasePath = path.join(repositoryRoot, sub.prefix);
+      const subRepoWorktreePath = path.join(worktreePath, sub.prefix);
+
+      const hasSubGit = await this.pathExists(
+        path.join(subRepoWorktreePath, '.git'),
+      );
+      if (hasSubGit) continue;
+
+      const hasBaseGit = await this.pathExists(
+        path.join(subRepoBasePath, '.git'),
+      );
+      if (!hasBaseGit) {
+        const resolvedUrl = this.resolveGitRemoteUrl(sub.url);
+        await fs.rm(subRepoBasePath, { recursive: true, force: true });
+        await fs.mkdir(path.dirname(subRepoBasePath), { recursive: true });
+
+        const cloneResult = await this.runCommand('git', [
+          'clone',
+          '--origin',
+          'origin',
+          '--no-checkout',
+          resolvedUrl,
+          subRepoBasePath,
+        ]);
+
+        if (!cloneResult.success) {
+          this.logger.warn(
+            `ensureSubRepoWorktrees: clone failed for sub-repo "${sub.prefix}": ${cloneResult.stderr}`,
+          );
+          continue;
+        }
+
+        const fetchResult = await this.runCommand('git', [
+          '-C',
+          subRepoBasePath,
+          'fetch',
+          '--all',
+          '--prune',
+        ]);
+
+        if (!fetchResult.success) {
+          this.logger.warn(
+            `ensureSubRepoWorktrees: fetch failed for sub-repo "${sub.prefix}": ${fetchResult.stderr}`,
+          );
+        }
+      }
+
+      await fs.rm(subRepoWorktreePath, { recursive: true, force: true });
+
+      const baseRef = await this.resolveBaseRef(subRepoBasePath, sub.branch);
+
+      const addResult = await this.runCommand('git', [
+        '-C',
+        subRepoBasePath,
+        'worktree',
+        'add',
+        '--force',
+        '-B',
+        branch,
+        subRepoWorktreePath,
+        baseRef,
+      ]);
+
+      if (!addResult.success) {
+        throw new Error(
+          `git worktree add failed for sub-repo ${sub.prefix}: ${addResult.stderr}`,
+        );
+      }
+    }
+  }
+
+  private async writeDynamicGitignore(
+    worktreePath: string,
+    subRepos: SubRepoConfig[],
+  ): Promise<void> {
+    const gitignorePath = path.join(worktreePath, '.gitignore');
+    let content = '';
+
+    try {
+      content = await fs.readFile(gitignorePath, 'utf-8');
+    } catch {
+      // file may not exist yet
+    }
+
+    const marker = '# --- ainative sub-repos (auto-generated) ---';
+    const markerEnd = '# --- end ainative sub-repos ---';
+
+    const markerIdx = content.indexOf(marker);
+    if (markerIdx !== -1) {
+      const endIdx = content.indexOf(markerEnd);
+      if (endIdx !== -1) {
+        content =
+          content.slice(0, markerIdx) +
+          content.slice(endIdx + markerEnd.length);
+      } else {
+        // markerEnd missing (corrupted file) — remove from marker to EOF
+        content = content.slice(0, markerIdx);
+      }
+    }
+
+    const block = [
+      '',
+      marker,
+      ...subRepos.map((s) => `${s.prefix}/`),
+      markerEnd,
+      '',
+    ].join('\n');
+
+    content = content.trimEnd() + block;
+
+    await fs.writeFile(gitignorePath, content, 'utf-8');
+  }
+
   private async resolveBaseRef(
     repositoryRoot: string,
     gitBaseBranch: string,
@@ -720,12 +1143,15 @@ export class TaskRuntimeService {
 
   async listWorktreeFiles(
     task: Task,
+    project: Project,
     options?: { prefix?: string },
   ): Promise<string[]> {
-    const worktreePath = task.gitWorktree?.trim();
-    if (!worktreePath) {
+    const worktreeIdentifier = task.gitWorktree?.trim();
+    if (!worktreeIdentifier) {
       return [];
     }
+
+    const worktreePath = this.resolveGitWorktreePath(task, project);
 
     const exists = await this.pathExists(worktreePath);
     if (!exists) {
@@ -793,12 +1219,15 @@ export class TaskRuntimeService {
 
   async readFileFromWorktree(
     task: Task,
+    project: Project,
     relativePath: string,
   ): Promise<string | null> {
-    const worktreePath = task.gitWorktree?.trim();
-    if (!worktreePath) {
+    const worktreeIdentifier = task.gitWorktree?.trim();
+    if (!worktreeIdentifier) {
       return null;
     }
+
+    const worktreePath = this.resolveGitWorktreePath(task, project);
 
     const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
     if (!normalized || normalized.includes('..')) {

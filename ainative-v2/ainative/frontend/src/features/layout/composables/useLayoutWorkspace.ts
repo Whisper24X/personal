@@ -62,8 +62,12 @@ export function useLayoutWorkspace(options: {
     description: project.description ?? null,
     gitUrl: project.gitUrl,
     defaultBranch: project.defaultBranch,
+    repositoryProvisioningStatus: project.repositoryProvisioningStatus ?? 'ready',
+    repositoryProvisioningError: project.repositoryProvisioningError ?? null,
+    repositoryProvisionedAt: project.repositoryProvisionedAt ?? null,
     configJson: project.configJson ?? null,
   })
+
 
   const findBusinessLineByProjectId = (projectId: string) => {
     return businessLines.value.find((line) => line.projects.some((project) => project.id === projectId))
@@ -182,6 +186,7 @@ export function useLayoutWorkspace(options: {
         line.projects.push(mapProjectItem(project))
       }
 
+
       const nextBusinessLines = Array.from(lineMap.values())
         .map((line) => ({
           ...line,
@@ -296,10 +301,13 @@ export function useLayoutWorkspace(options: {
     const projectId = context?.projectId?.trim() || selectedProjectId.value.trim()
 
     try {
-      const access = await accessStore.loadContext({
-        ...(businessLineId ? { businessLineId } : {}),
-        ...(projectId ? { projectId } : {}),
-      })
+      const access = await accessStore.loadContext(
+        {
+          ...(businessLineId ? { businessLineId } : {}),
+          ...(projectId ? { projectId } : {}),
+        },
+        { force: true },
+      )
       await ensureAccessibleRoute(projectId)
       return access
     } catch (error) {
@@ -332,7 +340,11 @@ export function useLayoutWorkspace(options: {
       return
     }
 
-    const matchedBusinessLine = findBusinessLineByProjectId(projectId)
+    let matchedBusinessLine = findBusinessLineByProjectId(projectId)
+    if (!matchedBusinessLine) {
+      await loadLayoutData()
+      matchedBusinessLine = findBusinessLineByProjectId(projectId)
+    }
     if (!matchedBusinessLine) {
       return
     }

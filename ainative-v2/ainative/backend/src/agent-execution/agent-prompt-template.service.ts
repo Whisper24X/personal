@@ -52,6 +52,7 @@ export class AgentPromptTemplateService {
 
   private buildTemplateValues({
     task,
+    node,
     project,
     runtime,
   }: {
@@ -88,11 +89,24 @@ export class AgentPromptTemplateService {
       taskId: this.normalizeOptionalString(task.id),
       taskTitle: this.normalizeOptionalString(task.title),
       taskPrompt: this.normalizeOptionalString(task.prompt),
+      earlyExitMarkerFileName: this.normalizeOptionalString(
+        this.readNodeInputString(node, 'earlyExitMarkerFileName'),
+      ),
       projectId: this.normalizeOptionalString(project.id),
       projectName: this.normalizeOptionalString(project.name),
       projectGitUrl: this.normalizeOptionalString(project.gitUrl),
       projectDefaultBranch: this.normalizeOptionalString(project.defaultBranch),
     };
+  }
+
+  private readNodeInputString(node: TaskNode, key: string): string | null {
+    const input = node.input;
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return null;
+    }
+
+    const value = (input as Record<string, unknown>)[key];
+    return typeof value === 'string' ? value : null;
   }
 
   private resolveGitWorktreeIdentifier(

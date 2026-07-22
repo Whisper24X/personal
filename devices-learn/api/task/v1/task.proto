@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package api.task.v1;
+
+import "descriptor/descriptor.proto";
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/task/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.task.v1";
+
+service Task {
+  // 任务列表
+  rpc TaskListApi(TaskListApiRequest) returns (TaskListApiReply) {
+    option (google.api.http) = {
+      get: "/devices-learn/api/task/list" // 任务--列表
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 完成任务
+  rpc TaskFinish(TaskFinishRequest) returns (ReplyBool) {
+    option (google.api.http) = {
+      post: "/devices-learn/api/task/finish" // 任务--完成
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 领取任务奖励
+  rpc TaskReward(TaskRewardRequest) returns (TaskRewardReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/api/task/reward" // 任务--领取奖励
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+}
+
+message ReplyBool {
+  bool status = 1; // 操作是否成功
+}
+
+message TaskFinishRequest {
+  string taskId = 1 [(validate.rules).string = {min_len: 1}]; // 任务ID
+}
+message TaskRewardRequest {
+  string taskId = 1 [(validate.rules).string = {min_len: 1}]; // 任务ID
+}
+message TaskRewardReply {
+  message RewardInfo {
+    message Info {
+      string name = 1; // 奖品名称描述
+      int32 num = 2; // 奖品数量
+    }
+    string id = 1; // 奖励ID.
+    string type = 2; // 奖励类型(coin 洋葱币,vip 体验券).
+    Info info = 3; // 奖励具体信息
+  }
+  bool status = 1; // 操作是否成功
+  repeated RewardInfo rewards = 2; // 奖励列表
+}
+
+message TaskListApiRequest {}
+message TaskListApiReply {
+  message CategoryInfo {
+    string name = 1; // 任务类别(daily日常任务,custom定制任务,gift礼包任务).
+    repeated string taskIds = 2; // 任务ID列表
+  }
+  message TaskInfo {
+    message rewardInfo {
+      message Info {
+        string name = 1; // 奖品名称描述
+        int32 num = 2; // 奖品数量
+        int32 floatUp = 3; // 奖品浮动数量  一般用num进行+
+        int32 level = 4; // 礼包任务 对应的礼包等级
+        float probability = 5; // 随机奖品的概率
+      }
+      string id = 1; // 奖励ID.
+      string type = 2; // 奖励类型(coin 洋葱币,vip 体验券).
+      Info info = 3; // 奖励具体信息
+    }
+    message progressInfo {
+      string level = 1; // 任务礼包等级
+      string total = 2; // 进度条总数
+      string current = 3; // 进度条当前数
+    }
+    string id = 1; // 任务ID
+    string name = 2; // 任务名称
+    string category = 3; // 任务类型
+    string jumpUrl = 4; // 任务跳转地址
+    bool isShowNew = 5; // 是否显示new标签
+    repeated rewardInfo rewards = 6; // 任务奖励列表
+    progressInfo progress = 7; // gift礼包任务的进度信息
+    string status = 8; // 任务状态 undo-未完成 done-已完成待领取 reward-已完成领取 notExist-不存在.
+  }
+  repeated CategoryInfo category = 1; // 任务分组信息
+  repeated TaskInfo tasks = 2; // 任务列表
+}

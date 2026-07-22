@@ -41,6 +41,12 @@ import { BusinessLine } from './domain/business-line';
 import { Mcp } from '../mcps/domain/mcp';
 import { Skill } from '../skills/domain/skill';
 import { type SkillTreeNode } from '../utils/local-agent-catalog';
+import { WorkspaceNativeMigrationService } from './workspace-native-migration.service';
+import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
+import {
+  buildRunnerStatusSummary,
+  type RunnerStatusSummary,
+} from './runner-status-summary';
 
 @Injectable()
 export class BusinessLinesService {
@@ -52,6 +58,8 @@ export class BusinessLinesService {
     private readonly businessLineAgentToolConfigService: BusinessLineAgentToolConfigService,
     private readonly businessLineLocalAssetsService: BusinessLineLocalAssetsService,
     private readonly agentCliSmokeTestService: AgentCliSmokeTestService,
+    private readonly workspaceNativeMigrationService: WorkspaceNativeMigrationService,
+    private readonly projectRepository: ProjectRepository,
   ) {}
 
   async create(
@@ -77,6 +85,19 @@ export class BusinessLinesService {
   ): Promise<BusinessLine | null> {
     void _currentUser;
     return this.businessLineLifecycleService.findById(id);
+  }
+
+  async getRunnerStatus(
+    id: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<RunnerStatusSummary> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      id,
+      'businessLine.read',
+    );
+    const businessLine = await this.businessLineLifecycleService.findById(id);
+    return buildRunnerStatusSummary(businessLine?.configJson);
   }
 
   findByIds(ids: BusinessLine['id'][]): Promise<BusinessLine[]> {
@@ -593,7 +614,7 @@ export class BusinessLinesService {
     return {};
   }
 
-  private async ensureCanManageBusinessLine(
+  async ensureCanManage(
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<void> {
@@ -602,6 +623,13 @@ export class BusinessLinesService {
       businessLineId,
       'businessLine.update',
     );
+  }
+
+  private async ensureCanManageBusinessLine(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.ensureCanManage(businessLineId, currentUser);
   }
 
   private async ensureCanReadMembers(
@@ -864,6 +892,90 @@ export class BusinessLinesService {
       businessLineId,
       currentUser.sub,
     );
+  }
+
+  async migrateToWorkspaceNative(
+    currentUser: JwtPayloadType,
+    options: {
+      businessLineId?: string;
+      dryRun?: boolean;
+    } = {},
+  ) {
+    this.ensureAdmin(currentUser);
+
+    if (options.businessLineId) {
+      return this.workspaceNativeMigrationService.migrateSingle(
+        options.businessLineId,
+        { dryRun: options.dryRun },
+      );
+    }
+
+    return this.workspaceNativeMigrationService.migrateAllEligible({
+      dryRun: options.dryRun,
+    });
+  }
+
+  async getWorkspaceProject(
+    businessLineId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    projectId: string | null;
+    enabled: boolean;
+    businessLineId?: string;
+    name?: string;
+    description?: string | null;
+    gitUrl?: string;
+    defaultBranch?: string;
+    repositoryProvisioningStatus?: string | null;
+    repositoryProvisioningError?: string | null;
+    repositoryProvisionedAt?: Date | null;
+    configJson?: Record<string, unknown> | null;
+  }> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.member.read',
+    );
+
+    const project =
+      await this.projectRepository.findWorkspaceManagedByBusinessLineId(
+        businessLineId,
+      );
+
+    const config = (project?.configJson ?? {}) as Record<string, unknown>;
+    const isDisabled = config.workspaceNativeDisabled === true;
+    const enabled = !!project && !isDisabled;
+    if (enabled) {
+      await this.businessLineLifecycleService.ensureHiddenProjectAccess({
+        id: businessLineId,
+      });
+    }
+
+    return {
+      projectId: project?.id ?? null,
+      enabled,
+      businessLineId: enabled ? project?.businessLineId : undefined,
+      name: enabled ? project?.name : undefined,
+      description: enabled ? (project?.description ?? null) : undefined,
+      gitUrl: enabled ? project?.gitUrl : undefined,
+      defaultBranch: enabled ? (project?.defaultBranch ?? 'main') : undefined,
+      repositoryProvisioningStatus: enabled
+        ? project?.repositoryProvisioningStatus
+        : undefined,
+      repositoryProvisioningError: enabled
+        ? (project?.repositoryProvisioningError ?? null)
+        : undefined,
+      repositoryProvisionedAt: enabled
+        ? (project?.repositoryProvisionedAt ?? null)
+        : undefined,
+      configJson: enabled ? (project?.configJson ?? null) : undefined,
+    };
+  }
+
+  private ensureAdmin(currentUser: JwtPayloadType): void {
+    if (!this.isAdmin(currentUser)) {
+      throw new ForbiddenException('Admin access required');
+    }
   }
 
   private isAdmin(currentUser: JwtPayloadType): boolean {

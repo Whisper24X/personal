@@ -1,0 +1,1038 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "diagnosis/v1/diagnosis.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Diagnosis"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/diagnosis/schoolYear/list": {
+      "get": {
+        "summary": "查询当前支持的全部年级",
+        "operationId": "Diagnosis_DiagnosisSchoolYearList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DiagnosisSchoolYearListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/textbook/ids/by/schoolYear": {
+      "post": {
+        "summary": "根据学科学段年级获取教材信息",
+        "operationId": "Diagnosis_GetTextbookIdsBySchoolYear",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetTextbookIdsBySchoolYearReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetTextbookIdsBySchoolYearRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/user/exam/finish/notice": {
+      "post": {
+        "summary": "用户诊疗完成同步",
+        "operationId": "Diagnosis_UserExamFinishNotice",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ReplyEmpty"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UserExamFinishNoticeRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/user/select/exam/redo": {
+      "post": {
+        "summary": "用户所选试卷重做",
+        "operationId": "Diagnosis_UserSelectExamRedo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ReplyEmpty"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UserSelectExamRedoRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/user/select/exam/result/report": {
+      "post": {
+        "summary": "用户所选教材对应的试卷结果报告",
+        "operationId": "Diagnosis_UserExamResultReport",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UserExamResultReportReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UserExamResultReportRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/user/select/textbook/cvs/list": {
+      "get": {
+        "summary": "可选择教材cvs列表",
+        "operationId": "Diagnosis_DiagnosisCvsList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DiagnosisCvsListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/user/select/textbook/exam/finish/info": {
+      "post": {
+        "summary": "用户当前所选教材完成情况",
+        "operationId": "Diagnosis_UserSelectExamFinishInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UserSelectExamFinishInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UserSelectExamFinishInfoRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/user/select/textbook/exam/info": {
+      "post": {
+        "summary": "根据cvs选项获取当前所选教材试卷信息",
+        "operationId": "Diagnosis_UserSelectExamInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UserSelectExamInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UserSelectExamInfoRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/user/select/textbook/last/info": {
+      "get": {
+        "summary": "用户最后一次选择的教材",
+        "operationId": "Diagnosis_GetUserSelectTextbookLast",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetUserSelectTextbookLastReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    },
+    "/devices-learn/diagnosis/user/select/textbook/report": {
+      "post": {
+        "summary": "用户选择的教材上报",
+        "operationId": "Diagnosis_UserSelectTextbookReport",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ReplyEmpty"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UserSelectTextbookReportRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Diagnosis"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "DiagnosisSchoolYearListReplyYearInfo": {
+      "type": "object",
+      "properties": {
+        "schoolYear": {
+          "type": "string",
+          "title": "年级"
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/YearInfoSubjectInfo"
+          },
+          "title": "学科列表"
+        }
+      }
+    },
+    "ExamResultReportProblemReport": {
+      "type": "object",
+      "properties": {
+        "problemId": {
+          "type": "string",
+          "title": "习题ID"
+        },
+        "status": {
+          "type": "string",
+          "title": "no_answer:未作答 yes:答对 no:答错 yes_no:半对半错"
+        },
+        "score": {
+          "type": "number",
+          "format": "float",
+          "title": "用户得分"
+        },
+        "isMaster": {
+          "type": "boolean",
+          "title": "是否掌握"
+        },
+        "reviewProgressProblem": {
+          "type": "number",
+          "format": "float",
+          "title": "复习进度--考点总进度"
+        },
+        "problemChangeAnswerYesNum": {
+          "type": "integer",
+          "format": "int32",
+          "title": "关联变式题做对数"
+        },
+        "topicProgressList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/ProblemReportTopicProgress"
+          },
+          "title": "关联各知识点进度"
+        },
+        "problemChangeAnswers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/ProblemReportProblemChangeAnswerInfo"
+          },
+          "title": "关联变式题答案"
+        }
+      }
+    },
+    "ProblemReportProblemChangeAnswerInfo": {
+      "type": "object",
+      "properties": {
+        "problemId": {
+          "type": "string",
+          "title": "变式题主习题ID"
+        },
+        "status": {
+          "type": "string",
+          "title": "变式题答案状态 no_answer:未作答 yes:答对 no:答错"
+        }
+      }
+    },
+    "ProblemReportTopicProgress": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "知识点ID"
+        },
+        "progress": {
+          "type": "number",
+          "format": "float",
+          "title": "知识点进度值"
+        }
+      }
+    },
+    "UserExamFinishNoticeRequestCustom": {
+      "type": "object",
+      "properties": {
+        "examId": {
+          "type": "string",
+          "title": "试卷ID"
+        },
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "册ID"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社ID"
+        }
+      }
+    },
+    "UserExamResultReportReplyExamResultReport": {
+      "type": "object",
+      "properties": {
+        "lastSubmitTime": {
+          "type": "string",
+          "title": "试卷的最后提交时间"
+        },
+        "answerTime": {
+          "type": "integer",
+          "format": "int32",
+          "title": "答题时长  单位秒"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/ExamResultReportProblemReport"
+          },
+          "title": "考点报告列表"
+        }
+      }
+    },
+    "YearInfoSubjectInfo": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1DiagnosisCvsListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DiagnosisCvsListReplyInfo"
+          },
+          "title": "教材cvs列表"
+        }
+      }
+    },
+    "v1DiagnosisCvsListReplyInfo": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "册ID"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社ID"
+        },
+        "stageName": {
+          "type": "string",
+          "title": "学段名称"
+        },
+        "subjectName": {
+          "type": "string",
+          "title": "学科名称"
+        },
+        "semesterName": {
+          "type": "string",
+          "title": "册名称"
+        },
+        "publisherName": {
+          "type": "string",
+          "title": "出版社简称"
+        },
+        "publisherFullName": {
+          "type": "string",
+          "title": "出版社全称"
+        }
+      }
+    },
+    "v1DiagnosisSchoolYearListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/DiagnosisSchoolYearListReplyYearInfo"
+          },
+          "title": "年级列表"
+        }
+      }
+    },
+    "v1ExamAnswerProgressInfo": {
+      "type": "object",
+      "properties": {
+        "examinationId": {
+          "type": "string",
+          "title": "试卷ID"
+        },
+        "status": {
+          "type": "string",
+          "description": "诊断状态 - NO_START: 未开始.  - DIAGNOSING: 诊断中.  - REVIEWING: 复习中.  - FINISHED: 复习完成."
+        },
+        "lastSubmitTime": {
+          "type": "string",
+          "title": "试卷的最后提交时间"
+        },
+        "doneCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "做题数量"
+        },
+        "wrongCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "错题数量"
+        },
+        "reviewCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "复习数量"
+        },
+        "doneUserCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "参与人数"
+        }
+      }
+    },
+    "v1ExamInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "试卷ID"
+        },
+        "name": {
+          "type": "string",
+          "title": "试卷名称"
+        },
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学期ID"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社ID"
+        },
+        "examType": {
+          "type": "string",
+          "title": "考试类型  期中试卷 期末试卷 月考试卷"
+        },
+        "difficulty": {
+          "type": "string",
+          "description": "难度（中文）: 基础、中等、困难."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ProblemInfo"
+          },
+          "title": "考点列表"
+        }
+      }
+    },
+    "v1GetTextbookIdsBySchoolYearReply": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "册ID"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社ID"
+        }
+      }
+    },
+    "v1GetTextbookIdsBySchoolYearRequest": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "schoolYear": {
+          "type": "string",
+          "title": "年级"
+        }
+      }
+    },
+    "v1GetUserSelectTextbookLastReply": {
+      "type": "object",
+      "properties": {
+        "isSelect": {
+          "type": "boolean",
+          "title": "是否已选择教材"
+        },
+        "selectInfo": {
+          "$ref": "#/definitions/v1UserSelectTextbookReportRequest",
+          "title": "所选教材信息"
+        }
+      }
+    },
+    "v1ProblemChangeGroup": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "变式题名称"
+        },
+        "versionProblems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ProblemChangeInfo"
+          },
+          "title": "包含的变式题信息"
+        }
+      }
+    },
+    "v1ProblemChangeInfo": {
+      "type": "object",
+      "properties": {
+        "problemId": {
+          "type": "string",
+          "title": "主习题ID"
+        }
+      }
+    },
+    "v1ProblemInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "记录ID"
+        },
+        "problemId": {
+          "type": "string",
+          "title": "习题ID"
+        },
+        "order": {
+          "type": "integer",
+          "format": "int32",
+          "title": "序号"
+        },
+        "score": {
+          "type": "number",
+          "format": "float",
+          "title": "分数"
+        },
+        "description": {
+          "type": "string",
+          "title": "考点描述"
+        },
+        "frequency": {
+          "type": "string",
+          "title": "考频（中文）: 高频 超高频"
+        },
+        "problemExamTypeName": {
+          "type": "string",
+          "title": "习题的考试类型  中文"
+        },
+        "tryout": {
+          "type": "boolean",
+          "title": "是否试用"
+        },
+        "topicIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "关联的知识点ID列表"
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TopicInfo"
+          },
+          "title": "关联的知识点详情列表"
+        },
+        "versionProblemGroups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ProblemChangeGroup"
+          },
+          "title": "关联的变式题组列表"
+        },
+        "topicVideos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TopicVideos"
+          },
+          "title": "关联知识点视频配置信息"
+        }
+      }
+    },
+    "v1ReplyEmpty": {
+      "type": "object"
+    },
+    "v1TopicInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "知识点ID"
+        },
+        "name": {
+          "type": "string",
+          "title": "知识点名称"
+        },
+        "description": {
+          "type": "string",
+          "title": "知识点描述"
+        }
+      }
+    },
+    "v1TopicVideos": {
+      "type": "object",
+      "properties": {
+        "topicId": {
+          "type": "string",
+          "title": "知识点ID"
+        },
+        "videoType": {
+          "type": "string",
+          "description": "视频类型：whole-完整，clip-片段；值为 whole 时，视频时间没有意义."
+        },
+        "videoStartTime": {
+          "type": "number",
+          "format": "float",
+          "title": "视频开始时间，单位s"
+        },
+        "videoEndTime": {
+          "type": "number",
+          "format": "float",
+          "title": "视频结束时间，单位s"
+        }
+      }
+    },
+    "v1UserExamFinishNoticeRequest": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "title": "用户ID"
+        },
+        "custom": {
+          "$ref": "#/definitions/UserExamFinishNoticeRequestCustom",
+          "title": "试卷及教材信息"
+        }
+      }
+    },
+    "v1UserExamResultReportReply": {
+      "type": "object",
+      "properties": {
+        "examInfo": {
+          "$ref": "#/definitions/v1ExamInfo",
+          "title": "试卷信息"
+        },
+        "resultReport": {
+          "$ref": "#/definitions/UserExamResultReportReplyExamResultReport",
+          "title": "试卷结果报告"
+        }
+      }
+    },
+    "v1UserExamResultReportRequest": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "册ID"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社ID"
+        },
+        "examId": {
+          "type": "string",
+          "title": "试卷ID"
+        },
+        "userId": {
+          "type": "string",
+          "title": "用户ID"
+        }
+      }
+    },
+    "v1UserSelectExamFinishInfoReply": {
+      "type": "object",
+      "properties": {
+        "examList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ExamInfo"
+          },
+          "title": "试卷列表"
+        },
+        "examAnswerProgress": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ExamAnswerProgressInfo"
+          },
+          "title": "试卷答案进度"
+        }
+      }
+    },
+    "v1UserSelectExamFinishInfoRequest": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "册ID"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社ID"
+        }
+      }
+    },
+    "v1UserSelectExamInfoReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ExamInfo"
+          },
+          "title": "试卷列表"
+        }
+      }
+    },
+    "v1UserSelectExamInfoRequest": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "册ID"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社ID"
+        }
+      }
+    },
+    "v1UserSelectExamRedoRequest": {
+      "type": "object",
+      "properties": {
+        "examId": {
+          "type": "string",
+          "title": "试卷ID"
+        }
+      }
+    },
+    "v1UserSelectTextbookReportRequest": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学段ID"
+        },
+        "subjectId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学科ID"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "册ID"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社ID"
+        }
+      }
+    }
+  }
+}

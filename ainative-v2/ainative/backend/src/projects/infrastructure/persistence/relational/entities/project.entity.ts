@@ -18,6 +18,10 @@ import { RepositoryProvisioningStatus } from '../../../../domain/repository-prov
   unique: true,
   where: '"deletedAt" IS NULL',
 })
+@Index('UQ_projects_business_line_slug', ['businessLineId', 'slug'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
 export class ProjectEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
@@ -29,6 +33,13 @@ export class ProjectEntity extends EntityRelationalHelper {
   @Index('IDX_projects_name')
   @Column({ type: String, length: 120, comment: '项目名称' })
   name: string;
+
+  @Column({
+    type: 'varchar',
+    length: 80,
+    comment: '项目在 ainative-workspace 中的稳定标识',
+  })
+  slug: string;
 
   @Column({ type: 'text', nullable: true, comment: '项目描述' })
   description?: string | null;

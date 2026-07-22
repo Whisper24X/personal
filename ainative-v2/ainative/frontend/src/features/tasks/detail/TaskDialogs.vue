@@ -19,11 +19,13 @@ const props = withDefaults(
     deleteOpen: boolean
     saving?: boolean
     removing?: boolean
+    deleteBlockReason?: string
     editForm: TaskEditFormValue
   }>(),
   {
     saving: false,
     removing: false,
+    deleteBlockReason: '',
   },
 )
 
@@ -176,6 +178,9 @@ const submitEdit = () => {
         <div class="space-y-2 px-4 py-4 text-sm text-muted-foreground">
           <p>该操作会删除任务记录，无法恢复。</p>
           <p>如果任务正在运行，请先停止任务。</p>
+          <p v-if="props.deleteBlockReason" class="text-destructive">
+            {{ props.deleteBlockReason }}
+          </p>
         </div>
 
         <div class="flex justify-end gap-2 border-t border-border px-4 py-3">

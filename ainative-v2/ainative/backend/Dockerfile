@@ -10,10 +10,15 @@ RUN --mount=type=cache,id=backend-build-apt-cache,target=/var/cache/apt,sharing=
 
 WORKDIR /app
 
+# node-gyp expects nodedir to be the Node prefix that contains include/node.
+ENV npm_config_nodedir=/usr/local
+
 # 先复制依赖清单，利用 Docker 层缓存
 COPY package*.json ./
+# npm_config_nodedir 指向镜像内已有的 Node.js 头文件，
+# 避免 node-gyp 在编译 node-pty 等原生模块时去 nodejs.org 下载 headers（ARM64 构建时易超时）
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm ci
+    npm_config_nodedir=/usr/local npm ci
 
 # 复制源码并构建
 COPY . .
@@ -43,7 +48,7 @@ RUN --mount=type=cache,id=backend-runtime-apt-cache,target=/var/cache/apt,sharin
     --mount=type=cache,id=backend-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     bash curl git openssh-client netcat-openbsd zip unzip ca-certificates make \
-    postgresql-client \
+    postgresql-client rsync \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
@@ -71,9 +76,60 @@ RUN bash -o pipefail -c 'curl -fsSL https://opencode.ai/install | bash' \
     || echo "WARN: OpenCode install failed; opencode steps in docker mode need a working binary."
 RUN bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash' \
     || echo "WARN: Cursor CLI install failed or unavailable for this platform; docker mode cursor-agent steps need a working agent binary."
+RUN if [ -x /root/.local/bin/agent ]; then \
+      ln -sf /root/.local/bin/agent /usr/local/bin/agent; \
+    else \
+      printf '%s\n' \
+        '#!/usr/bin/env sh' \
+        'echo "Cursor agent CLI is not installed in this image; fallback requires another configured runner generation tool." >&2' \
+        'exit 127' \
+        > /usr/local/bin/agent; \
+      chmod +x /usr/local/bin/agent; \
+    fi \
+    && command -v agent
 
 ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+
+# ============================================================
+# Chromium headless + supervisor（CDP 临时验证方案）
+# ============================================================
+RUN --mount=type=cache,id=backend-browser-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=backend-browser-apt-lib,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    supervisor \
+    nginx \
+    && rm -rf /var/lib/apt/lists/*
+
+# CDP 反向代理：重写 Host header 为 127.0.0.1，避免 Chromium 拒绝非 IP/localhost 的 Host
+RUN mkdir -p /run/nginx && cat > /etc/nginx/cdp-proxy.conf <<'NGINX'
+worker_processes 1;
+error_log /var/log/cdp-proxy-error.log;
+pid /run/cdp-proxy.pid;
+events { worker_connections 64; }
+http {
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+    server {
+        listen 9222;
+        location / {
+            proxy_pass http://127.0.0.1:9223;
+            proxy_set_header Host 127.0.0.1:9223;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_read_timeout 86400s;
+        }
+    }
+}
+NGINX
+
+ENV CHROME_BIN=/usr/bin/chromium
 
 WORKDIR /usr/src/app
 
@@ -88,6 +144,9 @@ COPY startup.runtime.sh /opt/startup.sh
 RUN chmod +x /opt/wait-for-it.sh /opt/startup.sh \
     && sed -i 's/\r//g' /opt/wait-for-it.sh /opt/startup.sh
 
+# COPY supervisord.conf /etc/supervisor/conf.d/ainative.conf
+
 EXPOSE 9000
+# EXPOSE 9222
 
 CMD ["/opt/startup.sh"]

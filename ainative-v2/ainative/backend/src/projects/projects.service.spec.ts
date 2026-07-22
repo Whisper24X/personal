@@ -20,19 +20,19 @@ const createCurrentUser = () => ({
 const createProjectDto = (): CreateProjectDto => ({
   businessLineId: 'business-line-1',
   name: 'AINative',
+  slug: 'ainative',
   description: 'test',
-  gitUrl: 'git@example.com:group/ainative.git',
-  defaultBranch: 'main',
   configJson: {},
 });
 
-const createProject = (): Project => ({
+const createProject = (overrides: Partial<Project> = {}): Project => ({
   id: 'project-1',
   businessLineId: 'business-line-1',
   name: 'AINative',
+  slug: 'ainative',
   description: 'test',
-  gitUrl: 'git@example.com:group/ainative.git',
-  defaultBranch: 'main',
+  gitUrl: '',
+  defaultBranch: 'frontend-ainative',
   configJson: {},
   repositoryProvisioningStatus: RepositoryProvisioningStatus.Ready,
   repositoryProvisioningError: null,
@@ -40,12 +40,14 @@ const createProject = (): Project => ({
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
+  ...overrides,
 });
 
 const createProjectsService = () => {
   const projectRepository = {
     findById: jest.fn(),
     findByBusinessLineIdAndName: jest.fn(),
+    findByBusinessLineIdAndSlug: jest.fn(),
     findByRepositoryProvisioningStatus: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -102,6 +104,7 @@ const createProjectsService = () => {
   const projectAccessService = {
     assertCanAccessProject: jest.fn(),
     assertCanManageProject: jest.fn(),
+    assertCanRegenerateRunnerConfig: jest.fn(),
     assertProjectCapability: jest.fn(),
   };
   const projectRepositoryWorkspaceService = {
@@ -114,6 +117,22 @@ const createProjectsService = () => {
   const projectRepositoryProvisioningService = {
     enqueue: jest.fn(),
     markPendingAndEnqueue: jest.fn(),
+  };
+
+  const subtreeSnapshotService = {
+    syncSubtreeSnapshots: jest.fn(),
+  };
+  const gitLockService = {
+    withProjectGitLock: jest.fn((_id: string, fn: () => Promise<unknown>) =>
+      fn(),
+    ),
+  };
+  const subRepoValidationService = {
+    validateConfiguredSubRepositories: jest.fn().mockResolvedValue([]),
+  };
+  const runnerGenerationService = {
+    generateForBusinessLine: jest.fn(),
+    generateForProject: jest.fn(),
   };
 
   const service = new ProjectsService(
@@ -130,6 +149,10 @@ const createProjectsService = () => {
     projectAccessService as never,
     projectRepositoryWorkspaceService as never,
     projectRepositoryProvisioningService as never,
+    subtreeSnapshotService as never,
+    gitLockService as never,
+    subRepoValidationService as never,
+    runnerGenerationService as never,
   );
 
   return {
@@ -145,6 +168,8 @@ const createProjectsService = () => {
     projectAccessService,
     projectRepositoryWorkspaceService,
     projectRepositoryProvisioningService,
+    subRepoValidationService,
+    runnerGenerationService,
   };
 };
 
@@ -166,7 +191,7 @@ describe('ProjectsService', () => {
     }
   });
 
-  it('should validate git url and create project with owner member', async () => {
+  it('should create workspace-native project with computed defaultBranch', async () => {
     const {
       service,
       projectRepository,
@@ -174,7 +199,6 @@ describe('ProjectsService', () => {
       businessLineRepository,
       projectRepositoryProvisioningService,
     } = createProjectsService();
-    const serviceAny = service as any;
     const dto = createProjectDto();
     const currentUser = createCurrentUser();
     const project = createProject();
@@ -188,8 +212,10 @@ describe('ProjectsService', () => {
     businessLineRepository.findById.mockResolvedValue({
       id: dto.businessLineId,
       name: 'BL',
+      slug: 'frontend',
     });
     projectRepository.findByBusinessLineIdAndName.mockResolvedValue(null);
+    projectRepository.findByBusinessLineIdAndSlug.mockResolvedValue(null);
     projectRepository.create.mockResolvedValue(expectedCreatedProject);
     projectMemberRepository.findByProjectIdAndUserId.mockResolvedValue(null);
     projectMemberRepository.create.mockResolvedValue({
@@ -199,47 +225,24 @@ describe('ProjectsService', () => {
       role: 'owner',
     });
 
-    const validateGitSpy = jest
-      .spyOn(serviceAny, 'validateGitRepositoryAccessible')
-      .mockResolvedValue(undefined);
     const result = await service.create(dto, currentUser);
 
     expect(result).toEqual(expectedCreatedProject);
-    expect(validateGitSpy).toHaveBeenCalledWith(dto.gitUrl);
     expect(projectRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
+        slug: 'ainative',
+        gitUrl: '',
+        defaultBranch: 'frontend-ainative',
         repositoryProvisioningStatus: RepositoryProvisioningStatus.Pending,
+        configJson: expect.objectContaining({
+          subtreeMode: 'workspace-native',
+        }),
       }),
     );
     expect(projectRepositoryProvisioningService.enqueue).toHaveBeenCalledWith(
       expectedCreatedProject.id,
     );
     expect(projectMemberRepository.create).toHaveBeenCalledTimes(1);
-  });
-
-  it('should reject create when git url validation fails', async () => {
-    const { service, projectRepository, businessLineRepository } =
-      createProjectsService();
-    const serviceAny = service as any;
-    const dto = createProjectDto();
-    const currentUser = createCurrentUser();
-
-    businessLineRepository.findById.mockResolvedValue({
-      id: dto.businessLineId,
-      name: 'BL',
-    });
-    projectRepository.findByBusinessLineIdAndName.mockResolvedValue(null);
-
-    jest
-      .spyOn(serviceAny, 'validateGitRepositoryAccessible')
-      .mockRejectedValue(
-        new BadRequestException('Git repository is unreachable'),
-      );
-
-    await expect(service.create(dto, currentUser)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    expect(projectRepository.create).not.toHaveBeenCalled();
   });
 
   it('should rollback project creation when owner role initialization fails', async () => {
@@ -250,7 +253,6 @@ describe('ProjectsService', () => {
       businessLineRepository,
       projectRepositoryProvisioningService,
     } = createProjectsService();
-    const serviceAny = service as any;
     const dto = createProjectDto();
     const currentUser = createCurrentUser();
     const project = createProject();
@@ -258,8 +260,10 @@ describe('ProjectsService', () => {
     businessLineRepository.findById.mockResolvedValue({
       id: dto.businessLineId,
       name: 'BL',
+      slug: 'frontend',
     });
     projectRepository.findByBusinessLineIdAndName.mockResolvedValue(null);
+    projectRepository.findByBusinessLineIdAndSlug.mockResolvedValue(null);
     projectRepository.create.mockResolvedValue(project);
     projectRepository.remove.mockResolvedValue(undefined);
     projectMemberRepository.findByProjectIdAndUserId.mockResolvedValue(null);
@@ -267,9 +271,6 @@ describe('ProjectsService', () => {
       new Error('create member failed'),
     );
 
-    jest
-      .spyOn(serviceAny, 'validateGitRepositoryAccessible')
-      .mockResolvedValue(undefined);
     await expect(service.create(dto, currentUser)).rejects.toBeInstanceOf(
       InternalServerErrorException,
     );
@@ -307,6 +308,43 @@ describe('ProjectsService', () => {
     ).toHaveBeenCalledWith(project.id, currentUser, {
       syncRemote: false,
     });
+  });
+
+  it('should enable enhanced retry when manually regenerating project runner config', async () => {
+    const { service, projectRepository, runnerGenerationService } =
+      createProjectsService();
+    const currentUser = createCurrentUser();
+    const project = createProject({
+      id: 'project-1',
+      configJson: {
+        subRepos: [
+          {
+            prefix: 'yanxue',
+            url: 'git@example.com:backend/yanxue.git',
+            branch: 'main',
+          },
+        ],
+      },
+    });
+
+    projectRepository.findById.mockResolvedValue(project);
+    runnerGenerationService.generateForProject.mockResolvedValue({
+      written: true,
+      skipped: false,
+      status: 'written',
+      error: null,
+    });
+
+    await service.regenerateRunnerConfig('project-1', currentUser);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(runnerGenerationService.generateForProject).toHaveBeenCalledWith(
+      'project-1',
+      {
+        enhancedRetry: true,
+        triggerReason: 'manual_reset_config',
+      },
+    );
   });
 
   it('should inspect repository and prioritize master as recommended default branch', async () => {
@@ -453,137 +491,25 @@ describe('ProjectsService', () => {
     });
   });
 
-  it('should checkout next default branch before persisting project update', async () => {
-    const { service, projectRepository, projectRepositoryWorkspaceService } =
-      createProjectsService();
+  it('should reject project slug updates', async () => {
+    const { service } = createProjectsService();
     const serviceAny = service as any;
     const currentUser = createCurrentUser();
     const currentProject = createProject();
-    const updatedProject = {
-      ...currentProject,
-      defaultBranch: 'release',
-    };
 
     jest
       .spyOn(serviceAny, 'ensureCanUpdateProjectItem')
       .mockResolvedValue(currentProject);
-    projectRepositoryWorkspaceService.runWithProjectRepositoryLock.mockImplementation(
-      async (
-        _projectId: string,
-        _user: unknown,
-        _options: unknown,
-        operation: (ctx: { repositoryRoot: string }) => Promise<Project>,
-      ) => operation({ repositoryRoot: '/tmp/project-repo' }),
-    );
-    projectRepository.update.mockResolvedValue(updatedProject);
-
-    const result = await service.update(
-      currentProject.id,
-      {
-        defaultBranch: 'release',
-      } as never,
-      currentUser,
-    );
-
-    expect(result).toEqual(updatedProject);
-    expect(
-      projectRepositoryWorkspaceService.runWithProjectRepositoryLock,
-    ).toHaveBeenCalledWith(
-      currentProject.id,
-      currentUser,
-      { syncRemote: true },
-      expect.any(Function),
-    );
-    expect(
-      projectRepositoryWorkspaceService.checkoutBranch,
-    ).toHaveBeenCalledWith('/tmp/project-repo', 'release');
-    expect(projectRepository.update).toHaveBeenCalledWith(currentProject.id, {
-      defaultBranch: 'release',
-    });
-    expect(
-      projectRepositoryWorkspaceService.syncRunnerConfigBackup,
-    ).toHaveBeenCalledWith(updatedProject, '/tmp/project-repo');
-  });
-
-  it('should not persist default branch when checkout fails', async () => {
-    const { service, projectRepository, projectRepositoryWorkspaceService } =
-      createProjectsService();
-    const serviceAny = service as any;
-    const currentUser = createCurrentUser();
-    const currentProject = createProject();
-    const checkoutError = new BadRequestException('检出 release 失败');
-
-    jest
-      .spyOn(serviceAny, 'ensureCanUpdateProjectItem')
-      .mockResolvedValue(currentProject);
-    projectRepositoryWorkspaceService.runWithProjectRepositoryLock.mockImplementation(
-      async (
-        _projectId: string,
-        _user: unknown,
-        _options: unknown,
-        operation: (ctx: { repositoryRoot: string }) => Promise<Project>,
-      ) => operation({ repositoryRoot: '/tmp/project-repo' }),
-    );
-    projectRepositoryWorkspaceService.checkoutBranch.mockRejectedValue(
-      checkoutError,
-    );
 
     await expect(
       service.update(
         currentProject.id,
         {
-          defaultBranch: 'release',
-        } as never,
+          slug: 'new-slug',
+        },
         currentUser,
       ),
-    ).rejects.toThrow(checkoutError);
-
-    expect(projectRepository.update).not.toHaveBeenCalled();
-    expect(
-      projectRepositoryWorkspaceService.syncRunnerConfigBackup,
-    ).not.toHaveBeenCalled();
-  });
-
-  it('should rollback repository branch when persistence fails after checkout', async () => {
-    const { service, projectRepository, projectRepositoryWorkspaceService } =
-      createProjectsService();
-    const serviceAny = service as any;
-    const currentUser = createCurrentUser();
-    const currentProject = createProject();
-    const persistenceError = new Error('db unavailable');
-
-    jest
-      .spyOn(serviceAny, 'ensureCanUpdateProjectItem')
-      .mockResolvedValue(currentProject);
-    projectRepositoryWorkspaceService.runWithProjectRepositoryLock.mockImplementation(
-      async (
-        _projectId: string,
-        _user: unknown,
-        _options: unknown,
-        operation: (ctx: { repositoryRoot: string }) => Promise<Project>,
-      ) => operation({ repositoryRoot: '/tmp/project-repo' }),
-    );
-    projectRepositoryWorkspaceService.checkoutBranch.mockResolvedValue(
-      undefined,
-    );
-    projectRepository.update.mockRejectedValue(persistenceError);
-
-    await expect(
-      service.update(
-        currentProject.id,
-        {
-          defaultBranch: 'release',
-        } as never,
-        currentUser,
-      ),
-    ).rejects.toThrow(persistenceError);
-
-    expect(
-      projectRepositoryWorkspaceService.checkoutBranch,
-    ).toHaveBeenNthCalledWith(1, '/tmp/project-repo', 'release');
-    expect(
-      projectRepositoryWorkspaceService.checkoutBranch,
-    ).toHaveBeenNthCalledWith(2, '/tmp/project-repo', 'main');
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('should persist only supported project-level container runtime fields', async () => {
@@ -649,6 +575,13 @@ describe('ProjectsService', () => {
       ...currentProject,
       configJson: {
         containerRuntime: {
+          sandboxProfile: 'preview-web',
+          startTimeoutMs: 90_000,
+          resourceLimits: {
+            memoryMb: 2048,
+            pidsLimit: 256,
+          },
+          platform: 'linux/arm64',
           env: {
             NODE_ENV: 'development',
           },
@@ -671,6 +604,9 @@ describe('ProjectsService', () => {
               },
             ],
           },
+          networkMode: 'bridge',
+          exposeHostIp: '192.168.50.8',
+          exposeContainerPort: 4173,
         },
       },
     };

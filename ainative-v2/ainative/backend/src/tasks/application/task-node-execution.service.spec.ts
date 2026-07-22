@@ -21,6 +21,7 @@ const createProject = (): Project => ({
   id: 'project-1',
   businessLineId: 'business-line-1',
   name: 'AINative',
+  slug: 'ainative',
   description: null,
   gitUrl: 'https://example.com/repo.git',
   defaultBranch: 'main',
@@ -223,6 +224,186 @@ describe('TaskNodeExecutionService', () => {
           },
         ],
       },
+    );
+  });
+
+  it('should log runner rate-limit retries without duplicating injected prompt records', async () => {
+    jest.useFakeTimers();
+
+    const task = createTask();
+    const project = createProject();
+    const runningNode = createNode(TaskStatus.inProgress);
+    const firstPreparedAt = new Date('2026-03-19T10:01:00.000Z');
+    const secondPreparedAt = new Date('2026-03-19T10:01:05.000Z');
+
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue(task),
+    };
+    const taskNodeRepository = {
+      findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeService = {
+      ensureRuntime: jest.fn().mockResolvedValue({
+        gitBranch: 'feature/task-1',
+        gitBaseBranch: 'main',
+        gitWorktree: 'wk-task-1',
+        worktreePath: '/tmp/worktrees/wk-task-1',
+      }),
+    };
+    const agentRunnerService = {
+      executeAgentNode: jest.fn().mockImplementation(
+        async ({
+          callbacks,
+        }: {
+          callbacks?: {
+            onPrepared?: (input: {
+              adapter: 'codex';
+              prompt: string;
+              preparedAt: Date;
+            }) => Promise<void> | void;
+            onRetryScheduled?: (input: {
+              attempt: number;
+              nextAttempt: number;
+              maxAttempts: number;
+              delayMs: number;
+              reason: string;
+              diagnostic: string | null;
+            }) => Promise<void> | void;
+          };
+        }) => {
+          await callbacks?.onPrepared?.({
+            adapter: 'codex',
+            prompt: 'Run task',
+            preparedAt: firstPreparedAt,
+          });
+          await callbacks?.onRetryScheduled?.({
+            attempt: 1,
+            nextAttempt: 2,
+            maxAttempts: 3,
+            delayMs: 2_000,
+            reason: 'rate_limit',
+            diagnostic:
+              'exceeded retry limit, last status: 429 Too Many Requests, request id: req-1',
+          });
+          await callbacks?.onPrepared?.({
+            adapter: 'codex',
+            prompt: 'Run task',
+            preparedAt: secondPreparedAt,
+          });
+
+          return {
+            success: true,
+            interrupted: false,
+            exitCode: 0,
+            signal: null,
+            command: 'codex',
+            args: ['exec', '--json'],
+            cwd: '/tmp/worktrees/wk-task-1',
+            durationMs: 500,
+            stdout: '',
+            stderr: '',
+            prompt: 'Run task',
+            sessionId: 'thread-1',
+            attemptCount: 2,
+            retryCount: 1,
+          };
+        },
+      ),
+      interruptExecution: jest.fn(),
+    };
+    const taskConfigResolver = {
+      normalizeOptionalString: jest.fn().mockReturnValue(null),
+      readNodeLoopConfig: jest.fn().mockReturnValue({
+        enabled: false,
+        loopCount: 0,
+        maxLoops: 1,
+      }),
+      readNodeRequiresApproval: jest.fn().mockReturnValue(false),
+      readNodeEarlyExitMarkerConfig: jest
+        .fn()
+        .mockReturnValue({ enabled: false, fileName: null }),
+    };
+    const taskOutputService = {
+      clearNodeOutputJsonl: jest.fn().mockResolvedValue(undefined),
+      appendNodeOutputJsonlRecords: jest.fn().mockResolvedValue(1),
+      extractJsonLinesFromContent: jest.fn().mockReturnValue([]),
+      appendNodeOutputJsonlLines: jest.fn().mockResolvedValue(0),
+      resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
+      writeNodeOutputJsonl: jest.fn().mockResolvedValue('/tmp/node-1.jsonl'),
+    };
+    const taskLogService = {
+      appendLog: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskStatusService = {
+      recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeOrchestrator = {
+      createRuntimeTaskSnapshot: jest.fn().mockImplementation(() => task),
+    };
+
+    const service = new TaskNodeExecutionService(
+      taskRepository as never,
+      taskNodeRepository as never,
+      taskRuntimeService as unknown as TaskRuntimeService,
+      agentRunnerService as never,
+      taskConfigResolver as never,
+      taskOutputService as never,
+      taskLogService as never,
+      taskStatusService as never,
+      taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
+      agentCliAdapterRegistry as never,
+    );
+
+    const executionPromise = service.runNode({
+      taskId: task.id,
+      nodeId: runningNode.id,
+      project,
+    });
+
+    await jest.advanceTimersByTimeAsync(150);
+    await executionPromise;
+
+    expect(taskOutputService.appendNodeOutputJsonlRecords).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(taskOutputService.appendNodeOutputJsonlRecords).toHaveBeenCalledWith(
+      expect.objectContaining({
+        records: [
+          expect.objectContaining({
+            message: 'Run task',
+            created_at: firstPreparedAt.toISOString(),
+          }),
+        ],
+      }),
+    );
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: runningNode.id,
+        level: TaskLogLevel.warn,
+        message:
+          'Agent node execution hit upstream rate limit; retry scheduled',
+        payload: expect.objectContaining({
+          attempt: 1,
+          nextAttempt: 2,
+          maxAttempts: 3,
+          delayMs: 2_000,
+          reason: 'rate_limit',
+          diagnostic: expect.stringContaining('req-1'),
+        }),
+      }),
+    );
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Agent node completed successfully',
+        payload: expect.objectContaining({
+          attemptCount: 2,
+          retryCount: 1,
+        }),
+      }),
     );
   });
 

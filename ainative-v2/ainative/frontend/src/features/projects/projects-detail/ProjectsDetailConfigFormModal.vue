@@ -180,31 +180,11 @@ const ctx = useProjectsDetailPageInject()
           />
         </label>
 
-        <details class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
-          <summary class="cursor-pointer list-none text-xs font-semibold text-muted-foreground">
-            高级配置：手工覆写服务编排与预览入口
-          </summary>
-          <p class="mt-2 text-[11px] text-muted-foreground">
-            常规项目只需要调整 `services / routes / preview`；资源限制、启动超时和镜像画像由系统全局配置统一控制。
+        <div class="md:col-span-2 rounded-xl border border-border bg-background/60 p-3">
+          <p class="text-[11px] text-muted-foreground">
+            服务编排配置已改为自动生成，无需手动配置。如需手动覆盖，请联系管理员。
           </p>
-
-          <div class="mt-3 grid gap-4 md:grid-cols-2">
-            <label class="space-y-1 md:col-span-2">
-              <span class="text-xs font-semibold text-muted-foreground">
-                结构化服务编排配置（JSON）
-              </span>
-              <textarea
-                v-model="ctx.configForm.containerRunnerOrchestration"
-                class="min-h-[240px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                placeholder="{&#10;  &quot;services&quot;: [&#10;    {&#10;      &quot;name&quot;: &quot;ainative-app&quot;,&#10;      &quot;workdir&quot;: &quot;ainative-app&quot;,&#10;      &quot;command&quot;: &quot;npm run dev&quot;,&#10;      &quot;port&quot;: 5173&#10;    }&#10;  ],&#10;  &quot;preview&quot;: {&#10;    &quot;service&quot;: &quot;ainative-app&quot;,&#10;    &quot;path&quot;: &quot;/&quot;&#10;  }&#10;}"
-                spellcheck="false"
-              />
-              <p class="text-[11px] text-muted-foreground">
-                平台配置是唯一真源；如项目配置了本地仓库路径，保存后会写出仓库根目录 `ainative.runner.json`。
-              </p>
-            </label>
-          </div>
-        </details>
+        </div>
 
         <label class="space-y-1 md:col-span-2">
           <span class="text-xs font-semibold text-muted-foreground">Runner 命令（可选）</span>
@@ -247,6 +227,45 @@ const ctx = useProjectsDetailPageInject()
             type="text"
           />
         </label>
+
+        <fieldset class="md:col-span-2 space-y-3 rounded-lg border border-border/60 p-4">
+          <legend class="px-1 text-xs font-semibold text-muted-foreground">子仓库配置</legend>
+          <div
+            v-for="(sub, idx) in ctx.configForm.subRepos"
+            :key="idx"
+            class="flex items-start gap-2"
+          >
+            <input
+              v-model="sub.url"
+              class="h-9 flex-1 rounded-lg border border-border bg-background px-2 text-xs"
+              placeholder="git 地址"
+            />
+            <input
+              v-model="sub.prefix"
+              class="h-9 w-32 rounded-lg border border-border bg-background px-2 text-xs"
+              placeholder="目录前缀"
+            />
+            <input
+              v-model="sub.branch"
+              class="h-9 w-24 rounded-lg border border-border bg-background px-2 text-xs"
+              placeholder="分支"
+            />
+            <button
+              type="button"
+              class="h-9 shrink-0 rounded-lg border border-destructive/40 px-2 text-xs text-destructive hover:bg-destructive/10"
+              @click="ctx.configForm.subRepos.splice(idx, 1)"
+            >
+              删除
+            </button>
+          </div>
+          <button
+            type="button"
+            class="h-8 rounded-lg border border-dashed border-border px-3 text-xs text-muted-foreground hover:text-foreground"
+            @click="ctx.configForm.subRepos.push({ url: '', prefix: '', branch: 'main' })"
+          >
+            + 添加子仓
+          </button>
+        </fieldset>
 
         <div class="md:col-span-2 flex justify-end gap-2">
           <button

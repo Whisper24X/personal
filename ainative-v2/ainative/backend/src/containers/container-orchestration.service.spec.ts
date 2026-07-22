@@ -6,7 +6,10 @@ import { ContainerOrchestrationService } from './container-orchestration.service
 process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
 
 describe('ContainerOrchestrationService', () => {
-  const createTask = (status: TaskStatus) => ({
+  const createTask = (
+    status: TaskStatus,
+    overrides: Record<string, unknown> = {},
+  ) => ({
     id: 'task-1',
     projectId: 'project-1',
     businessLineId: 'business-line-1',
@@ -23,6 +26,7 @@ describe('ContainerOrchestrationService', () => {
     createdAt: new Date('2026-03-19T10:00:00.000Z'),
     updatedAt: new Date('2026-03-19T10:00:00.000Z'),
     deletedAt: null,
+    ...overrides,
   });
 
   const createProject = (configJson?: Record<string, unknown>) => ({
@@ -47,8 +51,36 @@ describe('ContainerOrchestrationService', () => {
     previewConfig = createPreviewConfig(),
   ) => ({
     resolvePreviewConfig: jest.fn().mockReturnValue(previewConfig),
+    resolvePreviewConfigFromOrchestration: jest
+      .fn()
+      .mockImplementation((orchestration) => orchestration?.preview ?? null),
+    buildEffectiveOrchestration: jest.fn().mockReturnValue({
+      services: [
+        {
+          name: previewConfig.service,
+          workdir: previewConfig.service,
+          command: 'pnpm dev',
+          port: previewConfig.service === 'ainative-app' ? 8080 : 5173,
+        },
+      ],
+      routes: [
+        {
+          path: previewConfig.path ?? '/',
+          action: 'proxy',
+          match: 'prefix',
+          service: previewConfig.service,
+        },
+      ],
+      preview: previewConfig,
+    }),
+    readConfiguredOrchestration: jest.fn().mockReturnValue(null),
+    normalizeConfigSnapshot: jest.fn().mockImplementation((snapshot) => snapshot),
     buildProjectRunnerConfigFile: jest.fn().mockReturnValue(null),
+    buildProjectRunnerConfigFileFromOrchestration: jest
+      .fn()
+      .mockReturnValue(null),
     buildManagedVolumeTargets: jest.fn().mockReturnValue([]),
+    buildManagedVolumeTargetsFromOrchestration: jest.fn().mockReturnValue([]),
   });
 
   beforeEach(() => {
@@ -211,7 +243,56 @@ describe('ContainerOrchestrationService', () => {
 
     expect(slotRepository.findByTaskId).toHaveBeenCalledWith('task-1');
     expect(slotRepository.releaseSlotByTaskId).toHaveBeenCalledWith('task-1');
-    expect(result).toBeNull();
+    expect(result).toEqual({
+      kind: 'missing',
+      slotState: 'released-stale',
+    });
+  });
+
+  it('should treat a non-running inspected container as missing', async () => {
+    const config = {
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue({
+        id: 'container-1',
+        running: false,
+        publishedPorts: [],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn(),
+    };
+    const slotRepository = {
+      findByTaskId: jest.fn().mockResolvedValue({
+        taskId: 'task-1',
+        containerId: 'container-1',
+      }),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+      {} as never,
+    );
+
+    const result = await service.inspectTaskContainer({
+      task: createTask(TaskStatus.inProgress) as never,
+      project: createProject() as never,
+    });
+
+    expect(slotRepository.releaseSlotByTaskId).toHaveBeenCalledWith('task-1');
+    expect(result).toEqual({
+      kind: 'missing',
+      slotState: 'released-stale',
+    });
   });
 
   it('should apply project-level container runtime overrides when starting containers', async () => {
@@ -320,11 +401,16 @@ describe('ContainerOrchestrationService', () => {
       },
     };
     const runnerOrchestration = {
-      resolvePreviewConfig: jest
+      resolvePreviewConfigFromOrchestration: jest
         .fn()
-        .mockReturnValue({ service: 'backend', path: '/' }),
-      buildProjectRunnerConfigFile: jest.fn().mockReturnValue(runnerConfig),
-      buildManagedVolumeTargets: jest
+        .mockImplementation((orchestration) => orchestration?.preview ?? null),
+      buildEffectiveOrchestration: jest
+        .fn()
+        .mockReturnValue(runnerConfig.orchestration),
+      buildProjectRunnerConfigFileFromOrchestration: jest
+        .fn()
+        .mockReturnValue(runnerConfig),
+      buildManagedVolumeTargetsFromOrchestration: jest
         .fn()
         .mockReturnValue([
           '/workspace/logs',
@@ -373,6 +459,9 @@ describe('ContainerOrchestrationService', () => {
         readOnlyBindMounts: [],
         env: {
           GITLAB_TOKEN: 'token-value',
+          PNPM_STORE_DIR: '/var/lib/ainative-runner-cache/pnpm-store',
+          npm_config_cache: '/var/lib/ainative-runner-cache/npm-cache',
+          YARN_CACHE_FOLDER: '/var/lib/ainative-runner-cache/yarn-cache',
           PORT: '4173',
           AINATIVE_RUNNER_LISTEN_PORT: '4173',
           AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
@@ -419,6 +508,14 @@ describe('ContainerOrchestrationService', () => {
               'ainative.mount-target': '/workspace/backend/node_modules',
             }),
           }),
+          expect.objectContaining({
+            name: expect.stringMatching(/^ainative-runner-cache-/),
+            target: '/var/lib/ainative-runner-cache',
+            labels: expect.objectContaining({
+              'ainative.cache-kind': 'runner-cache',
+              'ainative.project-id': 'project-1',
+            }),
+          }),
         ],
         publishedPorts: [
           {
@@ -445,7 +542,999 @@ describe('ContainerOrchestrationService', () => {
     expect(projectRunnerImageService.resolveRunnerImage).toHaveBeenCalledTimes(
       1,
     );
-    expect(runnerOrchestration.buildProjectRunnerConfigFile).toHaveBeenCalled();
+    expect(
+      runnerOrchestration.buildProjectRunnerConfigFileFromOrchestration,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'project-1' }),
+      runnerConfig.orchestration,
+    );
+  });
+
+  it('should use task runner snapshot for workspace-native containers without default fallback', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getPreviewBridgeScriptUrl: jest.fn().mockReturnValue(null),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue(null),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-1',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 8080,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:latest'),
+    };
+    const slotRepository = {
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const snapshotOrchestration = {
+      services: [
+        {
+          name: 'yanxue',
+          workdir: 'yanxue',
+          command: 'go run ./cmd/server',
+          port: 8000,
+        },
+        {
+          name: 'trip-shadow',
+          workdir: 'trip-shadow',
+          command: 'pnpm dev --host 0.0.0.0',
+          port: 5176,
+          installCommand: 'pnpm install',
+        },
+        {
+          name: 'trip-miniprogram',
+          workdir: 'trip-miniprogram',
+          command: 'pnpm dev:h5 --host 0.0.0.0',
+          port: 8200,
+          installCommand: 'pnpm install',
+        },
+      ],
+      routes: [
+        {
+          path: '/api/',
+          service: 'yanxue',
+          upstreamPath: '/',
+        },
+        {
+          path: '/shadow/',
+          service: 'trip-shadow',
+          upstreamPath: '/',
+        },
+        {
+          path: '/app/',
+          service: 'trip-miniprogram',
+          upstreamPath: '/',
+        },
+      ],
+      preview: {
+        service: 'trip-miniprogram',
+        path: '/app/',
+      },
+      generatedMeta: {
+        subRepoFingerprint: 'c06939e79a067578',
+        coverageStatus: 'valid',
+        verificationStatus: 'passed',
+      },
+    };
+    const runnerConfig = {
+      version: 1,
+      project: {
+        id: 'project-1',
+        name: 'AINative Web',
+        gitUrl: 'git@example.com:ainative/web.git',
+        defaultBranch: 'main',
+      },
+      runtime: {
+        networkMode: 'bridge',
+        listenPort: 8080,
+        startTimeoutMs: 30000,
+      },
+      orchestration: snapshotOrchestration,
+    };
+    const runnerOrchestration = {
+      resolvePreviewConfigFromOrchestration: jest
+        .fn()
+        .mockImplementation((orchestration) => orchestration?.preview ?? null),
+      buildEffectiveOrchestration: jest.fn().mockReturnValue({
+        services: [
+          {
+            name: 'ainative-backend',
+            workdir: 'ainative-backend',
+            command: 'air',
+            port: 8000,
+          },
+        ],
+      }),
+      normalizeConfigSnapshot: jest
+        .fn()
+        .mockImplementation((snapshot) => snapshot),
+      buildProjectRunnerConfigFileFromOrchestration: jest
+        .fn()
+        .mockReturnValue(runnerConfig),
+      buildManagedVolumeTargetsFromOrchestration: jest
+        .fn()
+        .mockReturnValue([
+          '/workspace/logs',
+          '/workspace/trip-shadow/node_modules',
+          '/workspace/trip-miniprogram/node_modules',
+        ]),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+      {} as never,
+      runnerOrchestration as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress, {
+        configJson: {
+          runner: {
+            fingerprint: 'runner-fp',
+            status: 'ready',
+            source: 'projectConfig',
+            configSnapshot: snapshotOrchestration,
+          },
+        },
+      } as never) as never,
+      project: createProject({
+        subtreeMode: 'workspace-native',
+        workspaceManaged: true,
+        subRepos: [
+          {
+            prefix: 'yanxue',
+            url: 'git@example.com:backend/yanxue.git',
+            branch: 'main',
+          },
+          {
+            prefix: 'trip-shadow',
+            url: 'git@example.com:frontend/trip-shadow.git',
+            branch: 'main',
+          },
+          {
+            prefix: 'trip-miniprogram',
+            url: 'git@example.com:frontend/trip-miniprogram.git',
+            branch: 'main',
+          },
+        ],
+      }) as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(runnerOrchestration.normalizeConfigSnapshot).toHaveBeenCalledWith(
+      snapshotOrchestration,
+    );
+    expect(runnerOrchestration.buildEffectiveOrchestration).not.toHaveBeenCalled();
+    expect(
+      runnerOrchestration.buildProjectRunnerConfigFileFromOrchestration,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'project-1' }),
+      snapshotOrchestration,
+    );
+    expect(isolatedRunner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: expect.objectContaining({
+          PNPM_STORE_DIR: '/var/lib/ainative-runner-cache/pnpm-store',
+          npm_config_cache: '/var/lib/ainative-runner-cache/npm-cache',
+          YARN_CACHE_FOLDER: '/var/lib/ainative-runner-cache/yarn-cache',
+          AINATIVE_RUNNER_CONFIG_JSON: JSON.stringify(runnerConfig),
+        }),
+        managedVolumeMounts: expect.arrayContaining([
+          expect.objectContaining({
+            name: expect.stringMatching(/^ainative-deps-/),
+            target: '/workspace/trip-shadow/node_modules',
+            labels: expect.objectContaining({
+              'ainative.cache-kind': 'node_modules',
+              'ainative.project-id': 'project-1',
+              'ainative.repo-prefix': 'trip-shadow',
+              'ainative.runtime-platform': 'default',
+            }),
+          }),
+          expect.objectContaining({
+            name: expect.stringMatching(/^ainative-deps-/),
+            target: '/workspace/trip-miniprogram/node_modules',
+            labels: expect.objectContaining({
+              'ainative.cache-kind': 'node_modules',
+              'ainative.project-id': 'project-1',
+              'ainative.repo-prefix': 'trip-miniprogram',
+              'ainative.runtime-platform': 'default',
+            }),
+          }),
+          expect.objectContaining({
+            target: '/var/lib/ainative-runner-cache',
+            name: expect.stringMatching(/^ainative-runner-cache-/),
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('should reuse the same shared node_modules cache volume for identical workspace-native lockfiles', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue('linux/amd64'),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerDependencyCacheEnv: jest.fn().mockReturnValue({
+        PNPM_STORE_DIR: '/var/lib/ainative-runner-cache/pnpm-store',
+        npm_config_cache: '/var/lib/ainative-runner-cache/npm-cache',
+        YARN_CACHE_FOLDER: '/var/lib/ainative-runner-cache/yarn-cache',
+      }),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getPreviewBridgeScriptUrl: jest.fn().mockReturnValue(null),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue(null),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-1',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 8080,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:latest'),
+    };
+    const slotRepository = {
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const snapshotOrchestration = {
+      services: [
+        {
+          name: 'trip-shadow',
+          workdir: 'trip-shadow',
+          command: 'pnpm dev --host 0.0.0.0',
+          port: 5176,
+          installCommand: 'pnpm install',
+        },
+      ],
+      routes: [
+        {
+          path: '/shadow/',
+          service: 'trip-shadow',
+          upstreamPath: '/',
+        },
+      ],
+      preview: {
+        service: 'trip-shadow',
+        path: '/shadow/',
+      },
+    };
+    const runnerOrchestration = {
+      resolvePreviewConfigFromOrchestration: jest
+        .fn()
+        .mockImplementation((orchestration) => orchestration?.preview ?? null),
+      buildEffectiveOrchestration: jest.fn(),
+      normalizeConfigSnapshot: jest
+        .fn()
+        .mockImplementation((snapshot) => snapshot),
+      buildProjectRunnerConfigFileFromOrchestration: jest.fn().mockReturnValue({
+        version: 1,
+        project: {
+          id: 'project-1',
+          name: 'AINative Web',
+          gitUrl: 'git@example.com:ainative/web.git',
+          defaultBranch: 'main',
+        },
+        runtime: {
+          networkMode: 'bridge',
+          listenPort: 8080,
+          startTimeoutMs: 30000,
+        },
+        orchestration: snapshotOrchestration,
+      }),
+      buildManagedVolumeTargetsFromOrchestration: jest.fn().mockReturnValue([
+        '/workspace/logs',
+        '/workspace/trip-shadow/node_modules',
+        '/var/lib/ainative-runner-cache',
+      ]),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+      {} as never,
+      runnerOrchestration as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    const readFileSpy = jest
+      .spyOn(require('node:fs/promises'), 'readFile')
+      .mockImplementation((filePath: any) => {
+        const file = String(filePath);
+        if (file.endsWith('trip-shadow/pnpm-lock.yaml')) {
+          return Promise.resolve('lockfile-v1') as never;
+        }
+        return Promise.reject(new Error(`unexpected read ${file}`)) as never;
+      });
+
+    const taskOne = createTask(TaskStatus.inProgress, {
+      id: 'task-1',
+      configJson: {
+        runner: {
+          fingerprint: 'runner-fp',
+          status: 'ready',
+          source: 'projectConfig',
+          configSnapshot: snapshotOrchestration,
+        },
+      },
+    });
+    const taskTwo = createTask(TaskStatus.inProgress, {
+      id: 'task-2',
+      gitWorktree: 'wk-task-2',
+      configJson: {
+        runner: {
+          fingerprint: 'runner-fp',
+          status: 'ready',
+          source: 'projectConfig',
+          configSnapshot: snapshotOrchestration,
+        },
+      },
+    });
+    const project = createProject({
+      subtreeMode: 'workspace-native',
+      workspaceManaged: true,
+      subRepos: [
+        {
+          prefix: 'trip-shadow',
+          url: 'git@example.com:frontend/trip-shadow.git',
+          branch: 'main',
+        },
+      ],
+    });
+
+    await service.ensureContainer({
+      task: taskOne as never,
+      project: project as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+    await service.ensureContainer({
+      task: taskTwo as never,
+      project: project as never,
+      worktreePath: '/tmp/worktrees/wk-task-2',
+    });
+
+    const firstMounts = isolatedRunner.run.mock.calls[0][0].managedVolumeMounts;
+    const secondMounts = isolatedRunner.run.mock.calls[1][0].managedVolumeMounts;
+    const firstNodeModules = firstMounts.find(
+      (mount: { target: string }) =>
+        mount.target === '/workspace/trip-shadow/node_modules',
+    );
+    const secondNodeModules = secondMounts.find(
+      (mount: { target: string }) =>
+        mount.target === '/workspace/trip-shadow/node_modules',
+    );
+    const firstRunnerCache = firstMounts.find(
+      (mount: { target: string }) =>
+        mount.target === '/var/lib/ainative-runner-cache',
+    );
+    const secondRunnerCache = secondMounts.find(
+      (mount: { target: string }) =>
+        mount.target === '/var/lib/ainative-runner-cache',
+    );
+
+    expect(firstNodeModules?.name).toBe(secondNodeModules?.name);
+    expect(firstNodeModules?.labels).toEqual(
+      expect.objectContaining({
+        'ainative.cache-kind': 'node_modules',
+        'ainative.lockfile-digest': expect.any(String),
+        'ainative.runtime-platform': 'linux/amd64',
+      }),
+    );
+    expect(firstRunnerCache?.name).toBe(secondRunnerCache?.name);
+    expect(firstRunnerCache?.labels).toEqual(
+      expect.objectContaining({
+        'ainative.cache-kind': 'runner-cache',
+        'ainative.runtime-platform': 'linux/amd64',
+      }),
+    );
+
+    readFileSpy.mockRestore();
+  });
+
+  it('should fallback to project runner config when task snapshot is stale and project config is runnable', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getPreviewBridgeScriptUrl: jest.fn().mockReturnValue(null),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue(null),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-1',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 8080,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:latest'),
+    };
+    const slotRepository = {
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const businessLineRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'business-line-1',
+        configJson: {
+          runnerConfigStatus: 'ready',
+          runnerFingerprint: 'runner-fp',
+          runnerConfigCache: {
+            services: [
+              {
+                name: 'yanxue',
+                workdir: 'yanxue',
+                command: 'go run ./cmd/server',
+                port: 8000,
+              },
+            ],
+            routes: [
+              {
+                path: '/api/',
+                action: 'proxy',
+                match: 'prefix',
+                service: 'yanxue',
+              },
+            ],
+            preview: {
+              service: 'yanxue',
+              path: '/api/',
+            },
+            generatedMeta: {
+              subRepoFingerprint: '00c24e350423367e',
+              coverageStatus: 'valid',
+              verificationStatus: 'passed',
+            },
+          },
+          runnerConfigCacheMeta: {
+            source: 'ai-full-scan',
+            generatedAt: '2026-06-01T00:00:00.000Z',
+            subRepoFingerprint: '00c24e350423367e',
+            coverageStatus: 'valid',
+            verificationStatus: 'passed',
+          },
+        },
+      }),
+    };
+    const runnerConfig = {
+      version: 1,
+      project: { id: 'project-1', name: 'AINative Web', defaultBranch: 'main' },
+      runtime: { networkMode: 'bridge', listenPort: 8080, startTimeoutMs: 30000 },
+      orchestration: {
+        services: [
+          {
+            name: 'yanxue',
+            workdir: 'yanxue',
+            command: 'go run ./cmd/server',
+            port: 8000,
+          },
+        ],
+        routes: [
+          {
+            path: '/api/',
+            action: 'proxy',
+            match: 'prefix',
+            service: 'yanxue',
+          },
+        ],
+        preview: { service: 'yanxue', path: '/api/' },
+      },
+    };
+    const runnerOrchestration = {
+      resolvePreviewConfigFromOrchestration: jest
+        .fn()
+        .mockImplementation((orchestration) => orchestration?.preview ?? null),
+      normalizeConfigSnapshot: jest.fn().mockImplementation((snapshot) => snapshot),
+      buildProjectRunnerConfigFileFromOrchestration: jest
+        .fn()
+        .mockReturnValue(runnerConfig),
+      buildManagedVolumeTargetsFromOrchestration: jest.fn().mockReturnValue([]),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+      {} as never,
+      runnerOrchestration as never,
+      businessLineRepository as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress, {
+        configJson: {
+          runner: {
+            fingerprint: 'runner-fp',
+            status: 'ready',
+            source: 'projectConfig',
+            configSnapshot: {
+              services: [
+                {
+                  name: 'yanxue',
+                  workdir: 'yanxue',
+                  command: 'go run ./cmd/server',
+                  port: 8000,
+                },
+              ],
+              generatedMeta: {
+                coverageStatus: 'valid',
+                verificationStatus: 'passed',
+              },
+            },
+          },
+        },
+      } as never) as never,
+      project: createProject({
+        subtreeMode: 'workspace-native',
+        workspaceManaged: true,
+        subRepos: [
+          {
+            prefix: 'yanxue',
+            url: 'git@example.com:backend/yanxue.git',
+            branch: 'main',
+          },
+        ],
+      }) as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(businessLineRepository.findById).not.toHaveBeenCalled();
+    expect(
+      runnerOrchestration.buildProjectRunnerConfigFileFromOrchestration,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'project-1' }),
+      expect.objectContaining({
+        services: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'yanxue',
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('should fallback to verified project runner config when task snapshot is unavailable', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getPreviewBridgeScriptUrl: jest.fn().mockReturnValue(null),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue(null),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-1',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 8080,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:latest'),
+    };
+    const slotRepository = {
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const runnerConfig = {
+      version: 1,
+      project: { id: 'project-1', name: 'AINative Web', defaultBranch: 'main' },
+      runtime: { networkMode: 'bridge', listenPort: 8080, startTimeoutMs: 30000 },
+      orchestration: {
+        services: [
+          {
+            name: 'yanxue',
+            workdir: 'yanxue',
+            command: 'go run ./cmd/server',
+            port: 8000,
+          },
+        ],
+        routes: [
+          {
+            path: '/api/',
+            action: 'proxy',
+            match: 'prefix',
+            service: 'yanxue',
+          },
+        ],
+        preview: { service: 'yanxue', path: '/api/' },
+        generatedMeta: {
+          subRepoFingerprint: '00c24e350423367e',
+          coverageStatus: 'valid',
+          verificationStatus: 'passed',
+          runnerFingerprint: 'runner-fp',
+        },
+      },
+    };
+    const runnerOrchestration = {
+      resolvePreviewConfigFromOrchestration: jest
+        .fn()
+        .mockImplementation((orchestration) => orchestration?.preview ?? null),
+      normalizeConfigSnapshot: jest.fn().mockImplementation((snapshot) => snapshot),
+      buildProjectRunnerConfigFileFromOrchestration: jest
+        .fn()
+        .mockReturnValue(runnerConfig),
+      buildManagedVolumeTargetsFromOrchestration: jest.fn().mockReturnValue([]),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+      {} as never,
+      runnerOrchestration as never,
+      { findById: jest.fn().mockResolvedValue(null) } as never,
+    );
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress, {
+        configJson: {
+          runner: {
+            fingerprint: 'runner-fp',
+            status: 'unavailable',
+            source: 'unavailableGenerationFailed',
+          },
+        },
+      } as never) as never,
+      project: createProject({
+        subtreeMode: 'workspace-native',
+        workspaceManaged: true,
+        subRepos: [
+          {
+            prefix: 'yanxue',
+            url: 'git@example.com:backend/yanxue.git',
+            branch: 'main',
+          },
+        ],
+        containerRuntime: {
+          runnerOrchestration: runnerConfig.orchestration,
+        },
+      }) as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(
+      runnerOrchestration.buildProjectRunnerConfigFileFromOrchestration,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'project-1' }),
+      expect.objectContaining({
+        generatedMeta: expect.objectContaining({
+          verificationStatus: 'passed',
+          runnerFingerprint: 'runner-fp',
+        }),
+      }),
+    );
+  });
+
+  it('should prefer project preview orchestration when task snapshot is stale but project config remains runnable', async () => {
+    const config = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+      getSandboxProfile: jest.fn().mockReturnValue('preview-web'),
+      getRunnerPlatform: jest.fn().mockReturnValue(null),
+      getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+      shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+      getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
+      getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
+      usesSandboxEntrypoint: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+      getRunnerManagedVolumeTargets: jest.fn().mockReturnValue([]),
+      getRunnerBootstrapEnv: jest.fn().mockReturnValue({}),
+      getRunnerEnv: jest.fn().mockReturnValue({}),
+      getRunnerCpuLimit: jest.fn().mockReturnValue(undefined),
+      resourceLimitsForProfile: jest.fn().mockReturnValue({}),
+      getRunnerReadinessProbeUrl: jest.fn().mockReturnValue(null),
+      getRunnerStartTimeoutMs: jest.fn().mockReturnValue(30000),
+      getPreviewBridgeScriptUrl: jest.fn().mockReturnValue(null),
+      getSlotHeartbeatMs: jest.fn().mockReturnValue(1000),
+      getSlotTtlMs: jest.fn().mockReturnValue(5000),
+      shouldAddHostDockerInternalGateway: jest.fn().mockReturnValue(true),
+      getRunnerExposePortRange: jest
+        .fn()
+        .mockReturnValue({ start: 38080, end: 38080 }),
+    };
+    const isolatedRunner = {
+      inspect: jest.fn().mockResolvedValue(null),
+      run: jest.fn().mockResolvedValue({
+        containerId: 'container-1',
+        publishedPorts: [
+          {
+            hostIp: '0.0.0.0',
+            hostPort: 38080,
+            containerPort: 8080,
+          },
+        ],
+      }),
+    };
+    const projectRunnerImageService = {
+      resolveRunnerImage: jest.fn().mockResolvedValue('ainative/runner:latest'),
+    };
+    const slotRepository = {
+      updateContainerRuntimeByTaskId: jest.fn().mockResolvedValue(undefined),
+      updateContainerIdByTaskId: jest.fn().mockResolvedValue(undefined),
+      renewSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+      releaseSlotByTaskId: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRepository = {
+      findById: jest.fn(),
+    };
+    const businessLineRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'business-line-1',
+        configJson: {
+          runnerConfigStatus: 'ready',
+          runnerFingerprint: 'runner-fp-new',
+          runnerConfigCache: {
+            services: [
+              {
+                name: 'yanxue',
+                workdir: 'yanxue',
+                command: 'go run ./cmd/server',
+                port: 8000,
+              },
+            ],
+            routes: [
+              {
+                path: '/api/',
+                action: 'proxy',
+                match: 'prefix',
+                service: 'yanxue',
+              },
+            ],
+            preview: {
+              service: 'yanxue',
+              path: '/api/',
+            },
+            generatedMeta: {
+              subRepoFingerprint: '00c24e350423367e',
+              coverageStatus: 'valid',
+              verificationStatus: 'passed',
+            },
+          },
+          runnerConfigCacheMeta: {
+            source: 'ai-full-scan',
+            generatedAt: '2026-06-01T00:00:00.000Z',
+            subRepoFingerprint: '00c24e350423367e',
+            coverageStatus: 'valid',
+            verificationStatus: 'passed',
+          },
+        },
+      }),
+    };
+    const runnerOrchestration = {
+      resolvePreviewConfigFromOrchestration: jest
+        .fn()
+        .mockImplementation((orchestration) => orchestration?.preview ?? null),
+      normalizeConfigSnapshot: jest.fn().mockImplementation((snapshot) => snapshot),
+      buildProjectRunnerConfigFileFromOrchestration: jest
+        .fn()
+        .mockImplementation((project, orchestration) => ({
+          version: 1,
+          project: { id: project.id, name: project.name, defaultBranch: project.defaultBranch },
+          runtime: { networkMode: 'bridge', listenPort: 8080, startTimeoutMs: 30000 },
+          orchestration,
+        })),
+      buildManagedVolumeTargetsFromOrchestration: jest.fn().mockReturnValue([]),
+    };
+    const service = new ContainerOrchestrationService(
+      config as never,
+      projectRunnerImageService as never,
+      isolatedRunner as never,
+      slotRepository as never,
+      taskRepository as never,
+      {} as never,
+      runnerOrchestration as never,
+      businessLineRepository as never,
+    );
+
+    jest
+      .spyOn(service as never, 'allocatePublishedPort' as never)
+      .mockResolvedValue(38080 as never);
+
+    await service.ensureContainer({
+      task: createTask(TaskStatus.inProgress, {
+        configJson: {
+          runner: {
+            fingerprint: 'runner-fp-old',
+            status: 'ready',
+            source: 'projectConfig',
+            configSnapshot: {
+              services: [
+                {
+                  name: 'yanxue',
+                  workdir: 'yanxue',
+                  command: 'go run ./cmd/server',
+                  port: 8000,
+                },
+              ],
+              generatedMeta: {
+                subRepoFingerprint: 'different-structure',
+                coverageStatus: 'valid',
+                verificationStatus: 'passed',
+              },
+            },
+          },
+        },
+      } as never) as never,
+      project: createProject({
+        subtreeMode: 'workspace-native',
+        workspaceManaged: true,
+        subRepos: [
+          {
+            prefix: 'yanxue',
+            url: 'git@example.com:backend/yanxue.git',
+            branch: 'main',
+          },
+        ],
+      }) as never,
+      worktreePath: '/tmp/worktrees/wk-task-1',
+    });
+
+    expect(runnerOrchestration.buildProjectRunnerConfigFileFromOrchestration).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'project-1' }),
+      expect.objectContaining({
+        services: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'yanxue',
+          }),
+        ]),
+      }),
+    );
+    expect(isolatedRunner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: ['/usr/local/bin/ainative-runner-entrypoint'],
+        env: expect.objectContaining({
+          AINATIVE_RUNNER_CONFIG_JSON: expect.stringContaining('"yanxue"'),
+        }),
+      }),
+    );
   });
 
   it('should replace a running container when the desired platform changes', async () => {
@@ -535,7 +1624,12 @@ describe('ContainerOrchestrationService', () => {
     });
 
     expect(result).toEqual({ containerId: 'container-new' });
-    expect(isolatedRunner.remove).toHaveBeenCalledWith('ainative-task-task-1');
+    expect(isolatedRunner.remove).toHaveBeenCalledWith(
+      'ainative-task-task-1',
+      expect.objectContaining({
+        preserveManagedVolumeTargets: expect.any(Function),
+      }),
+    );
     expect(isolatedRunner.run).toHaveBeenCalledWith(
       expect.objectContaining({
         image: 'ainative/runner:fresh',
@@ -798,7 +1892,12 @@ describe('ContainerOrchestrationService', () => {
     });
 
     expect(result).toEqual({ containerId: 'container-new' });
-    expect(isolatedRunner.remove).toHaveBeenCalledWith('ainative-task-task-1');
+    expect(isolatedRunner.remove).toHaveBeenCalledWith(
+      'ainative-task-task-1',
+      expect.objectContaining({
+        preserveManagedVolumeTargets: expect.any(Function),
+      }),
+    );
     expect(isolatedRunner.run).toHaveBeenCalledWith(
       expect.objectContaining({
         image: 'ainative/runner:fresh',
@@ -895,16 +1994,16 @@ describe('ContainerOrchestrationService', () => {
     expect(result).toEqual({ containerId: 'container-new' });
     expect(slotRepository.updateContainerRuntimeByTaskId).toHaveBeenCalledWith(
       'task-1',
-      {
+      expect.objectContaining({
         containerId: 'container-new',
-        accessMetadata: {
+        accessMetadata: expect.objectContaining({
           hostIp: '192.168.50.8',
           hostPort: 38080,
           containerPort: 4173,
           previewUrl: 'https://preview.example.com:38080',
           networkMode: 'bridge',
-        },
-      },
+        }),
+      }),
     );
   });
 

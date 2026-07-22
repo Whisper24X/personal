@@ -1,0 +1,12 @@
+name: devices-learn
+server:
+  http:
+    addr: 0.0.0.0:8000
+    timeout: 10s
+  grpc:
+    addr: 0.0.0.0:9000
+    timeout: 10s
+logger:
+  enableResWithCode: 200
+  enableReqWithCode: 200
+env: ${GO_ENV}

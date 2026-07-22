@@ -1,0 +1,119 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "user/v1/user.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "User"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/user/v1/queryIfUserCanRenewal": {
+      "get": {
+        "summary": "查询用户是否能够续购",
+        "operationId": "User_QueryIfUserCanRenewal",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryIfUserCanRenewalReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/devices-learn/user/v1/queryScholarBasicInfo": {
+      "get": {
+        "summary": "查询用户学霸之魂基础信息",
+        "operationId": "User_QueryScholarBasicInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryScholarBasicInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1QueryIfUserCanRenewalReply": {
+      "type": "object",
+      "properties": {
+        "canRenewal": {
+          "type": "boolean",
+          "title": "是否可以续费"
+        }
+      }
+    },
+    "v1QueryScholarBasicInfoReply": {
+      "type": "object",
+      "properties": {
+        "activeStatus": {
+          "type": "string",
+          "title": "学霸之魂状态: SCHOLAR_OFFLINE: 唤醒状态-沉睡; SCHOLAR_INACTIVE: 唤醒状态-未唤醒; SCHOLAR_ACTIVE: 唤醒状态-已唤醒"
+        },
+        "continuedDays": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学霸之魂连续唤醒天数"
+        }
+      }
+    }
+  }
+}

@@ -28,6 +28,7 @@ import {
   ApiConsumes,
   ApiNoContentResponse,
   ApiOkResponse,
+  ApiOperation,
   ApiParam,
   ApiQuery,
   ApiTags,
@@ -73,6 +74,7 @@ import { ProjectCustomRole } from '../projects/domain/project-custom-role';
 import { CreateProjectCustomRoleDto } from '../projects/dto/create-project-custom-role.dto';
 import { UpdateProjectCustomRoleDto } from '../projects/dto/update-project-custom-role.dto';
 import { BusinessLineMemberProjectRolesDto } from './dto/business-line-member-project-roles.dto';
+import { RunnerGenerationService } from './runner-generation.service';
 
 @ApiTags('Businesslines')
 @ApiBearerAuth()
@@ -82,7 +84,10 @@ import { BusinessLineMemberProjectRolesDto } from './dto/business-line-member-pr
   version: '1',
 })
 export class BusinessLinesController {
-  constructor(private readonly businessLinesService: BusinessLinesService) {}
+  constructor(
+    private readonly businessLinesService: BusinessLinesService,
+    private readonly runnerGenerationService: RunnerGenerationService,
+  ) {}
 
   @Post()
   @ApiCreatedResponse({
@@ -97,6 +102,23 @@ export class BusinessLinesController {
       createBusinessLineDto,
       request.user,
     );
+  }
+
+  @Post(':id/regenerate-runner')
+  @ApiOperation({ summary: 'Trigger runner config regeneration' })
+  @ApiParam({ name: 'id', type: String })
+  @HttpCode(HttpStatus.ACCEPTED)
+  async regenerateRunner(
+    @Request() request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.businessLinesService.ensureCanManage(id, request.user);
+    this.runnerGenerationService.enqueue(id, { force: true });
+    return {
+      accepted: true,
+      businessLineId: id,
+      queuedAt: new Date().toISOString(),
+    };
   }
 
   @Get()
@@ -156,6 +178,19 @@ export class BusinessLinesController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<NullableType<BusinessLine>> {
     return this.businessLinesService.findById(id, request.user);
+  }
+
+  @Get(':id/runner-status')
+  @ApiOperation({
+    summary: 'Get runner config generation and verification status',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @HttpCode(HttpStatus.OK)
+  async getRunnerStatus(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.businessLinesService.getRunnerStatus(id, request.user);
   }
 
   @Patch(':id')
@@ -1025,6 +1060,33 @@ export class BusinessLinesController {
       createdAt: config.createdAt.toISOString(),
       updatedAt: config.updatedAt.toISOString(),
     };
+  }
+
+  @Get(':id/workspace-project')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOperation({
+    summary: 'Get the workspace-managed project ID for this business line',
+  })
+  @HttpCode(HttpStatus.OK)
+  async getWorkspaceProject(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.businessLinesService.getWorkspaceProject(id, request.user);
+  }
+
+  @Post('admin/migrate-workspace-native')
+  @ApiOperation({
+    summary: 'Migrate snapshot projects to workspace-native (admin only)',
+  })
+  async migrateToWorkspaceNative(
+    @Request() request,
+    @Body() body: { businessLineId?: string; dryRun?: boolean },
+  ) {
+    return this.businessLinesService.migrateToWorkspaceNative(request.user, {
+      businessLineId: body.businessLineId,
+      dryRun: body.dryRun,
+    });
   }
 
   private parseConfigJson(value: string): Record<string, unknown> {

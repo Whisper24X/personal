@@ -306,7 +306,12 @@ export class TaskQueryService {
       return [];
     }
 
-    return this.taskRuntimeService.listWorktreeFiles(task, options);
+    const project = await this.projectAccessService.assertCanAccessProject(
+      task.projectId,
+      currentUser,
+    );
+
+    return this.taskRuntimeService.listWorktreeFiles(task, project, options);
   }
 
   async readWorktreeFile(
@@ -319,8 +324,14 @@ export class TaskQueryService {
       currentUser,
     );
 
+    const project = await this.projectAccessService.assertCanAccessProject(
+      task.projectId,
+      currentUser,
+    );
+
     const content = await this.taskRuntimeService.readFileFromWorktree(
       task,
+      project,
       relativePath,
     );
     if (content === null) {

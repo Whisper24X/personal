@@ -21,6 +21,8 @@ import type {
   UpdateProjectPayload,
   CreateProjectCustomRolePayload,
   UpdateProjectCustomRolePayload,
+  SubtreeDeployStatus,
+  ProjectRunnerRegenerateResponse,
 } from '@/types/api/projects'
 import {
   apiHttp,
@@ -64,6 +66,10 @@ export const projectsApi = {
 
   retryRepositoryProvisioning(projectId: string) {
     return apiHttp.post<Project>(`/projects/${projectId}/repository-provisioning/retry`)
+  },
+
+  regenerateRunner(projectId: string) {
+    return apiHttp.post<ProjectRunnerRegenerateResponse>(`/projects/${projectId}/regenerate-runner`)
   },
 
   remove(projectId: string) {
@@ -186,6 +192,53 @@ export const projectsApi = {
 
   deploy(projectId: string, taskId: string, command: string, callbacks: SseCallbacks) {
     return postSseStream(`/projects/${projectId}/deploy`, { taskId, command }, callbacks)
+  },
+
+  getSubtreeDeployInfo(projectId: string, taskId: string) {
+    return apiHttp.get<{
+      enabled: boolean
+      gitPhase?: string
+      deployStatus?: SubtreeDeployStatus
+      subtreeConfigs?: Array<{ url: string; prefix: string; branch: string }>
+      canDeploy: boolean
+    }>(`/projects/${projectId}/deploy-subtrees-info`, { taskId })
+  },
+
+  deploySubtrees(
+    projectId: string,
+    taskId: string,
+    forceOverwrite: boolean | undefined,
+    callbacks: SseCallbacks,
+  ) {
+    return postSseStream(
+      `/projects/${projectId}/deploy-subtrees`,
+      { taskId, forceOverwrite },
+      callbacks,
+    )
+  },
+
+  deployWorkspaceNative(
+    projectId: string,
+    taskId: string,
+    callbacks: SseCallbacks,
+    options?: { targetBranches?: Record<string, string> },
+  ) {
+    return postSseStream(
+      `/projects/${projectId}/deploy-workspace-native`,
+      { taskId, targetBranches: options?.targetBranches },
+      callbacks,
+    )
+  },
+
+  getWorkspaceNativeDeployInfo(projectId: string, taskId: string) {
+    return apiHttp.get<{
+      enabled: boolean
+      error?: string
+      errorMessage?: string
+      featureBranch?: string
+      subRepos?: Array<{ url: string; prefix: string; branch: string }>
+      deployStatus?: import('@/types/api/tasks').WorkspaceNativeDeployStatus
+    }>(`/projects/${projectId}/deploy-workspace-native-info`, { taskId })
   },
 
   scanDatabaseTables(

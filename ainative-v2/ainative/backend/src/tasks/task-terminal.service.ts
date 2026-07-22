@@ -408,7 +408,7 @@ export class TaskTerminalService implements OnModuleDestroy {
       task,
       project,
     });
-    if (!container?.running || !container.containerId) {
+    if (container.kind !== 'running') {
       throw new ConflictException(TERMINAL_ENVIRONMENT_NOT_READY_MESSAGE);
     }
 

@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import {
   BadRequestException,
@@ -18,12 +19,18 @@ import {
   mergeGitOutput,
 } from '../git/git-network-sync.util';
 import { resolveGitRemoteUrlWithHttpAuth } from '../git/git-remote-auth.util';
+import {
+  isWorkspaceManaged,
+  isWorkspaceNativeMode,
+} from '../git/workspace-native.types';
+import { WorkspaceRepositoryService } from '../git/workspace-repository.service';
 import { ProjectWorkspacePathsService } from '../project-workspace/project-workspace-paths.service';
 import { Project } from './domain/project';
 import { ProjectAccessService } from './project-access.service';
 
 export type EnsureProjectRepositoryOptions = {
   syncRemote?: boolean;
+  allowWorkspaceManaged?: boolean;
 };
 
 type GitCommandResult = {
@@ -50,8 +57,58 @@ export class ProjectRepositoryWorkspaceService {
     private readonly projectAccessService: ProjectAccessService,
     private readonly configService: ConfigService,
     private readonly projectWorkspacePathsService: ProjectWorkspacePathsService,
+    private readonly workspaceRepoService: WorkspaceRepositoryService,
     private readonly runnerOrchestration?: RunnerOrchestrationService,
   ) {}
+
+  /**
+   * Resolve effective git URL for a project.
+   * - Workspace-native projects (no gitUrl or workspaceManaged) -> ainative-workspace URL
+   * - Legacy projects (with their own gitUrl) -> project.gitUrl
+   */
+  resolveEffectiveGitUrl(project: Project): string {
+    if (!project.gitUrl?.trim() || isWorkspaceManaged(project)) {
+      return this.workspaceRepoService.getWorkspaceGitUrl();
+    }
+    return project.gitUrl;
+  }
+
+  resolveEffectiveDefaultBranch(project: Project): string {
+    if (!project.gitUrl?.trim()) {
+      if (isWorkspaceManaged(project)) {
+        return this.workspaceRepoService.getBaseBranch();
+      }
+      if (isWorkspaceNativeMode(project) && project.defaultBranch?.trim()) {
+        return project.defaultBranch.trim();
+      }
+      return this.workspaceRepoService.getBaseBranch();
+    }
+    return project.defaultBranch?.trim() || 'main';
+  }
+
+  resolveCloneInitialBranch(project: Project): string {
+    if (!project.gitUrl?.trim()) {
+      return this.workspaceRepoService.getBaseBranch();
+    }
+    return this.resolveEffectiveDefaultBranch(project);
+  }
+
+  async ensureProjectWorkspaceBranch(
+    project: Project,
+    repositoryRoot: string,
+  ): Promise<void> {
+    const branchName = project.defaultBranch?.trim();
+    if (!branchName || isWorkspaceManaged(project)) {
+      return;
+    }
+    if (!isWorkspaceNativeMode(project)) {
+      return;
+    }
+    await this.workspaceRepoService.ensureProjectWorkspaceBranch(
+      repositoryRoot,
+      branchName,
+    );
+  }
 
   async ensureProjectRepositoryReady(
     projectId: Project['id'],
@@ -75,7 +132,10 @@ export class ProjectRepositoryWorkspaceService {
       };
     } catch (error) {
       throw new BadRequestException(
-        this.formatGitSyncFailureMessage(error, project.gitUrl),
+        this.formatGitSyncFailureMessage(
+          error,
+          this.resolveEffectiveGitUrl(project),
+        ),
       );
     }
   }
@@ -93,6 +153,7 @@ export class ProjectRepositoryWorkspaceService {
       projectId,
       currentUser,
     );
+
     const repositoryRoot = this.resolveRepositoryRoot(project);
 
     try {
@@ -111,7 +172,10 @@ export class ProjectRepositoryWorkspaceService {
       }
 
       throw new BadRequestException(
-        this.formatGitSyncFailureMessage(error, project.gitUrl),
+        this.formatGitSyncFailureMessage(
+          error,
+          this.resolveEffectiveGitUrl(project),
+        ),
       );
     }
   }
@@ -252,8 +316,166 @@ export class ProjectRepositoryWorkspaceService {
     }
   }
 
+  async ensureBranchWorktree(params: {
+    project: Project;
+    repositoryRoot: string;
+    branchName: string;
+    namespace: string;
+  }): Promise<string> {
+    const normalizedBranchName = params.branchName.trim();
+    if (!normalizedBranchName) {
+      throw new BadRequestException('分支名不能为空');
+    }
+
+    const worktreePath = this.resolveBranchWorktreePath(
+      params.project,
+      normalizedBranchName,
+      params.namespace,
+    );
+    const hasWorktreeGit = await this.pathExists(
+      path.join(worktreePath, '.git'),
+    );
+
+    if (hasWorktreeGit) {
+      const currentBranchResult = await this.runCommand('git', [
+        '-C',
+        worktreePath,
+        'rev-parse',
+        '--abbrev-ref',
+        'HEAD',
+      ]);
+      if (
+        currentBranchResult.success &&
+        currentBranchResult.stdout.trim() === normalizedBranchName
+      ) {
+        return worktreePath;
+      }
+
+      await this.runCommand('git', [
+        '-C',
+        params.repositoryRoot,
+        'worktree',
+        'remove',
+        '--force',
+        worktreePath,
+      ]);
+    }
+
+    await fs.rm(worktreePath, { recursive: true, force: true });
+    await this.runCommand('git', [
+      '-C',
+      params.repositoryRoot,
+      'worktree',
+      'prune',
+    ]);
+    await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+
+    await this.ensureLocalBranchRef(
+      params.repositoryRoot,
+      normalizedBranchName,
+    );
+
+    const addResult = await this.runCommand('git', [
+      '-C',
+      params.repositoryRoot,
+      'worktree',
+      'add',
+      '--force',
+      worktreePath,
+      normalizedBranchName,
+    ]);
+    if (!addResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(
+          `创建 ${normalizedBranchName} 临时 worktree 失败`,
+          addResult,
+        ),
+      );
+    }
+
+    return worktreePath;
+  }
+
   normalizeProjectDocPath(value: string): string {
     return this.projectWorkspacePathsService.normalizeProjectDocPath(value);
+  }
+
+  private resolveBranchWorktreePath(
+    project: Project,
+    branchName: string,
+    namespace: string,
+  ): string {
+    const safeNamespace = this.sanitizeWorktreeSegment(namespace) || 'system';
+    const safeBranch = this.sanitizeWorktreeSegment(branchName) || 'branch';
+    const branchHash = createHash('sha1')
+      .update(branchName)
+      .digest('hex')
+      .slice(0, 12);
+    const worktreePath = path.join(
+      this.projectWorkspacePathsService.resolveWorktreeBaseDir(project),
+      '.system',
+      safeNamespace,
+      `${safeBranch}-${branchHash}`,
+    );
+
+    return this.projectWorkspacePathsService.ensurePathWithinAllowedRoot(
+      worktreePath,
+      this.projectWorkspacePathsService.resolveWorktreeAllowedRoot(project),
+    );
+  }
+
+  private sanitizeWorktreeSegment(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
+  }
+
+  private async ensureLocalBranchRef(
+    repositoryRoot: string,
+    branchName: string,
+  ): Promise<void> {
+    const localBranchResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/heads/${branchName}`,
+    ]);
+    if (localBranchResult.success) {
+      return;
+    }
+
+    const remoteBranchResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/remotes/origin/${branchName}`,
+    ]);
+    if (!remoteBranchResult.success) {
+      throw new BadRequestException(
+        `仓库中不存在分支 ${branchName}（本地或 origin/${branchName}）`,
+      );
+    }
+
+    const createBranchResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'branch',
+      branchName,
+      `origin/${branchName}`,
+    ]);
+    if (!createBranchResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(
+          `从远端创建本地分支 ${branchName} 失败`,
+          createBranchResult,
+        ),
+      );
+    }
   }
 
   private shouldWriteRunnerConfigBackup(project: Project): boolean {
@@ -305,11 +527,13 @@ export class ProjectRepositoryWorkspaceService {
     repositoryRoot: string,
     options: EnsureProjectRepositoryOptions = {},
   ): Promise<void> {
-    const defaultBranch = project.defaultBranch?.trim() || 'main';
+    const defaultBranch = this.resolveCloneInitialBranch(project);
     const gitDirPath = path.join(repositoryRoot, '.git');
     const hasGit = await this.pathExists(gitDirPath);
     const shouldSyncRemote = options.syncRemote ?? true;
-    const resolvedGitUrl = this.resolveGitRemoteUrl(project.gitUrl);
+    const resolvedGitUrl = this.resolveGitRemoteUrl(
+      this.resolveEffectiveGitUrl(project),
+    );
 
     if (!hasGit) {
       await this.ensureRepositoryParentDirectory(repositoryRoot);

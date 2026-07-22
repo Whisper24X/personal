@@ -1,0 +1,433 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "dynamic_function_config/v1/dynamic_funciton_config.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "DynamicFunctionConfig"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/dynamic-function-config/v1/QueryDynamicFunctionConfigListShadow": {
+      "post": {
+        "summary": "shadow查询动态功能配置列表",
+        "operationId": "DynamicFunctionConfig_QueryDynamicFunctionConfigListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicFunctionConfigListShadowReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicFunctionConfigListShadowReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicFunctionConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-function-config/v1/queryDynamicFunctionConfigListApi": {
+      "get": {
+        "summary": "客户端查询动态功能配置列表",
+        "operationId": "DynamicFunctionConfig_QueryDynamicFunctionConfigListApi",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicFunctionConfigListApiResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "DynamicFunctionConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-function-config/v1/storeDynamicFunctionConfig": {
+      "post": {
+        "summary": "保存动态功能配置",
+        "operationId": "DynamicFunctionConfig_StoreDynamicFunctionConfig",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreDynamicFunctionConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreDynamicFunctionConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicFunctionConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-function-config/v1/updateDynamicFunctionConfigStatus": {
+      "post": {
+        "summary": "修改动态功能配置状态",
+        "operationId": "DynamicFunctionConfig_UpdateDynamicFunctionConfigStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateDynamicFunctionConfigStatusReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateDynamicFunctionConfigStatusReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicFunctionConfig"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1DynamicFunctionConfigDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "functionName": {
+          "type": "string",
+          "title": "功能名称"
+        },
+        "moduleScale": {
+          "type": "string",
+          "title": "模块大小"
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排序优先级"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "图片链接"
+        },
+        "dynamicImageUrl": {
+          "type": "string",
+          "title": "动态图片链接"
+        },
+        "jumpLink": {
+          "type": "string",
+          "title": "跳转链接"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      },
+      "title": "功能项"
+    },
+    "v1DynamicFunctionConfigItem": {
+      "type": "object",
+      "properties": {
+        "semesterType": {
+          "type": "string",
+          "title": "学段类型"
+        },
+        "functionNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "功能数量"
+        },
+        "functionList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicFunctionConfigDetail"
+          },
+          "title": "功能列表"
+        }
+      }
+    },
+    "v1DynamicFunctionConfigShadowDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "functionName": {
+          "type": "string",
+          "title": "功能名称"
+        },
+        "moduleScale": {
+          "type": "string",
+          "title": "模块大小"
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排序优先级"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "图片链接"
+        },
+        "dynamicImageUrl": {
+          "type": "string",
+          "title": "动态图片链接"
+        },
+        "jumpLink": {
+          "type": "string",
+          "title": "跳转链接"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "更新人"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      },
+      "title": "配置项"
+    },
+    "v1DynamicFunctionConfigShadowItem": {
+      "type": "object",
+      "properties": {
+        "semesterType": {
+          "type": "string",
+          "title": "学段类型"
+        },
+        "moduleNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "模块数量"
+        },
+        "functionConfigList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicFunctionConfigShadowDetail"
+          },
+          "title": "功能配置列表"
+        }
+      }
+    },
+    "v1QueryDynamicFunctionConfigListApiResp": {
+      "type": "object",
+      "properties": {
+        "functionConfigList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicFunctionConfigItem"
+          },
+          "title": "功能配置列表"
+        }
+      }
+    },
+    "v1QueryDynamicFunctionConfigListShadowReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicFunctionConfigShadowItem"
+          },
+          "title": "列表"
+        }
+      }
+    },
+    "v1QueryDynamicFunctionConfigListShadowReq": {
+      "type": "object",
+      "properties": {
+        "functionName": {
+          "type": "string",
+          "title": "功能名称"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架"
+        }
+      }
+    },
+    "v1StoreDynamicFunctionConfigReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        }
+      }
+    },
+    "v1StoreDynamicFunctionConfigReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "semesterType": {
+          "type": "string",
+          "title": "学段类型"
+        },
+        "functionName": {
+          "type": "string",
+          "title": "功能名称"
+        },
+        "moduleScale": {
+          "type": "string",
+          "title": "模块大小"
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排序优先级"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "图片链接"
+        },
+        "dynamicImageUrl": {
+          "type": "string",
+          "title": "动态图片链接"
+        },
+        "jumpLink": {
+          "type": "string",
+          "title": "跳转链接"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后修改人"
+        }
+      }
+    },
+    "v1UpdateDynamicFunctionConfigStatusReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功: true: 成功; false: 失败"
+        }
+      }
+    },
+    "v1UpdateDynamicFunctionConfigStatusReq": {
+      "type": "object",
+      "properties": {
+        "semesterType": {
+          "type": "string",
+          "title": "学段类型"
+        },
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后修改人"
+        }
+      }
+    }
+  }
+}

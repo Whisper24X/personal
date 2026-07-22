@@ -1,0 +1,28 @@
+{
+  "name": "diting",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm run build -w apps/server && npm run build -w apps/web",
+    "test": "sh -c 'npm run test -w apps/server -- \"$@\" && npm run test -w apps/web' --",
+    "dev": "concurrently -k -n frontend,backend -c green,blue \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:backend": "npm run start:dev -w apps/server",
+    "dev:frontend": "npm run dev -w apps/web",
+    "type-check": "npm run type-check:server && npm run type-check:web",
+    "type-check:server": "npm run type-check -w apps/server",
+    "type-check:web": "npm run type-check -w apps/web",
+    "quality-gate": "npm run type-check",
+    "commitlint:check": "commitlint --config commitlint.config.js --edit",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "20.1.0",
+    "@commitlint/config-conventional": "20.0.0",
+    "concurrently": "^9.2.1",
+    "husky": "^9.1.7"
+  }
+}

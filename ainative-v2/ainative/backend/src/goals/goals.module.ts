@@ -9,7 +9,9 @@ import { ProjectsModule } from '../projects/projects.module';
 import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persistence/relational/relational-persistence.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { GitModule } from '../git/git.module';
+import { WorkspaceNativeModule } from '../git/workspace-native.module';
 import { ProjectWorkspaceModule } from '../project-workspace/project-workspace.module';
+import { RelationalBusinessLinePersistenceModule } from '../business-lines/infrastructure/persistence/relational/relational-persistence.module';
 
 @Module({
   imports: [
@@ -18,7 +20,9 @@ import { ProjectWorkspaceModule } from '../project-workspace/project-workspace.m
     RelationalTaskPersistenceModule,
     TasksModule,
     GitModule,
+    WorkspaceNativeModule,
     ProjectWorkspaceModule,
+    RelationalBusinessLinePersistenceModule,
   ],
   controllers: [GoalsController],
   providers: [

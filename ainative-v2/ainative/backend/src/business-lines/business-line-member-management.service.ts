@@ -10,6 +10,7 @@ import { ProjectMemberRepository } from '../projects/infrastructure/persistence/
 import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
 import { UsersService } from '../users/users.service';
 import { BusinessLineProjectRoleAssignmentService } from './business-line-project-role-assignment.service';
+import { BusinessLineLifecycleService } from './business-line-lifecycle.service';
 import { BusinessLineRoleCatalogService } from './business-line-role-catalog.service';
 import { CreateBusinessLineMemberDto } from './dto/create-business-line-member.dto';
 import { UpdateBusinessLineMemberDto } from './dto/update-business-line-member.dto';
@@ -25,6 +26,7 @@ export class BusinessLineMemberManagementService {
     private readonly projectMemberRepository: ProjectMemberRepository,
     private readonly projectCustomRoleRepository: ProjectCustomRoleRepository,
     private readonly businessLineProjectRoleAssignmentService: BusinessLineProjectRoleAssignmentService,
+    private readonly businessLineLifecycleService: BusinessLineLifecycleService,
     private readonly businessLineRoleCatalogService: BusinessLineRoleCatalogService,
   ) {}
 
@@ -96,6 +98,12 @@ export class BusinessLineMemberManagementService {
       businessLineId,
       userId: createBusinessLineMemberDto.userId,
       roleId: assignment.roleId,
+    });
+
+    await this.businessLineLifecycleService.syncHiddenProjectMember({
+      businessLineId,
+      userId: member.userId,
+      roleId: member.roleId,
     });
 
     return this.businessLineRoleCatalogService.attachCustomRoleNameToBusinessLineMember(
@@ -196,6 +204,12 @@ export class BusinessLineMemberManagementService {
       throw new NotFoundException('Business line member not found');
     }
 
+    await this.businessLineLifecycleService.syncHiddenProjectMember({
+      businessLineId,
+      userId,
+      roleId: updatedMember.roleId,
+    });
+
     await this.businessLineProjectRoleAssignmentService.syncExplicitProjectRoleAssignments(
       {
         businessLineId,
@@ -247,6 +261,10 @@ export class BusinessLineMemberManagementService {
     }
 
     await this.businessLineMemberRepository.remove(businessLineId, userId);
+    await this.businessLineLifecycleService.removeHiddenProjectMember({
+      businessLineId,
+      userId,
+    });
   }
 
   private async ensureOwnerCanBeModified(

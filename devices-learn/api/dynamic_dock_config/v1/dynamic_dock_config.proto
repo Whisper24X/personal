@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package api.dynamic_dock_config.v1;
+
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/dynamic_dock_config/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.dynamic_dock_config.v1";
+//import "google/protobuf/struct.proto";
+
+service DynamicDockConfig {
+  // 查询动态dock配置列表
+  rpc QueryDynamicDockConfigListShadow(QueryDynamicDockConfigListShadowReq) returns (QueryDynamicDockConfigListShadowReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-dock-config/v1/queryDynamicDockConfigListShadow"
+      body: "*"
+    };
+  }
+  // 保存动态dock配置
+  rpc StoreDynamicDockConfig(StoreDynamicDockConfigReq) returns (StoreDynamicDockConfigReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-dock-config/v1/storeDynamicDockConfig"
+      body: "*"
+    };
+  }
+  // 修改动态dock配置状态
+  rpc UpdateDynamicDockConfigStatus(UpdateDynamicDockConfigStatusReq) returns (UpdateDynamicDockConfigStatusReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-dock-config/v1/updateDynamicDockConfigStatus"
+      body: "*"
+    };
+  }
+  // 客户端查询动态dock配置列表
+  rpc QueryDynamicDockConfigListApi(QueryDynamicDockConfigListApiReq) returns (QueryDynamicDockConfigListApiReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-dock-config/v1/queryDynamicDockConfigListApi"
+      body: "*"
+    };
+  }
+  // 查询动态dock配置列表(v2)
+  rpc QueryDynamicDockConfigListShadowV2(QueryDynamicDockConfigListShadowReq) returns (QueryDynamicDockConfigListShadowReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-dock-config/v2/queryDynamicDockConfigListShadow"
+      body: "*"
+    };
+  }
+  // 保存动态dock配置(v2)
+  rpc StoreDynamicDockConfigV2(StoreDynamicDockConfigReq) returns (StoreDynamicDockConfigReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-dock-config/v2/storeDynamicDockConfig"
+      body: "*"
+    };
+  }
+  // 修改动态dock配置状态(v2)
+  rpc UpdateDynamicDockConfigStatusV2(UpdateDynamicDockConfigStatusReq) returns (UpdateDynamicDockConfigStatusReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-dock-config/v2/updateDynamicDockConfigStatus"
+      body: "*"
+    };
+  }
+  // 客户端查询动态dock配置列表(v2)
+  rpc QueryDynamicDockConfigListApiV2(QueryDynamicDockConfigListApiReq) returns (QueryDynamicDockConfigListApiReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-dock-config/v2/queryDynamicDockConfigListApi"
+      body: "*"
+    };
+  }
+}
+
+message QueryDynamicDockConfigListApiReq {
+  //  string configType = 1 [(validate.rules).string = {min_len: 1}]; // 配置类型
+}
+
+message QueryDynamicDockConfigListApiReply {
+  repeated DynamicDockConfigItem list = 1; // 列表
+}
+
+message UpdateDynamicDockConfigStatusReq {
+  string dockType = 1 [(validate.rules).string = {min_len: 1}]; // dock类型
+  string id = 2 [(validate.rules).string = {min_len: 1}]; // 主键ID
+  int32 status = 3; // 状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架
+  string updatedBy = 4; // 最后修改人
+}
+
+message UpdateDynamicDockConfigStatusReply {
+  bool isSucceed = 1; // 是否成功: true: 成功; false: 失败
+}
+
+message StoreDynamicDockConfigReq {
+  string dockType = 1 [(validate.rules).string = {min_len: 1}]; // dock类型: 活动上新/常用功能/固定部分
+  string id = 2; // 主键ID
+  string entryName = 3 [(validate.rules).string = {min_len: 1}]; // 入口名称
+  int32 priority = 4 [(validate.rules).int32 = {gte: 1}]; // 优先级
+  string cornerLetters = 5; // 气泡角标文字
+  string cornerLettersEndTime = 6; // 气泡角标结束时间
+  string jumpLink = 7; // 跳转链接
+  string imageUrl = 8 [(validate.rules).string = {min_len: 1}]; // 图片链接
+  string tips = 9; // 提示语
+  string tipsStartTime = 10; // 提示语展示开始时间
+  string tipsEndTime = 11; // 提示语展示结束时间
+  string tipsSequence = 12; // 提示语序号
+  string updatedBy = 13; // 最后修改人
+}
+
+message StoreDynamicDockConfigReply {
+  string id = 1; // 主键ID
+}
+
+message QueryDynamicDockConfigListShadowReq {
+  string entryName = 1; // 入口名称
+  int32 status = 2; // 状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架
+}
+
+// 配置项
+message DynamicDockConfigDetail {
+  string id = 1; // 主键ID
+  string entryName = 2; // 入口名称
+  string dockType = 3; // dock类型: 活动上新/常用功能/固定部分
+  int32 priority = 4; // 优先级
+  int32 status = 5; // 状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架
+  string cornerLetters = 6; // 气泡角标文字
+  string cornerLettersEndTime = 7; // 气泡角标结束时间
+  string imageUrl = 8; // 图片链接
+  string jumpLink = 9; // 跳转链接
+  string tips = 10; // 提示语
+  string tipsStartTime = 11; // 提示语展示开始时间
+  string tipsEndTime = 12; // 提示语展示结束时间
+  string tipsSequence = 13; // 提示语序号
+  string updatedBy = 14; // 更新人
+  string createdAt = 15; // 创建时间
+  string updatedAt = 16; // 更新时间
+}
+
+message DynamicDockConfigItem {
+  string dockType = 1; // dock类别
+  int32 entryNums = 2; // 功能入口数量
+  int32 sequence = 3; // 序列号
+  repeated DynamicDockConfigDetail dockConfigList = 4; // dock配置列表
+}
+
+message QueryDynamicDockConfigListShadowReply {
+  repeated DynamicDockConfigItem list = 1; // 列表
+}

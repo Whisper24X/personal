@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
   Post,
   Query,
   Request,
@@ -42,6 +43,16 @@ export class GitController {
     @Query() query: GitProjectDto,
   ): Promise<GitBranchesDto> {
     return this.gitService.listBranches(query.projectId, request.user);
+  }
+
+  @Get('workspace-branches')
+  @ApiOkResponse({ type: GitBranchesDto })
+  @HttpCode(HttpStatus.OK)
+  listWorkspaceBranches(
+    @Request() request,
+    @Query('businessLineId', new ParseUUIDPipe()) businessLineId: string,
+  ): Promise<GitBranchesDto> {
+    return this.gitService.listWorkspaceBranches(businessLineId, request.user);
   }
 
   @Get('branches-detail')

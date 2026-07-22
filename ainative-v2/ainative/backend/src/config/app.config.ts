@@ -56,6 +56,14 @@ class EnvironmentVariablesValidator {
 
   @IsOptional()
   AINATIVE_GOALS_ENABLED?: string;
+
+  @IsString()
+  @IsOptional()
+  AINATIVE_WORKSPACE_GIT_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  AINATIVE_WORKSPACE_BASE_BRANCH?: string;
 }
 
 export default registerAs<AppConfig>('app', () => {
@@ -82,5 +90,9 @@ export default registerAs<AppConfig>('app', () => {
       process.env.AINATIVE_GOALS_ENABLED === undefined ||
       process.env.AINATIVE_GOALS_ENABLED === '1' ||
       process.env.AINATIVE_GOALS_ENABLED === 'true',
+    workspaceGitUrl:
+      process.env.AINATIVE_WORKSPACE_GIT_URL ||
+      'git@gitlab.yc345.tv:frontend/ainative-workspace.git',
+    workspaceBaseBranch: process.env.AINATIVE_WORKSPACE_BASE_BRANCH || 'master',
   };
 });

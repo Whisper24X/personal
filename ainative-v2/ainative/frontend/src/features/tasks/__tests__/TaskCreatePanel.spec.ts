@@ -134,6 +134,7 @@ describe('TaskCreatePanel', () => {
         name: string
         gitUrl: string
         defaultBranch: string
+        configJson?: Record<string, unknown> | null
       }
     > = {
       'project-1': {
@@ -149,6 +150,26 @@ describe('TaskCreatePanel', () => {
         name: 'Shadow',
         gitUrl: 'git@example.com:group/shadow.git',
         defaultBranch: 'develop',
+      },
+      'project-ws': {
+        id: 'project-ws',
+        businessLineId: 'line-ws',
+        name: 'AINative Workspace',
+        gitUrl: '',
+        defaultBranch: 'workspace-main',
+        configJson: {
+          workspaceManaged: true,
+        },
+      },
+      'project-native': {
+        id: 'project-native',
+        businessLineId: 'line-native',
+        name: 'Workspace Native Project',
+        gitUrl: 'git@example.com:group/workspace-native.git',
+        defaultBranch: 'workspace-native-main',
+        configJson: {
+          subtreeMode: 'workspace-native',
+        },
       },
     }
     projectsApi.detail.mockImplementation(async (projectId: string) => sampleProjects[projectId])
@@ -207,7 +228,7 @@ describe('TaskCreatePanel', () => {
     expect(wrapper.find('input[aria-label="任务分支"]').exists()).toBe(false)
   })
 
-  it('should only load branch data once during initial mount', async () => {
+  it('should only load branch data once during initial mount for non-workspace projects', async () => {
     mount(TaskCreatePanel, {
       props: {
         projectId: 'project-1',
@@ -217,6 +238,34 @@ describe('TaskCreatePanel', () => {
     await flushPromises()
 
     expect(gitApi.branches).toHaveBeenCalledTimes(1)
+  })
+
+  it('should hide branch selector and skip branch loading for workspace-managed projects', async () => {
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-ws',
+      },
+    })
+
+    await flushPromises()
+    await flushPromises()
+
+    expect(gitApi.branches).not.toHaveBeenCalled()
+    expect(wrapper.find('button[aria-label="分支"]').exists()).toBe(false)
+  })
+
+  it('should hide branch selector and skip branch loading for workspace-native projects', async () => {
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-native',
+      },
+    })
+
+    await flushPromises()
+    await flushPromises()
+
+    expect(gitApi.branches).not.toHaveBeenCalled()
+    expect(wrapper.find('button[aria-label="分支"]').exists()).toBe(false)
   })
 
   it('should render form while branch loading is pending', async () => {
@@ -277,6 +326,30 @@ describe('TaskCreatePanel', () => {
     expect(projectsApi.detail).toHaveBeenCalledWith('project-2')
     expect(businessLinesApi.listAgentToolConfigs).toHaveBeenCalledWith('line-2')
     expect(gitApi.branches).toHaveBeenCalledWith('project-2')
+  })
+
+  it('should skip branch loading after switching from a classic project to a workspace-managed project', async () => {
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+    projectsApi.detail.mockClear()
+    businessLinesApi.listAgentToolConfigs.mockClear()
+    gitApi.branches.mockClear()
+
+    await wrapper.setProps({
+      projectId: 'project-ws',
+    })
+    await flushPromises()
+    await flushPromises()
+
+    expect(projectsApi.detail).toHaveBeenCalledWith('project-ws')
+    expect(businessLinesApi.listAgentToolConfigs).toHaveBeenCalledWith('line-ws')
+    expect(gitApi.branches).not.toHaveBeenCalled()
+    expect(wrapper.find('button[aria-label="分支"]').exists()).toBe(false)
   })
 
   it('prefers the business line default agent cli tool over the first configured tool', async () => {
@@ -354,6 +427,28 @@ describe('TaskCreatePanel', () => {
     expect('clientInputSnapshot' in payload).toBe(false)
   })
 
+  it('should create workspace-managed task with the default base branch', async () => {
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-ws',
+      },
+    })
+
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.find('textarea').setValue('请在 workspace 任务里执行')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalledTimes(1)
+    const payload = tasksApi.create.mock.calls[0]![0] as Record<string, unknown>
+
+    expect(payload.businessLineId).toBe('line-ws')
+    expect(payload.gitBaseBranch).toBe('workspace-main')
+    expect('projectId' in payload).toBe(false)
+  })
+
   it('should create workflow task with workflowTemplateId only', async () => {
     workflowApi.list.mockResolvedValue({
       data: [
@@ -415,5 +510,17 @@ describe('TaskCreatePanel', () => {
 
     expect(payload.gitBaseBranch).toBe('release/2026.03')
     expect('gitBranch' in payload).toBe(false)
+  })
+
+  it('should still render branch selector for non-workspace projects', async () => {
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('button[aria-label="分支"]').exists()).toBe(true)
   })
 })

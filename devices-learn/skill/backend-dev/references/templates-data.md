@@ -1,0 +1,207 @@
+# Data / Error 模板资产
+
+> 供 `backend-dev` 的 Code 步骤按需读取。
+
+## 常量模板
+
+# Data 常量定义参考
+
+> 何时阅读: 需要新增/调整业务常量时。
+
+## 文件位置
+
+- `studyspace-service/internal/data/constant/constant.go`
+
+## 现有常量分类
+
+- Header 元数据 Key：如 `XMdAdminId` / `XMdUserId`
+- 状态值：如 `SysStatusEnable` / `SysStatusDisable`
+- 角色数据权限：如 `SysRoleDataPermissionTypeAll` / `SysRoleDataPermissionTypeDept`
+- 部门类型：如 `SysDeptTypeRoot` / `SysDeptTypeChild` / `SysDeptTypeLeaf`
+
+## 新增规范
+
+- 只放跨模块共用的常量，避免在业务文件内硬编码字符串/数值
+- 按业务域分组，使用 `const (...)` 块
+- 保持命名风格：
+  - 类型前缀：`SysRoleDataPermissionTypeXxx`
+  - 状态：`SysStatusXxx`
+  - Header：`XMdXxx`
+- 变更后检查所有引用点，避免旧值残留
+
+## 示例
+
+```go
+const (
+    SysStatusDisable int16 = -1
+    SysStatusEnable  int16 = 1
+)
+```
+
+---
+
+## 缓存 Key 模板
+
+# 缓存 Key 定义参考
+
+> 何时阅读: 新增缓存 Key 或调整缓存过期策略时。
+
+## 文件位置
+
+- `studyspace-service/internal/data/cache/cachekey.go`
+
+## 现有结构
+
+- 使用 `keymanage.New("backend")` 作为统一前缀
+- `AddKey(name, ttl, desc)` 定义 Key 与默认过期时间
+
+## 新增规范
+
+- Key 名称清晰表达业务用途（建议 PascalCase）
+- TTL 设置匹配业务一致性需求
+- 描述保持简短中文说明
+
+## 示例
+
+```go
+var cacheKey = keymanage.New("backend")
+
+var (
+    LOCK       = cacheKey.AddKey("LOCK", time.Minute*5, "锁")
+    RouteCache = cacheKey.AddKey("RouteCache", time.Hour*24, "路由缓存")
+)
+```
+
+---
+
+## 错误码模板
+
+# 错误码编写参考
+
+> 何时阅读: 当需要定义业务错误码时阅读此文件。
+
+## 错误码文件位置
+
+- Shadow API: `api/shadow/v1/error_reason.proto`
+- App API: `api/app/v1/error_reason.proto`
+
+## 错误码定义格式
+
+```protobuf
+// 错误码注释（必须）
+ErrorCodeName = 序号 [
+  (errors.code) = HTTP状态码,
+  (errors.message) = "ErrorCodeName",
+  (errors.lang) = "zh_CN",
+  (errors.i18n) = {
+    zh_CN: "中文错误信息"
+    en_US: "English error message"
+  }
+];
+```
+
+## 完整示例
+
+```protobuf
+// 订单不存在
+OrderNotFound = 29 [
+  (errors.code) = 409,
+  (errors.message) = "OrderNotFound",
+  (errors.lang) = "zh_CN",
+  (errors.i18n) = {
+    zh_CN: "订单不存在"
+    en_US: "Order not found"
+  }
+];
+
+// 订单已支付
+OrderAlreadyPaid = 30 [
+  (errors.code) = 409,
+  (errors.message) = "OrderAlreadyPaid",
+  (errors.lang) = "zh_CN",
+  (errors.i18n) = {
+    zh_CN: "订单已支付"
+    en_US: "Order already paid"
+  }
+];
+
+// 支付金额不足（带参数）
+PaymentAmountInsufficient = 31 [
+  (errors.code) = 409,
+  (errors.message) = "PaymentAmountInsufficient",
+  (errors.lang) = "zh_CN",
+  (errors.i18n) = {
+    zh_CN: "支付金额不足，需要支付 %s 元"
+    en_US: "Payment amount insufficient, need to pay %s yuan"
+  }
+];
+```
+
+## HTTP 状态码选择
+
+| 场景         | 状态码 | 说明                           |
+| ------------ | ------ | ------------------------------ |
+| 业务逻辑错误 | 409    | 数据冲突、状态不对、记录不存在 |
+| 认证错误     | 401    | Token 相关错误                 |
+| 权限错误     | 403    | 无权限访问                     |
+| 限流错误     | 429    | 请求频率超限                   |
+| 服务器错误   | 500    | 数据库、Redis、MQ 等内部错误   |
+
+## 生成代码
+
+编辑完成后执行：
+
+```bash
+cd studyspace-service && make api
+cd studyspace-service && make protocode
+```
+
+## Service 中使用
+
+```go
+// 返回错误
+return nil, pb.ErrorReasonOrderNotFound()
+
+// 带额外信息
+return nil, pb.ErrorReasonOrderNotFound(pb.WithError(err))
+
+// 带参数（需要错误信息中有 %s）
+return nil, pb.ErrorReasonPaymentAmountInsufficient("100.00")
+```
+
+## 序号规则
+
+1. 查看当前文件最大序号
+2. 新错误码使用 `最大序号 + 1`
+3. 保持序号连续，不要跳号
+
+---
+
+## Biz 层使用 errorx
+
+文件位置: `internal/data/errorx/code.go`
+
+```go
+import "gitlab.yc345.tv/backend/studyspace-service/internal/data/errorx"
+
+// 返回错误
+return nil, errorx.DataNotFound.Err()
+
+// 包装原始错误
+return nil, errorx.DataSQLErr.WithError(err).Err()
+
+// 自定义错误信息
+return nil, errorx.ParamErr.WithMessage("价格不能为负").Err()
+```
+
+### 常用错误码
+
+| 错误码                | 说明         |
+| --------------------- | ------------ |
+| `errorx.ParamErr`     | 参数错误     |
+| `errorx.DataNotFound` | 数据不存在   |
+| `errorx.DataSQLErr`   | 数据库错误   |
+| `errorx.TokenExpired` | Token 已过期 |
+| `errorx.TokenInvalid` | 无效 Token   |
+
+---

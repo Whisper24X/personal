@@ -31,6 +31,8 @@ describe('GoalsService.syncPlanSubTaskStatusFromLinkedTask', () => {
       {} as never,
       {} as GoalsMetricsService,
       {} as never,
+      {} as never,
+      {} as never,
     );
     return { service, goalRepository };
   };
@@ -115,6 +117,8 @@ describe('GoalsService.patchPlanSubTask', () => {
       {} as never,
       {} as GoalsMetricsService,
       {} as never,
+      {} as never,
+      {} as never,
     );
     return { service, goalRepository };
   };
@@ -145,6 +149,8 @@ describe('GoalsService.patchPlanSubTask', () => {
       {} as never,
       {} as never,
       {} as GoalsMetricsService,
+      {} as never,
+      {} as never,
       {} as never,
     );
 
@@ -199,6 +205,8 @@ describe('GoalsService.patchPlanSubTask', () => {
       {} as never,
       {} as never,
       {} as GoalsMetricsService,
+      {} as never,
+      {} as never,
       {} as never,
     );
 

@@ -47,6 +47,12 @@ import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
 import { GoalRepository } from '../../goals/infrastructure/persistence/goal.repository';
+import { isWorkspaceNativeEnabled } from '../../git/snapshot-sync.types';
+import { WorkspaceNativeTaskService } from './workspace-native-task.service';
+import type {
+  TaskWorkspaceSnapshotStatus,
+  TaskWorkspaceStage,
+} from '../../git/workspace-native.types';
 
 /** 仅用于整需求删除等内部编排；默认仍做计划一致性校验 */
 export type RemoveTaskOptions = {
@@ -75,17 +81,24 @@ export class TaskCommandService {
     private readonly goalRepository: GoalRepository,
     private readonly taskWorkspaceContextCache: TaskWorkspaceContextCacheService,
     private readonly dbIsolationService: DatabaseIsolationService,
+    private readonly workspaceNativeTaskService: WorkspaceNativeTaskService,
   ) {}
 
   async create(
     createTaskDto: CreateTaskDto,
     currentUser: JwtPayloadType,
   ): Promise<Task> {
-    const project = await this.projectAccessService.assertProjectCapability(
-      createTaskDto.projectId,
-      currentUser,
-      'project.task.read',
-    );
+    const project = createTaskDto.businessLineId
+      ? await this.projectAccessService.assertWorkspaceProjectByBusinessLineCapability(
+          createTaskDto.businessLineId,
+          currentUser,
+          'businessLine.read',
+        )
+      : await this.projectAccessService.assertProjectCapability(
+          createTaskDto.projectId ?? '',
+          currentUser,
+          'project.task.read',
+        );
 
     if (
       project.repositoryProvisioningStatus ===
@@ -243,69 +256,130 @@ export class TaskCommandService {
       createTaskDto.title?.trim() || promptTrimmed || '',
     );
 
-    const task = await this.taskRepository.create({
-      projectId: createTaskDto.projectId,
-      businessLineId: project.businessLineId,
-      goalId: createTaskDto.goalId ?? null,
-      mode: resolvedMode,
-      title: titleForCreate,
-      prompt: createTaskDto.prompt ?? null,
-      status: TaskStatus.todo,
-      gitBranch: normalizedGitBranch,
-      configJson: taskConfig,
-      createdBy: currentUser.sub,
-      gitBaseBranch: normalizedGitBaseBranch,
-      gitWorktree: normalizedGitWorktree,
-      startedAt: null,
-      finishedAt: null,
-    });
+    let finalGitBranch = normalizedGitBranch;
+    let finalGitWorktree = normalizedGitWorktree;
+    let finalGitBaseBranch = normalizedGitBaseBranch;
+    let finalConfigJson = taskConfig;
+    const isWsNative = isWorkspaceNativeEnabled(project);
+
+    /** Fork task worktrees off functional-group branches when tied to goal materialization */
+    const goalFunctionalGroupGitBase =
+      isWsNative &&
+      createTaskDto.goalId?.trim() &&
+      normalizedGitBaseBranch?.trim()
+        ? normalizedGitBaseBranch.trim()
+        : undefined;
+
+    if (isWsNative) {
+      const taskBranchSlug = taskNameId;
+      finalGitBranch = `feature/${taskBranchSlug}`;
+      finalGitWorktree = finalGitBranch;
+      finalGitBaseBranch =
+        goalFunctionalGroupGitBase ??
+        project.defaultBranch?.trim() ??
+        this.workspaceNativeTaskService.getBaseBranch();
+      finalConfigJson = {
+        ...taskConfig,
+        workspaceStatus: 'provisioning',
+        workspaceStage: 'initializing',
+        workspaceMessage: '正在初始化任务工作区',
+        workspaceSnapshotStatus: 'pending',
+      };
+    }
+
+    let task: Task;
+    try {
+      task = await this.taskRepository.create({
+        projectId: project.id,
+        businessLineId: project.businessLineId,
+        goalId: createTaskDto.goalId ?? null,
+        mode: resolvedMode,
+        title: titleForCreate,
+        prompt: createTaskDto.prompt ?? null,
+        status: TaskStatus.todo,
+        gitBranch: finalGitBranch,
+        configJson: finalConfigJson,
+        createdBy: currentUser.sub,
+        gitBaseBranch: finalGitBaseBranch,
+        gitWorktree: finalGitWorktree,
+        startedAt: null,
+        finishedAt: null,
+      });
+    } catch (dbError) {
+      throw dbError;
+    }
 
     let runtimeTask = task;
 
-    try {
-      const initializedRuntime =
-        await this.taskRuntimeOrchestrator.initializeTaskRuntime(
-          task,
-          project,
-          {
-            forceLog: true,
-          },
+    if (isWsNative) {
+      this.provisionWorkspaceNativeTaskAsync(task, project, {
+        gitBaseBranchOverride: goalFunctionalGroupGitBase,
+      }).catch((err) => {
+        this.logger.error(
+          `workspace_native_provision_failed taskId=${task.id} error=${err instanceof Error ? err.message : err}`,
         );
-      runtimeTask = initializedRuntime.task;
-    } catch (error) {
-      await this.taskRuntimeService.cleanupRuntime(task, project).catch(() => ({
-        cleaned: false,
-      }));
-      await this.taskRepository.remove(task.id).catch(() => undefined);
+      });
+    } else {
+      try {
+        const initializedRuntime =
+          await this.taskRuntimeOrchestrator.initializeTaskRuntime(
+            task,
+            project,
+            {
+              forceLog: true,
+            },
+          );
+        runtimeTask = initializedRuntime.task;
+      } catch (error) {
+        await this.taskRuntimeService
+          .cleanupRuntime(task, project)
+          .catch(() => ({
+            cleaned: false,
+          }));
+        await this.taskRepository.remove(task.id).catch(() => undefined);
 
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Failed to initialize task runtime';
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : 'Failed to initialize task runtime';
 
-      throw new ConflictException(
-        `Task runtime initialization failed: ${errorMessage}`,
-      );
+        throw new ConflictException(
+          `Task runtime initialization failed: ${errorMessage}`,
+        );
+      }
     }
 
-    await this.taskNodeRepository.createMany(
-      nodes.map((node) => ({
-        taskId: runtimeTask.id,
-        nodeOrder: node.nodeOrder,
-        name: node.name,
-        input: node.input ?? null,
-        agentCliId: node.agentCliId,
-        agentCliConfigId: node.agentCliConfigId,
-        agentClioutput: null,
-        agentCliSessionId: null,
-        configJson: node.configJson,
-        loopJson: node.loopJson,
-        runtimeJson: null,
-        status: TaskNodeStatus.todo,
-        startedAt: null,
-        finishedAt: null,
-      })),
-    );
+    try {
+      await this.taskNodeRepository.createMany(
+        nodes.map((node) => ({
+          taskId: runtimeTask.id,
+          nodeOrder: node.nodeOrder,
+          name: node.name,
+          input: node.input ?? null,
+          agentCliId: node.agentCliId,
+          agentCliConfigId: node.agentCliConfigId,
+          agentClioutput: null,
+          agentCliSessionId: null,
+          configJson: node.configJson,
+          loopJson: node.loopJson,
+          runtimeJson: null,
+          status: TaskNodeStatus.todo,
+          startedAt: null,
+          finishedAt: null,
+        })),
+      );
+    } catch (nodeError) {
+      await this.taskRuntimeService
+        .cleanupRuntime(runtimeTask, project)
+        .catch(() => ({ cleaned: false }));
+      await this.taskRepository.remove(runtimeTask.id).catch(() => undefined);
+
+      const errorMessage =
+        nodeError instanceof Error
+          ? nodeError.message
+          : 'Failed to create task nodes';
+      throw new ConflictException(`Task node creation failed: ${errorMessage}`);
+    }
 
     await this.taskLogService.appendLog({
       taskId: runtimeTask.id,
@@ -327,6 +401,164 @@ export class TaskCommandService {
       });
 
     return runtimeTask;
+  }
+
+  private async provisionWorkspaceNativeTaskAsync(
+    task: Task,
+    project: Project,
+    init?: { gitBaseBranchOverride?: string | null },
+  ): Promise<void> {
+    const taskBranchSlug = task.gitBranch?.replace('feature/', '') ?? task.id;
+
+    try {
+      await this.updateWorkspaceProvisioningState(task.id, {
+        workspaceStatus: 'provisioning',
+        workspaceStage: 'initializing',
+        workspaceMessage: '正在初始化任务工作区',
+        workspaceSnapshotStatus: 'pending',
+        workspaceError: undefined,
+        workspaceSnapshotError: undefined,
+      });
+
+      const wsResult =
+        await this.workspaceNativeTaskService.initializeWorkspaceNativeTask(
+          project,
+          taskBranchSlug,
+          {
+            gitBaseBranchOverride: init?.gitBaseBranchOverride,
+            deferPush: true,
+            onProgress: (progress) =>
+              this.updateWorkspaceProvisioningState(task.id, {
+                workspaceStatus: 'provisioning',
+                workspaceStage: progress.stage,
+                workspaceMessage: progress.message,
+              }),
+          },
+        );
+
+      const existingConfig = (task.configJson ?? {}) as Record<string, unknown>;
+      const patchedConfig = {
+        ...existingConfig,
+        ...wsResult.configJsonPatch,
+        workspaceStatus: 'ready',
+        workspaceStage: 'ready',
+        workspaceMessage: '本地任务工作区已准备完成',
+        workspaceError: undefined,
+        workspaceSnapshotStatus: wsResult.pushDeferred ? 'pending' : 'pushed',
+      };
+
+      await this.taskRepository.update(task.id, {
+        configJson: patchedConfig,
+        gitBranch: wsResult.taskBranch,
+        gitWorktree: wsResult.gitWorktree,
+        gitBaseBranch: wsResult.baseBranch,
+      });
+
+      this.logger.log(`workspace_native_provision_success taskId=${task.id}`);
+
+      if (wsResult.pushDeferred) {
+        void this.pushWorkspaceSnapshotAsync(
+          task.id,
+          project,
+          wsResult.taskBranch,
+        );
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      await this.updateWorkspaceProvisioningState(task.id, {
+        workspaceStatus: 'failed',
+        workspaceStage: 'failed',
+        workspaceMessage: '任务工作区准备失败',
+        workspaceError: errorMessage,
+      });
+
+      this.logger.error(
+        `workspace_native_provision_failed taskId=${task.id} error=${errorMessage}`,
+      );
+    }
+  }
+
+  private pushWorkspaceSnapshotAsync(
+    taskId: Task['id'],
+    project: Project,
+    taskBranch: string,
+  ): void {
+    void (async () => {
+      try {
+        await this.updateWorkspaceProvisioningState(taskId, {
+          workspaceSnapshotStatus: 'pushing',
+          workspaceStage: 'pushing_snapshot',
+          workspaceMessage: '本地工作区已可用，正在后台同步 workspace snapshot',
+          workspaceSnapshotError: undefined,
+        });
+
+        await this.workspaceNativeTaskService.pushWorkspaceSnapshot(
+          project,
+          taskBranch,
+        );
+
+        await this.updateWorkspaceProvisioningState(taskId, {
+          workspaceSnapshotStatus: 'pushed',
+          workspaceSnapshotPushedAt: new Date().toISOString(),
+          workspaceSnapshotError: undefined,
+          workspaceStage: 'ready',
+          workspaceMessage: '本地工作区已准备完成，workspace snapshot 已同步',
+        });
+
+        this.logger.log(
+          `workspace_native_snapshot_push_success taskId=${taskId}`,
+        );
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        await this.updateWorkspaceProvisioningState(taskId, {
+          workspaceSnapshotStatus: 'failed',
+          workspaceSnapshotError: errorMessage,
+          workspaceStage: 'ready',
+          workspaceMessage:
+            '本地工作区已准备完成，但 workspace snapshot 后台同步失败',
+        });
+        this.logger.error(
+          `workspace_native_snapshot_push_failed taskId=${taskId} error=${errorMessage}`,
+        );
+      }
+    })();
+  }
+
+  private async updateWorkspaceProvisioningState(
+    taskId: Task['id'],
+    patch: {
+      workspaceStatus?: 'provisioning' | 'ready' | 'failed';
+      workspaceStage?: TaskWorkspaceStage;
+      workspaceMessage?: string;
+      workspaceError?: string;
+      workspaceSnapshotStatus?: TaskWorkspaceSnapshotStatus;
+      workspaceSnapshotError?: string;
+      workspaceSnapshotPushedAt?: string;
+    },
+  ): Promise<void> {
+    const latestTask = await this.taskRepository.findById(taskId);
+    const existingConfig = (latestTask?.configJson ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const nextConfig = { ...existingConfig, ...patch };
+
+    if (patch.workspaceError === undefined && 'workspaceError' in patch) {
+      delete nextConfig.workspaceError;
+    }
+    if (
+      patch.workspaceSnapshotError === undefined &&
+      'workspaceSnapshotError' in patch
+    ) {
+      delete nextConfig.workspaceSnapshotError;
+    }
+
+    await this.taskRepository.update(taskId, {
+      configJson: nextConfig,
+    });
   }
 
   async update(
@@ -476,7 +708,7 @@ export class TaskCommandService {
     const task = await this.taskAccessService.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.read',
+      'project.task.manage',
     );
 
     if (
@@ -526,6 +758,12 @@ export class TaskCommandService {
         task.projectId,
       );
 
+      const isWsNative = isWorkspaceNativeEnabled(project);
+
+      if (isWsNative) {
+        await this.updateTaskDeleteStatus(task.id, { status: 'deleting' });
+      }
+
       if (shouldRemoveContainer) {
         this.logger.log(
           `task_delete_remove_runner ${JSON.stringify({
@@ -552,10 +790,12 @@ export class TaskCommandService {
       const cleanupResult = await this.taskRuntimeService.cleanupRuntime(
         task,
         project,
-        {
-          deleteBranch: true,
-        },
+        { deleteBranch: true },
       );
+
+      if (cleanupResult.deleteStatus) {
+        await this.updateTaskDeleteStatus(task.id, cleanupResult.deleteStatus);
+      }
 
       if (!cleanupResult.cleaned) {
         await this.taskLogService.appendLog({
@@ -755,5 +995,24 @@ export class TaskCommandService {
     }
 
     return normalizedSegments[0] ?? normalized;
+  }
+
+  private async updateTaskDeleteStatus(
+    taskId: string,
+    deleteStatus: { status: string; warnings?: string[]; openMrs?: unknown[] },
+  ): Promise<void> {
+    try {
+      const task = await this.taskRepository.findById(taskId);
+      if (!task) return;
+      const configJson = (task.configJson ?? {}) as Record<string, unknown>;
+      configJson.deleteStatus = deleteStatus;
+      await this.taskRepository.update(taskId, {
+        configJson: configJson as any,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to update deleteStatus for task ${taskId}: ${error instanceof Error ? error.message : error}`,
+      );
+    }
   }
 }

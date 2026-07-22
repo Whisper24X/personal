@@ -52,6 +52,11 @@ const createCurrentUser = () => ({
   exp: 9999999999,
 });
 
+const flushAsyncWork = () =>
+  new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+
 const createService = () => {
   const taskRepository = {
     create: jest.fn(),
@@ -141,6 +146,11 @@ const createService = () => {
     invalidateTask: jest.fn(),
   };
 
+  const workspaceNativeTaskService = {
+    initializeWorkspaceNativeTask: jest.fn(),
+    pushWorkspaceSnapshot: jest.fn(),
+  };
+
   const service = new TaskCommandService(
     taskRepository as never,
     taskNodeRepository as never,
@@ -159,6 +169,7 @@ const createService = () => {
     goalRepository as never,
     taskWorkspaceContextCache as never,
     {} as never,
+    workspaceNativeTaskService as never,
   );
 
   return {
@@ -176,6 +187,7 @@ const createService = () => {
     taskRuntimeOrchestrator,
     goalRepository,
     taskWorkspaceContextCache,
+    workspaceNativeTaskService,
   };
 };
 
@@ -386,6 +398,199 @@ describe('TaskCommandService.create', () => {
   });
 });
 
+describe('TaskCommandService workspace-native provisioning', () => {
+  it('should mark workspace ready before deferred snapshot push finishes', async () => {
+    const { service, taskRepository, workspaceNativeTaskService } =
+      createService();
+    const task = createTask({
+      id: 'task-ws',
+      gitBranch: 'feature/task-ws',
+      gitWorktree: 'feature/task-ws',
+      configJson: {
+        workspaceStatus: 'provisioning',
+      },
+    });
+    const project = createProject({
+      configJson: {
+        subtreeMode: 'workspace-native',
+      },
+    });
+    const neverResolve = new Promise<void>(() => undefined);
+
+    taskRepository.findById.mockResolvedValue(task);
+    workspaceNativeTaskService.initializeWorkspaceNativeTask.mockResolvedValue({
+      taskBranch: 'feature/task-ws',
+      gitWorktree: 'feature/task-ws',
+      worktreePath: '/tmp/worktree',
+      baseBranch: 'v2.1',
+      pushDeferred: true,
+      configJsonPatch: {
+        workspaceSnapshot: {
+          taskBranch: 'feature/task-ws',
+          snapshotCommitSha: 'abc123',
+          subRepoHeads: {},
+        },
+        workspaceStage: 'ready',
+        workspaceMessage: '本地任务工作区已准备完成',
+        workspaceSnapshotStatus: 'pending',
+        runner: {
+          fingerprint: 'fp',
+          status: 'ready',
+          source: 'projectConfig',
+        },
+      },
+    });
+    workspaceNativeTaskService.pushWorkspaceSnapshot.mockReturnValue(
+      neverResolve,
+    );
+
+    await (
+      service as never as {
+        provisionWorkspaceNativeTaskAsync: (
+          task: Task,
+          project: Project,
+        ) => Promise<void>;
+      }
+    ).provisionWorkspaceNativeTaskAsync(task, project);
+    await flushAsyncWork();
+
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({
+        configJson: expect.objectContaining({
+          workspaceStatus: 'ready',
+          workspaceStage: 'ready',
+          workspaceSnapshotStatus: 'pending',
+        }),
+      }),
+    );
+    expect(
+      workspaceNativeTaskService.pushWorkspaceSnapshot,
+    ).toHaveBeenCalledWith(project, 'feature/task-ws');
+  });
+
+  it('should keep workspace ready when deferred snapshot push fails', async () => {
+    const { service, taskRepository, workspaceNativeTaskService } =
+      createService();
+    const task = createTask({
+      id: 'task-ws',
+      gitBranch: 'feature/task-ws',
+      gitWorktree: 'feature/task-ws',
+      configJson: {
+        workspaceStatus: 'provisioning',
+      },
+    });
+    const project = createProject({
+      configJson: {
+        subtreeMode: 'workspace-native',
+      },
+    });
+
+    taskRepository.findById.mockResolvedValue(
+      createTask({
+        ...task,
+        configJson: {
+          workspaceStatus: 'ready',
+          workspaceStage: 'ready',
+          workspaceSnapshotStatus: 'pending',
+        },
+      }),
+    );
+    workspaceNativeTaskService.initializeWorkspaceNativeTask.mockResolvedValue({
+      taskBranch: 'feature/task-ws',
+      gitWorktree: 'feature/task-ws',
+      worktreePath: '/tmp/worktree',
+      baseBranch: 'v2.1',
+      pushDeferred: true,
+      configJsonPatch: {
+        workspaceSnapshot: {
+          taskBranch: 'feature/task-ws',
+          snapshotCommitSha: 'abc123',
+          subRepoHeads: {},
+        },
+        workspaceStage: 'ready',
+        workspaceMessage: '本地任务工作区已准备完成',
+        workspaceSnapshotStatus: 'pending',
+        runner: {
+          fingerprint: 'fp',
+          status: 'ready',
+          source: 'projectConfig',
+        },
+      },
+    });
+    workspaceNativeTaskService.pushWorkspaceSnapshot.mockRejectedValue(
+      new Error('push failed'),
+    );
+
+    await (
+      service as never as {
+        provisionWorkspaceNativeTaskAsync: (
+          task: Task,
+          project: Project,
+        ) => Promise<void>;
+      }
+    ).provisionWorkspaceNativeTaskAsync(task, project);
+    await flushAsyncWork();
+
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({
+        configJson: expect.objectContaining({
+          workspaceStatus: 'ready',
+          workspaceSnapshotStatus: 'failed',
+          workspaceSnapshotError: 'push failed',
+        }),
+      }),
+    );
+  });
+
+  it('should keep workspace failed when local sub-repo provisioning fails', async () => {
+    const { service, taskRepository, workspaceNativeTaskService } =
+      createService();
+    const task = createTask({
+      id: 'task-ws',
+      gitBranch: 'feature/task-ws',
+      gitWorktree: 'feature/task-ws',
+      configJson: {
+        workspaceStatus: 'provisioning',
+      },
+    });
+    const project = createProject({
+      configJson: {
+        subtreeMode: 'workspace-native',
+      },
+    });
+
+    taskRepository.findById.mockResolvedValue(task);
+    workspaceNativeTaskService.initializeWorkspaceNativeTask.mockRejectedValue(
+      new Error('sub repo fetch failed'),
+    );
+
+    await (
+      service as never as {
+        provisionWorkspaceNativeTaskAsync: (
+          task: Task,
+          project: Project,
+        ) => Promise<void>;
+      }
+    ).provisionWorkspaceNativeTaskAsync(task, project);
+
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({
+        configJson: expect.objectContaining({
+          workspaceStatus: 'failed',
+          workspaceStage: 'failed',
+          workspaceError: 'sub repo fetch failed',
+        }),
+      }),
+    );
+    expect(
+      workspaceNativeTaskService.pushWorkspaceSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+});
+
 describe('TaskCommandService.remove', () => {
   it('should clean up task runtime before soft deleting the task', async () => {
     const {
@@ -409,7 +614,7 @@ describe('TaskCommandService.remove', () => {
     expect(taskAccessService.getTaskOrThrow).toHaveBeenCalledWith(
       task.id,
       currentUser,
-      'project.task.read',
+      'project.task.manage',
     );
     expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(
       task,

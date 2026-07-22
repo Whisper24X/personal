@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package api.course_learn.v1;
+
+import "descriptor/descriptor.proto";
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/course_learn/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.course_learn.v1";
+
+service CourseLearn {
+  // cvs册下知识点完成情况
+  rpc GetTopicFinishedByCvsIds(GetTopicFinishedByCvsIdsRequest) returns (GetTopicFinishedByCvsIdsReply) {
+    option (google.api.http) = {get: "/devices-learn/course/topic/finished/byCvsIds"};
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 知识点进度
+  rpc GetTopicScoreByIds(GetTopicScoreByIdsRequest) returns (GetTopicScoreByIdsReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/api/course/topic/score/byIds"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+}
+
+message GetTopicFinishedByCvsIdsRequest {
+  int32 stageId = 1 [(validate.rules).int32 = {gte: 1}]; // 学段ID
+  int32 subjectId = 2 [(validate.rules).int32 = {gte: 1}]; // 学科ID
+  int32 semesterId = 3 [(validate.rules).int32 = {gte: 1}]; // 册ID
+  int32 publisherId = 4 [(validate.rules).int32 = {gte: 1}]; // 出版社ID
+}
+
+message GetTopicFinishedByCvsIdsReply {
+  int32 topicTotal = 1; // 知识点总数
+  int32 topicFinished = 2; // 已完成知识点数
+}
+
+message GetTopicScoreByIdsRequest {
+  repeated string topicIds = 1 [(validate.rules).repeated = {min_items: 1}]; // 知识点ID列表
+}
+
+message GetTopicScoreByIdsReply {
+  message TopicScoreInfo {
+    string id = 1; // 知识点ID
+    float score = 2; // 知识点进度值
+  }
+  repeated TopicScoreInfo list = 1; // 知识点进度列表
+}

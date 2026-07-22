@@ -10,6 +10,14 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { ProjectMemberRepository } from './infrastructure/persistence/project-member.repository';
 import { ProjectRepository } from './infrastructure/persistence/project.repository';
 import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
+import { resolveSubRepoConfigs } from '../git/sub-repo.types';
+import { isSnapshotSyncEnabled } from '../git/snapshot-sync.types';
+import {
+  isWorkspaceManaged,
+  isWorkspaceNativeMode,
+} from '../git/workspace-native.types';
+import { SubtreeSnapshotService } from '../git/subtree-snapshot.service';
+import { ProjectGitLockService } from '../git/project-git-lock.service';
 
 @Injectable()
 export class ProjectRepositoryProvisioningService
@@ -28,6 +36,8 @@ export class ProjectRepositoryProvisioningService
     private readonly projectMemberRepository: ProjectMemberRepository,
     private readonly projectRepositoryWorkspaceService: ProjectRepositoryWorkspaceService,
     private readonly notificationsService: NotificationsService,
+    private readonly subtreeSnapshotService: SubtreeSnapshotService,
+    private readonly gitLockService: ProjectGitLockService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -132,6 +142,29 @@ export class ProjectRepositoryProvisioningService
         await this.projectRepositoryWorkspaceService.ensureProjectRepository(
           project,
         );
+
+      if (
+        isWorkspaceNativeMode(project) &&
+        !isWorkspaceManaged(project) &&
+        project.defaultBranch?.trim()
+      ) {
+        await this.projectRepositoryWorkspaceService.ensureProjectWorkspaceBranch(
+          project,
+          repositoryRoot,
+        );
+      }
+
+      const subRepos = resolveSubRepoConfigs(project.configJson);
+      if (subRepos.length > 0 && isSnapshotSyncEnabled(project)) {
+        await this.gitLockService.withProjectGitLock(project.id, () =>
+          this.subtreeSnapshotService.syncSubtreeSnapshots(
+            project.id,
+            repositoryRoot,
+            subRepos,
+          ),
+        );
+      }
+
       await this.projectRepositoryWorkspaceService.syncRunnerConfigBackup(
         project,
         repositoryRoot,

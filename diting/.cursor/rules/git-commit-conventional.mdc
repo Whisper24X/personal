@@ -1,0 +1,71 @@
+---
+description: Git 提交说明须符合 Conventional Commits（commitlint）；含 SCM 生成
+alwaysApply: true
+---
+
+# Git 提交说明（Conventional Commits）
+
+真源文档：[docs/dev-spec/repo/git-commit-convention.md](../../docs/dev-spec/repo/git-commit-convention.md)
+
+本仓库根目录 [.cursorrules](../../.cursorrules) 专供 **Source Control → 生成 commit message（✨）**；与本文要求一致。
+
+## 何时适用
+
+用户要求 commit、✨ 生成提交说明、或根据 staged diff 起草说明时均适用。
+
+## 输出结构（硬性）
+
+必须包含 **header + 空行 + body**，禁止仅一行标题（除非变更极小且仅动单文件一行）。
+
+```
+type(scope): subject
+
+- 具体变更点 1（涉及路径/模块）
+- 具体变更点 2（动机或影响）
+```
+
+- **header**：`type(scope): subject`；subject 小写祈使、无 `.`；≤ 100 字符；禁止分号罗列
+- **body**：2–6 条 `- ` 列表为宜；写清改了什么、为什么；可用中文
+- header 与 body 之间**必须**空一行
+
+### 反例 → 正例
+
+```
+# BAD（仅标题）
+chore(repo): add commitlint and husky hooks
+
+# BAD（自然语言长句当标题）
+Add commitlint configuration and update package dependencies; enhance .gitignore
+
+# GOOD
+chore(repo): add commitlint and husky hooks
+
+- 新增 commitlint.config.js 与 husky commit-msg 校验
+- 增加 npm run commitlint:check 供提交前预检
+- 补充 docs/dev-spec 与 .cursorrules 约束 SCM 生成格式
+```
+
+## type / scope
+
+`feat` `fix` `docs` `chore` `refactor` `test` `build` `ci` `perf` `style` `revert`；scope：`server` `web` `core` `plugin-api` `repo` `openspec`。
+
+## Agent 提交
+
+多行说明用文件提交，勿只用 `-m` 单行：
+
+```bash
+cat > /tmp/commit-msg.txt <<'EOF'
+chore(repo): add commitlint and husky hooks
+
+- 新增 commitlint 与 commit-msg hook
+- 补充提交规范文档
+EOF
+npm run commitlint:check -- /tmp/commit-msg.txt
+git commit -F /tmp/commit-msg.txt
+```
+
+## 禁止
+
+- 仅 header、无 body（多文件/多主题变更时）
+- subject 用分号串联多项
+- 未通过 `commitlint:check` 就 `git commit`

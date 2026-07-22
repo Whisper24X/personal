@@ -1,0 +1,106 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "desktop/v1/desktop.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Desktop"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/desktop/queryDailyData": {
+      "get": {
+        "summary": "查询每日数据",
+        "operationId": "Desktop_QueryDailyData",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDailyDataReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "userId",
+            "description": "用户ID",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Desktop"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1QueryDailyDataReply": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "title": "日期"
+        },
+        "dailyStudyDuration": {
+          "type": "string",
+          "format": "int64",
+          "title": "每日学习时长(单位：毫秒)"
+        },
+        "dailyCorrectRatio": {
+          "type": "number",
+          "format": "float",
+          "title": "每日答题正确率"
+        },
+        "dailyYcEnergyIncome": {
+          "type": "string",
+          "format": "int64",
+          "title": "每日待获取洋葱能量（上限-已获取）"
+        }
+      }
+    }
+  }
+}

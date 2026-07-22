@@ -1,4 +1,3 @@
-import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { BusinessLine } from '../../domain/business-line';
@@ -32,9 +31,13 @@ export abstract class BusinessLineRepository {
     name: BusinessLine['name'],
   ): Promise<NullableType<BusinessLine>>;
 
+  abstract findBySlug(
+    slug: BusinessLine['slug'],
+  ): Promise<NullableType<BusinessLine>>;
+
   abstract update(
     id: BusinessLine['id'],
-    payload: DeepPartial<BusinessLine>,
+    payload: Partial<BusinessLine>,
   ): Promise<BusinessLine | null>;
 
   abstract remove(id: BusinessLine['id']): Promise<void>;

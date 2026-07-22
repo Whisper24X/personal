@@ -2,12 +2,28 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const WORKSPACE_ROOT = process.env.AINATIVE_RUNNER_WORKSPACE?.trim() || '/workspace'
 const LOG_DIR = path.posix.join(WORKSPACE_ROOT, 'logs')
 const LISTEN_PORT = readPositiveNumber(process.env.AINATIVE_RUNNER_LISTEN_PORT) || 8080
+export const DEFAULT_RUNNER_STATUS_DIR = '/run/ainative-runner/status'
+const RUNNER_STATUS_DIR =
+  process.env.AINATIVE_RUNNER_STATUS_DIR?.trim() || DEFAULT_RUNNER_STATUS_DIR
 const NGINX_CONFIG_PATH = '/etc/nginx/nginx.conf'
 const SUPERVISORD_CONFIG_PATH = '/tmp/ainative-runner-supervisord.conf'
+export const DEFAULT_SERVICE_PATH = [
+  '/go/bin',
+  '/usr/local/go/bin',
+  '/root/.local/bin',
+  '/root/.opencode/bin',
+  '/usr/local/sbin',
+  '/usr/local/bin',
+  '/usr/sbin',
+  '/usr/bin',
+  '/sbin',
+  '/bin',
+].join(':')
 
 const main = async () => {
   const rawInput = await readConfigInput(process.argv[2])
@@ -17,7 +33,10 @@ const main = async () => {
   )
 
   const bridgeScriptUrl = resolvePreviewBridgeScriptUrlFromEnv()
-  await fs.mkdir(LOG_DIR, { recursive: true })
+  await Promise.all([
+    fs.mkdir(LOG_DIR, { recursive: true }),
+    fs.mkdir(RUNNER_STATUS_DIR, { recursive: true }),
+  ])
   await Promise.all([
     fs.writeFile(
       NGINX_CONFIG_PATH,
@@ -261,42 +280,186 @@ const renderSupervisordConfig = async (orchestration) => {
   await fs.writeFile(SUPERVISORD_CONFIG_PATH, `${sections.join('\n')}\n`, 'utf-8')
 }
 
-const renderServiceWrapper = (service) => {
+export const renderServiceWrapper = (service) => {
   const serviceDir = path.posix.join(WORKSPACE_ROOT, trimLeadingSlash(service.workdir))
+  const installCheckPath = service.installCheckPath
+    ? path.posix.join(serviceDir, trimLeadingSlash(service.installCheckPath))
+    : null
   const lines = [
     '#!/usr/bin/env bash',
     'set -euo pipefail',
+    `SERVICE_NAME=${shellEscape(service.name)}`,
+    `SERVICE_PORT=${service.port ? shellEscape(String(service.port)) : "''"}`,
+    `STATUS_DIR="${'${AINATIVE_RUNNER_STATUS_DIR:-/run/ainative-runner/status}'}"`,
+    `STATUS_FILE="${'${STATUS_DIR}'}"/${sanitizeName(service.name)}.json`,
+    `CHECK_INTERVAL_SECONDS="${'${AINATIVE_RUNNER_STATUS_CHECK_INTERVAL_SECONDS:-2}'}"`,
+    `READY_TIMEOUT_SECONDS="${'${AINATIVE_RUNNER_SERVICE_READY_TIMEOUT_SECONDS:-300}'}"`,
+    'RUN_STEP_EXIT_CODE=0',
+    'child_pid=""',
+    'terminated=0',
+    '',
+    'normalize_positive_int() {',
+    '  local raw="${1:-}"',
+    '  local fallback="${2:-1}"',
+    '  if [ -z "$raw" ] || ! printf "%s" "$raw" | grep -Eq "^[0-9]+$" || [ "$raw" -le 0 ]; then',
+    '    printf "%s" "$fallback"',
+    '    return 0',
+    '  fi',
+    '  printf "%s" "$raw"',
+    '}',
+    '',
+    'CHECK_INTERVAL_SECONDS="$(normalize_positive_int "$CHECK_INTERVAL_SECONDS" 2)"',
+    'READY_TIMEOUT_SECONDS="$(normalize_positive_int "$READY_TIMEOUT_SECONDS" 300)"',
+    '',
+    'write_status() {',
+    '  local phase="${1:-pending}"',
+    '  local message="${2:-}"',
+    '  local exit_code="${3:-}"',
+    "  python3 - \"$STATUS_FILE\" \"$SERVICE_NAME\" \"$phase\" \"$message\" \"$exit_code\" <<'PY'",
+    'from pathlib import Path',
+    'import datetime',
+    'import json',
+    'import sys',
+    '',
+    'path = Path(sys.argv[1])',
+    'payload = {',
+    "    'name': sys.argv[2],",
+    "    'phase': sys.argv[3],",
+    "    'message': sys.argv[4] or None,",
+    "    'exitCode': int(sys.argv[5]) if sys.argv[5] else None,",
+    "    'updatedAt': datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z'),",
+    '}',
+    'path.parent.mkdir(parents=True, exist_ok=True)',
+    "tmp_path = path.with_suffix(path.suffix + '.tmp')",
+    "tmp_path.write_text(json.dumps(payload, ensure_ascii=True), encoding='utf-8')",
+    'tmp_path.replace(path)',
+    'PY',
+    '}',
+    '',
+    'run_shell_step() {',
+    '  local raw_command="${1:-}"',
+    '  set +e',
+    '  /bin/bash -c "$raw_command"',
+    '  RUN_STEP_EXIT_CODE=$?',
+    '  set -e',
+    '  return 0',
+    '}',
+    '',
+    'is_port_listening() {',
+    '  if [ -z "$SERVICE_PORT" ]; then',
+    '    return 1',
+    '  fi',
+    '  if command -v ss >/dev/null 2>&1; then',
+    '    ss -lnt 2>/dev/null | grep -Eq "[\\\\.:]${SERVICE_PORT}([[:space:]]|$)"',
+    '    return $?',
+    '  fi',
+    '  if command -v netstat >/dev/null 2>&1; then',
+    '    netstat -lnt 2>/dev/null | grep -Eq "[\\\\.:]${SERVICE_PORT}([[:space:]]|$)"',
+    '    return $?',
+    '  fi',
+    '  if command -v nc >/dev/null 2>&1; then',
+    '    nc -z 127.0.0.1 "$SERVICE_PORT" >/dev/null 2>&1',
+    '    return $?',
+    '  fi',
+    '  return 1',
+    '}',
+    '',
+    'forward_termination() {',
+    '  terminated=1',
+    '  if [ -n "$child_pid" ] && kill -0 "$child_pid" >/dev/null 2>&1; then',
+    '    kill "$child_pid" >/dev/null 2>&1 || true',
+    '  fi',
+    '}',
+    'trap forward_termination INT TERM HUP',
+    '',
     `cd ${shellEscape(serviceDir)}`,
+    'write_status pending "Waiting for service process"',
   ]
 
   if (service.installCommand) {
-    if (service.installCheckPath) {
-      const checkPath = path.posix.join(serviceDir, trimLeadingSlash(service.installCheckPath))
+    if (installCheckPath) {
       lines.push(
-        `if [ ! -e ${shellEscape(checkPath)} ]; then`,
-        `  ${service.installCommand}`,
+        `if [ ! -e ${shellEscape(installCheckPath)} ]; then`,
+        '  write_status installing "Installing dependencies"',
+        `  run_shell_step ${shellEscape(service.installCommand)}`,
+        '  if [ "$RUN_STEP_EXIT_CODE" -ne 0 ]; then',
+        '    write_status failed "Install command failed" "$RUN_STEP_EXIT_CODE"',
+        '    exit "$RUN_STEP_EXIT_CODE"',
+        '  fi',
         'fi',
       )
     } else {
-      lines.push(service.installCommand)
+      lines.push(
+        'write_status installing "Installing dependencies"',
+        `run_shell_step ${shellEscape(service.installCommand)}`,
+        'if [ "$RUN_STEP_EXIT_CODE" -ne 0 ]; then',
+        '  write_status failed "Install command failed" "$RUN_STEP_EXIT_CODE"',
+        '  exit "$RUN_STEP_EXIT_CODE"',
+        'fi',
+      )
     }
   }
 
-  lines.push(`exec /bin/bash -c ${shellEscape(service.command)}`)
+  lines.push(
+    'write_status starting "Launching service command"',
+    `/bin/bash -c ${shellEscape(service.command)} &`,
+    'child_pid=$!',
+    'ready_deadline=0',
+    'marked_listening=0',
+    'marked_timeout_failure=0',
+    'if [ -z "$SERVICE_PORT" ]; then',
+    '  write_status listening "Service process is running"',
+    '  marked_listening=1',
+    'else',
+    '  ready_deadline=$(( $(date +%s) + READY_TIMEOUT_SECONDS ))',
+    'fi',
+    '',
+    'while kill -0 "$child_pid" >/dev/null 2>&1; do',
+    '  if [ -n "$SERVICE_PORT" ] && is_port_listening; then',
+    '    if [ "$marked_listening" -eq 0 ]; then',
+    '      write_status listening "Service listening on port ${SERVICE_PORT}"',
+    '      marked_listening=1',
+    '    fi',
+    '  elif [ -n "$SERVICE_PORT" ] && [ "$marked_listening" -eq 0 ] && [ "$marked_timeout_failure" -eq 0 ] && [ "$(date +%s)" -ge "$ready_deadline" ]; then',
+    '    write_status failed "Expected port ${SERVICE_PORT} did not start listening within ${READY_TIMEOUT_SECONDS}s"',
+    '    marked_timeout_failure=1',
+    '  fi',
+    '  sleep "$CHECK_INTERVAL_SECONDS"',
+    'done',
+    '',
+    'set +e',
+    'wait "$child_pid"',
+    'exit_code=$?',
+    'set -e',
+    '',
+    'if [ "$terminated" -eq 0 ]; then',
+    '  if [ -n "$SERVICE_PORT" ] && [ "$marked_listening" -eq 0 ]; then',
+    '    write_status failed "Service process exited before port ${SERVICE_PORT} became ready" "$exit_code"',
+    '  elif [ "$exit_code" -eq 0 ]; then',
+    '    write_status failed "Service process exited unexpectedly" "$exit_code"',
+    '  else',
+    '    write_status failed "Service process exited with code ${exit_code}" "$exit_code"',
+    '  fi',
+    'fi',
+    '',
+    'exit "$exit_code"',
+  )
   return `${lines.join('\n')}\n`
 }
 
-const renderEnvironment = (env) => {
-  const entries = Object.entries(env || {})
+export const renderEnvironment = (env) => {
+  const mergedEnv = {
+    PATH: DEFAULT_SERVICE_PATH,
+    ...(env || {}),
+  }
+  const entries = Object.entries(mergedEnv)
     .filter(([key]) => Boolean(key.trim()))
     .map(([key, value]) => `${key}="${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
 
-  return entries.length
-    ? entries.join(',')
-    : 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"'
+  return entries.join(',')
 }
 
-const renderNginxConfig = (orchestration, servicesByName, bridgeScriptUrl) => {
+export const renderNginxConfig = (orchestration, servicesByName, bridgeScriptUrl) => {
   const exactRoutes = []
   const regexRoutes = []
   const prefixRoutes = []
@@ -387,14 +550,13 @@ ${routeSections.join('\n\n')}
 `
 }
 
-const renderNginxSubFilterForHtml = (bridgeScriptUrl) => {
-  if (!bridgeScriptUrl) {
+const renderNginxSubFilterForHtml = (htmlInsertions) => {
+  if (!Array.isArray(htmlInsertions) || htmlInsertions.length === 0) {
     return []
   }
-  const esc = escapeNginxSubFilterAttribute(bridgeScriptUrl)
-  const snip = `<script src="${esc}" defer></script>`
-  const withHeadLower = snip + '</head>'
-  const withHeadUpper = snip + '</HEAD>'
+  const html = htmlInsertions.join('')
+  const withHeadLower = html + '</head>'
+  const withHeadUpper = html + '</HEAD>'
   return [
     '            proxy_set_header Accept-Encoding "";',
     '            sub_filter_types text/html;',
@@ -402,6 +564,134 @@ const renderNginxSubFilterForHtml = (bridgeScriptUrl) => {
     `            sub_filter '</head>' '${escapeNginxSingleQuoted(withHeadLower)}';`,
     `            sub_filter '</HEAD>' '${escapeNginxSingleQuoted(withHeadUpper)}';`,
   ]
+}
+
+const shouldInjectPreviewHtml = (service) =>
+  service?.env?.AINATIVE_PREVIEW_HTML_INJECT === '1'
+
+const shouldInjectPreviewHtmlForRoute = (route, service) => {
+  if (!shouldInjectPreviewHtml(service)) {
+    return false
+  }
+  const hmrPath = readNonEmptyString(service?.env?.AINATIVE_PREVIEW_HMR_PATH)
+  if (hmrPath && route?.path === hmrPath) {
+    return false
+  }
+  return true
+}
+
+const buildPreviewBootstrapConfig = (service) => {
+  if (!shouldInjectPreviewHtml(service)) {
+    return null
+  }
+  const hmrPath = readNonEmptyString(service?.env?.AINATIVE_PREVIEW_HMR_PATH)
+  const serviceName = readNonEmptyString(service?.env?.AINATIVE_PREVIEW_SERVICE_NAME)
+  const servicePort = readPositiveNumber(service?.env?.AINATIVE_PREVIEW_SERVICE_PORT ?? service?.port)
+  if (!hmrPath || !serviceName || !servicePort) {
+    return null
+  }
+  return {
+    hmrPath,
+    serviceName,
+    servicePort,
+  }
+}
+
+const renderPreviewBootstrapInline = (service) => {
+  const config = buildPreviewBootstrapConfig(service)
+  if (!config) {
+    return null
+  }
+
+  const payload = JSON.stringify({
+    serviceName: config.serviceName,
+    servicePort: config.servicePort,
+    hmrPath: config.hmrPath,
+  })
+  const bootstrapSource = [
+    '(function(){',
+    "var ctx=" + payload + ';',
+    'if(!ctx||!ctx.hmrPath||!ctx.servicePort){return;}',
+    'window.__AINATIVE_PREVIEW_CONTEXT__=ctx;',
+    "var type='ainative:preview:diagnostic';",
+    'var posted={};',
+    'function emit(kind,detail){',
+    '  try {',
+    '    var key=kind+":"+JSON.stringify(detail||null);',
+    '    if(posted[key]) return;',
+    '    posted[key]=true;',
+    '    window.parent&&window.parent.postMessage({type:type,kind:kind,detail:detail||null},"*");',
+    '  } catch (_e) {}',
+    '}',
+    'window.addEventListener("error",function(event){',
+    '  emit("workspace-runtime-error",{',
+    '    source:"error",',
+    '    message:event&&event.message?String(event.message):null,',
+    '    filename:event&&event.filename?String(event.filename):null',
+    '  });',
+    '}, true);',
+    'window.addEventListener("unhandledrejection",function(event){',
+    '  var reason=event&&"reason" in event?event.reason:null;',
+    '  emit("workspace-runtime-error",{',
+    '    source:"unhandledrejection",',
+    '    message:reason&&reason.message?String(reason.message):String(reason||"Unhandled promise rejection")',
+    '  });',
+    '});',
+    'var NativeWebSocket=window.WebSocket;',
+    'if(typeof NativeWebSocket!=="function"){return;}',
+    'function isTargetPort(portValue){',
+    '  return String(portValue||"")===String(ctx.servicePort);',
+    '}',
+    'function isLoopbackHost(host){',
+    '  return host==="localhost"||host==="127.0.0.1"||host==="0.0.0.0";',
+    '}',
+    'function isLikelyHmrPath(pathname){',
+    '  return !pathname||pathname==="/"||pathname.indexOf("/@vite")===0||pathname.indexOf("/__vite")===0||pathname.indexOf("/sockjs-node")===0||pathname.indexOf("/ws")===0||pathname.indexOf("/vite-hmr")===0;',
+    '}',
+    'function rewriteUrl(raw){',
+    '  try {',
+    '    var base=window.location.origin.replace(/^http/,"ws");',
+    '    var parsed=new URL(String(raw), window.location.href);',
+    '    if(!/^wss?:$/.test(parsed.protocol)) return null;',
+    '    if(!isLoopbackHost(parsed.hostname)) return null;',
+    '    if(!isTargetPort(parsed.port)) return null;',
+    '    if(!isLikelyHmrPath(parsed.pathname)) return null;',
+    '    var next=base+ctx.hmrPath;',
+    '    if(parsed.search) next+=parsed.search;',
+    '    emit("platform-hmr-rewritten",{from:parsed.href,to:next});',
+    '    return next;',
+    '  } catch (_e) {',
+    '    return null;',
+    '  }',
+    '}',
+    'window.WebSocket=function AinativePreviewWebSocket(url, protocols){',
+    '  var nextUrl=rewriteUrl(url);',
+    '  var actualUrl=nextUrl||url;',
+    '  var ws=protocols===undefined?new NativeWebSocket(actualUrl):new NativeWebSocket(actualUrl, protocols);',
+    '  if(nextUrl){',
+    '    ws.addEventListener("error", function(){',
+    '      emit("platform-hmr-relay-failed",{url:actualUrl});',
+    '    }, { once:true });',
+    '    ws.addEventListener("close", function(event){',
+    '      if(event && event.wasClean===false && event.code !== 1000){',
+    '        emit("platform-hmr-relay-failed",{url:actualUrl,code:event.code});',
+    '      }',
+    '    }, { once:true });',
+    '  }',
+    '  return ws;',
+    '};',
+    'window.WebSocket.prototype=NativeWebSocket.prototype;',
+    'Object.setPrototypeOf(window.WebSocket, NativeWebSocket);',
+    '})();',
+  ].join('')
+
+  const encodedSource = Buffer.from(bootstrapSource, 'utf-8').toString('base64')
+
+  return [
+    '<script>',
+    `(function(){(0,Function)(window.atob(${JSON.stringify(encodedSource)}))();})();`,
+    '</script>',
+  ].join('')
 }
 
 const escapeNginxSubFilterAttribute = (value) => {
@@ -437,7 +727,10 @@ const renderRoute = (route, servicesByName, bridgeScriptUrl) => {
     throw new Error(`Route ${route.path} requires a target port`)
   }
 
-  const proxyPass = `http://127.0.0.1:${targetPort}${route.upstreamPath || ''}`
+  const proxyPass =
+    route.match === 'regex'
+      ? `http://127.0.0.1:${targetPort}`
+      : `http://127.0.0.1:${targetPort}${route.upstreamPath || ''}`
   const lines = [
     `        ${header}`,
     `            proxy_pass ${proxyPass};`,
@@ -448,13 +741,26 @@ const renderRoute = (route, servicesByName, bridgeScriptUrl) => {
     '            proxy_set_header X-Forwarded-Proto $scheme;',
   ]
 
+  const previewBootstrapInline = renderPreviewBootstrapInline(service)
+  const shouldInjectHtml = shouldInjectPreviewHtmlForRoute(route, service)
+
   if (route.websocket) {
     lines.push(
       '            proxy_set_header Upgrade $http_upgrade;',
       '            proxy_set_header Connection $connection_upgrade;',
     )
-  } else {
-    for (const line of renderNginxSubFilterForHtml(bridgeScriptUrl)) {
+  }
+
+  if (shouldInjectHtml) {
+    const htmlInsertions = []
+    if (previewBootstrapInline) {
+      htmlInsertions.push(previewBootstrapInline)
+    }
+    if (bridgeScriptUrl) {
+      const esc = escapeNginxSubFilterAttribute(bridgeScriptUrl)
+      htmlInsertions.push(`<script src="${esc}" defer></script>`)
+    }
+    for (const line of renderNginxSubFilterForHtml(htmlInsertions)) {
       lines.push(line)
     }
   }
@@ -540,6 +846,11 @@ const escapeHtml = (value) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
 const escapeNginxSingleQuoted = (value) =>
-  String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '')
+  String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '')
 
-await main()
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  await main()
+}

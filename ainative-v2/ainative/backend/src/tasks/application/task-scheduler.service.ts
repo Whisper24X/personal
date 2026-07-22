@@ -30,6 +30,7 @@ import { ContainerOrchestrationService } from '../../containers/container-orches
 import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { TaskWorkspaceContextCacheService } from './task-workspace-context-cache.service';
 import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
+import { isWorkspaceNativeEnabled } from '../../git/snapshot-sync.types';
 
 @Injectable()
 export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
@@ -190,6 +191,10 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
           const projectRunning = mutableProjectRunning[task.projectId] ?? 0;
 
           if (projectRunning >= projectMaxConcurrency) {
+            continue;
+          }
+
+          if (this.shouldDelayWorkspaceNativeDispatch(task, project)) {
             continue;
           }
 
@@ -528,6 +533,23 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
     }, 0);
 
     return Math.max(totalConcurrency, 1);
+  }
+
+  private shouldDelayWorkspaceNativeDispatch(
+    task: Task,
+    project: Project,
+  ): boolean {
+    if (!isWorkspaceNativeEnabled(project)) {
+      return false;
+    }
+
+    const config = task.configJson;
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return false;
+    }
+
+    const workspaceStatus = (config as Record<string, unknown>).workspaceStatus;
+    return workspaceStatus === 'provisioning' || workspaceStatus === 'failed';
   }
 
   private async fetchAllProjectsForConcurrency(): Promise<Project[]> {

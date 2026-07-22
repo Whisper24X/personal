@@ -16,6 +16,7 @@ const createProject = (
   id: 'project-test-id',
   businessLineId: 'business-line-test-id',
   name: 'AINative Repository Project',
+  slug: 'ainative-repo',
   description: null,
   gitUrl: 'git@gitlab.yc345.tv:frontend/ainative.git',
   defaultBranch: 'main',
@@ -34,16 +35,54 @@ const createService = () => {
   const projectAccessService = {
     assertCanAccessProject: jest.fn(),
   };
+  const workspaceRepoService = {
+    getWorkspaceGitUrl: jest
+      .fn()
+      .mockReturnValue('git@example.com:workspace.git'),
+    getBaseBranch: jest.fn().mockReturnValue('master'),
+  };
 
   return {
     service: new ProjectRepositoryWorkspaceService(
       projectAccessService as never,
       configService,
       projectWorkspacePathsService,
+      workspaceRepoService as never,
     ),
     projectWorkspacePathsService,
   };
 };
+
+describe('ProjectRepositoryWorkspaceService branch resolution', () => {
+  it('should use project defaultBranch for workspace-native projects', () => {
+    const { service } = createService();
+    const project = createProject(
+      {
+        gitUrl: '',
+        defaultBranch: 'frontend-ainative',
+      },
+      { subtreeMode: 'workspace-native' },
+    );
+
+    expect(service.resolveEffectiveDefaultBranch(project)).toBe(
+      'frontend-ainative',
+    );
+    expect(service.resolveCloneInitialBranch(project)).toBe('master');
+  });
+
+  it('should use master for workspace-managed hidden projects', () => {
+    const { service } = createService();
+    const project = createProject(
+      {
+        gitUrl: 'git@example.com:workspace.git',
+        defaultBranch: 'master',
+      },
+      { subtreeMode: 'workspace-native', workspaceManaged: true },
+    );
+
+    expect(service.resolveEffectiveDefaultBranch(project)).toBe('master');
+  });
+});
 
 describe('ProjectRepositoryWorkspaceService', () => {
   const createdDirectories: string[] = [];
@@ -310,5 +349,105 @@ describe('ProjectRepositoryWorkspaceService', () => {
     await expect(
       service.checkoutBranch('/tmp/project-repo', 'release'),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should create a fixed branch worktree without checking out repository root', async () => {
+    await createIsolatedDataRoot();
+    const { service } = createService();
+    const project = createProject();
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+      });
+
+    const worktreePath = await service.ensureBranchWorktree({
+      project,
+      repositoryRoot: '/tmp/project-repo',
+      branchName: 'feature/goal-1',
+      namespace: 'goal-branches',
+    });
+
+    expect(worktreePath).toContain(
+      `${path.sep}.system${path.sep}goal-branches`,
+    );
+    expect(runCommandSpy.mock.calls).toEqual([
+      ['git', ['-C', '/tmp/project-repo', 'worktree', 'prune']],
+      [
+        'git',
+        [
+          '-C',
+          '/tmp/project-repo',
+          'rev-parse',
+          '--verify',
+          'refs/heads/feature/goal-1',
+        ],
+      ],
+      [
+        'git',
+        [
+          '-C',
+          '/tmp/project-repo',
+          'worktree',
+          'add',
+          '--force',
+          worktreePath,
+          'feature/goal-1',
+        ],
+      ],
+    ]);
+  });
+
+  it('should reuse an existing branch worktree when it already points to the branch', async () => {
+    await createIsolatedDataRoot();
+    const { service } = createService();
+    const project = createProject();
+    const worktreePath = (service as any).resolveBranchWorktreePath(
+      project,
+      'feature/goal-1',
+      'goal-branches',
+    );
+    await fs.mkdir(path.join(worktreePath, '.git'), { recursive: true });
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: 'feature/goal-1',
+        stderr: '',
+        timedOut: false,
+      });
+
+    await expect(
+      service.ensureBranchWorktree({
+        project,
+        repositoryRoot: '/tmp/project-repo',
+        branchName: 'feature/goal-1',
+        namespace: 'goal-branches',
+      }),
+    ).resolves.toBe(worktreePath);
+
+    expect(runCommandSpy).toHaveBeenCalledTimes(1);
+    expect(runCommandSpy).toHaveBeenCalledWith('git', [
+      '-C',
+      worktreePath,
+      'rev-parse',
+      '--abbrev-ref',
+      'HEAD',
+    ]);
   });
 });

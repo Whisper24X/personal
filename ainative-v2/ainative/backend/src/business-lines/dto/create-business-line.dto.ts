@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
 
 export class CreateBusinessLineDto {
   @ApiProperty({
@@ -10,6 +10,15 @@ export class CreateBusinessLineDto {
   @IsNotEmpty()
   name: string;
 
+  @ApiProperty({
+    type: String,
+    example: 'ainative-web',
+    description: '业务线在 ainative-workspace 中的稳定标识（Git 分支片段）',
+  })
+  @IsString()
+  @IsNotEmpty()
+  slug: string;
+
   @ApiPropertyOptional({
     type: String,
     example: 'Retail business line',
@@ -17,4 +26,12 @@ export class CreateBusinessLineDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({
+    type: Object,
+    description: '业务线配置JSON（子仓列表等）',
+  })
+  @IsOptional()
+  @IsObject()
+  configJson?: Record<string, unknown>;
 }

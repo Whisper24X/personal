@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package descriptor;
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/third_party/descriptor";
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MethodOptions {
+  optional ApiTag api_tag = 65500;
+}
+
+message ApiTag {
+  bool header_has_sn = 1;  // 是否SNId必须
+  bool header_has_uid = 2; // 是否uid必须
+}

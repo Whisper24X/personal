@@ -13,9 +13,18 @@ import { TaskMode } from './task-mode.enum';
 import { TaskConfigDto } from './task-config.dto';
 
 export class CreateTaskDto {
-  @ApiProperty({ type: String })
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
   @IsUUID()
-  projectId: string;
+  projectId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Workspace-native 任务可直接传业务线，由后端解析内部执行项目',
+  })
+  @IsOptional()
+  @IsUUID()
+  businessLineId?: string;
 
   @ApiPropertyOptional({
     type: String,

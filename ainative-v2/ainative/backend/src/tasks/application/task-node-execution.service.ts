@@ -305,6 +305,7 @@ export class TaskNodeExecutionService {
     let streamedStderrLineCount = 0;
     let persistedStdoutJsonlLineCount = 0;
     let streamPersistQueue = Promise.resolve();
+    let preExecutionOutputRecordsAppended = false;
     const isContinuation = !!this.taskConfigResolver.normalizeOptionalString(
       node.agentCliSessionId,
     );
@@ -368,6 +369,10 @@ export class TaskNodeExecutionService {
             : undefined,
           callbacks: {
             onPrepared: async ({ adapter, prompt, preparedAt }) => {
+              if (preExecutionOutputRecordsAppended) {
+                return;
+              }
+              preExecutionOutputRecordsAppended = true;
               await this.appendPreExecutionOutputRecords({
                 task,
                 node,
@@ -375,6 +380,35 @@ export class TaskNodeExecutionService {
                 prompt,
                 preparedAt,
               });
+            },
+            onRetryScheduled: async ({
+              attempt,
+              nextAttempt,
+              maxAttempts,
+              delayMs,
+              reason,
+              diagnostic,
+            }) => {
+              await this.taskLogService.appendLog({
+                taskId,
+                taskNodeId: nodeId,
+                level: TaskLogLevel.warn,
+                message: 'Agent node execution hit upstream rate limit; retry scheduled',
+                payload: {
+                  attempt,
+                  nextAttempt,
+                  maxAttempts,
+                  delayMs,
+                  reason,
+                  diagnostic: diagnostic
+                    ? this.truncateForLogPayload(diagnostic)
+                    : null,
+                },
+              });
+            },
+            shouldContinue: async () => {
+              const latestNode = await this.taskNodeRepository.findById(nodeId);
+              return latestNode?.status === TaskNodeStatus.inProgress;
             },
             onStdoutLine: (line) => {
               streamedStdoutLineCount += 1;
@@ -486,6 +520,8 @@ export class TaskNodeExecutionService {
           durationMs: executionResult.durationMs,
           command: executionResult.command,
           args: executionResult.args,
+          retryCount: executionResult.retryCount ?? 0,
+          attemptCount: executionResult.attemptCount ?? 1,
           loopJson: loopResult.loopJson,
           pendingApproval: loopResult.pendingApproval,
           pendingArtifact: loopResult.pendingArtifact,
@@ -568,6 +604,12 @@ export class TaskNodeExecutionService {
         durationMs: executionResult.durationMs,
         interrupted: executionResult.interrupted,
         stderr: executionResult.stderr || null,
+        retryCount: executionResult.retryCount ?? 0,
+        attemptCount: executionResult.attemptCount ?? 1,
+        retryReason: executionResult.retryReason ?? null,
+        retryDiagnostic: executionResult.retryDiagnostic
+          ? this.truncateForLogPayload(executionResult.retryDiagnostic)
+          : null,
       },
     });
   }
@@ -766,6 +808,11 @@ export class TaskNodeExecutionService {
     return chunks;
   }
 
+  private truncateForLogPayload(value: string): string {
+    const trimmed = value.trim();
+    return trimmed.length > 2_000 ? `${trimmed.slice(0, 2_000)}...` : trimmed;
+  }
+
   private async appendPreExecutionOutputRecords({
     task,
     node,
@@ -779,6 +826,10 @@ export class TaskNodeExecutionService {
     prompt: string;
     preparedAt: Date;
   }): Promise<void> {
+    if (adapter !== 'codex') {
+      return;
+    }
+
     const records = this.agentCliAdapterRegistry
       .getById(adapter)
       .buildPreExecutionOutputRecords({

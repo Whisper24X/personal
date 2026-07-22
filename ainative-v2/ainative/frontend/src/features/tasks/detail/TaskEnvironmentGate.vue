@@ -11,12 +11,19 @@ const props = defineProps<{
   environment: TaskEnvironment | null
   actionLoading: boolean
   canStart: boolean
+  showRegenerateRunnerConfig: boolean
+  canRegenerateRunnerConfig: boolean
+  regenerateRunnerConfigBlockedReason: string
   canRemove: boolean
+  regenerateRunnerConfigLoading: boolean
+  regenerateRunnerConfigPreparing?: boolean
+  autoApplyingRunnerConfig?: boolean
   removeLoading: boolean
   formatDate: (value?: string) => string
 }>()
 
 const emit = defineEmits<{
+  regenerateRunnerConfig: []
   start: []
   refresh: []
   remove: []
@@ -40,6 +47,19 @@ const statusClassMap: Record<string, string> = {
   stopped: 'bg-muted text-muted-foreground',
 }
 
+const workspaceStageLabelMap: Record<string, string> = {
+  initializing: '初始化任务工作区',
+  syncing_base: '同步 workspace 模板',
+  creating_worktree: '创建任务 worktree',
+  fetching_sub_repos: '拉取子仓代码',
+  embedding_sub_repos: '拼接子仓代码',
+  writing_runner_config: '写入 runner 配置',
+  committing_snapshot: '提交本地 snapshot',
+  ready: '本地工作区已就绪',
+  pushing_snapshot: '后台同步 snapshot',
+  failed: '工作区准备失败',
+}
+
 const statusLabel = computed(() => {
   return statusLabelMap[props.environment?.status ?? 'not_started'] ?? '执行环境'
 })
@@ -50,9 +70,53 @@ const statusClass = computed(() => {
 
 const isStarting = computed(() => props.environment?.status === 'starting')
 const isStartActionLoading = computed(() => props.actionLoading)
+const isRegenerateActionLoading = computed(
+  () => props.regenerateRunnerConfigLoading || props.regenerateRunnerConfigPreparing,
+)
 const shouldShowStatusBadge = computed(() => props.environment?.status !== 'failed')
 const shouldShowSteps = computed(() => {
   return props.environment?.status === 'starting' || props.environment?.status === 'failed'
+})
+const stagePanelEyebrow = computed(() => {
+  if (props.environment?.workspaceStatus === 'provisioning') {
+    return '工作区准备'
+  }
+
+  if (props.environment?.workspaceStatus === 'failed') {
+    return '工作区异常'
+  }
+
+  return '启动过程'
+})
+const stagePanelTitle = computed(() => {
+  if (props.environment?.workspaceStatus === 'provisioning') {
+    return workspaceStageLabel.value || '任务工作区正在准备'
+  }
+
+  if (props.environment?.workspaceStatus === 'failed') {
+    return '任务工作区准备失败'
+  }
+
+  return '执行容器正在启动'
+})
+const workspaceStageLabel = computed(() => {
+  const stage = props.environment?.workspaceStage
+  return stage ? (workspaceStageLabelMap[stage] ?? String(stage)) : ''
+})
+const workspaceSnapshotText = computed(() => {
+  const status = props.environment?.workspaceSnapshotStatus
+  if (status === 'pushing') {
+    return 'workspace snapshot 正在后台同步'
+  }
+  if (status === 'pushed') {
+    return 'workspace snapshot 已同步'
+  }
+  if (status === 'failed') {
+    return props.environment?.workspaceSnapshotError
+      ? `workspace snapshot 同步失败：${props.environment.workspaceSnapshotError}`
+      : 'workspace snapshot 同步失败'
+  }
+  return ''
 })
 const stageMeta = computed(() => {
   if (!shouldShowSteps.value) {
@@ -64,7 +128,7 @@ const stageMeta = computed(() => {
     props.environment?.status === 'failed'
       ? (props.environment.steps.find((step) => step.status === 'error')?.label ?? null)
       : null
-  const stageLabel = failedStepLabel || props.environment?.stageLabel
+  const stageLabel = failedStepLabel || workspaceStageLabel.value || props.environment?.stageLabel
 
   if (stageLabel) {
     items.push(stageLabel)
@@ -79,6 +143,14 @@ const stageMeta = computed(() => {
 })
 
 const headerEyebrow = computed(() => {
+  if (props.environment?.workspaceStatus === 'provisioning') {
+    return '工作区准备中'
+  }
+
+  if (props.environment?.workspaceStatus === 'failed') {
+    return '工作区状态'
+  }
+
   if (props.environment?.status === 'starting') {
     return '环境启动中'
   }
@@ -91,6 +163,14 @@ const headerEyebrow = computed(() => {
 })
 
 const headerTitle = computed(() => {
+  if (props.environment?.workspaceStatus === 'provisioning') {
+    return '正在准备任务工作区'
+  }
+
+  if (props.environment?.workspaceStatus === 'failed') {
+    return '任务工作区准备失败'
+  }
+
   if (props.environment?.status === 'starting') {
     return '正在为当前任务启动执行环境'
   }
@@ -113,8 +193,37 @@ const shouldShowHeaderCopy = computed(() => {
 })
 
 const helperText = computed(() => {
+  if (props.autoApplyingRunnerConfig) {
+    return '新的预览编排已准备好，系统正在自动重启环境并应用新配置。'
+  }
+
+  if (props.regenerateRunnerConfigPreparing) {
+    return '正在准备新的预览编排；完成后会自动应用到当前环境，或在你下次启动环境时生效。'
+  }
+
+  if (props.environment?.workspaceStatus === 'provisioning') {
+    return (
+      props.environment?.workspaceMessage ||
+      props.environment?.message ||
+      '任务工作区仍在准备中，完成后即可启动执行环境。'
+    )
+  }
+
+  if (props.environment?.workspaceStatus === 'failed') {
+    return (
+      props.environment?.workspaceError ||
+      props.environment?.workspaceMessage ||
+      props.environment?.message ||
+      '任务工作区准备失败，请删除当前任务后重新创建。'
+    )
+  }
+
   if (props.environment?.status === 'starting') {
-    return props.environment?.message || '当前任务的执行容器正在拉起，启动过程会在当前区域实时展示。'
+    return (
+      props.environment?.workspaceMessage ||
+      props.environment?.message ||
+      '当前任务的执行容器正在拉起，启动过程会在当前区域实时展示。'
+    )
   }
 
   if (props.environment?.status === 'failed') {
@@ -129,6 +238,14 @@ const helperText = computed(() => {
 })
 
 const primaryActionLabel = computed(() => {
+  if (props.environment?.workspaceStatus === 'provisioning') {
+    return '等待工作区就绪'
+  }
+
+  if (props.environment?.workspaceStatus === 'failed') {
+    return '请重新创建任务'
+  }
+
   if (props.environment?.status === 'failed') {
     return '重试启动'
   }
@@ -193,6 +310,22 @@ const primaryActionLabel = computed(() => {
                 刷新状态
               </button>
               <button
+                v-if="props.showRegenerateRunnerConfig"
+                class="inline-flex h-11 items-center rounded-xl border border-border/70 bg-background/70 px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                :title="props.canRegenerateRunnerConfig ? undefined : props.regenerateRunnerConfigBlockedReason"
+                :disabled="
+                  props.actionLoading ||
+                  props.regenerateRunnerConfigLoading ||
+                  props.regenerateRunnerConfigPreparing ||
+                  !props.canRegenerateRunnerConfig
+                "
+                @click="emit('regenerateRunnerConfig')"
+              >
+                <span v-if="isRegenerateActionLoading" class="environment-button-spinner mr-2" />
+                {{ isRegenerateActionLoading ? '准备中...' : '重置配置' }}
+              </button>
+              <button
                 class="inline-flex h-11 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[0_12px_32px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                 type="button"
                 :disabled="!props.canStart || props.actionLoading"
@@ -212,6 +345,12 @@ const primaryActionLabel = computed(() => {
               </button>
             </div>
           </div>
+          <p
+            v-if="props.showRegenerateRunnerConfig && !props.canRegenerateRunnerConfig && props.regenerateRunnerConfigBlockedReason"
+            class="mt-3 text-sm text-amber-700 dark:text-amber-300"
+          >
+            {{ props.regenerateRunnerConfigBlockedReason }}
+          </p>
 
         </header>
 
@@ -228,10 +367,10 @@ const primaryActionLabel = computed(() => {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                      启动过程
+                      {{ stagePanelEyebrow }}
                     </div>
                     <div class="mt-2 text-lg font-semibold text-foreground">
-                      执行容器正在启动
+                      {{ stagePanelTitle }}
                     </div>
                   </div>
 
@@ -250,6 +389,12 @@ const primaryActionLabel = computed(() => {
                       实时进行中
                     </div>
                   </div>
+                </div>
+                <div
+                  v-if="workspaceSnapshotText"
+                  class="mt-3 rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-xs leading-6 text-muted-foreground"
+                >
+                  {{ workspaceSnapshotText }}
                 </div>
 
                 <TransitionGroup

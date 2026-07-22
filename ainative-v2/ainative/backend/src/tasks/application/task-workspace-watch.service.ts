@@ -72,7 +72,13 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
   subscribe(taskId: string, listener: TaskWorkspaceListener): () => void {
     const state = this.ensureTaskState(taskId);
     state.listeners.add(listener);
-    void this.syncTaskWatch(taskId);
+    this.syncTaskWatch(taskId).catch((error) => {
+      this.logger.warn(
+        `workspace_watch_sync_failed taskId=${taskId} message=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
 
     return () => {
       this.unsubscribe(taskId, listener);
@@ -91,18 +97,20 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
       return;
     }
 
-    state.syncPromise = this.performSyncTaskWatch(taskId, state);
+    state.syncPromise = (async () => {
+      try {
+        await this.performSyncTaskWatch(taskId, state);
 
-    try {
-      await state.syncPromise;
-    } finally {
-      state.syncPromise = null;
-
-      if (state.resyncRequested) {
-        state.resyncRequested = false;
-        await this.syncTaskWatch(taskId);
+        while (state.resyncRequested) {
+          state.resyncRequested = false;
+          await this.performSyncTaskWatch(taskId, state);
+        }
+      } finally {
+        state.syncPromise = null;
       }
-    }
+    })();
+
+    await state.syncPromise;
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -256,26 +264,69 @@ export class TaskWorkspaceWatchService implements OnModuleDestroy {
       return changes;
     }
 
-    const result = await this.runGitCheckIgnore(
-      worktreePath,
-      changes.map((change) => change.path),
-    );
+    const mainPaths: string[] = [];
+    const subRepoGroups = new Map<string, string[]>();
+    const subRepoCache = new Map<string, boolean>();
 
-    if (!result.success) {
-      this.logger.warn(
-        `workspace_check_ignore_failed taskId=${taskId} message=${
-          result.stderr ||
-          `git exited with code ${result.exitCode ?? 'unknown'}`
-        }`,
-      );
+    for (const change of changes) {
+      const firstSlash = change.path.indexOf('/');
+      if (firstSlash > 0) {
+        const firstDir = change.path.slice(0, firstSlash);
+
+        if (!subRepoCache.has(firstDir)) {
+          const gitPath = path.join(worktreePath, firstDir, '.git');
+          try {
+            await fs.access(gitPath);
+            subRepoCache.set(firstDir, true);
+          } catch {
+            subRepoCache.set(firstDir, false);
+          }
+        }
+
+        if (subRepoCache.get(firstDir)) {
+          const relPath = change.path.slice(firstSlash + 1);
+          if (!subRepoGroups.has(firstDir)) {
+            subRepoGroups.set(firstDir, []);
+          }
+          subRepoGroups.get(firstDir)!.push(relPath);
+          continue;
+        }
+      }
+      mainPaths.push(change.path);
+    }
+
+    const ignoredPaths = new Set<string>();
+
+    if (mainPaths.length > 0) {
+      const result = await this.runGitCheckIgnore(worktreePath, mainPaths);
+      if (!result.success) {
+        this.logger.warn(
+          `workspace_check_ignore_failed taskId=${taskId} message=${
+            result.stderr ||
+            `git exited with code ${result.exitCode ?? 'unknown'}`
+          }`,
+        );
+      } else {
+        for (const p of result.ignoredPaths) {
+          ignoredPaths.add(p);
+        }
+      }
+    }
+
+    for (const [prefix, paths] of subRepoGroups) {
+      const subCwd = path.join(worktreePath, prefix);
+      const result = await this.runGitCheckIgnore(subCwd, paths);
+      if (result.success) {
+        for (const p of result.ignoredPaths) {
+          ignoredPaths.add(`${prefix}/${p}`);
+        }
+      }
+    }
+
+    if (ignoredPaths.size === 0) {
       return changes;
     }
 
-    if (result.ignoredPaths.length === 0) {
-      return changes;
-    }
-
-    const ignoredPaths = new Set(result.ignoredPaths);
     return changes.filter((change) => !ignoredPaths.has(change.path));
   }
 

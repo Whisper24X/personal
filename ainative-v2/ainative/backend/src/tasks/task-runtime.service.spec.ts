@@ -89,11 +89,26 @@ const createTaskRuntimeService = (): TaskRuntimeService => {
       ),
     ),
   };
+  const gitStateRepository = {
+    transitionPhase: jest.fn(),
+    setActiveTask: jest.fn(),
+    getState: jest.fn().mockResolvedValue({ gitPhase: 'idle' }),
+  };
+  const workspaceRepoService = {
+    removeTaskWorktree: jest.fn().mockResolvedValue({
+      worktreeRemoved: true,
+      localBranchDeleted: true,
+      remoteBranchDeleted: true,
+      subRepoBranchResults: [],
+    }),
+  };
 
   return new TaskRuntimeService(
     configService,
     projectWorkspacePathsService,
     projectRepositoryWorkspaceService as never,
+    gitStateRepository as never,
+    workspaceRepoService as never,
   );
 };
 
@@ -138,6 +153,7 @@ describe('TaskRuntimeService', () => {
 
     const artifact = await service.collectGitDiffArtifact(
       createTask({ gitWorktree: repositoryPath }),
+      createProject(),
     );
 
     expect(artifact).toBeNull();
@@ -151,6 +167,7 @@ describe('TaskRuntimeService', () => {
 
     const artifact = await service.collectGitDiffArtifact(
       createTask({ gitWorktree: repositoryPath }),
+      createProject({}, { worktreeAllowedRoot: os.tmpdir() }),
     );
 
     expect(artifact).not.toBeNull();
@@ -218,6 +235,90 @@ describe('TaskRuntimeService', () => {
     expect(cleanupResult.cleaned).toBe(false);
     expect(cleanupResult.errorMessage).toContain('rm blocked');
     await expect(fs.access(worktreePath)).resolves.toBeUndefined();
+  });
+
+  it('should block workspace-native runtime while workspace is provisioning', async () => {
+    const project = createProject({}, { subtreeMode: 'workspace-native' });
+    const task = createTask({
+      gitWorktree: 'feature/runtime-test',
+      configJson: {
+        workspaceStatus: 'provisioning',
+        workspaceSnapshot: {
+          taskBranch: 'feature/runtime-test',
+          snapshotCommitSha: 'abc123',
+        },
+      },
+    });
+
+    await expect(service.ensureRuntime(task, project)).rejects.toThrow(
+      'workspace-native workspace is still provisioning',
+    );
+  });
+
+  it('should surface workspace-native provisioning failure before runtime startup', async () => {
+    const project = createProject({}, { subtreeMode: 'workspace-native' });
+    const task = createTask({
+      gitWorktree: 'feature/runtime-test',
+      configJson: {
+        workspaceStatus: 'failed',
+        workspaceError: 'git worktree add failed',
+        workspaceSnapshot: {
+          taskBranch: 'feature/runtime-test',
+          snapshotCommitSha: 'abc123',
+        },
+      },
+    });
+
+    await expect(service.ensureRuntime(task, project)).rejects.toThrow(
+      'workspace-native workspace provisioning failed: git worktree add failed',
+    );
+  });
+
+  it('should continue workspace-native runtime when workspace is ready', async () => {
+    const project = createProject({}, { subtreeMode: 'workspace-native' });
+    const task = createTask({
+      gitWorktree: 'feature/runtime-test',
+      configJson: {
+        workspaceStatus: 'ready',
+        workspaceSnapshot: {
+          taskBranch: 'feature/runtime-test',
+          snapshotCommitSha: 'abc123',
+        },
+      },
+    });
+    const worktreePath = service.resolveTaskWorktreePath(task, project);
+    await fs.mkdir(worktreePath, { recursive: true });
+    createdDirectories.push(
+      path.resolve(resolveAinativeDataRootDir(), project.businessLineId),
+    );
+
+    const runtime = await service.ensureRuntime(task, project);
+
+    expect(runtime.gitWorktree).toBe('feature/runtime-test');
+    expect(runtime.worktreePath).toBe(worktreePath);
+  });
+
+  it('should preserve legacy workspace-native tasks that have an existing worktree', async () => {
+    const project = createProject({}, { subtreeMode: 'workspace-native' });
+    const task = createTask({
+      gitWorktree: 'feature/legacy-runtime-test',
+      configJson: {
+        workspaceSnapshot: {
+          taskBranch: 'feature/legacy-runtime-test',
+          snapshotCommitSha: 'abc123',
+        },
+      },
+    });
+    const worktreePath = service.resolveTaskWorktreePath(task, project);
+    await fs.mkdir(worktreePath, { recursive: true });
+    createdDirectories.push(
+      path.resolve(resolveAinativeDataRootDir(), project.businessLineId),
+    );
+
+    const runtime = await service.ensureRuntime(task, project);
+
+    expect(runtime.gitWorktree).toBe('feature/legacy-runtime-test');
+    expect(runtime.worktreePath).toBe(worktreePath);
   });
 
   it('should delete the task branch during runtime cleanup when requested', async () => {

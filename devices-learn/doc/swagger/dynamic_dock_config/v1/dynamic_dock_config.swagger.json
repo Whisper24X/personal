@@ -1,0 +1,555 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "dynamic_dock_config/v1/dynamic_dock_config.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "DynamicDockConfig"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/dynamic-dock-config/v1/queryDynamicDockConfigListApi": {
+      "post": {
+        "summary": "客户端查询动态dock配置列表",
+        "operationId": "DynamicDockConfig_QueryDynamicDockConfigListApi",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicDockConfigListApiReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicDockConfigListApiReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicDockConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-dock-config/v1/queryDynamicDockConfigListShadow": {
+      "post": {
+        "summary": "查询动态dock配置列表",
+        "operationId": "DynamicDockConfig_QueryDynamicDockConfigListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicDockConfigListShadowReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicDockConfigListShadowReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicDockConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-dock-config/v1/storeDynamicDockConfig": {
+      "post": {
+        "summary": "保存动态dock配置",
+        "operationId": "DynamicDockConfig_StoreDynamicDockConfig",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreDynamicDockConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreDynamicDockConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicDockConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-dock-config/v1/updateDynamicDockConfigStatus": {
+      "post": {
+        "summary": "修改动态dock配置状态",
+        "operationId": "DynamicDockConfig_UpdateDynamicDockConfigStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateDynamicDockConfigStatusReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateDynamicDockConfigStatusReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicDockConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-dock-config/v2/queryDynamicDockConfigListApi": {
+      "post": {
+        "summary": "客户端查询动态dock配置列表(v2)",
+        "operationId": "DynamicDockConfig_QueryDynamicDockConfigListApiV2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicDockConfigListApiReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicDockConfigListApiReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicDockConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-dock-config/v2/queryDynamicDockConfigListShadow": {
+      "post": {
+        "summary": "查询动态dock配置列表(v2)",
+        "operationId": "DynamicDockConfig_QueryDynamicDockConfigListShadowV2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicDockConfigListShadowReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicDockConfigListShadowReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicDockConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-dock-config/v2/storeDynamicDockConfig": {
+      "post": {
+        "summary": "保存动态dock配置(v2)",
+        "operationId": "DynamicDockConfig_StoreDynamicDockConfigV2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreDynamicDockConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreDynamicDockConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicDockConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-dock-config/v2/updateDynamicDockConfigStatus": {
+      "post": {
+        "summary": "修改动态dock配置状态(v2)",
+        "operationId": "DynamicDockConfig_UpdateDynamicDockConfigStatusV2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateDynamicDockConfigStatusReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateDynamicDockConfigStatusReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicDockConfig"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1DynamicDockConfigDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "entryName": {
+          "type": "string",
+          "title": "入口名称"
+        },
+        "dockType": {
+          "type": "string",
+          "title": "dock类型: 活动上新/常用功能/固定部分"
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32",
+          "title": "优先级"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架"
+        },
+        "cornerLetters": {
+          "type": "string",
+          "title": "气泡角标文字"
+        },
+        "cornerLettersEndTime": {
+          "type": "string",
+          "title": "气泡角标结束时间"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "图片链接"
+        },
+        "jumpLink": {
+          "type": "string",
+          "title": "跳转链接"
+        },
+        "tips": {
+          "type": "string",
+          "title": "提示语"
+        },
+        "tipsStartTime": {
+          "type": "string",
+          "title": "提示语展示开始时间"
+        },
+        "tipsEndTime": {
+          "type": "string",
+          "title": "提示语展示结束时间"
+        },
+        "tipsSequence": {
+          "type": "string",
+          "title": "提示语序号"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "更新人"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      },
+      "title": "配置项"
+    },
+    "v1DynamicDockConfigItem": {
+      "type": "object",
+      "properties": {
+        "dockType": {
+          "type": "string",
+          "title": "dock类别"
+        },
+        "entryNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "功能入口数量"
+        },
+        "sequence": {
+          "type": "integer",
+          "format": "int32",
+          "title": "序列号"
+        },
+        "dockConfigList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicDockConfigDetail"
+          },
+          "title": "dock配置列表"
+        }
+      }
+    },
+    "v1QueryDynamicDockConfigListApiReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicDockConfigItem"
+          },
+          "title": "列表"
+        }
+      }
+    },
+    "v1QueryDynamicDockConfigListApiReq": {
+      "type": "object",
+      "title": "string configType = 1 [(validate.rules).string = {min_len: 1}]; // 配置类型"
+    },
+    "v1QueryDynamicDockConfigListShadowReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicDockConfigItem"
+          },
+          "title": "列表"
+        }
+      }
+    },
+    "v1QueryDynamicDockConfigListShadowReq": {
+      "type": "object",
+      "properties": {
+        "entryName": {
+          "type": "string",
+          "title": "入口名称"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架"
+        }
+      }
+    },
+    "v1StoreDynamicDockConfigReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        }
+      }
+    },
+    "v1StoreDynamicDockConfigReq": {
+      "type": "object",
+      "properties": {
+        "dockType": {
+          "type": "string",
+          "title": "dock类型: 活动上新/常用功能/固定部分"
+        },
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "entryName": {
+          "type": "string",
+          "title": "入口名称"
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32",
+          "title": "优先级"
+        },
+        "cornerLetters": {
+          "type": "string",
+          "title": "气泡角标文字"
+        },
+        "cornerLettersEndTime": {
+          "type": "string",
+          "title": "气泡角标结束时间"
+        },
+        "jumpLink": {
+          "type": "string",
+          "title": "跳转链接"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "图片链接"
+        },
+        "tips": {
+          "type": "string",
+          "title": "提示语"
+        },
+        "tipsStartTime": {
+          "type": "string",
+          "title": "提示语展示开始时间"
+        },
+        "tipsEndTime": {
+          "type": "string",
+          "title": "提示语展示结束时间"
+        },
+        "tipsSequence": {
+          "type": "string",
+          "title": "提示语序号"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后修改人"
+        }
+      }
+    },
+    "v1UpdateDynamicDockConfigStatusReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功: true: 成功; false: 失败"
+        }
+      }
+    },
+    "v1UpdateDynamicDockConfigStatusReq": {
+      "type": "object",
+      "properties": {
+        "dockType": {
+          "type": "string",
+          "title": "dock类型"
+        },
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后修改人"
+        }
+      }
+    }
+  }
+}

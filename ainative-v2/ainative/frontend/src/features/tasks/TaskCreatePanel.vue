@@ -268,6 +268,7 @@ const fileInputRef = toRef(vm, 'fileInputRef')
               </template>
 
               <AppSelect
+                v-if="vm.showGitBaseBranchSelector"
                 v-model="vm.createForm.gitBaseBranch"
                 aria-label="分支"
                 :block="false"

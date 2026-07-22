@@ -7,11 +7,115 @@ import type {
   UpdateProjectCustomRolePayload,
 } from '@/types/api/projects'
 
+export type SubRepoConfig = {
+  url: string
+  prefix: string
+  branch: string
+}
+
+export type BusinessLineConfigJson = {
+  subRepos?: SubRepoConfig[]
+  runnerFingerprint?: string
+  runnerConfigStatus?: RunnerConfigStatus
+  runnerConfigError?: string
+  runnerConfigUpdatedAt?: string
+  runnerGeneratedAt?: string
+  runnerConfigCache?: Record<string, unknown>
+  runnerConfigCacheMeta?: RunnerConfigCacheMeta
+  runnerLastAttemptedFingerprint?: string
+  runnerLastAttemptedAt?: string
+}
+
+export type RunnerConfigStatus =
+  | 'pending'
+  | 'ready'
+  | 'generated'
+  | 'verifying'
+  | 'needsManualReview'
+  | 'failed'
+  | 'partial'
+
+export type RunnerConfigCacheMeta = {
+  source?: 'ai' | 'fallback' | 'ai-full-scan'
+  generatedAt?: string
+  discoveredRepoPrefixes?: string[]
+  selectedRepoPrefixes?: string[]
+  notAutoStartedRepoPrefixes?: string[]
+  omittedRepoPrefixes?: string[]
+  omissionReasonsByRepo?: Record<string, string[]>
+  autoStartLimited?: boolean
+  factsTruncated?: boolean
+  truncatedPrefixes?: string[]
+  analysisWarnings?: string[]
+  generatorToolId?: string
+  generatorConfigId?: string
+  inputFingerprint?: string
+  partial?: boolean
+  probeStatus?: 'passed' | 'failed' | 'skipped'
+  probeMode?: 'off' | 'warn' | 'required'
+  probeError?: string
+  probeDurationMs?: number
+  routeProbeResults?: RunnerRouteProbeResult[]
+  probeRepaired?: boolean
+  probeRepairSummary?: string
+  fullScanAttempted?: boolean
+  fullScanError?: string
+  fullScanReasoning?: string
+  fullScanEvidenceBytes?: number
+  verificationId?: string
+  verificationStatus?: 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
+  verificationStartedAt?: string
+  verificationFinishedAt?: string
+  verificationDurationMs?: number
+  verificationError?: string
+  verificationLogsPreview?: string
+}
+
+export type RunnerRouteProbeResult = {
+  path: string
+  service?: string
+  port?: number
+  status: 'passed' | 'failed' | 'skipped'
+  statusCode?: number
+  failureKind?: string
+  error?: string
+}
+
+export type RunnerStatusSummary = {
+  status: RunnerConfigStatus | 'unknown'
+  statusLabel: string
+  source?: RunnerConfigCacheMeta['source']
+  error?: string
+  updatedAt?: string
+  generatedAt?: string
+  fingerprint?: string
+  verificationStatus?: RunnerConfigCacheMeta['verificationStatus']
+  verificationDurationMs?: number
+  verificationError?: string
+  verificationLogsPreview?: string
+  probeStatus?: RunnerConfigCacheMeta['probeStatus']
+  probeMode?: RunnerConfigCacheMeta['probeMode']
+  probeError?: string
+  probeDurationMs?: number
+  routeProbeResults?: RunnerRouteProbeResult[]
+  probeRepaired?: boolean
+  probeRepairSummary?: string
+  fullScanAttempted?: boolean
+  fullScanError?: string
+  fullScanReasoning?: string
+  fullScanEvidenceBytes?: number
+  warningCount: number
+  latestWarning?: string
+  verifiedReady: boolean
+}
+
 export type BusinessLine = {
   id: string
   name: string
+  slug: string
   description?: string | null
   defaultAgentCliToolId?: string | null
+  configJson?: BusinessLineConfigJson | null
   createdAt?: string
   updatedAt?: string
 }
@@ -30,7 +134,9 @@ export type BusinessLineMember = {
 
 export type CreateBusinessLinePayload = {
   name: string
+  slug: string
   description?: string
+  configJson?: BusinessLineConfigJson
 }
 
 export type UpdateBusinessLinePayload = Partial<CreateBusinessLinePayload>
@@ -173,6 +279,10 @@ export const businessLinesApi = {
     return apiHttp.get<BusinessLine>(`/business-lines/${businessLineId}`)
   },
 
+  runnerStatus(businessLineId: string) {
+    return apiHttp.get<RunnerStatusSummary>(`/business-lines/${businessLineId}/runner-status`)
+  },
+
   create(payload: CreateBusinessLinePayload) {
     return apiHttp.post<BusinessLine>('/business-lines', payload)
   },
@@ -204,7 +314,10 @@ export const businessLinesApi = {
   },
 
   createInvitation(businessLineId: string, payload: CreateBusinessLineInvitePayload) {
-    return apiHttp.post<BusinessLineInvite>(`/business-lines/${businessLineId}/invitations`, payload)
+    return apiHttp.post<BusinessLineInvite>(
+      `/business-lines/${businessLineId}/invitations`,
+      payload,
+    )
   },
 
   getLatestInvitation(businessLineId: string) {
@@ -221,7 +334,9 @@ export const businessLinesApi = {
   },
 
   getMemberProjectRoles(businessLineId: string, userId: string) {
-    return apiHttp.get<BusinessLineMemberProjectRoles>(`/business-lines/${businessLineId}/members/${userId}/project-roles`)
+    return apiHttp.get<BusinessLineMemberProjectRoles>(
+      `/business-lines/${businessLineId}/members/${userId}/project-roles`,
+    )
   },
 
   updateMember(businessLineId: string, userId: string, payload: UpdateBusinessLineMemberPayload) {
@@ -296,7 +411,10 @@ export const businessLinesApi = {
   },
 
   listAgentToolConfigs(businessLineId: string, params?: { toolId?: string }) {
-    return apiHttp.get<AgentToolConfig[]>(`/business-lines/${businessLineId}/agent-tool-configs`, params)
+    return apiHttp.get<AgentToolConfig[]>(
+      `/business-lines/${businessLineId}/agent-tool-configs`,
+      params,
+    )
   },
 
   createAgentToolConfig(businessLineId: string, payload: CreateAgentToolConfigPayload) {
@@ -332,16 +450,24 @@ export const businessLinesApi = {
   },
 
   uploadLocalSkill(businessLineId: string, file: File | FormData) {
-    const formData = file instanceof FormData ? file : (() => {
-      const nextFormData = new FormData()
-      nextFormData.append('file', file)
-      return nextFormData
-    })()
-    return apiHttp.post<UploadLocalSkillResult>(`/business-lines/${businessLineId}/local-skills/upload`, formData)
+    const formData =
+      file instanceof FormData
+        ? file
+        : (() => {
+            const nextFormData = new FormData()
+            nextFormData.append('file', file)
+            return nextFormData
+          })()
+    return apiHttp.post<UploadLocalSkillResult>(
+      `/business-lines/${businessLineId}/local-skills/upload`,
+      formData,
+    )
   },
 
   getLocalSkillTree(businessLineId: string, skillName: string) {
-    return apiHttp.get<SkillTree>(`/business-lines/${businessLineId}/local-skills/${encodeURIComponent(skillName)}/tree`)
+    return apiHttp.get<SkillTree>(
+      `/business-lines/${businessLineId}/local-skills/${encodeURIComponent(skillName)}/tree`,
+    )
   },
 
   getLocalSkillContent(businessLineId: string, skillName: string, relativePath: string) {
@@ -382,10 +508,10 @@ export const businessLinesApi = {
   },
 
   getLocalMcpConfig(businessLineId: string, params: { name: string; sourcePath?: string }) {
-    return apiHttp.get<LocalMcpConfig>(
-      `/business-lines/${businessLineId}/local-mcps/config`,
-      { name: params.name, sourcePath: params.sourcePath },
-    )
+    return apiHttp.get<LocalMcpConfig>(`/business-lines/${businessLineId}/local-mcps/config`, {
+      name: params.name,
+      sourcePath: params.sourcePath,
+    })
   },
 
   createLocalMcp(businessLineId: string, payload: CreateLocalMcpPayload) {
@@ -396,9 +522,22 @@ export const businessLinesApi = {
     const query = new URLSearchParams()
     query.set('name', params.name)
     query.set('sourcePath', params.sourcePath)
-    return apiHttp.delete<void>(
-      `/business-lines/${businessLineId}/local-mcps?${query.toString()}`,
-    )
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}/local-mcps?${query.toString()}`)
   },
 
+  getWorkspaceProject(businessLineId: string) {
+    return apiHttp.get<{
+      projectId: string | null
+      enabled: boolean
+      businessLineId?: string
+      name?: string
+      description?: string | null
+      gitUrl?: string
+      defaultBranch?: string
+      repositoryProvisioningStatus?: string | null
+      repositoryProvisioningError?: string | null
+      repositoryProvisionedAt?: string | null
+      configJson?: Record<string, unknown> | null
+    }>(`/business-lines/${businessLineId}/workspace-project`)
+  },
 }

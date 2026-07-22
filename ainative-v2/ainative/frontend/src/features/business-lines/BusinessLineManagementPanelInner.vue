@@ -29,7 +29,6 @@ import {
 import { SUPPORTED_CLI_TOOLS } from './blm-agent-cli.constants'
 import {
   formatBlmDate as formatDate,
-  summarizeProjectRuntimeConfig,
 } from './blmProjectDisplayUtils'
 import {
   BUSINESS_LINE_CAPABILITY_DEPENDENCIES,
@@ -153,6 +152,61 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
               </div>
             </header>
 
+            <section
+              v-if="vm.activeLineId"
+              class="border-b border-border bg-muted/20 px-5 py-3"
+            >
+              <div class="rounded-2xl border border-border bg-background/80 p-3 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold tracking-wide text-muted-foreground">
+                      Runner Verification
+                    </p>
+                    <h3 class="mt-1 text-sm font-semibold text-foreground">
+                      {{ vm.runnerStatusTitle }}
+                    </h3>
+                    <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {{ vm.runnerStatusDescription }}
+                    </p>
+                  </div>
+                  <span
+                    class="inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+                    :class="vm.runnerStatusBadgeClass"
+                  >
+                    {{ vm.runnerStatus?.statusLabel ?? 'unknown' }}
+                  </span>
+                </div>
+                <div
+                  v-if="vm.runnerStatusMetaItems.length > 0"
+                  class="mt-3 flex flex-wrap gap-2"
+                >
+                  <span
+                    v-for="item in vm.runnerStatusMetaItems"
+                    :key="item"
+                    class="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
+                  >
+                    {{ item }}
+                  </span>
+                </div>
+                <div
+                  v-if="vm.runnerRouteProbeItems.length > 0"
+                  class="mt-3 grid gap-2"
+                >
+                  <div
+                    v-for="route in vm.runnerRouteProbeItems"
+                    :key="route.key"
+                    class="rounded-xl border px-3 py-2 text-xs"
+                    :class="route.className"
+                  >
+                    <div class="font-semibold">{{ route.label }}</div>
+                    <div v-if="route.detail" class="mt-1 opacity-80">
+                      {{ route.detail }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <div class="border-b border-border px-4 py-3">
               <div class="flex flex-wrap gap-2">
                 <button
@@ -187,7 +241,6 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
                 :can-create-project-item="vm.canCreateProjectItem"
                 :can-update-project-item="vm.canUpdateProjectItem"
                 :can-delete-project-item="vm.canDeleteProjectItem"
-                :summarize-project-runtime="summarizeProjectRuntimeConfig"
                 @refresh="vm.loadLineProjects(vm.activeLineId)"
                 @create-project="vm.openCreateProjectModal"
                 @select="vm.selectCurrentProject"
@@ -375,9 +428,9 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
       <BusinessLineFormModal
         :open="vm.lineFormModalOpen"
         :mode="vm.lineFormMode"
-        size="large"
         :submitting="vm.lineFormSubmitting"
         :initial-name="vm.lineFormInitialName"
+        :initial-slug="vm.lineFormInitialSlug"
         :initial-description="vm.lineFormInitialDescription"
         :error-message="vm.lineFormError"
         @update:open="vm.lineFormModalOpen = $event"
@@ -389,11 +442,14 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
         :mode="vm.projectFormMode"
         size="large"
         :business-line-id="vm.activeLineId"
+        :business-line-slug="vm.selectedLineSlug"
         :submitting="vm.projectFormSubmitting"
         :initial-name="vm.projectFormInitialName"
+        :initial-slug="vm.projectFormInitialSlug"
         :initial-description="vm.projectFormInitialDescription"
         :initial-git-url="vm.projectFormInitialGitUrl"
         :initial-default-branch="vm.projectFormInitialDefaultBranch"
+        :initial-sub-repos="vm.projectFormInitialSubRepos"
         :error-message="vm.projectFormError"
         @update:open="vm.projectFormModalOpen = $event"
         @submit="vm.submitProjectForm"
@@ -402,6 +458,7 @@ const vm = inject(businessLineManagementPanelInjectionKey) as BusinessLineManage
       <ProjectRuntimeSettingsModal
         :open="vm.projectRuntimeSettingsModalOpen"
         :submitting="vm.projectRuntimeSettingsSubmitting"
+        :project-id="vm.projectRuntimeSettingsProject?.id"
         :project-name="vm.projectRuntimeSettingsProject?.name ?? ''"
         :project-git-url="vm.projectRuntimeSettingsProject?.gitUrl ?? ''"
         :initial-container-runtime="vm.projectRuntimeSettingsInitialContainerRuntime"

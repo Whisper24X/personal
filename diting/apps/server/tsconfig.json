@@ -1,0 +1,31 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "paths": {
+      "@diting/core": ["../../packages/core/src/index.ts"],
+      "@diting/plugin-api": ["../../packages/plugin-api/src/index.ts"]
+    },
+    "incremental": true,
+    "strictPropertyInitialization": false,
+    "types": ["node", "jest"]
+  },
+  "include": [
+    "src/main.ts",
+    "src/run-migrations.ts",
+    "src/diting/**/*.ts",
+    "../../packages/core/src/index.ts",
+    "../../packages/core/src/diting/**/*.ts",
+    "../../packages/plugin-api/src/index.ts",
+    "../../packages/plugin-api/src/diting/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "**/*.spec.ts",
+    "../../packages/core/src/**/*.spec.ts",
+    "../../packages/plugin-api/src/**/*.spec.ts"
+  ]
+}

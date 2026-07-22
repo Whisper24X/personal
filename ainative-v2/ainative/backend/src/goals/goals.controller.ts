@@ -35,6 +35,7 @@ import { AddSourceDocDto } from './dto/add-source-doc.dto';
 import { UnpackGoalInputZipDto } from './dto/unpack-goal-input-zip.dto';
 import { GeneratePrdDto } from './dto/generate-prd.dto';
 import { GeneratePlanDto } from './dto/generate-plan.dto';
+import { UpdateGoalPrdDocDto } from './dto/update-goal-prd-doc.dto';
 import { PatchPlanItemDto } from './dto/patch-plan-item.dto';
 import { PatchPlanSubTaskDto } from './dto/patch-plan-sub-task.dto';
 import { MaterializeTasksDto } from './dto/materialize-tasks.dto';
@@ -46,7 +47,9 @@ import { GoalPlanSubTask } from './domain/goal-plan-sub-task';
 import { GoalDetailDto } from './dto/goal-detail.dto';
 import { InfinityPaginationResponse } from '../utils/dto/infinity-pagination-response.dto';
 import { Task } from '../tasks/domain/task';
+import { TaskGitActionResultDto } from '../tasks/dto/task-git.dto';
 import { GoalsFeatureGuard } from './goals-feature.guard';
+import { ProjectDocContentDto } from '../projects/dto/project-doc.dto';
 
 @ApiTags('Goals')
 @ApiBearerAuth()
@@ -239,6 +242,24 @@ export class GoalsController {
     return this.goalsService.generatePrd(id, dto, request.user);
   }
 
+  @Get(':id/prd-doc')
+  @ApiOkResponse({ type: ProjectDocContentDto })
+  @HttpCode(HttpStatus.OK)
+  readPrdDoc(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.goalsService.readPrdDoc(id, request.user);
+  }
+
+  @Patch(':id/prd-doc')
+  @ApiOkResponse({ type: ProjectDocContentDto })
+  @HttpCode(HttpStatus.OK)
+  updatePrdDoc(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateGoalPrdDocDto,
+  ) {
+    return this.goalsService.updatePrdDoc(id, dto, request.user);
+  }
+
   @Post(':id/generate-plan')
   @ApiOkResponse({ description: '生成任务计划' })
   generatePlan(
@@ -273,6 +294,16 @@ export class GoalsController {
       itemId,
       request.user,
     );
+  }
+
+  @Post(':id/push-subrepos')
+  @ApiOkResponse({ type: TaskGitActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  pushSubRepos(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<TaskGitActionResultDto> {
+    return this.goalsService.pushDemandBranchToSubRepos(id, request.user);
   }
 
   @Patch(':id/plan-items/:itemId')

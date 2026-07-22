@@ -1,0 +1,8 @@
+schemaVersion: 1
+defaults:
+  startupTimeoutMs: 120000
+services:
+  - id: backend
+    cwd: apps/server
+    command: ["npm", "run", "start:dev"]
+    healthUrl: http://127.0.0.1:3000/api/health

@@ -72,6 +72,12 @@ import { ProjectKnowledgeService } from './project-knowledge.service';
 import { DatabaseIsolationService } from '../containers/database-isolation.service';
 import { TableInfo } from '../containers/types/database-isolation.types';
 import { ScanDatabaseTablesDto } from './dto/scan-database-tables.dto';
+import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
+import { WorkspaceNativeDeployService } from '../tasks/application/workspace-native-deploy.service';
+import {
+  isWorkspaceManaged,
+  isWorkspaceNativeMode,
+} from '../git/workspace-native.types';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
@@ -87,7 +93,22 @@ export class ProjectsController {
     private readonly projectKnowledgeService: ProjectKnowledgeService,
     private readonly projectDeployService: ProjectDeployService,
     private readonly dbIsolationService: DatabaseIsolationService,
+    private readonly projectRepoWorkspace: ProjectRepositoryWorkspaceService,
+    private readonly workspaceNativeDeployService: WorkspaceNativeDeployService,
   ) {}
+
+  private async guardNotWorkspaceManaged(
+    projectId: string,
+    currentUser: unknown,
+  ): Promise<void> {
+    const project = await this.projectsService.findByIdInternal(
+      projectId,
+      currentUser as any,
+    );
+    if (project && isWorkspaceManaged(project)) {
+      throw new NotFoundException('Project not found');
+    }
+  }
 
   @Post('inspect-repository')
   @ApiOkResponse({ type: ProjectRepositoryInspectionDto })
@@ -113,10 +134,11 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ProjectDto })
   @HttpCode(HttpStatus.OK)
-  retryRepositoryProvisioning(
+  async retryRepositoryProvisioning(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectsService.retryRepositoryProvisioning(id, request.user);
   }
 
@@ -170,6 +192,16 @@ export class ProjectsController {
     @Body() updateProjectDto: UpdateProjectDto,
   ) {
     return this.projectsService.update(id, updateProjectDto, request.user);
+  }
+
+  @Post(':id/regenerate-runner')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.ACCEPTED)
+  regenerateRunnerConfig(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.projectsService.regenerateRunnerConfig(id, request.user);
   }
 
   @Delete(':id')
@@ -358,7 +390,8 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ProjectDocItemDto, isArray: true })
   @HttpCode(HttpStatus.OK)
-  listDocs(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+  async listDocs(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectDocsService.listDocs(id, request.user);
   }
 
@@ -366,11 +399,12 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ProjectDocsTreeDto })
   @HttpCode(HttpStatus.OK)
-  docsTree(
+  async docsTree(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ProjectDocsTreeQueryDto,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectDocsService.docsTree(id, query, request.user);
   }
 
@@ -383,6 +417,7 @@ export class ProjectsController {
     @Query() query: ProjectDocsPreviewQueryDto,
     @Res() res: Response,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     const { stream, mimeType, size } =
       await this.projectDocsService.docsFileStream(id, query, request.user);
     res.set({
@@ -397,11 +432,12 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ProjectDocsPreviewDto })
   @HttpCode(HttpStatus.OK)
-  docsPreview(
+  async docsPreview(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ProjectDocsPreviewQueryDto,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectDocsService.docsPreview(id, query, request.user);
   }
 
@@ -409,11 +445,12 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ProjectDocContentDto })
   @HttpCode(HttpStatus.OK)
-  readDoc(
+  async readDoc(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ReadProjectDocDto,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectDocsService.readDoc(id, query.path, request.user);
   }
 
@@ -445,12 +482,13 @@ export class ProjectsController {
       },
     }),
   )
-  uploadDoc(
+  async uploadDoc(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UploadProjectDocDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     if (!file?.buffer) {
       throw new BadRequestException('file is required');
     }
@@ -466,11 +504,12 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiCreatedResponse({ type: ProjectDocContentDto })
   @HttpCode(HttpStatus.CREATED)
-  createDoc(
+  async createDoc(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() payload: SaveProjectDocDto,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectDocsService.createDoc(id, payload, request.user);
   }
 
@@ -478,11 +517,12 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ProjectDocContentDto })
   @HttpCode(HttpStatus.OK)
-  updateDoc(
+  async updateDoc(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() payload: SaveProjectDocDto,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectDocsService.updateDoc(id, payload, request.user);
   }
 
@@ -495,6 +535,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ReadProjectDocDto,
   ): Promise<void> {
+    await this.guardNotWorkspaceManaged(id, request.user);
     await this.projectDocsService.removeDoc(id, query.path, request.user);
   }
 
@@ -502,11 +543,12 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: QueryProjectDocsResponseDto })
   @HttpCode(HttpStatus.OK)
-  queryDocs(
+  async queryDocs(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() payload: QueryProjectDocsDto,
   ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectKnowledgeService.queryDocs(id, payload, request.user);
   }
 
@@ -519,6 +561,7 @@ export class ProjectsController {
     @Query() query: QueryProjectDocsDto,
     @Res() res: Response,
   ): Promise<void> {
+    await this.guardNotWorkspaceManaged(id, request.user);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
@@ -547,6 +590,7 @@ export class ProjectsController {
     @Body() body: QueryProjectDocsDto,
     @Res() res: Response,
   ): Promise<void> {
+    await this.guardNotWorkspaceManaged(id, request.user);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
@@ -578,6 +622,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('taskId') taskId: string,
   ): Promise<{ featureBranch: string | null }> {
+    await this.guardNotWorkspaceManaged(id, request.user);
     return this.projectDeployService.getDeployInfo(id, taskId, request.user);
   }
 
@@ -590,6 +635,7 @@ export class ProjectsController {
     @Body() body: { taskId: string; command?: string },
     @Res() res: Response,
   ): Promise<void> {
+    await this.guardNotWorkspaceManaged(id, request.user);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
@@ -624,6 +670,241 @@ export class ProjectsController {
     if (!res.writableEnded) {
       res.end();
     }
+  }
+
+  @Get(':id/deploy-subtrees-info')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        enabled: { type: 'boolean' },
+        gitPhase: { type: 'string' },
+        canDeploy: { type: 'boolean' },
+      },
+    },
+  })
+  async getSubtreeDeployInfo(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('taskId') taskId: string,
+  ) {
+    await this.guardNotWorkspaceManaged(id, request.user);
+    return this.projectDeployService.getSubtreeDeployInfo(
+      id,
+      taskId,
+      request.user,
+    );
+  }
+
+  @Post(':id/deploy-subtrees')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async deploySubtrees(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { taskId: string; forceOverwrite?: boolean },
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.guardNotWorkspaceManaged(id, request.user);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const safeEmit = (event: string, data: Record<string, unknown>) => {
+      try {
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`event: ${event}\n`);
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        }
+      } catch {
+        /* connection already closed */
+      }
+    };
+
+    try {
+      await this.projectDeployService.deploySubtrees(
+        id,
+        body.taskId,
+        request.user,
+        safeEmit,
+        { forceOverwrite: body.forceOverwrite },
+      );
+    } catch (error) {
+      safeEmit('deploy_error', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+
+    if (!res.writableEnded) {
+      res.end();
+    }
+  }
+
+  @Post(':id/deploy-workspace-native')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async deployWorkspaceNative(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { taskId: string; targetBranches?: Record<string, string> },
+    @Res() res: Response,
+  ): Promise<void> {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const safeEmit = (event: string, data: Record<string, unknown>) => {
+      try {
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`event: ${event}\n`);
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        }
+      } catch {
+        /* connection already closed */
+      }
+    };
+
+    try {
+      const project = await this.projectsService.findByIdInternal(
+        id,
+        request.user,
+      );
+      if (!project) {
+        safeEmit('deploy_error', { message: 'Project not found' });
+        res.end();
+        return;
+      }
+
+      if (!isWorkspaceNativeMode(project)) {
+        safeEmit('deploy_end', {
+          success: false,
+          error: 'Project is not configured for workspace-native deployment',
+        });
+        res.end();
+        return;
+      }
+
+      const task = await this.projectDeployService.findTaskForProject(
+        id,
+        body.taskId,
+      );
+      if (!task) {
+        safeEmit('deploy_error', { message: 'Task not found in this project' });
+        res.end();
+        return;
+      }
+
+      const targetBranches = body.targetBranches ?? {};
+
+      const abortController = new AbortController();
+      res.on('close', () => abortController.abort());
+
+      safeEmit('deploy_start', {
+        taskId: body.taskId,
+        mode: 'workspace-native',
+        targetBranches,
+        subRepoCount:
+          (
+            (task.configJson as Record<string, unknown>)?.subReposSnapshot as
+              | unknown[]
+              | undefined
+          )?.length ?? 0,
+      });
+
+      const result = await this.workspaceNativeDeployService.deploy(
+        task,
+        project,
+        safeEmit,
+        { targetBranches, signal: abortController.signal },
+      );
+
+      if (result.deployStatus.status === 'done') {
+        safeEmit('deploy_end', {
+          success: true,
+          deployCommitSha: result.deployCommitSha,
+          subRepoDeployBranches: result.subRepoDeployBranches,
+          subRepoPushResults: result.deployStatus.subRepoPushResults,
+        });
+      } else if (result.deployStatus.status === 'cancelled') {
+        safeEmit('deploy_end', {
+          success: false,
+          cancelled: true,
+          error: '部署已取消',
+          subRepoPushResults: result.deployStatus.subRepoPushResults,
+        });
+      } else {
+        safeEmit('deploy_end', {
+          success: false,
+          error: '部署部分失败',
+          subRepoPushResults: result.deployStatus.subRepoPushResults,
+        });
+      }
+    } catch (error) {
+      safeEmit('deploy_end', {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+
+    if (!res.writableEnded) {
+      res.end();
+    }
+  }
+
+  @Get(':id/deploy-workspace-native-info')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async getWorkspaceNativeDeployInfo(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('taskId') taskId: string,
+  ) {
+    const project = await this.projectsService.findByIdInternal(
+      id,
+      request.user,
+    );
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    if (!isWorkspaceNativeMode(project)) {
+      return { enabled: false };
+    }
+
+    const task = await this.projectDeployService.findTaskForProject(id, taskId);
+    if (!task) {
+      throw new NotFoundException('Task not found in this project');
+    }
+
+    const taskConfig = (task.configJson ?? {}) as Record<string, unknown>;
+    const workspaceSnapshot = taskConfig.workspaceSnapshot as
+      | { taskBranch: string }
+      | undefined;
+    const subReposSnapshot = taskConfig.subReposSnapshot as
+      | Array<{ url: string; prefix: string; branch: string }>
+      | undefined;
+
+    if (!workspaceSnapshot) {
+      return {
+        enabled: true,
+        error: 'workspace-snapshot-missing',
+        errorMessage:
+          '该任务的 workspace 快照尚未就绪，请等待初始化完成后再部署。',
+        featureBranch: null,
+        subRepos: subReposSnapshot ?? [],
+        deployStatus: taskConfig.deployStatus ?? null,
+      };
+    }
+
+    return {
+      enabled: true,
+      featureBranch: workspaceSnapshot.taskBranch,
+      subRepos: subReposSnapshot ?? [],
+      deployStatus: taskConfig.deployStatus ?? null,
+    };
   }
 
   @Post(':id/database-isolation/scan-tables')

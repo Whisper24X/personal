@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+.worktrees/
+worktrees/
+logs/
+superpowers/
+.diting/
+.vscode/

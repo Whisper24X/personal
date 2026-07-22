@@ -62,6 +62,14 @@ describe('TaskRightPanel', () => {
           status: 'ready',
           url: 'https://preview.example.com/p/task-1/',
         },
+        serviceStatuses: [
+          {
+            name: 'yanxue',
+            port: 8000,
+            phase: 'starting',
+            isPrimaryPreview: true,
+          },
+        ],
         refreshToken: 3,
         formatDate: () => '',
       },
@@ -71,7 +79,9 @@ describe('TaskRightPanel', () => {
           TaskPreviewPanel: defineComponent({
             name: 'TaskDetailPreviewPanelStub',
             props: {
+              taskId: { type: String, default: '' },
               preview: { type: Object, default: null },
+              serviceStatuses: { type: Array, default: () => [] },
               logs: { type: Array, default: () => [] },
               formatDate: { type: Function, required: true },
             },
@@ -92,10 +102,19 @@ describe('TaskRightPanel', () => {
     await wrapper.findAll('button')[1]?.trigger('click')
 
     expect(previewProps[previewProps.length - 1]).toEqual({
+      taskId: 'task-1',
       preview: {
         status: 'ready',
         url: 'https://preview.example.com/p/task-1/',
       },
+      serviceStatuses: [
+        {
+          name: 'yanxue',
+          port: 8000,
+          phase: 'starting',
+          isPrimaryPreview: true,
+        },
+      ],
       logs: [],
       formatDate: expect.any(Function),
     })

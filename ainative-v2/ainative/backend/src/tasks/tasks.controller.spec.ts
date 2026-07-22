@@ -33,6 +33,43 @@ describe('TasksController', () => {
     );
   });
 
+  it('should delegate preview diagnostic reporting to tasks service', async () => {
+    const tasksService = {
+      reportPreviewDiagnostic: jest.fn().mockResolvedValue(undefined),
+    };
+    const controller = new TasksController(
+      tasksService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await controller.reportPreviewDiagnostic(
+      {
+        user: {
+          sub: 'user-1',
+        },
+      },
+      '3e790cce-84fe-4aad-a4cf-cf0a2cb090f7',
+      {
+        kind: 'workspace-runtime-error',
+        message: 'Preview runtime error',
+      },
+    );
+
+    expect(tasksService.reportPreviewDiagnostic).toHaveBeenCalledWith(
+      '3e790cce-84fe-4aad-a4cf-cf0a2cb090f7',
+      {
+        kind: 'workspace-runtime-error',
+        message: 'Preview runtime error',
+      },
+      {
+        sub: 'user-1',
+      },
+    );
+  });
+
   it('should pass through afterId query when opening stream', async () => {
     const tasksService = {
       openLogStream: jest.fn().mockResolvedValue({

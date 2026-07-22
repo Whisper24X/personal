@@ -75,13 +75,30 @@ describe('RunnerOrchestrationService', () => {
           expect.objectContaining({
             name: 'ainative-app',
             workdir: 'ainative-app',
+            env: expect.objectContaining({
+              AINATIVE_PREVIEW_HTML_INJECT: '1',
+              AINATIVE_PREVIEW_HMR_PATH: '/_ainative/vite-hmr/ainative-app',
+              AINATIVE_PREVIEW_SERVICE_NAME: 'ainative-app',
+              AINATIVE_PREVIEW_SERVICE_PORT: '8200',
+            }),
           }),
         ]),
         routes: expect.arrayContaining([
           expect.objectContaining({
+            path: '^/api/.*\\.(ts|js|mjs|vue|less|css|scss|map)$',
+            service: 'ainative-app',
+            upstreamPath: '/',
+          }),
+          expect.objectContaining({
             path: '/api/',
             service: 'ainative-backend',
             upstreamPath: '/',
+          }),
+          expect.objectContaining({
+            path: '/_ainative/vite-hmr/ainative-app',
+            service: 'ainative-app',
+            upstreamPath: '/',
+            websocket: true,
           }),
           expect.objectContaining({
             path: '/shadow/',
@@ -102,6 +119,16 @@ describe('RunnerOrchestrationService', () => {
         },
       },
     });
+
+    const routes = configFile?.orchestration.routes ?? [];
+    const staticApiRouteIndex = routes.findIndex(
+      (route) => route.path === '^/api/.*\\.(ts|js|mjs|vue|less|css|scss|map)$',
+    );
+    const backendApiRouteIndex = routes.findIndex(
+      (route) => route.path === '/api/',
+    );
+    expect(staticApiRouteIndex).toBeGreaterThanOrEqual(0);
+    expect(backendApiRouteIndex).toBeGreaterThan(staticApiRouteIndex);
   });
 
   it('should prefer configured runner orchestration over profile defaults', () => {
@@ -114,6 +141,7 @@ describe('RunnerOrchestrationService', () => {
       createProject({
         containerRuntime: {
           runnerOrchestration: {
+            manuallyLocked: true,
             services: [
               {
                 name: 'api',
@@ -166,6 +194,7 @@ describe('RunnerOrchestrationService', () => {
       createProject({
         containerRuntime: {
           runnerOrchestration: {
+            manuallyLocked: true,
             services: [
               {
                 name: 'api',
@@ -210,6 +239,7 @@ describe('RunnerOrchestrationService', () => {
       createProject({
         containerRuntime: {
           runnerOrchestration: {
+            manuallyLocked: true,
             services: [
               {
                 name: 'backend',
@@ -230,6 +260,7 @@ describe('RunnerOrchestrationService', () => {
 
     expect(mounts).toEqual([
       '/workspace/logs',
+      '/var/lib/ainative-runner-cache',
       '/workspace/frontend/node_modules',
     ]);
   });

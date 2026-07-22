@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package api.desktop.v1;
+
+import "descriptor/descriptor.proto";
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/desktop/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.desktop.v1";
+
+service Desktop {
+  // 查询每日数据
+  rpc QueryDailyData(QueryDailyDataRequest) returns (QueryDailyDataReply) {
+    option (google.api.http) = {get: "/devices-learn/desktop/queryDailyData"};
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+}
+
+message QueryDailyDataRequest {
+  string userId = 1 [(validate.rules).string = {
+    min_len: 1
+    max_len: 64
+  }]; // 用户ID
+}
+
+message QueryDailyDataReply {
+  string date = 1; // 日期
+  int64 dailyStudyDuration = 2; // 每日学习时长(单位：毫秒)
+  float dailyCorrectRatio = 3; // 每日答题正确率
+  int64 dailyYcEnergyIncome = 4; // 每日待获取洋葱能量（上限-已获取）
+}

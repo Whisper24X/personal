@@ -121,6 +121,9 @@ const createTasksService = () => {
       steps: [],
     }),
   };
+  const previewDiagnosticService = {
+    reportDiagnostic: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new TasksService(
     commandService as never,
@@ -131,6 +134,7 @@ const createTasksService = () => {
     statusService as never,
     outputService as never,
     environmentService as never,
+    previewDiagnosticService as never,
   );
 
   return {
@@ -144,6 +148,7 @@ const createTasksService = () => {
     statusService,
     outputService,
     environmentService,
+    previewDiagnosticService,
   };
 };
 
@@ -163,7 +168,8 @@ describe('TasksService', () => {
   });
 
   it('should delegate query methods to task query service', async () => {
-    const { service, queryService, environmentService } = createTasksService();
+    const { service, queryService, environmentService, previewDiagnosticService } =
+      createTasksService();
     const currentUser = createCurrentUser();
 
     await service.findAllWithPagination({
@@ -188,6 +194,14 @@ describe('TasksService', () => {
       query: { limit: 10 } as never,
       currentUser: currentUser as never,
     });
+    await service.reportPreviewDiagnostic(
+      'task-1',
+      {
+        kind: 'workspace-runtime-error',
+        message: 'Preview runtime error',
+      } as never,
+      currentUser as never,
+    );
 
     expect(queryService.findAllWithPagination).toHaveBeenCalled();
     expect(queryService.findById).toHaveBeenCalledWith('task-1', currentUser);
@@ -208,6 +222,14 @@ describe('TasksService', () => {
       currentUser,
     );
     expect(queryService.openLogStream).toHaveBeenCalled();
+    expect(previewDiagnosticService.reportDiagnostic).toHaveBeenCalledWith(
+      'task-1',
+      {
+        kind: 'workspace-runtime-error',
+        message: 'Preview runtime error',
+      },
+      currentUser,
+    );
   });
 
   it('should delegate command and interaction mutations to application services', async () => {

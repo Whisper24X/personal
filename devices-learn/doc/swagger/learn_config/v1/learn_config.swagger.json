@@ -1,0 +1,420 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "learn_config/v1/learn_config.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "LearnConfig"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/learn-config/v1/parseLearnConfigCsvFile": {
+      "post": {
+        "summary": "解析学习配置csv文件",
+        "operationId": "LearnConfig_ParseLearnConfigCsvFile",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ParseLearnConfigCsvFileReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ParseLearnConfigCsvFileReq"
+            }
+          }
+        ],
+        "tags": [
+          "LearnConfig"
+        ]
+      }
+    },
+    "/devices-learn/learn-config/v1/queryLearnConfigByKey": {
+      "post": {
+        "summary": "通过key查询学习配置",
+        "operationId": "LearnConfig_QueryLearnConfigByKey",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryLearnConfigByKeyReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryLearnConfigByKeyReq"
+            }
+          }
+        ],
+        "tags": [
+          "LearnConfig"
+        ]
+      }
+    },
+    "/devices-learn/learn-config/v1/queryLearnConfigListShadow": {
+      "post": {
+        "summary": "查询学习配置列表",
+        "operationId": "LearnConfig_QueryLearnConfigListShadow",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryLearnConfigListShadowReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryLearnConfigListShadowReq"
+            }
+          }
+        ],
+        "tags": [
+          "LearnConfig"
+        ]
+      }
+    },
+    "/devices-learn/learn-config/v1/storeLearnConfig": {
+      "post": {
+        "summary": "保存学习配置",
+        "operationId": "LearnConfig_StoreLearnConfig",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreLearnConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreLearnConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "LearnConfig"
+        ]
+      }
+    },
+    "/devices-learn/learn-config/v1/updateLearnConfigStatus": {
+      "post": {
+        "summary": "更改学习配置状态",
+        "operationId": "LearnConfig_UpdateLearnConfigStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateLearnConfigStatusReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateLearnConfigStatusReq"
+            }
+          }
+        ],
+        "tags": [
+          "LearnConfig"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\n The JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1LearnConfigInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "key": {
+          "type": "string",
+          "title": "key"
+        },
+        "description": {
+          "type": "string",
+          "title": "描述"
+        },
+        "fileUrl": {
+          "type": "string",
+          "title": "csv文件地址"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后操作人"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "title": "数据"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态：-1:删除，1：启用"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "最后操作时间"
+        }
+      }
+    },
+    "v1LearnConfigItem": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "title": "key"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "title": "数据"
+        }
+      }
+    },
+    "v1ParseLearnConfigCsvFileReply": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "title": "数据"
+        }
+      }
+    },
+    "v1ParseLearnConfigCsvFileReq": {
+      "type": "object",
+      "properties": {
+        "csvFileUrl": {
+          "type": "string",
+          "title": "csv文件地址"
+        }
+      }
+    },
+    "v1QueryLearnConfigByKeyReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1LearnConfigItem"
+          },
+          "title": "列表"
+        }
+      }
+    },
+    "v1QueryLearnConfigByKeyReq": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "key"
+        }
+      }
+    },
+    "v1QueryLearnConfigListShadowReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1LearnConfigInfo"
+          },
+          "title": "配置列表"
+        }
+      }
+    },
+    "v1QueryLearnConfigListShadowReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "每页数量"
+        }
+      }
+    },
+    "v1StoreLearnConfigReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      }
+    },
+    "v1StoreLearnConfigReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "key": {
+          "type": "string",
+          "title": "key"
+        },
+        "description": {
+          "type": "string",
+          "title": "描述"
+        },
+        "fileUrl": {
+          "type": "string",
+          "title": "csv文件地址"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后操作人"
+        }
+      }
+    },
+    "v1UpdateLearnConfigStatusReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "true:成功，false:失败"
+        }
+      }
+    },
+    "v1UpdateLearnConfigStatusReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态：-1:删除，1：启用"
+        }
+      }
+    }
+  }
+}

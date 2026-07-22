@@ -28,7 +28,16 @@ export type RunnerManagedVolumeMount = {
   name: string;
   target: string;
   labels?: Record<string, string>;
+  preserveOnCleanup?: boolean;
 };
+
+export type RunnerContainerStatusSnapshot = Array<{
+  name: string;
+  phase?: string;
+  message?: string | null;
+  exitCode?: number | null;
+  updatedAt?: string | null;
+}>;
 
 export type RunnerReadOnlyBindMount = {
   hostPath: string;
@@ -37,6 +46,8 @@ export type RunnerReadOnlyBindMount = {
 
 const RUNNER_MANAGED_VOLUME_LABEL = 'ainative.runner-managed';
 const RUNNER_MANAGED_VOLUME_CONTAINER_LABEL = 'ainative.container-name';
+const RUNNER_MANAGED_VOLUME_PRESERVE_LABEL = 'ainative.preserve-on-cleanup';
+const RUNNER_STATUS_DIR = '/run/ainative-runner/status';
 
 @Injectable()
 export class IsolatedRunnerContainerService {
@@ -48,6 +59,7 @@ export class IsolatedRunnerContainerService {
     worktreePath: string;
     workspaceMount: string;
     command?: string[];
+    useImageDefaultCommand?: boolean;
     env?: Record<string, string>;
     cpuLimit?: number;
     resourceLimits?: { memoryMb?: number; pidsLimit?: number };
@@ -82,7 +94,9 @@ export class IsolatedRunnerContainerService {
         image: params.image,
         worktreePath: params.worktreePath,
         workspaceMount: params.workspaceMount,
-        command: params.command ?? ['sleep', 'infinity'],
+        command: params.useImageDefaultCommand
+          ? null
+          : (params.command ?? ['sleep', 'infinity']),
         sharedVolumeMounts: params.sharedVolumeMounts ?? [],
         readOnlyBindMounts,
         managedVolumeMounts,
@@ -152,7 +166,10 @@ export class IsolatedRunnerContainerService {
       }
     }
 
-    args.push(params.image, ...(params.command ?? ['sleep', 'infinity']));
+    args.push(params.image);
+    if (!params.useImageDefaultCommand) {
+      args.push(...(params.command ?? ['sleep', 'infinity']));
+    }
 
     let containerId = '';
     try {
@@ -203,27 +220,60 @@ export class IsolatedRunnerContainerService {
         `Container ${params.containerName} did not reach running state within ${startTimeoutMs}ms (lastStatus=${lastStatus})`,
       );
     } catch (error) {
+      if (containerId && error instanceof Error) {
+        const logs = await this.captureLogsPreview(containerId).catch(
+          () => undefined,
+        );
+        if (logs) {
+          Object.assign(error, { containerLogsPreview: logs });
+        }
+        const statusSnapshot = await this.captureStatusSnapshot(
+          containerId,
+        ).catch(() => undefined);
+        if (statusSnapshot?.length) {
+          Object.assign(error, { containerStatusSnapshot: statusSnapshot });
+        }
+      }
       if (containerId) {
-        await this.remove(params.containerName);
+        await this.remove(params.containerName, {
+          preserveManagedVolumeTargets: (_target, labels) =>
+            labels?.[RUNNER_MANAGED_VOLUME_PRESERVE_LABEL] === 'true',
+        });
       } else {
-        await this.removeManagedVolumes(managedVolumeMounts);
+        await this.removeManagedVolumes(
+          managedVolumeMounts.filter((mount) => !mount.preserveOnCleanup),
+        );
       }
       throw error;
     }
   }
 
-  async remove(containerName: string): Promise<void> {
+  async remove(
+    containerName: string,
+    options?: {
+      preserveManagedVolumeTargets?: (
+        target: string,
+        labels?: Record<string, string> | null,
+      ) => boolean;
+    },
+  ): Promise<void> {
     try {
       await this.execDocker(['rm', '-f', '-v', containerName]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (this.isNoSuchContainerMessage(message)) {
-        await this.removeManagedVolumesByContainerName(containerName);
+        await this.removeManagedVolumesByContainerName(
+          containerName,
+          options?.preserveManagedVolumeTargets,
+        );
         return;
       }
       this.logger.warn(`docker rm failed for ${containerName}: ${message}`);
     }
-    await this.removeManagedVolumesByContainerName(containerName);
+    await this.removeManagedVolumesByContainerName(
+      containerName,
+      options?.preserveManagedVolumeTargets,
+    );
   }
 
   async unpause(containerRef: string): Promise<void> {
@@ -305,6 +355,13 @@ export class IsolatedRunnerContainerService {
       );
       return [];
     }
+  }
+
+  async execInContainer(
+    containerIdOrName: string,
+    command: string[],
+  ): Promise<string> {
+    return this.execDockerCapture(['exec', containerIdOrName, ...command]);
   }
 
   private async inspectById(
@@ -420,7 +477,13 @@ export class IsolatedRunnerContainerService {
   ): Promise<void> {
     for (const mount of mounts) {
       const args = ['volume', 'create'];
-      for (const [key, value] of Object.entries(mount.labels ?? {})) {
+      const labels = {
+        ...(mount.labels ?? {}),
+        ...(mount.preserveOnCleanup
+          ? { [RUNNER_MANAGED_VOLUME_PRESERVE_LABEL]: 'true' }
+          : {}),
+      };
+      for (const [key, value] of Object.entries(labels)) {
         args.push('--label', `${key}=${value}`);
       }
       args.push(mount.name);
@@ -430,28 +493,31 @@ export class IsolatedRunnerContainerService {
 
   private async removeManagedVolumesByContainerName(
     containerName: string,
+    preserveManagedVolumeTargets?: (
+      target: string,
+      labels?: Record<string, string> | null,
+    ) => boolean,
   ): Promise<void> {
-    let names: string[];
-    try {
-      const output = await this.execDockerCapture([
-        'volume',
-        'ls',
-        '--quiet',
-        '--filter',
-        `label=${RUNNER_MANAGED_VOLUME_LABEL}=true`,
-        '--filter',
-        `label=${RUNNER_MANAGED_VOLUME_CONTAINER_LABEL}=${containerName}`,
-      ]);
-      names = output
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean);
-    } catch (error) {
+    const mounts = await this.describeManagedVolumesByContainerName(
+      containerName,
+    ).catch((error) => {
       this.logger.warn(
         `list managed volumes failed for ${containerName}: ${error instanceof Error ? error.message : error}`,
       );
-      return;
-    }
+      return [] as Array<{
+        name: string;
+        target: string;
+        labels?: Record<string, string> | null;
+      }>;
+    });
+
+    const names = mounts
+      .filter((mount) =>
+        preserveManagedVolumeTargets
+          ? !preserveManagedVolumeTargets(mount.target, mount.labels ?? null)
+          : true,
+      )
+      .map((mount) => mount.name);
 
     await this.removeManagedVolumeNames(names, containerName);
   }
@@ -482,6 +548,63 @@ export class IsolatedRunnerContainerService {
         );
       }
     }
+  }
+
+  private async describeManagedVolumesByContainerName(
+    containerName: string,
+  ): Promise<
+    Array<{
+      name: string;
+      target: string;
+      labels?: Record<string, string> | null;
+    }>
+  > {
+    const output = await this.execDockerCapture([
+      'volume',
+      'ls',
+      '--quiet',
+      '--filter',
+      `label=${RUNNER_MANAGED_VOLUME_LABEL}=true`,
+      '--filter',
+      `label=${RUNNER_MANAGED_VOLUME_CONTAINER_LABEL}=${containerName}`,
+    ]);
+    const names = output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const result: Array<{
+      name: string;
+      target: string;
+      labels?: Record<string, string> | null;
+    }> = [];
+
+    for (const name of names) {
+      try {
+        const inspectOutput = await this.execDockerCapture([
+          'volume',
+          'inspect',
+          name,
+          '--format',
+          '{{json .Labels}}',
+        ]);
+        const labels = JSON.parse(inspectOutput) as Record<
+          string,
+          string
+        > | null;
+        result.push({
+          name,
+          target: labels?.['ainative.mount-target']?.trim() || '',
+          labels,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `inspect managed volume failed for ${containerName} (${name}): ${error instanceof Error ? error.message : error}`,
+        );
+        result.push({ name, target: '', labels: null });
+      }
+    }
+
+    return result;
   }
 
   private async execDocker(args: string[]): Promise<void> {
@@ -522,6 +645,66 @@ export class IsolatedRunnerContainerService {
         }
       });
     });
+  }
+
+  private async captureLogsPreview(containerId: string): Promise<string> {
+    const output = await this.execDockerCapture([
+      'logs',
+      '--tail',
+      '120',
+      containerId,
+    ]);
+    return output.trim().slice(-2000);
+  }
+
+  private async captureStatusSnapshot(
+    containerId: string,
+  ): Promise<RunnerContainerStatusSnapshot> {
+    const output = await this.execDockerCapture([
+      'exec',
+      containerId,
+      'sh',
+      '-lc',
+      `if [ -d ${this.shellEscape(RUNNER_STATUS_DIR)} ]; then for f in ${this.shellEscape(
+        RUNNER_STATUS_DIR,
+      )}/*.json; do [ -f "$f" ] && printf '%s\\t' "$(basename "$f" .json)" && cat "$f" && printf '\\n'; done; fi`,
+    ]);
+    const snapshot: RunnerContainerStatusSnapshot = [];
+    for (const line of output.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const tabIndex = trimmed.indexOf('\t');
+      if (tabIndex <= 0) {
+        continue;
+      }
+      const name = trimmed.slice(0, tabIndex).trim();
+      const raw = trimmed.slice(tabIndex + 1).trim();
+      if (!name || !raw) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(raw) as {
+          phase?: string;
+          message?: string | null;
+          exitCode?: number | null;
+          updatedAt?: string | null;
+        };
+        snapshot.push({
+          name,
+          phase: parsed.phase,
+          message: parsed.message ?? null,
+          exitCode:
+            typeof parsed.exitCode === 'number' ? parsed.exitCode : null,
+          updatedAt:
+            typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
+        });
+      } catch {
+        snapshot.push({ name });
+      }
+    }
+    return snapshot;
   }
 
   private delay(ms: number): Promise<void> {

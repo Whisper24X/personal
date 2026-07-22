@@ -415,9 +415,25 @@ export class TaskWorkspaceArtifactService {
       task,
       project,
     );
-    const worktreePath = await fs.realpath(runtimeWorktreePath).catch(() => {
-      throw new NotFoundException('Task workspace does not exist');
-    });
+    let worktreePath = await fs.realpath(runtimeWorktreePath).catch(() => null);
+
+    if (!worktreePath) {
+      try {
+        const runtime = await this.taskRuntimeService.ensureRuntime(
+          task,
+          project,
+        );
+        worktreePath = await fs
+          .realpath(runtime.worktreePath)
+          .catch(() => null);
+      } catch {
+        // recovery failed
+      }
+      if (!worktreePath) {
+        throw new NotFoundException('Task workspace does not exist');
+      }
+    }
+
     const hasGitDir = await fs
       .stat(path.join(worktreePath, '.git'))
       .then(() => true)

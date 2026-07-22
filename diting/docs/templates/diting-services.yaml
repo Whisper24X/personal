@@ -1,0 +1,49 @@
+schemaVersion: 1
+
+# 全局默认值；单个 service 可覆盖。
+defaults:
+  startupTimeoutMs: 180000
+  stopTimeoutMs: 15000
+  env:
+    CI: "true"
+
+services:
+  # 单仓示例：不配置 repoKey 时，服务目录相对主仓 workspace.repoPath 解析。
+  - id: backend
+    cwd: apps/server
+    command: ["npm", "run", "start:dev"]
+    env:
+      BACKEND_PORT: "3010"
+    healthUrl: http://127.0.0.1:3010/api/health
+    healthIntervalMs: 2000
+    startupTimeoutMs: 180000
+
+  # 单仓前端示例；dependsOn 确保 backend 先启动。
+  - id: frontend
+    cwd: apps/web
+    command: ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "5180"]
+    env:
+      VITE_API_PROXY_URL: http://127.0.0.1:3010
+    healthUrl: http://127.0.0.1:5180
+    dependsOn: [backend]
+    startupTimeoutMs: 120000
+
+  # 多仓示例：取消注释后，将 repoKey 对齐 task.metadata.repos[].key。
+  # - id: api
+  #   repoKey: backend-repo
+  #   cwd: .
+  #   command: ["make", "run"]
+  #   env:
+  #     GO_ENV: local
+  #   healthUrl: http://127.0.0.1:8000/
+  #   startupTimeoutMs: 300000
+  #
+  # - id: web
+  #   repoKey: frontend-repo
+  #   cwd: .
+  #   command: ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "5181"]
+  #   env:
+  #     VITE_API_PROXY_URL: http://127.0.0.1:8000
+  #   healthUrl: http://127.0.0.1:5181/
+  #   dependsOn: [api]
+  #   startupTimeoutMs: 120000

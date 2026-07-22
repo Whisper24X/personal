@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package api.dynamic_function_config.v1;
+
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/dynamic_function_config/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.dynamic_function_config.v1";
+
+service DynamicFunctionConfig {
+  // 客户端查询动态功能配置列表
+  rpc QueryDynamicFunctionConfigListApi(QueryDynamicFunctionConfigListApiReq) returns (QueryDynamicFunctionConfigListApiResp) {
+    option (google.api.http) = {get: "/devices-learn/dynamic-function-config/v1/queryDynamicFunctionConfigListApi"};
+  }
+  // 保存动态功能配置
+  rpc StoreDynamicFunctionConfig(StoreDynamicFunctionConfigReq) returns (StoreDynamicFunctionConfigReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-function-config/v1/storeDynamicFunctionConfig"
+      body: "*"
+    };
+  }
+  // 修改动态功能配置状态
+  rpc UpdateDynamicFunctionConfigStatus(UpdateDynamicFunctionConfigStatusReq) returns (UpdateDynamicFunctionConfigStatusReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-function-config/v1/updateDynamicFunctionConfigStatus"
+      body: "*"
+    };
+  }
+  // shadow查询动态功能配置列表
+  rpc QueryDynamicFunctionConfigListShadow(QueryDynamicFunctionConfigListShadowReq) returns (QueryDynamicFunctionConfigListShadowReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-function-config/v1/QueryDynamicFunctionConfigListShadow"
+      body: "*"
+    };
+  }
+}
+
+message QueryDynamicFunctionConfigListShadowReq {
+  string functionName = 1; // 功能名称
+  int32 status = 2; // 状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架
+}
+
+// 配置项
+message DynamicFunctionConfigShadowDetail {
+  string id = 1; // 主键ID
+  string functionName = 2; // 功能名称
+  string moduleScale = 3; // 模块大小
+  int32 priority = 4; // 排序优先级
+  string imageUrl = 5; // 图片链接
+  string dynamicImageUrl = 6; // 动态图片链接
+  string jumpLink = 7; // 跳转链接
+  int32 status = 8; // 状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架
+  string updatedBy = 9; // 更新人
+  string createdAt = 10; // 创建时间
+  string updatedAt = 11; // 更新时间
+}
+
+message DynamicFunctionConfigShadowItem {
+  string semesterType = 1; // 学段类型
+  int32 moduleNums = 2; // 模块数量
+  repeated DynamicFunctionConfigShadowDetail functionConfigList = 3; // 功能配置列表
+}
+
+message QueryDynamicFunctionConfigListShadowReply {
+  repeated DynamicFunctionConfigShadowItem list = 1; // 列表
+}
+
+message UpdateDynamicFunctionConfigStatusReq {
+  string semesterType = 1 [(validate.rules).string = {min_len: 1}]; // 学段类型
+  string id = 2 [(validate.rules).string = {min_len: 1}]; // 主键ID
+  int32 status = 3; // 状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架
+  string updatedBy = 4; // 最后修改人
+}
+
+message UpdateDynamicFunctionConfigStatusReply {
+  bool isSucceed = 1; // 是否成功: true: 成功; false: 失败
+}
+
+message StoreDynamicFunctionConfigReq {
+  string id = 1; // 主键ID
+  string semesterType = 2; // 学段类型
+  string functionName = 3; // 功能名称
+  string moduleScale = 4; // 模块大小
+  int32 priority = 5; // 排序优先级
+  string imageUrl = 6; // 图片链接
+  string dynamicImageUrl = 7; // 动态图片链接
+  string jumpLink = 8; // 跳转链接
+  string updatedBy = 9; // 最后修改人
+}
+
+message StoreDynamicFunctionConfigReply {
+  string id = 1; // 主键ID
+}
+
+message QueryDynamicFunctionConfigListApiReq {}
+
+// 功能项
+message DynamicFunctionConfigDetail {
+  string id = 1; // 主键ID
+  string functionName = 2; // 功能名称
+  string moduleScale = 3; // 模块大小
+  int32 priority = 4; // 排序优先级
+  string imageUrl = 5; // 图片链接
+  string dynamicImageUrl = 6; // 动态图片链接
+  string jumpLink = 7; // 跳转链接
+  string createdAt = 8; // 创建时间
+  string updatedAt = 9; // 更新时间
+}
+
+message DynamicFunctionConfigItem {
+  string semesterType = 1; // 学段类型
+  int32 functionNums = 2; // 功能数量
+  repeated DynamicFunctionConfigDetail functionList = 3; // 功能列表
+}
+
+message QueryDynamicFunctionConfigListApiResp {
+  repeated DynamicFunctionConfigItem functionConfigList = 1; // 功能配置列表
+}

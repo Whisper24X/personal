@@ -40,7 +40,15 @@ const initializeRepository = async (
   return directory;
 };
 
-const createTaskGitServices = () => {
+const createTaskGitServices = (workspaceNativeDeployService?: any) => {
+  const taskRepository = {
+    findById: jest.fn().mockResolvedValue({
+      id: 'task-1',
+      configJson: {},
+    }),
+    update: jest.fn().mockResolvedValue(undefined),
+    acquireGitOperationLock: jest.fn().mockResolvedValue(true),
+  };
   const artifactService = new TaskWorkspaceArtifactService(
     {} as any,
     {} as any,
@@ -48,11 +56,18 @@ const createTaskGitServices = () => {
       findByTaskId: jest.fn().mockResolvedValue([]),
     } as any,
   );
-  const service = new TaskGitService({} as any, {} as any, artifactService);
+  const service = new TaskGitService(
+    {} as any,
+    {} as any,
+    artifactService,
+    taskRepository as any,
+    workspaceNativeDeployService,
+  );
 
   return {
     service,
     artifactService,
+    taskRepository,
   };
 };
 
@@ -74,7 +89,9 @@ describe('TaskGitService', () => {
       task: {
         gitBaseBranch: 'main',
       },
+      project: { configJson: {} },
       worktreePath: '/tmp/worktree',
+      subRepos: [],
     });
 
     const runGitCommand = jest
@@ -132,7 +149,9 @@ describe('TaskGitService', () => {
       task: {
         gitBaseBranch: 'main',
       },
+      project: { configJson: {} },
       worktreePath: '/tmp/worktree',
+      subRepos: [],
     });
 
     jest
@@ -162,6 +181,247 @@ describe('TaskGitService', () => {
     const result = await service.getStatus('task-1', {} as any);
 
     expect(result.files[0]?.path).toBe('大纲.md');
+  });
+
+  it('should push workspace-native tasks through multi-repo deploy service', async () => {
+    const deployService = {
+      deploy: jest.fn().mockResolvedValue({
+        deployCommitSha: 'abc123',
+        deployStatus: {
+          status: 'done',
+          subRepoPushResults: [
+            {
+              prefix: 'frontend',
+              status: 'success',
+              remoteBranch: 'feature/task-1',
+            },
+            {
+              prefix: 'backend',
+              status: 'skipped',
+              remoteBranch: 'feature/task-1',
+            },
+          ],
+          updatedAt: '2026-05-07T00:00:00.000Z',
+        },
+        subRepoDeployBranches: [],
+      }),
+    };
+    const { service } = createTaskGitServices(deployService);
+    const task = {
+      id: 'task-1',
+      configJson: {
+        workspaceSnapshot: { taskBranch: 'feature/task-1' },
+        subReposSnapshot: [
+          {
+            prefix: 'frontend',
+            url: 'git@github.com:org/frontend.git',
+            branch: 'main',
+          },
+        ],
+      },
+    };
+    const project = {
+      configJson: {
+        subtreeMode: 'workspace-native',
+      },
+    };
+
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task,
+      project,
+      worktreePath: '/tmp/worktree',
+      subRepos: [],
+    });
+    jest.spyOn(service as any, 'listAllArtifactFiles').mockResolvedValue([]);
+
+    const result = await service.push('task-1', {} as never);
+
+    expect(result.success).toBe(true);
+    expect(result.operationId).toEqual(expect.stringMatching(/^push-/));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(deployService.deploy).toHaveBeenCalledWith(
+      task,
+      project,
+      expect.any(Function),
+      expect.objectContaining({ skipLock: true, mode: 'push' }),
+    );
+  });
+
+  it('should not push config repo directly before delegating workspace-native push', async () => {
+    const deployService = {
+      resolveWorktreePath: jest.fn().mockReturnValue('/tmp/worktree'),
+      deploy: jest.fn().mockResolvedValue({
+        deployCommitSha: 'abc123',
+        deployStatus: {
+          status: 'done',
+          subRepoPushResults: [],
+          updatedAt: '2026-05-07T00:00:00.000Z',
+        },
+        subRepoDeployBranches: [],
+      }),
+    };
+    const { service } = createTaskGitServices(deployService);
+
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        id: 'task-1',
+        configJson: {
+          workspaceSnapshot: { taskBranch: 'feature/task-1' },
+          subReposSnapshot: [{ prefix: 'frontend' }],
+        },
+      },
+      project: {
+        configJson: {
+          subtreeMode: 'workspace-native',
+        },
+      },
+      worktreePath: '/tmp/worktree',
+      subRepos: [],
+    });
+    jest.spyOn(service as any, 'listAllArtifactFiles').mockResolvedValue([]);
+
+    const runGitSpy = jest.spyOn(service as any, 'runGitCommand');
+
+    await service.push('task-1', {} as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(
+      runGitSpy.mock.calls.some(
+        ([cwd, args]) =>
+          cwd === '/tmp/worktree' &&
+          Array.isArray(args) &&
+          args[0] === 'push' &&
+          args[1] === 'origin',
+      ),
+    ).toBe(false);
+  });
+
+  it('should return failed result when workspace-native deploy service throws during push', async () => {
+    const deployService = {
+      deploy: jest.fn().mockRejectedValue(new Error('配置仓 push 失败')),
+    };
+    const { service } = createTaskGitServices(deployService);
+
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        id: 'task-1',
+        configJson: {
+          workspaceSnapshot: { taskBranch: 'feature/task-1' },
+          subReposSnapshot: [{ prefix: 'frontend' }],
+        },
+      },
+      project: {
+        configJson: {
+          subtreeMode: 'workspace-native',
+        },
+      },
+      worktreePath: '/tmp/worktree',
+      subRepos: [],
+    });
+    jest.spyOn(service as any, 'listAllArtifactFiles').mockResolvedValue([]);
+
+    const result = await service.push('task-1', {} as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(result.success).toBe(true);
+    expect(result.operationId).toEqual(expect.stringMatching(/^push-/));
+  });
+
+  it('should reject workspace-native push when the task worktree has uncommitted changes', async () => {
+    const repositoryPath = await initializeRepository();
+    createdDirectories.push(repositoryPath);
+
+    await fs.writeFile(
+      path.join(repositoryPath, 'README.md'),
+      '# dirty before push\n',
+    );
+
+    const deployService = {
+      deploy: jest.fn(),
+    };
+    const { service } = createTaskGitServices(deployService);
+
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        id: 'task-1',
+        configJson: {
+          workspaceSnapshot: { taskBranch: 'feature/task-1' },
+          subReposSnapshot: [{ prefix: 'frontend' }],
+        },
+      },
+      project: {
+        configJson: {
+          subtreeMode: 'workspace-native',
+        },
+      },
+      worktreePath: repositoryPath,
+      subRepos: [],
+    });
+
+    const result = await service.push('task-1', {} as never);
+
+    expect(result).toEqual({
+      success: false,
+      message:
+        '任务工作区存在未提交改动，请先填写提交信息并点击“提交”后再推送。',
+    });
+    expect(deployService.deploy).not.toHaveBeenCalled();
+  });
+
+  it('should generate PR links from workspace-native sub-repo snapshot', async () => {
+    const { service } = createTaskGitServices();
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        gitBranch: 'feature/fallback',
+        configJson: {
+          workspaceSnapshot: { taskBranch: 'feature/task-1' },
+          subReposSnapshot: [
+            {
+              prefix: 'frontend',
+              url: 'https://github.com/org/frontend.git',
+              branch: 'develop',
+            },
+            {
+              prefix: 'backend',
+              url: 'git@github.com:org/backend.git',
+              branch: 'main',
+            },
+          ],
+          subRepoDeployBranches: [
+            {
+              prefix: 'backend',
+              remoteBranch: 'feature/task-1-backend',
+            },
+          ],
+        },
+      },
+      project: {
+        configJson: {
+          subtreeMode: 'workspace-native',
+        },
+      },
+      worktreePath: '/tmp/worktree',
+      subRepos: [],
+    });
+
+    const result = await service.getPrLink(
+      'task-1',
+      { baseBranch: 'ignored' },
+      {} as never,
+    );
+
+    expect(result.url).toContain('/compare/main...feature%2Ftask-1-backend');
+    expect(result.urls).toEqual([
+      {
+        prefix: 'frontend',
+        url: null,
+        hint: '请先推送到子仓再创建 PR',
+      },
+      {
+        prefix: 'backend',
+        url: 'https://github.com/org/backend/compare/main...feature%2Ftask-1-backend?expand=1',
+      },
+    ]);
   });
 
   it('should build an artifact tree from all changed files', async () => {
@@ -535,7 +795,9 @@ describe('TaskGitService', () => {
       task: {
         gitBaseBranch: 'main',
       },
+      project: { configJson: {} },
       worktreePath: repositoryPath,
+      subRepos: [],
     });
 
     const result = await service.commitIfChanged(
@@ -564,7 +826,9 @@ describe('TaskGitService', () => {
       task: {
         gitBaseBranch: 'main',
       },
+      project: { configJson: {} },
       worktreePath: repositoryPath,
+      subRepos: [],
     });
 
     const result = await service.commitIfChanged(
@@ -639,7 +903,9 @@ describe('TaskGitService', () => {
       task: {
         gitBaseBranch: 'main',
       },
+      project: { configJson: {} },
       worktreePath: repositoryPath,
+      subRepos: [],
     });
     const previousHome = process.env.HOME;
     const previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
@@ -695,7 +961,9 @@ describe('TaskGitService', () => {
       task: {
         gitBaseBranch: 'main',
       },
+      project: { configJson: {} },
       worktreePath: '/tmp/worktree',
+      subRepos: [],
     });
 
     const calls: string[][] = [];
@@ -789,7 +1057,9 @@ describe('TaskGitService', () => {
       task: {
         gitBaseBranch: 'main',
       },
+      project: { configJson: {} },
       worktreePath: '/tmp/worktree',
+      subRepos: [],
     });
 
     jest
@@ -823,9 +1093,12 @@ describe('TaskGitService', () => {
         });
       });
 
-    await expect(
-      service.merge('task-1', { baseBranch: 'main' }, {} as never),
-    ).rejects.toThrow(/Already on the base branch/);
+    const result = await service.merge(
+      'task-1',
+      { baseBranch: 'main' },
+      {} as never,
+    );
+    expect(result.message).toMatch(/Already on the base branch/);
   });
 
   it('should reject merge when working tree is dirty', async () => {
@@ -835,7 +1108,9 @@ describe('TaskGitService', () => {
       task: {
         gitBaseBranch: 'main',
       },
+      project: { configJson: {} },
       worktreePath: '/tmp/worktree',
+      subRepos: [],
     });
 
     jest
@@ -878,8 +1153,12 @@ describe('TaskGitService', () => {
         });
       });
 
-    await expect(
-      service.merge('task-1', { baseBranch: 'main' }, {} as never),
-    ).rejects.toThrow(/Working tree is not clean/);
+    const result = await service.merge(
+      'task-1',
+      { baseBranch: 'main' },
+      {} as never,
+    );
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/Working tree is not clean/);
   });
 });

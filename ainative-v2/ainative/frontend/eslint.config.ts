@@ -77,6 +77,17 @@ export default defineConfigWithVueTs(
     },
   },
 
+  // Known large SFCs — warn until split (see quality-gate / AGENTS.md)
+  {
+    files: [
+      'src/features/business-lines/BusinessLineManagementPanelInner.vue',
+      'src/features/tasks/detail/TaskEnvironmentGate.vue',
+    ],
+    rules: {
+      'max-lines': ['warn', { max: 600, skipBlankLines: true, skipComments: true }],
+    },
+  },
+
   {
     files: ['src/**/*.{vue,ts,mts,tsx}'],
     plugins: { boundaries: pluginBoundaries },

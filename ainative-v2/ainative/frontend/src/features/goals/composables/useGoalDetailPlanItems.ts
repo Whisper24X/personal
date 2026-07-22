@@ -46,10 +46,29 @@ function mergeSubTaskInDetail(detail: GoalDetailType, updated: GoalPlanSubTask) 
   }
 }
 
+function subTaskDependencyBlockedMessage(
+  item: GoalPlanSubTask,
+  predecessor: GoalPlanSubTask,
+  suffix: 'approve' | 'materialize',
+): string {
+  const tail = suffix === 'approve' ? '后再确认本项' : '后再为本项创建任务'
+  if (predecessor.goalPlanItemId === item.goalPlanItemId) {
+    return (
+      `请先将前置子任务「${predecessor.title}」对应分支通过任务计划「合并分支」并入本功能组分支，并标记为「分支已合并」；` +
+      `合并后请将功能组分支推送至远端，${tail}`
+    )
+  }
+  return (
+    `请先将前置子任务「${predecessor.title}」对应分支并入其所属功能组分支，并标记为「分支已合并」；` +
+    `若依赖跨功能组，请确保前置功能组已整体并入需求分支后，${tail}`
+  )
+}
+
 export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
   const message = useMessage()
 
   const materializing = ref(false)
+  const pushingGoalSubrepos = ref(false)
   const savingPlanItemWorkflowId = ref<string | null>(null)
 
   const planItemDetailOpen = ref(false)
@@ -165,7 +184,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
           return `请先为前置功能组「${predGroup.title}」的全部子任务创建任务后再继续`
         }
         if (st.status !== 'branch_merged') {
-          return `请先将前置功能组「${predGroup.title}」的子任务「${st.title}」对应分支合并入需求分支，并在任务计划中标记为「分支已合并」后再继续`
+          return `请先将前置功能组「${predGroup.title}」的子任务「${st.title}」对应分支通过任务计划「合并分支」并入该功能组分支，并标记为「分支已合并」后再继续`
         }
       }
     }
@@ -196,7 +215,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
         predecessor.status !== 'branch_merged' ||
         !predecessor.taskId?.trim()
       ) {
-        return `请先将前置子任务「${predecessor.title}」对应分支合并入需求分支，并标记为「分支已合并」后再确认本项`
+        return subTaskDependencyBlockedMessage(item, predecessor, 'approve')
       }
     }
     return null
@@ -248,7 +267,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
         return `请先为前置子任务「${predecessor.title}」创建任务后再为本项创建任务`
       }
       if (predecessor.status !== 'branch_merged') {
-        return `请先将前置子任务「${predecessor.title}」对应分支合并入需求分支，并标记为「分支已合并」后再为本项创建任务`
+        return subTaskDependencyBlockedMessage(item, predecessor, 'materialize')
       }
     }
     return null
@@ -473,7 +492,9 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
       if (selectedPlanSubTask.value?.id === updated.id) {
         selectedPlanSubTask.value = updated
       }
-      message.success('已合并并更新计划状态')
+      message.success(
+        '已合并并更新计划状态。请将功能组分支推送至远端，以便后续任务基于最新代码创建。',
+      )
       await options.load()
     } catch (e) {
       message.error(toErrorMessage(e, '合并失败'))
@@ -509,6 +530,28 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     }
   }
 
+  async function pushGoalSubrepos() {
+    const goalId = options.goalId.value
+    if (!goalId) {
+      return
+    }
+
+    pushingGoalSubrepos.value = true
+    try {
+      const res = await goalsApi.pushSubrepos(goalId)
+      if (res.success) {
+        message.success(res.message || '已推送需求分支至子仓')
+      } else {
+        message.warning(res.message || '推送部分失败')
+      }
+      await options.load()
+    } catch (e) {
+      message.error(toErrorMessage(e, '推送失败'))
+    } finally {
+      pushingGoalSubrepos.value = false
+    }
+  }
+
   return {
     confirmPlanItemFromSheet,
     goTaskFromSheet,
@@ -527,6 +570,8 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     planItemEditSummary,
     planItemMaterializeBlockedReason,
     planItemStatusLabel,
+    pushGoalSubrepos,
+    pushingGoalSubrepos,
     resetPlanItemTextDraft,
     savingPlanItemText,
     savingPlanItemWorkflowId,

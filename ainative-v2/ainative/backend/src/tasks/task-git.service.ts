@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
@@ -12,6 +14,7 @@ import { Project } from '../projects/domain/project';
 import { TaskAccessService } from './application/task-access.service';
 import { TaskWorkspaceArtifactService } from './application/task-workspace-artifact.service';
 import {
+  SubRepoBranchInfoDto,
   TaskGitActionResultDto,
   TaskGitBranchDiffFilesDto,
   TaskGitBranchDiffQueryDto,
@@ -35,6 +38,24 @@ import {
   SlowApiDiagnosticsSession,
   createSlowApiDiagnostics,
 } from '../observability/slow-api-diagnostics';
+import {
+  resolveSubReposForWorktree,
+  resolveSubRepoForPath,
+  buildSubRepoExcludePathspecs,
+  type SubRepoConfig,
+  type ResolvedSubRepo,
+  type GitSnapshot,
+  type GitSnapshotRepo,
+} from '../git/sub-repo.types';
+import {
+  hasSubRepoMode,
+  isWorkspaceNativeEnabled,
+} from '../git/snapshot-sync.types';
+import { TaskRepository } from './infrastructure/persistence/task.repository';
+import {
+  WORKSPACE_NATIVE_PUSH_DIRTY_MESSAGE,
+  WorkspaceNativeDeployService,
+} from './application/workspace-native-deploy.service';
 
 type GitExecutionResult = {
   success: boolean;
@@ -50,6 +71,16 @@ type GitBinaryExecutionResult = {
   exitCode: number | null;
 };
 
+type TaskGitAsyncOperation = {
+  id: string;
+  type: 'push' | 'merge' | 'deploy';
+  status: 'running' | 'success' | 'failed' | 'cancelled';
+  startedAt: string;
+  finishedAt?: string;
+  logs: string[];
+  message?: string;
+};
+
 export type TaskGitCommitIfChangedResult = {
   committed: boolean;
   skippedReason?: 'no_changes';
@@ -59,6 +90,7 @@ export type TaskGitCommitIfChangedResult = {
 
 @Injectable()
 export class TaskGitService {
+  private readonly logger = new Logger(TaskGitService.name);
   private readonly defaultGitTimeoutMs = 90_000;
   private readonly maxDiffTextLength = 180_000;
   private readonly fallbackCommitAuthorName =
@@ -70,6 +102,9 @@ export class TaskGitService {
     private readonly taskAccessService: TaskAccessService,
     private readonly taskRuntimeService: TaskRuntimeService,
     private readonly taskWorkspaceArtifactService: TaskWorkspaceArtifactService,
+    private readonly taskRepository: TaskRepository,
+    @Optional()
+    private readonly workspaceNativeDeployService?: WorkspaceNativeDeployService,
   ) {}
 
   async getStatus(
@@ -82,54 +117,90 @@ export class TaskGitService {
     });
 
     try {
-      const { task, worktreePath } = await this.resolveTaskGitContext(
-        taskId,
-        currentUser,
-        diagnostics,
-      );
+      const { task, project, worktreePath, subRepos } =
+        await this.resolveTaskGitContext(taskId, currentUser, diagnostics);
 
-      const [statusResult, branchResult] = await Promise.all([
-        this.measureGitCommand(diagnostics, 'gitStatus', () =>
-          this.runGitCommand(
-            worktreePath,
-            this.withGitUtf8Paths([
-              'status',
-              '--porcelain',
-              '--untracked-files=all',
-            ]),
-          ),
-        ),
-        this.measureGitCommand(diagnostics, 'gitBranch', () =>
-          this.runGitCommand(worktreePath, [
-            'rev-parse',
-            '--abbrev-ref',
-            'HEAD',
-          ]),
-        ),
-      ]);
+      const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+      const excludePathspecs = buildSubRepoExcludePathspecs(subRepos);
+      const allFiles: TaskGitStatusDto['files'] = [];
+      let branchName: string | null = null;
+      const subRepoBranches: SubRepoBranchInfoDto[] = [];
 
-      if (!statusResult.success) {
-        throw this.toGitException('Failed to read git status', statusResult);
-      }
+      for (const repo of allRepos) {
+        const statusArgs = this.withGitUtf8Paths([
+          'status',
+          '--porcelain',
+          '--untracked-files=all',
+          ...(!repo.prefix ? excludePathspecs : []),
+        ]);
 
-      if (!branchResult.success) {
-        throw this.toGitException(
-          'Failed to read current branch',
-          branchResult,
+        const [statusResult, branchResult] = await Promise.all([
+          repo.prefix === ''
+            ? this.measureGitCommand(diagnostics, 'gitStatus', () =>
+                this.runGitCommand(repo.cwd, statusArgs),
+              )
+            : this.runGitCommand(repo.cwd, statusArgs),
+          repo.prefix === ''
+            ? this.measureGitCommand(diagnostics, 'gitBranch', () =>
+                this.runGitCommand(repo.cwd, [
+                  'rev-parse',
+                  '--abbrev-ref',
+                  'HEAD',
+                ]),
+              )
+            : this.runGitCommand(repo.cwd, [
+                'rev-parse',
+                '--abbrev-ref',
+                'HEAD',
+              ]),
+        ]);
+
+        if (!statusResult.success) {
+          throw this.toGitException('Failed to read git status', statusResult);
+        }
+
+        const files = this.parseChangedFiles(statusResult.stdout);
+        allFiles.push(
+          ...files.map((f) => ({
+            ...f,
+            path: this.prefixFilePath(repo.prefix, f.path),
+          })),
         );
+
+        const repoBranch = branchResult.success
+          ? this.normalizeBranchName(branchResult.stdout)
+          : null;
+
+        if (branchName === null) {
+          branchName = repoBranch;
+        }
+
+        if (repo.prefix) {
+          const sub = subRepos.find((s) => s.prefix === repo.prefix);
+          if (sub) {
+            subRepoBranches.push({
+              prefix: sub.prefix,
+              branchName: repoBranch,
+              baseBranch: sub.branch,
+            });
+          }
+        }
       }
 
-      const files = this.parseChangedFiles(statusResult.stdout);
       diagnostics.add({
         baseBranch: task.gitBaseBranch ?? null,
-        branchName: this.normalizeBranchName(branchResult.stdout),
-        changedFileCount: files.length,
+        branchName,
+        changedFileCount: allFiles.length,
       });
 
       return {
-        branchName: this.normalizeBranchName(branchResult.stdout),
+        branchName,
         baseBranch: task.gitBaseBranch ?? null,
-        files,
+        files: allFiles,
+        operation: this.readGitOperation(task),
+        ...(subRepoBranches.length > 0
+          ? { subRepoBranches }
+          : this.buildWorkspaceNativeSubRepoBranches(task, project)),
       };
     } finally {
       diagnostics.flush();
@@ -141,28 +212,46 @@ export class TaskGitService {
     query: TaskGitDiffQueryDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitDiffDto> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    const { worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
 
-    const args = this.withGitUtf8Paths(['diff', '--no-color']);
-    if (query.staged) {
-      args.push('--cached');
-    }
-
     const filePath = query.path ? this.normalizeRelativePath(query.path) : null;
-    if (filePath) {
-      args.push('--', filePath);
+
+    if (filePath && subRepos.length > 0) {
+      const match = resolveSubRepoForPath(subRepos, filePath);
+      const cwd = match ? match.subRepo.worktreePath : worktreePath;
+      const relPath = match ? match.relativePath : filePath;
+
+      const args = this.withGitUtf8Paths(['diff', '--no-color']);
+      if (query.staged) args.push('--cached');
+      args.push('--', relPath);
+
+      const result = await this.runGitCommand(cwd, args);
+      if (!result.success) {
+        throw this.toGitException('Failed to read git diff', result);
+      }
+      return { diffText: result.stdout.slice(0, this.maxDiffTextLength) };
     }
 
-    const result = await this.runGitCommand(worktreePath, args);
-    if (!result.success) {
-      throw this.toGitException('Failed to read git diff', result);
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const excludePathspecs = buildSubRepoExcludePathspecs(subRepos);
+    const diffParts: string[] = [];
+
+    for (const repo of allRepos) {
+      const args = this.withGitUtf8Paths(['diff', '--no-color']);
+      if (query.staged) args.push('--cached');
+      if (!repo.prefix) args.push(...excludePathspecs);
+
+      const result = await this.runGitCommand(repo.cwd, args);
+      if (result.success && result.stdout.trim()) {
+        diffParts.push(result.stdout);
+      }
     }
 
     return {
-      diffText: result.stdout.slice(0, this.maxDiffTextLength),
+      diffText: diffParts.join('\n').slice(0, this.maxDiffTextLength),
     };
   }
 
@@ -171,57 +260,67 @@ export class TaskGitService {
     query: TaskGitBranchDiffQueryDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitBranchDiffFilesDto> {
-    const { task, worktreePath } = await this.resolveTaskGitContext(
+    const { task, worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
 
-    const baseBranch = await this.resolveBaseBranch(
-      worktreePath,
-      task,
-      query.baseBranch,
-    );
-    const [diffFilesResult, branchResult] = await Promise.all([
-      this.runGitCommand(
-        worktreePath,
-        this.withGitUtf8Paths([
-          'diff',
-          '--name-status',
-          `${baseBranch}...HEAD`,
-        ]),
-      ),
-      this.runGitCommand(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']),
-    ]);
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const excludePathspecs = buildSubRepoExcludePathspecs(subRepos);
+    let currentBranch: string | null = null;
+    let baseBranch: string | null = null;
+    const allFiles: Array<{ path: string; status: string }> = [];
 
-    if (!diffFilesResult.success) {
-      throw this.toGitException(
-        'Failed to read branch diff files',
-        diffFilesResult,
-      );
+    for (const repo of allRepos) {
+      const repoBaseBranch = repo.prefix
+        ? await this.resolveBaseBranch(
+            repo.cwd,
+            task,
+            subRepos.find((s) => s.prefix === repo.prefix)?.branch,
+          )
+        : await this.resolveBaseBranch(repo.cwd, task, query.baseBranch);
+      if (!baseBranch) baseBranch = repoBaseBranch;
+
+      const diffArgs = this.withGitUtf8Paths([
+        'diff',
+        '--name-status',
+        `${repoBaseBranch}...HEAD`,
+        ...(!repo.prefix ? excludePathspecs : []),
+      ]);
+
+      const [diffFilesResult, branchResult] = await Promise.all([
+        this.runGitCommand(repo.cwd, diffArgs),
+        this.runGitCommand(repo.cwd, ['rev-parse', '--abbrev-ref', 'HEAD']),
+      ]);
+
+      if (diffFilesResult.success) {
+        const files = diffFilesResult.stdout
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const [statusToken, ...pathParts] = line.split('\t');
+            const rawPath = pathParts[pathParts.length - 1] ?? '';
+            return {
+              path: this.prefixFilePath(
+                repo.prefix,
+                this.decodeGitQuotedPath(rawPath),
+              ),
+              status: statusToken || '?',
+            };
+          });
+        allFiles.push(...files);
+      }
+
+      if (branchResult.success && !currentBranch) {
+        currentBranch = this.normalizeBranchName(branchResult.stdout);
+      }
     }
-
-    if (!branchResult.success) {
-      throw this.toGitException('Failed to read current branch', branchResult);
-    }
-
-    const files = diffFilesResult.stdout
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [statusToken, ...pathParts] = line.split('\t');
-        const rawPath = pathParts[pathParts.length - 1] ?? '';
-
-        return {
-          path: this.decodeGitQuotedPath(rawPath),
-          status: statusToken || '?',
-        };
-      });
 
     return {
       baseBranch,
-      currentBranch: this.normalizeBranchName(branchResult.stdout),
-      files,
+      currentBranch,
+      files: allFiles,
     };
   }
 
@@ -230,33 +329,65 @@ export class TaskGitService {
     query: TaskGitBranchDiffQueryDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitDiffDto> {
-    const { task, worktreePath } = await this.resolveTaskGitContext(
+    const { task, worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
 
-    const baseBranch = await this.resolveBaseBranch(
-      worktreePath,
-      task,
-      query.baseBranch,
-    );
-    const args = this.withGitUtf8Paths([
-      'diff',
-      '--no-color',
-      `${baseBranch}...HEAD`,
-    ]);
+    if (query.path && subRepos.length > 0) {
+      const filePath = this.normalizeRelativePath(query.path);
+      const match = resolveSubRepoForPath(subRepos, filePath);
+      const cwd = match ? match.subRepo.worktreePath : worktreePath;
+      const relPath = match ? match.relativePath : filePath;
+      const subBranch = match?.subRepo.branch;
+      const repoBaseBranch = await this.resolveBaseBranch(
+        cwd,
+        task,
+        subBranch ?? query.baseBranch,
+      );
 
-    if (query.path) {
-      args.push('--', this.normalizeRelativePath(query.path));
+      const args = this.withGitUtf8Paths([
+        'diff',
+        '--no-color',
+        `${repoBaseBranch}...HEAD`,
+        '--',
+        relPath,
+      ]);
+      const result = await this.runGitCommand(cwd, args);
+      if (!result.success) {
+        throw this.toGitException('Failed to read branch diff', result);
+      }
+      return { diffText: result.stdout.slice(0, this.maxDiffTextLength) };
     }
 
-    const result = await this.runGitCommand(worktreePath, args);
-    if (!result.success) {
-      throw this.toGitException('Failed to read branch diff', result);
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const excludePathspecs = buildSubRepoExcludePathspecs(subRepos);
+    const diffParts: string[] = [];
+
+    for (const repo of allRepos) {
+      const repoBaseBranch = repo.prefix
+        ? await this.resolveBaseBranch(
+            repo.cwd,
+            task,
+            subRepos.find((s) => s.prefix === repo.prefix)?.branch,
+          )
+        : await this.resolveBaseBranch(repo.cwd, task, query.baseBranch);
+
+      const args = this.withGitUtf8Paths([
+        'diff',
+        '--no-color',
+        `${repoBaseBranch}...HEAD`,
+        ...(!repo.prefix ? excludePathspecs : []),
+      ]);
+
+      const result = await this.runGitCommand(repo.cwd, args);
+      if (result.success && result.stdout.trim()) {
+        diffParts.push(result.stdout);
+      }
     }
 
     return {
-      diffText: result.stdout.slice(0, this.maxDiffTextLength),
+      diffText: diffParts.join('\n').slice(0, this.maxDiffTextLength),
     };
   }
 
@@ -306,20 +437,22 @@ export class TaskGitService {
     payload: TaskGitFilesDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitActionResultDto> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    const { worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
     const files = this.normalizeFilePaths(payload.files);
+    const routed = this.routeFilesToRepos(worktreePath, subRepos, files);
 
-    const result = await this.runGitCommand(worktreePath, [
-      'add',
-      '--',
-      ...files,
-    ]);
-
-    if (!result.success) {
-      throw this.toGitException('Failed to stage files', result);
+    for (const entry of routed) {
+      const result = await this.runGitCommand(entry.cwd, [
+        'add',
+        '--',
+        ...entry.files,
+      ]);
+      if (!result.success) {
+        throw this.toGitException('Failed to stage files', result);
+      }
     }
 
     return {
@@ -333,21 +466,23 @@ export class TaskGitService {
     payload: TaskGitFilesDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitActionResultDto> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    const { worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
     const files = this.normalizeFilePaths(payload.files);
+    const routed = this.routeFilesToRepos(worktreePath, subRepos, files);
 
-    const result = await this.runGitCommand(worktreePath, [
-      'restore',
-      '--staged',
-      '--',
-      ...files,
-    ]);
-
-    if (!result.success) {
-      throw this.toGitException('Failed to unstage files', result);
+    for (const entry of routed) {
+      const result = await this.runGitCommand(entry.cwd, [
+        'restore',
+        '--staged',
+        '--',
+        ...entry.files,
+      ]);
+      if (!result.success) {
+        throw this.toGitException('Failed to unstage files', result);
+      }
     }
 
     return {
@@ -361,6 +496,17 @@ export class TaskGitService {
     payload: TaskGitCommitDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitActionResultDto> {
+    const task = await this.taskRepository.findById(taskId);
+    if (task) {
+      const running = this.readGitOperation(task);
+      if (running?.status === 'running') {
+        return {
+          success: false,
+          message: `${this.formatGitOperationType(running.type)}正在执行，请等待完成后再提交。`,
+        };
+      }
+    }
+
     const result = await this.commitInTaskWorktree(
       taskId,
       payload.message,
@@ -382,12 +528,12 @@ export class TaskGitService {
     message: string,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitCommitIfChangedResult> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    const { worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
 
-    return this.commitIfChangedInWorktree(worktreePath, message);
+    return this.commitIfChangedInAllRepos(worktreePath, subRepos, message);
   }
 
   async commitIfChangedForTask(
@@ -397,7 +543,16 @@ export class TaskGitService {
   ): Promise<TaskGitCommitIfChangedResult> {
     const worktreePath = await this.resolveTaskGitWorktreePath(task, project);
 
-    return this.commitIfChangedInWorktree(worktreePath, message);
+    if (hasSubRepoMode(project)) {
+      return this.commitIfChangedInWorktree(worktreePath, message);
+    }
+
+    const subRepos = resolveSubReposForWorktree(
+      worktreePath,
+      project.configJson,
+    );
+
+    return this.commitIfChangedInAllRepos(worktreePath, subRepos, message);
   }
 
   async resolveHeadCommitShaForTask(
@@ -475,16 +630,173 @@ export class TaskGitService {
     payload: TaskGitBranchDiffQueryDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitActionResultDto> {
-    const { task, worktreePath } = await this.resolveTaskGitContext(
-      taskId,
-      currentUser,
-    );
+    const { task, project, worktreePath, subRepos } =
+      await this.resolveTaskGitContext(taskId, currentUser);
 
-    const baseShort = this.resolveBaseShortName(payload.baseBranch, task);
-    const resolvedBaseRef = await this.resolveBaseBranch(
-      worktreePath,
+    if (isWorkspaceNativeEnabled(project)) {
+      return this.startWorkspaceNativeGitOperation(task, project, 'merge', () =>
+        this.mergeWorkspaceNativeTask(task, project, worktreePath, payload),
+      );
+    }
+
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const messages: string[] = [];
+    let allSuccess = true;
+    const allConflicts: string[] = [];
+
+    for (const repo of allRepos) {
+      const label = repo.prefix || 'main';
+      const requestedBase = repo.prefix
+        ? subRepos.find((s) => s.prefix === repo.prefix)?.branch
+        : payload.baseBranch;
+
+      const baseShort = this.resolveBaseShortName(requestedBase, task);
+      const resolvedBaseRef = await this.resolveBaseBranch(
+        repo.cwd,
+        task,
+        requestedBase,
+      );
+
+      const headRefResult = await this.runGitCommand(repo.cwd, [
+        'rev-parse',
+        '--abbrev-ref',
+        'HEAD',
+      ]);
+      if (!headRefResult.success) {
+        allSuccess = false;
+        messages.push(
+          `[${label}] ${this.formatGitFailure('Failed to read current branch', headRefResult)}`,
+        );
+        continue;
+      }
+
+      const currentBranch = this.normalizeBranchName(headRefResult.stdout);
+      if (!currentBranch) {
+        allSuccess = false;
+        messages.push(`[${label}] Cannot merge while in detached HEAD state`);
+        continue;
+      }
+
+      if (currentBranch === baseShort) {
+        messages.push(`[${label}] Already on the base branch; skipped`);
+        continue;
+      }
+
+      const statusResult = await this.runGitCommand(
+        repo.cwd,
+        this.withGitUtf8Paths([
+          'status',
+          '--porcelain',
+          '--untracked-files=all',
+        ]),
+      );
+      if (!statusResult.success) {
+        allSuccess = false;
+        messages.push(
+          `[${label}] ${this.formatGitFailure('Failed to read git status', statusResult)}`,
+        );
+        continue;
+      }
+      if (statusResult.stdout.trim()) {
+        allSuccess = false;
+        messages.push(
+          `[${label}] Working tree is not clean; commit or discard changes before merging`,
+        );
+        continue;
+      }
+
+      const localBaseRef = await this.runGitCommand(repo.cwd, [
+        'rev-parse',
+        '--verify',
+        `refs/heads/${baseShort}`,
+      ]);
+
+      const checkoutBaseResult = localBaseRef.success
+        ? await this.runGitCommand(repo.cwd, ['checkout', baseShort])
+        : await this.runGitCommand(repo.cwd, [
+            'checkout',
+            '-B',
+            baseShort,
+            resolvedBaseRef,
+          ]);
+
+      if (!checkoutBaseResult.success) {
+        allSuccess = false;
+        messages.push(
+          `[${label}] ${this.formatGitFailure('Failed to checkout base branch', checkoutBaseResult)}`,
+        );
+        continue;
+      }
+
+      const mergeResult = await this.runGitCommand(repo.cwd, [
+        'merge',
+        '--no-ff',
+        currentBranch,
+      ]);
+
+      if (!mergeResult.success) {
+        allSuccess = false;
+        const conflicts = await this.readConflictFiles(repo.cwd);
+        await this.runGitCommand(repo.cwd, ['merge', '--abort']);
+        await this.runGitCommand(repo.cwd, ['checkout', currentBranch]);
+        allConflicts.push(
+          ...conflicts.map((c) => this.prefixFilePath(repo.prefix, c)),
+        );
+        messages.push(
+          `[${label}] ${this.formatGitFailure('Merge failed', mergeResult)}`,
+        );
+        continue;
+      }
+
+      const checkoutBackResult = await this.runGitCommand(repo.cwd, [
+        'checkout',
+        currentBranch,
+      ]);
+      if (!checkoutBackResult.success) {
+        messages.push(
+          `[${label}] Merged into ${baseShort} but failed to switch back to ${currentBranch}`,
+        );
+        continue;
+      }
+
+      const detail =
+        mergeResult.stdout.trim() || mergeResult.stderr.trim() || '';
+      messages.push(
+        `[${label}] Merged "${currentBranch}" into local base "${baseShort}" and switched back` +
+          (detail ? `: ${detail}` : ''),
+      );
+    }
+
+    return {
+      success: allSuccess,
+      message: messages.join('\n'),
+      conflicts: allConflicts.length > 0 ? allConflicts : undefined,
+    };
+  }
+
+  /**
+   * Merge task HEAD into the functional-group / base branch in the main workspace repo.
+   * Classic `merge()` does this for the `prefix: ''` repo; workspace-native previously skipped it
+   * and only ran sub-repo remote merges, so `gitBaseBranch` never advanced and later tasks forked stale tips.
+   */
+  private async mergeWorkspaceNativeMainRepo(
+    task: Task,
+    worktreePath: string,
+    payload: TaskGitBranchDiffQueryDto,
+  ): Promise<TaskGitActionResultDto> {
+    const requestedBase =
+      payload.baseBranch?.trim() || task.gitBaseBranch?.trim() || '';
+    if (!requestedBase) {
+      return {
+        success: false,
+        message:
+          'Workspace-native：缺少基准分支，无法将任务分支合并入功能组分支（需要任务 gitBaseBranch 或请求参数 baseBranch）',
+      };
+    }
+
+    const baseShort = this.resolveBaseShortName(
+      payload.baseBranch ?? task.gitBaseBranch ?? undefined,
       task,
-      payload.baseBranch,
     );
 
     const headRefResult = await this.runGitCommand(worktreePath, [
@@ -493,20 +805,25 @@ export class TaskGitService {
       'HEAD',
     ]);
     if (!headRefResult.success) {
-      throw this.toGitException('Failed to read current branch', headRefResult);
+      return {
+        success: false,
+        message: `[main] ${this.formatGitFailure('Failed to read current branch', headRefResult)}`,
+      };
     }
 
     const currentBranch = this.normalizeBranchName(headRefResult.stdout);
     if (!currentBranch) {
-      throw new BadRequestException(
-        'Cannot merge while in detached HEAD state',
-      );
+      return {
+        success: false,
+        message: '[main] Cannot merge while in detached HEAD state',
+      };
     }
 
     if (currentBranch === baseShort) {
-      throw new BadRequestException(
-        'Already on the base branch; check out a feature branch to merge into the base',
-      );
+      return {
+        success: true,
+        message: `[main] Already on the base branch "${baseShort}"; skipped main-repo merge`,
+      };
     }
 
     const statusResult = await this.runGitCommand(
@@ -514,12 +831,17 @@ export class TaskGitService {
       this.withGitUtf8Paths(['status', '--porcelain', '--untracked-files=all']),
     );
     if (!statusResult.success) {
-      throw this.toGitException('Failed to read git status', statusResult);
+      return {
+        success: false,
+        message: `[main] ${this.formatGitFailure('Failed to read git status', statusResult)}`,
+      };
     }
     if (statusResult.stdout.trim()) {
-      throw new BadRequestException(
-        'Working tree is not clean; commit or discard changes before merging',
-      );
+      return {
+        success: false,
+        message:
+          '[main] Working tree is not clean; commit or discard changes before merging',
+      };
     }
 
     const localBaseRef = await this.runGitCommand(worktreePath, [
@@ -528,20 +850,36 @@ export class TaskGitService {
       `refs/heads/${baseShort}`,
     ]);
 
+    let resolvedBaseRefForCheckout: string;
+    if (localBaseRef.success) {
+      resolvedBaseRefForCheckout = baseShort;
+    } else {
+      const originVerify = await this.runGitCommand(worktreePath, [
+        'rev-parse',
+        '--verify',
+        `refs/remotes/origin/${baseShort}`,
+      ]);
+      if (originVerify.success) {
+        resolvedBaseRefForCheckout = `origin/${baseShort}`;
+      } else {
+        resolvedBaseRefForCheckout = baseShort;
+      }
+    }
+
     const checkoutBaseResult = localBaseRef.success
       ? await this.runGitCommand(worktreePath, ['checkout', baseShort])
       : await this.runGitCommand(worktreePath, [
           'checkout',
           '-B',
           baseShort,
-          resolvedBaseRef,
+          resolvedBaseRefForCheckout,
         ]);
 
     if (!checkoutBaseResult.success) {
-      throw this.toGitException(
-        'Failed to checkout base branch',
-        checkoutBaseResult,
-      );
+      return {
+        success: false,
+        message: `[main] ${this.formatGitFailure('Failed to checkout base branch', checkoutBaseResult)}`,
+      };
     }
 
     const mergeResult = await this.runGitCommand(worktreePath, [
@@ -553,24 +891,11 @@ export class TaskGitService {
     if (!mergeResult.success) {
       const conflicts = await this.readConflictFiles(worktreePath);
       await this.runGitCommand(worktreePath, ['merge', '--abort']);
-      const checkoutBackAfterFailure = await this.runGitCommand(worktreePath, [
-        'checkout',
-        currentBranch,
-      ]);
-
-      const failureMessage = this.formatGitFailure('Merge failed', mergeResult);
-      if (!checkoutBackAfterFailure.success) {
-        return {
-          success: false,
-          message: `${failureMessage} Failed to return to ${currentBranch}: ${this.formatGitFailure('Checkout failed', checkoutBackAfterFailure)}`,
-          conflicts,
-        };
-      }
-
+      await this.runGitCommand(worktreePath, ['checkout', currentBranch]);
       return {
         success: false,
-        message: failureMessage,
-        conflicts,
+        message: `[main] ${this.formatGitFailure('Merge failed', mergeResult)}`,
+        conflicts: conflicts.length > 0 ? conflicts : undefined,
       };
     }
 
@@ -579,20 +904,225 @@ export class TaskGitService {
       currentBranch,
     ]);
     if (!checkoutBackResult.success) {
-      throw this.toGitException(
-        `Merged into ${baseShort} but failed to switch back to ${currentBranch}`,
-        checkoutBackResult,
-      );
+      return {
+        success: false,
+        message: `[main] Merged into ${baseShort} but failed to switch back to ${currentBranch}`,
+      };
     }
 
     const detail = mergeResult.stdout.trim() || mergeResult.stderr.trim() || '';
-
     return {
       success: true,
       message:
-        `Merged "${currentBranch}" into local base "${baseShort}" and switched back. Remote base was not updated.` +
-        (detail ? ` ${detail}` : ''),
+        `[main] Merged "${currentBranch}" into local base "${baseShort}" and switched back` +
+        (detail ? `: ${detail}` : ''),
     };
+  }
+
+  private async mergeWorkspaceNativeTask(
+    task: Task,
+    project: Project,
+    worktreePath: string,
+    payload: TaskGitBranchDiffQueryDto,
+  ): Promise<TaskGitActionResultDto> {
+    if (!this.workspaceNativeDeployService) {
+      throw new ConflictException('Workspace-native merge service unavailable');
+    }
+
+    try {
+      const mainResult = await this.mergeWorkspaceNativeMainRepo(
+        task,
+        worktreePath,
+        payload,
+      );
+      if (!mainResult.success) {
+        return mainResult;
+      }
+
+      const result =
+        await this.workspaceNativeDeployService.mergeSubRepoBranches(
+          task,
+          project,
+        );
+      const allSuccess = result.results.every(
+        (item) => item.status === 'success' || item.status === 'skipped',
+      );
+      const messages = result.results.map((item) => {
+        if (item.status === 'success') {
+          return `[${item.prefix}] Merged ${item.baseBranch} into ${item.remoteBranch}`;
+        }
+        if (item.status === 'skipped') {
+          return `[${item.prefix}] ${item.remoteBranch} already includes ${item.baseBranch}`;
+        }
+        return `[${item.prefix}] Merge failed ${item.baseBranch} -> ${item.remoteBranch || '-'}: ${item.error ?? 'unknown error'}`;
+      });
+
+      return {
+        success: allSuccess,
+        message:
+          [
+            mainResult.message?.trim(),
+            messages.join('\n') ||
+              'No sub-repository merge operations were executed',
+          ]
+            .filter((line): line is string => Boolean(line?.length))
+            .join('\n') || 'Merge completed',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Workspace-native merge failed',
+      };
+    }
+  }
+
+  private async startWorkspaceNativeGitOperation(
+    task: Task,
+    project: Project,
+    type: 'push' | 'merge' | 'deploy',
+    runner: () => Promise<TaskGitActionResultDto>,
+  ): Promise<TaskGitActionResultDto> {
+    const operation: TaskGitAsyncOperation = {
+      id: `${type}-${Date.now()}`,
+      type,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      logs: [`${this.formatGitOperationType(type)}已开始，后台执行中。`],
+    };
+
+    // Atomic compare-and-set: only acquire if no operation is running
+    const acquired = await this.taskRepository.acquireGitOperationLock(
+      task.id,
+      operation as unknown as Record<string, unknown>,
+    );
+
+    if (!acquired) {
+      const current = await this.taskRepository.findById(task.id);
+      const running = current ? this.readGitOperation(current) : null;
+      return {
+        success: false,
+        message: `${this.formatGitOperationType(running?.type ?? type)}正在执行，请等待完成后再操作。`,
+        operationId: running?.id,
+      };
+    }
+    this.logger.log(
+      `[task:${task.id}] workspace-native ${type} operation started (${operation.id})`,
+    );
+
+    void (async () => {
+      const logs = [...operation.logs];
+      try {
+        const latestTask = await this.taskRepository.findById(task.id);
+        const result = await runner();
+        logs.push(...this.splitOperationMessage(result.message));
+
+        const finished: TaskGitAsyncOperation = {
+          ...operation,
+          status: result.success ? 'success' : 'failed',
+          finishedAt: new Date().toISOString(),
+          logs,
+          message: result.message,
+        };
+
+        await this.writeGitOperation((latestTask ?? task).id, finished);
+        this.logger[result.success ? 'log' : 'error'](
+          `[task:${task.id}] workspace-native ${type} operation ${result.success ? 'succeeded' : 'failed'} (${operation.id}): ${result.message}`,
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Workspace git operation failed';
+        logs.push(message);
+        await this.writeGitOperation(task.id, {
+          ...operation,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          logs,
+          message,
+        });
+        this.logger.error(
+          `[task:${task.id}] workspace-native ${type} operation failed (${operation.id}): ${message}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
+    })();
+
+    return {
+      success: true,
+      message: `${this.formatGitOperationType(type)}已在后台开始，可继续使用页面，完成后会显示结果。`,
+      operationId: operation.id,
+    };
+  }
+
+  private readGitOperation(task: Task): TaskGitAsyncOperation | undefined {
+    const config = (task.configJson ?? {}) as Record<string, unknown>;
+    const operation = config.gitOperation;
+    if (!operation || typeof operation !== 'object') return undefined;
+    const record = operation as Record<string, unknown>;
+    if (
+      typeof record.id !== 'string' ||
+      (record.type !== 'push' &&
+        record.type !== 'merge' &&
+        record.type !== 'deploy') ||
+      (record.status !== 'running' &&
+        record.status !== 'success' &&
+        record.status !== 'failed' &&
+        record.status !== 'cancelled') ||
+      typeof record.startedAt !== 'string'
+    ) {
+      return undefined;
+    }
+
+    return {
+      id: record.id,
+      type: record.type,
+      status: record.status,
+      startedAt: record.startedAt,
+      finishedAt:
+        typeof record.finishedAt === 'string' ? record.finishedAt : undefined,
+      logs: Array.isArray(record.logs)
+        ? record.logs.filter((line): line is string => typeof line === 'string')
+        : [],
+      message: typeof record.message === 'string' ? record.message : undefined,
+    };
+  }
+
+  private async writeGitOperation(
+    taskId: string,
+    operation: TaskGitAsyncOperation,
+  ): Promise<void> {
+    const latestTask = await this.taskRepository.findById(taskId);
+    if (!latestTask) return;
+    await this.taskRepository.update(taskId, {
+      configJson: {
+        ...((latestTask.configJson ?? {}) as Record<string, unknown>),
+        gitOperation: operation,
+      } as any,
+    });
+  }
+
+  private formatGitOperationType(type: string): string {
+    switch (type) {
+      case 'push':
+        return '推送';
+      case 'merge':
+        return '同步子仓基准分支';
+      case 'deploy':
+        return '部署';
+      default:
+        return type;
+    }
+  }
+
+  private splitOperationMessage(message: string): string[] {
+    return message
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
   }
 
   async rebase(
@@ -600,34 +1130,50 @@ export class TaskGitService {
     payload: TaskGitBranchDiffQueryDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitActionResultDto> {
-    const { task, worktreePath } = await this.resolveTaskGitContext(
+    const { task, worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
-    const baseBranch = await this.resolveBaseBranch(
-      worktreePath,
-      task,
-      payload.baseBranch,
-    );
 
-    const result = await this.runGitCommand(worktreePath, [
-      'rebase',
-      baseBranch,
-    ]);
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const messages: string[] = [];
+    let allSuccess = true;
+    const allConflicts: string[] = [];
 
-    if (result.success) {
-      return {
-        success: true,
-        message: result.stdout || `Rebased onto ${baseBranch}`,
-      };
+    for (const repo of allRepos) {
+      const repoBaseBranch = repo.prefix
+        ? await this.resolveBaseBranch(
+            repo.cwd,
+            task,
+            subRepos.find((s) => s.prefix === repo.prefix)?.branch,
+          )
+        : await this.resolveBaseBranch(repo.cwd, task, payload.baseBranch);
+      const result = await this.runGitCommand(repo.cwd, [
+        'rebase',
+        repoBaseBranch,
+      ]);
+
+      const label = repo.prefix || 'main';
+
+      if (result.success) {
+        messages.push(`[${label}] Rebased onto ${repoBaseBranch}`);
+      } else {
+        allSuccess = false;
+        messages.push(
+          `[${label}] ${this.formatGitFailure('Rebase failed', result)}`,
+        );
+        const conflicts = await this.readConflictFiles(repo.cwd);
+        allConflicts.push(
+          ...conflicts.map((c) => this.prefixFilePath(repo.prefix, c)),
+        );
+        await this.runGitCommand(repo.cwd, ['rebase', '--abort']);
+      }
     }
 
-    const conflicts = await this.readConflictFiles(worktreePath);
-
     return {
-      success: false,
-      message: this.formatGitFailure('Rebase failed', result),
-      conflicts,
+      success: allSuccess,
+      message: messages.join('\n'),
+      conflicts: allConflicts.length > 0 ? allConflicts : undefined,
     };
   }
 
@@ -635,51 +1181,213 @@ export class TaskGitService {
     taskId: string,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitActionResultDto> {
-    const { worktreePath } = await this.resolveTaskGitContext(
-      taskId,
-      currentUser,
-    );
+    const { task, project, worktreePath, subRepos } =
+      await this.resolveTaskGitContext(taskId, currentUser);
 
-    const result = await this.runGitCommand(worktreePath, [
-      'push',
-      '--set-upstream',
-      'origin',
-      'HEAD',
-    ]);
+    if (isWorkspaceNativeEnabled(project)) {
+      const running = this.readGitOperation(task);
+      if (running?.status === 'running') {
+        return {
+          success: false,
+          message: `${this.formatGitOperationType(running.type)}正在执行，请等待完成后再操作。`,
+          operationId: running.id,
+        };
+      }
 
-    if (!result.success) {
-      throw this.toGitException('Failed to push changes', result);
+      const changedFiles = await this.listAllArtifactFiles(worktreePath, subRepos);
+      if (changedFiles.length > 0) {
+        return {
+          success: false,
+          message: WORKSPACE_NATIVE_PUSH_DIRTY_MESSAGE,
+        };
+      }
+
+      return this.startWorkspaceNativeGitOperation(task, project, 'push', () =>
+        this.pushWorkspaceNativeTask(task, project),
+      );
+    }
+
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const messages: string[] = [];
+    const snapshotRepos: GitSnapshotRepo[] = [];
+    let allSuccess = true;
+
+    for (const repo of allRepos) {
+      const result = await this.runGitCommand(repo.cwd, [
+        'push',
+        '--set-upstream',
+        'origin',
+        'HEAD',
+      ]);
+
+      const label = repo.prefix || 'main';
+
+      if (!result.success) {
+        const stderr = result.stderr?.trim() || 'unknown error';
+        messages.push(`[${label}] Push failed: ${stderr}`);
+        allSuccess = false;
+        continue;
+      }
+
+      messages.push(`[${label}] Push completed`);
+
+      if (repo.prefix) {
+        const sub = subRepos.find((s) => s.prefix === repo.prefix);
+        if (sub) {
+          const [shaResult, msgResult, branchResult] = await Promise.all([
+            this.runGitCommand(repo.cwd, ['rev-parse', 'HEAD']),
+            this.runGitCommand(repo.cwd, ['log', '-1', '--pretty=%s']),
+            this.runGitCommand(repo.cwd, ['rev-parse', '--abbrev-ref', 'HEAD']),
+          ]);
+
+          snapshotRepos.push({
+            prefix: sub.prefix,
+            branch: branchResult.success ? branchResult.stdout.trim() : '',
+            commitSha: shaResult.success ? shaResult.stdout.trim() : '',
+            commitMessage: msgResult.success ? msgResult.stdout.trim() : '',
+            remote: sub.url,
+          });
+        }
+      }
+    }
+
+    if (snapshotRepos.length > 0) {
+      await this.saveGitSnapshot(task.id, {
+        updatedAt: new Date().toISOString(),
+        repos: snapshotRepos,
+      });
     }
 
     return {
-      success: true,
-      message: result.stderr || result.stdout || 'Push completed',
+      success: allSuccess,
+      message: messages.join('\n'),
     };
+  }
+
+  private async pushWorkspaceNativeTask(
+    task: Task,
+    project: Project,
+  ): Promise<TaskGitActionResultDto> {
+    if (!this.workspaceNativeDeployService) {
+      throw new ConflictException('Workspace-native push service unavailable');
+    }
+
+    const taskConfig = (task.configJson ?? {}) as Record<string, unknown>;
+    const workspaceSnapshot = taskConfig.workspaceSnapshot as
+      | { taskBranch: string }
+      | undefined;
+    const taskBranch = workspaceSnapshot?.taskBranch || task.gitBranch;
+
+    if (!taskBranch) {
+      return {
+        success: false,
+        message: '无法确定任务分支，无法推送',
+      };
+    }
+
+    const subReposSnapshot = (taskConfig.subReposSnapshot ?? []) as Array<{
+      prefix: string;
+    }>;
+    const featureBranch = taskBranch.startsWith('feature/')
+      ? taskBranch
+      : `feature/${taskBranch}`;
+
+    const targetBranches: Record<string, string> = {};
+    for (const sub of subReposSnapshot) {
+      targetBranches[sub.prefix] = featureBranch;
+    }
+
+    const messages: string[] = [];
+
+    try {
+      const result = await this.workspaceNativeDeployService.deploy(
+        task,
+        project,
+        (event, data) => {
+          if (event === 'deploy_step') {
+            const prefix =
+              typeof data.prefix === 'string' ? `[${data.prefix}] ` : '';
+            messages.push(
+              `${prefix}${String(data.message ?? data.step ?? event)}`,
+            );
+          }
+          if (event === 'deploy_subrepo') {
+            const prefix = String(data.prefix ?? 'subrepo');
+            const status = String(data.status ?? 'unknown');
+            const branch = data.branch ? ` → ${String(data.branch)}` : '';
+            const error = data.error ? `: ${String(data.error)}` : '';
+            messages.push(`[${prefix}] ${status}${branch}${error}`);
+          }
+        },
+        { targetBranches, skipLock: true, mode: 'push' },
+      );
+
+      const pushResults = result.deployStatus.subRepoPushResults;
+      const allSuccess = pushResults.every(
+        (r) => r.status === 'success' || r.status === 'skipped',
+      );
+
+      return {
+        success: allSuccess,
+        message: messages.join('\n') || '推送完成',
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '推送失败';
+      return {
+        success: false,
+        message: [...messages, message].filter(Boolean).join('\n'),
+      };
+    }
+  }
+
+  private async saveGitSnapshot(
+    taskId: string,
+    snapshot: GitSnapshot,
+  ): Promise<void> {
+    try {
+      const task = await this.taskRepository.findById(taskId);
+      if (!task) return;
+
+      const configJson = (task.configJson ?? {}) as Record<string, unknown>;
+      configJson.gitSnapshot = snapshot;
+
+      await this.taskRepository.update(taskId, {
+        configJson: configJson as any,
+      });
+    } catch {
+      // snapshot save is best-effort
+    }
   }
 
   async getLog(
     taskId: string,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitActionResultDto> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    const { worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
 
-    const result = await this.runGitCommand(worktreePath, [
-      'log',
-      '--oneline',
-      '-20',
-      '--no-color',
-    ]);
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const logParts: string[] = [];
 
-    if (!result.success) {
-      throw this.toGitException('Failed to read git log', result);
+    for (const repo of allRepos) {
+      const label = repo.prefix || 'main';
+      const result = await this.runGitCommand(repo.cwd, [
+        'log',
+        '--oneline',
+        '-20',
+        '--no-color',
+      ]);
+
+      if (result.success && result.stdout.trim()) {
+        logParts.push(`--- ${label} ---\n${result.stdout}`);
+      }
     }
 
     return {
       success: true,
-      message: result.stdout || 'No commits yet',
+      message: logParts.join('\n\n') || 'No commits yet',
     };
   }
 
@@ -688,51 +1396,169 @@ export class TaskGitService {
     payload: TaskGitBranchDiffQueryDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitPrLinkDto> {
-    const { task, worktreePath } = await this.resolveTaskGitContext(
-      taskId,
-      currentUser,
-    );
+    const { task, project, worktreePath, subRepos } =
+      await this.resolveTaskGitContext(taskId, currentUser);
 
-    const baseBranch = await this.resolveBaseBranch(
-      worktreePath,
-      task,
-      payload.baseBranch,
-    );
-
-    const [remoteUrlResult, branchResult] = await Promise.all([
-      this.runGitCommand(worktreePath, [
-        'config',
-        '--get',
-        'remote.origin.url',
-      ]),
-      this.runGitCommand(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']),
-    ]);
-
-    if (!remoteUrlResult.success || !branchResult.success) {
-      return {
-        url: null,
-      };
+    if (isWorkspaceNativeEnabled(project)) {
+      return this.getWorkspaceNativePrLinks(task);
     }
 
-    const remoteUrl = remoteUrlResult.stdout.trim();
-    const headBranch = this.normalizeBranchName(branchResult.stdout);
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const urls: Array<{ prefix: string; url: string | null }> = [];
 
-    if (!remoteUrl || !headBranch) {
-      return {
-        url: null,
-      };
+    for (const repo of allRepos) {
+      const repoBaseBranch = repo.prefix
+        ? await this.resolveBaseBranch(
+            repo.cwd,
+            task,
+            subRepos.find((s) => s.prefix === repo.prefix)?.branch,
+          )
+        : await this.resolveBaseBranch(repo.cwd, task, payload.baseBranch);
+
+      const [remoteUrlResult, branchResult] = await Promise.all([
+        this.runGitCommand(repo.cwd, ['config', '--get', 'remote.origin.url']),
+        this.runGitCommand(repo.cwd, ['rev-parse', '--abbrev-ref', 'HEAD']),
+      ]);
+
+      if (!remoteUrlResult.success || !branchResult.success) {
+        urls.push({ prefix: repo.prefix || 'main', url: null });
+        continue;
+      }
+
+      const remoteUrl = remoteUrlResult.stdout.trim();
+      const headBranch = this.normalizeBranchName(branchResult.stdout);
+
+      urls.push({
+        prefix: repo.prefix || 'main',
+        url:
+          remoteUrl && headBranch
+            ? buildPullRequestUrl(
+                remoteUrl,
+                repoBaseBranch.replace(/^origin\//, ''),
+                headBranch,
+              )
+            : null,
+      });
     }
+
+    const firstSubUrl = urls.find((u) => u.prefix !== 'main' && u.url);
+    return {
+      url: firstSubUrl?.url ?? urls[0]?.url ?? null,
+      urls,
+    };
+  }
+
+  private getWorkspaceNativeSubReposSnapshot(task: Task): SubRepoConfig[] {
+    const taskConfig = (task.configJson ?? {}) as Record<string, unknown>;
+    const subRepos = taskConfig.subReposSnapshot;
+    if (!Array.isArray(subRepos)) return [];
+
+    return subRepos.filter((repo): repo is SubRepoConfig => {
+      if (!repo || typeof repo !== 'object') return false;
+      const record = repo as Record<string, unknown>;
+      return (
+        typeof record.url === 'string' &&
+        typeof record.prefix === 'string' &&
+        typeof record.branch === 'string'
+      );
+    });
+  }
+
+  private getWorkspaceNativeTaskBranch(task: Task): string | null {
+    const taskConfig = (task.configJson ?? {}) as Record<string, unknown>;
+    const workspaceSnapshot = taskConfig.workspaceSnapshot as
+      | { taskBranch?: unknown }
+      | undefined;
+    const snapshotBranch =
+      typeof workspaceSnapshot?.taskBranch === 'string'
+        ? workspaceSnapshot.taskBranch.trim()
+        : '';
+
+    return snapshotBranch || task.gitBranch?.trim() || null;
+  }
+
+  private buildWorkspaceNativeSubRepoBranches(
+    task: Task,
+    project: Project,
+  ): { subRepoBranches?: SubRepoBranchInfoDto[] } {
+    if (!isWorkspaceNativeEnabled(project)) {
+      return {};
+    }
+
+    const taskBranch = this.getWorkspaceNativeTaskBranch(task);
+    const branchByPrefix = this.getWorkspaceNativeDeployBranchMap(task);
+    const subRepoBranches = this.getWorkspaceNativeSubReposSnapshot(task).map(
+      (subRepo) => ({
+        prefix: subRepo.prefix,
+        branchName: branchByPrefix.get(subRepo.prefix) ?? taskBranch,
+        baseBranch: subRepo.branch,
+      }),
+    );
+
+    return subRepoBranches.length > 0 ? { subRepoBranches } : {};
+  }
+
+  private getWorkspaceNativePrLinks(task: Task): TaskGitPrLinkDto {
+    const taskBranch = this.getWorkspaceNativeTaskBranch(task);
+    if (!taskBranch) {
+      return { url: null, urls: [] };
+    }
+
+    const branchByPrefix = this.getWorkspaceNativeDeployBranchMap(task);
+
+    const urls = this.getWorkspaceNativeSubReposSnapshot(task).map(
+      (subRepo) => {
+        const headBranch = branchByPrefix.get(subRepo.prefix);
+        if (!headBranch) {
+          return {
+            prefix: subRepo.prefix,
+            url: null,
+            hint: '请先推送到子仓再创建 PR',
+          };
+        }
+        return {
+          prefix: subRepo.prefix,
+          url: buildPullRequestUrl(subRepo.url, subRepo.branch, headBranch),
+        };
+      },
+    );
 
     return {
-      url: buildPullRequestUrl(remoteUrl, baseBranch, headBranch),
+      url: urls.find((u) => u.url)?.url ?? null,
+      urls,
     };
+  }
+
+  private getWorkspaceNativeDeployBranchMap(task: Task): Map<string, string> {
+    const taskConfig = (task.configJson ?? {}) as Record<string, unknown>;
+    const deployBranches = Array.isArray(taskConfig.subRepoDeployBranches)
+      ? (taskConfig.subRepoDeployBranches as Array<Record<string, unknown>>)
+      : [];
+
+    return new Map(
+      deployBranches
+        .filter(
+          (branch) =>
+            typeof branch.prefix === 'string' &&
+            typeof branch.remoteBranch === 'string',
+        )
+        .map((branch) => [
+          branch.prefix as string,
+          branch.remoteBranch as string,
+        ]),
+    );
   }
 
   private async resolveTaskGitContext(
     taskId: string,
     currentUser: JwtPayloadType,
     diagnostics?: SlowApiDiagnosticsSession,
-  ): Promise<{ task: Task; worktreePath: string }> {
+  ): Promise<{
+    task: Task;
+    project: Project;
+    worktreePath: string;
+    subRepos: ResolvedSubRepo[];
+  }> {
     const { task, project } = diagnostics
       ? await diagnostics.measure(
           'access',
@@ -753,14 +1579,17 @@ export class TaskGitService {
           diagnostics,
         );
 
-    return {
+    const worktreePath = await this.resolveTaskGitWorktreePath(
       task,
-      worktreePath: await this.resolveTaskGitWorktreePath(
-        task,
-        project,
-        diagnostics,
-      ),
-    };
+      project,
+      diagnostics,
+    );
+
+    const subRepos = hasSubRepoMode(project)
+      ? []
+      : resolveSubReposForWorktree(worktreePath, project.configJson);
+
+    return { task, project, worktreePath, subRepos };
   }
 
   private async resolveTaskGitWorktreePath(
@@ -777,20 +1606,32 @@ export class TaskGitService {
       project,
     );
 
-    const worktreePath = diagnostics
-      ? await diagnostics.measure(
-          'realpath',
-          () =>
-            fs.realpath(runtimeWorktreePath).catch(() => {
-              throw new NotFoundException('Task workspace does not exist');
-            }),
-          (result) => ({
-            worktreePath: result,
-          }),
-        )
-      : await fs.realpath(runtimeWorktreePath).catch(() => {
-          throw new NotFoundException('Task workspace does not exist');
-        });
+    let worktreePath = await fs.realpath(runtimeWorktreePath).catch(() => null);
+
+    if (!worktreePath) {
+      try {
+        const runtime = await this.taskRuntimeService.ensureRuntime(
+          task,
+          project,
+        );
+        worktreePath = await fs
+          .realpath(runtime.worktreePath)
+          .catch(() => null);
+      } catch {
+        // recovery failed
+      }
+      if (!worktreePath) {
+        throw new NotFoundException('Task workspace does not exist');
+      }
+    }
+
+    if (diagnostics) {
+      void diagnostics.measure(
+        'realpath',
+        () => Promise.resolve(worktreePath),
+        (result) => ({ worktreePath: result }),
+      );
+    }
 
     const hasGitDir = diagnostics
       ? await diagnostics.measure(
@@ -816,6 +1657,60 @@ export class TaskGitService {
     return worktreePath;
   }
 
+  private resolveAllRepoCwds(
+    mainWorktreePath: string,
+    subRepos: ResolvedSubRepo[],
+  ): Array<{ cwd: string; prefix: string }> {
+    const repos: Array<{ cwd: string; prefix: string }> = [
+      { cwd: mainWorktreePath, prefix: '' },
+    ];
+    for (const sub of subRepos) {
+      repos.push({ cwd: sub.worktreePath, prefix: sub.prefix });
+    }
+    return repos;
+  }
+
+  private routeFilesToRepos(
+    mainWorktreePath: string,
+    subRepos: ResolvedSubRepo[],
+    files: string[],
+  ): Array<{ cwd: string; prefix: string; files: string[] }> {
+    const mainFiles: string[] = [];
+    const subMap = new Map<string, string[]>();
+    for (const sub of subRepos) {
+      subMap.set(sub.prefix, []);
+    }
+
+    for (const file of files) {
+      const match = resolveSubRepoForPath(subRepos, file);
+      if (match) {
+        subMap.get(match.subRepo.prefix)!.push(match.relativePath);
+      } else {
+        mainFiles.push(file);
+      }
+    }
+
+    const result: Array<{ cwd: string; prefix: string; files: string[] }> = [];
+    if (mainFiles.length > 0) {
+      result.push({ cwd: mainWorktreePath, prefix: '', files: mainFiles });
+    }
+    for (const sub of subRepos) {
+      const subFiles = subMap.get(sub.prefix)!;
+      if (subFiles.length > 0) {
+        result.push({
+          cwd: sub.worktreePath,
+          prefix: sub.prefix,
+          files: subFiles,
+        });
+      }
+    }
+    return result;
+  }
+
+  private prefixFilePath(prefix: string, filePath: string): string {
+    return prefix ? `${prefix}/${filePath}` : filePath;
+  }
+
   private async measureGitCommand<T>(
     diagnostics: SlowApiDiagnosticsSession,
     name: string,
@@ -838,7 +1733,7 @@ export class TaskGitService {
     message: string,
     currentUser: JwtPayloadType,
   ): Promise<GitExecutionResult> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    const { worktreePath, subRepos } = await this.resolveTaskGitContext(
       taskId,
       currentUser,
     );
@@ -848,29 +1743,63 @@ export class TaskGitService {
       throw new BadRequestException('Commit message cannot be empty');
     }
 
-    await this.ensureCommitIdentityConfigured(worktreePath);
+    const allRepos = this.resolveAllRepoCwds(worktreePath, subRepos);
+    const excludePathspecs = buildSubRepoExcludePathspecs(subRepos);
+    let lastResult: GitExecutionResult | null = null;
 
-    return this.runGitCommand(worktreePath, [
-      'commit',
-      '-m',
-      normalizedMessage,
-    ]);
+    for (const repo of allRepos) {
+      await this.ensureCommitIdentityConfigured(repo.cwd);
+
+      const statusResult = await this.runGitCommand(
+        repo.cwd,
+        this.withGitUtf8Paths([
+          'status',
+          '--porcelain',
+          ...(!repo.prefix ? excludePathspecs : []),
+        ]),
+      );
+      const hasChanges =
+        statusResult.success && statusResult.stdout.trim().length > 0;
+      if (!hasChanges) continue;
+
+      const result = await this.runGitCommand(repo.cwd, [
+        'commit',
+        '-m',
+        normalizedMessage,
+      ]);
+
+      if (!result.success) {
+        const label = repo.prefix || 'main';
+        return {
+          success: false,
+          stdout: result.stdout,
+          stderr: `[${label}] commit failed: ${result.stderr}`,
+          exitCode: result.exitCode,
+        };
+      }
+
+      lastResult = result;
+    }
+
+    return (
+      lastResult ?? {
+        success: true,
+        stdout: 'Nothing to commit',
+        stderr: '',
+        exitCode: 0,
+      }
+    );
   }
 
   private async commitIfChangedInWorktree(
     worktreePath: string,
     message: string,
+    excludePathspecs: string[] = [],
   ): Promise<TaskGitCommitIfChangedResult> {
-    const changedFiles =
-      await this.taskWorkspaceArtifactService.listArtifactFiles({
-        worktreePath,
-        source: {
-          sourceType: 'workspace_unstaged_fallback',
-          nodeId: null,
-          beforeCommitSha: null,
-          afterCommitSha: null,
-        },
-      });
+    const changedFiles = await this.listArtifactFiles(
+      worktreePath,
+      excludePathspecs,
+    );
 
     if (!changedFiles.length) {
       return {
@@ -912,6 +1841,60 @@ export class TaskGitService {
         ? subjectResult.stdout.trim()
         : message.trim(),
     };
+  }
+
+  private async commitIfChangedInAllRepos(
+    mainWorktreePath: string,
+    subRepos: ResolvedSubRepo[],
+    message: string,
+  ): Promise<TaskGitCommitIfChangedResult> {
+    const allRepos = this.resolveAllRepoCwds(mainWorktreePath, subRepos);
+    const excludePathspecs = buildSubRepoExcludePathspecs(subRepos);
+    let anyCommitted = false;
+    let lastSha: string | null = null;
+    let lastSubject: string | null = null;
+
+    for (const repo of allRepos) {
+      const result = await this.commitIfChangedInWorktree(
+        repo.cwd,
+        message,
+        !repo.prefix ? excludePathspecs : [],
+      );
+      if (result.committed) {
+        anyCommitted = true;
+        lastSha = result.commitSha ?? null;
+        lastSubject = result.subject ?? null;
+      }
+    }
+
+    if (!anyCommitted) {
+      return { committed: false, skippedReason: 'no_changes' };
+    }
+
+    return {
+      committed: true,
+      commitSha: lastSha,
+      subject: lastSubject,
+    };
+  }
+
+  private async listAllArtifactFiles(
+    mainWorktreePath: string,
+    subRepos: ResolvedSubRepo[],
+  ): Promise<string[]> {
+    const allRepos = this.resolveAllRepoCwds(mainWorktreePath, subRepos);
+    const excludePathspecs = buildSubRepoExcludePathspecs(subRepos);
+    const allFiles: string[] = [];
+
+    for (const repo of allRepos) {
+      const files = await this.listArtifactFiles(
+        repo.cwd,
+        !repo.prefix ? excludePathspecs : [],
+      );
+      allFiles.push(...files.map((f) => this.prefixFilePath(repo.prefix, f)));
+    }
+
+    return allFiles;
   }
 
   private async ensureCommitIdentityConfigured(
@@ -988,6 +1971,9 @@ export class TaskGitService {
       });
 
       const timeoutRef = setTimeout(() => {
+        this.logger.warn(
+          `git command timed out after ${this.defaultGitTimeoutMs}ms: git -C ${cwd} ${args.join(' ')}`,
+        );
         processRef.kill('SIGTERM');
       }, this.defaultGitTimeoutMs);
 
@@ -1047,6 +2033,9 @@ export class TaskGitService {
       });
 
       const timeoutRef = setTimeout(() => {
+        this.logger.warn(
+          `git command (buffer) timed out after ${this.defaultGitTimeoutMs}ms: git -C ${cwd} ${args.join(' ')}`,
+        );
         processRef.kill('SIGTERM');
       }, this.defaultGitTimeoutMs);
 
@@ -1070,6 +2059,34 @@ export class TaskGitService {
         });
       });
     });
+  }
+
+  private async listArtifactFiles(
+    worktreePath: string,
+    excludePathspecs: string[] = [],
+  ): Promise<string[]> {
+    const result = await this.runGitCommand(
+      worktreePath,
+      this.withGitUtf8Paths([
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+        ...excludePathspecs,
+      ]),
+    );
+
+    if (!result.success) {
+      throw this.toGitException(
+        'Failed to read changed artifact files',
+        result,
+      );
+    }
+
+    const files = this.parseChangedFiles(result.stdout)
+      .map((file) => this.normalizeRelativePath(file.path))
+      .filter(Boolean);
+
+    return Array.from(new Set(files));
   }
 
   private parseChangedFiles(statusText: string): TaskGitStatusDto['files'] {
@@ -1219,6 +2236,11 @@ export class TaskGitService {
     task: Task,
     requestedBaseBranch?: string,
   ): Promise<string> {
+    const snapshotSha = this.resolveWorkspaceSnapshotSha(task);
+    if (snapshotSha) {
+      return snapshotSha;
+    }
+
     const baseBranch =
       requestedBaseBranch?.trim() || task.gitBaseBranch?.trim() || 'main';
 
@@ -1238,6 +2260,18 @@ export class TaskGitService {
     }
 
     return baseBranch;
+  }
+
+  private resolveWorkspaceSnapshotSha(task: Task): string | null {
+    const config = task.configJson as Record<string, unknown> | null;
+    if (!config) return null;
+    const ws = config.workspaceSnapshot as Record<string, unknown> | undefined;
+    if (!ws) return null;
+    const sha =
+      typeof ws.snapshotCommitSha === 'string'
+        ? ws.snapshotCommitSha.trim()
+        : null;
+    return sha || null;
   }
 
   private normalizeBranchName(value: string): string | null {

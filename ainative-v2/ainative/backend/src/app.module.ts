@@ -26,6 +26,7 @@ import { ProjectContextModule } from './project-context/project-context.module';
 import { AutomationsModule } from './automations/automations.module';
 import { GitModule } from './git/git.module';
 import { GoalsModule } from './goals/goals.module';
+import { AdminModule } from './admin/admin.module';
 import { MemoryModule } from './memory/memory.module';
 import { resolveEnvFilePath } from './config/env-file-path';
 import { existsSync } from 'fs';
@@ -68,6 +69,7 @@ function resolveI18nPath(): string {
     ProjectContextModule,
     AutomationsModule,
     GitModule,
+    AdminModule,
     infrastructureDatabaseModule,
     I18nModule.forRootAsync({
       useFactory: (configService: ConfigService<AllConfigType>) => ({

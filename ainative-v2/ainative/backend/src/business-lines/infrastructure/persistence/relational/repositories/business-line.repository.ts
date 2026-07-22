@@ -96,6 +96,18 @@ export class BusinessLineRelationalRepository
     return entity ? BusinessLineMapper.toDomain(entity) : null;
   }
 
+  async findBySlug(
+    slug: BusinessLine['slug'],
+  ): Promise<NullableType<BusinessLine>> {
+    const entity = await this.businessLineRepository.findOne({
+      where: {
+        slug,
+      },
+    });
+
+    return entity ? BusinessLineMapper.toDomain(entity) : null;
+  }
+
   async update(
     id: BusinessLine['id'],
     payload: Partial<BusinessLine>,

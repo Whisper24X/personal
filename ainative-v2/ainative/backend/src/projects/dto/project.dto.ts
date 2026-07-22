@@ -18,6 +18,11 @@ export class ProjectDto {
   @IsString()
   name: string;
 
+  @ApiProperty({ type: String })
+  @IsNotEmpty()
+  @IsString()
+  slug: string;
+
   @ApiProperty({ required: false, nullable: true, type: String })
   @IsOptional()
   @IsString()

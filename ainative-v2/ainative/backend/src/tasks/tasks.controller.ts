@@ -80,6 +80,7 @@ import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
 import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
 import { TaskEnvironmentDto } from './dto/task-environment.dto';
+import { ReportPreviewDiagnosticDto } from './dto/report-preview-diagnostic.dto';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -651,6 +652,17 @@ export class TasksController {
     @Query() query: FindTaskLogsDto,
   ) {
     return this.tasksService.listLogs(id, query, request.user);
+  }
+
+  @Post(':id/preview-diagnostics')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async reportPreviewDiagnostic(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ReportPreviewDiagnosticDto,
+  ): Promise<void> {
+    await this.tasksService.reportPreviewDiagnostic(id, body, request.user);
   }
 
   @Get(':id/worktree-files')

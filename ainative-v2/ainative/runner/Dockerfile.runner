@@ -143,13 +143,36 @@ RUN npm config set registry https://registry.npmmirror.com \
 
 # Claude Code / Codex / Gemini CLI / OpenSpec / 常用 MCP server（npm 全局安装）
 RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest @fission-ai/openspec@latest \
-    chrome-devtools-mcp@latest apifox-mcp-server@latest
+    chrome-devtools-mcp@0.23.0 apifox-mcp-server@latest
+
+# playwright 用于前端测试
+RUN npm i -g playwright
+
+# 全局兜底：若项目 worktree 里没有 .codex/config.toml，runner 内的 Codex 仍能发现 chrome-devtools MCP
+# 项目级配置优先（见 task-container-execution-boundaries.md §Codex），此处仅作 fallback
+RUN mkdir -p /root/.codex \
+    && cat > /root/.codex/config.toml <<'TOML'
+[mcp_servers.chrome-devtools]
+command = "chrome-devtools-mcp"
+args = ["--browser-url=http://host.docker.internal:9222"]
+TOML
 
 # OpenCode / Cursor CLI 为 best-effort 安装：网络或上游变更可能导致安装失败，不阻断镜像构建
 RUN bash -o pipefail -c 'curl -fsSL https://opencode.ai/install | bash' \
     || echo "WARN: OpenCode install failed; opencode steps in docker mode need a working binary."
 RUN bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash' \
     || echo "WARN: Cursor CLI install failed or unavailable for this platform; docker mode cursor-agent steps need a working agent binary."
+RUN if [ -x /root/.local/bin/agent ]; then \
+      ln -sf /root/.local/bin/agent /usr/local/bin/agent; \
+    else \
+      printf '%s\n' \
+        '#!/usr/bin/env sh' \
+        'echo "Cursor agent CLI is not installed in this image; fallback requires another configured runner generation tool." >&2' \
+        'exit 127' \
+        > /usr/local/bin/agent; \
+      chmod +x /usr/local/bin/agent; \
+    fi \
+    && command -v agent
 
 
 # Go 编译的 CLI（OpenCode、Codex）依赖系统 CA 证书，需显式指定路径

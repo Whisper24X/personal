@@ -62,6 +62,8 @@ describe('GoalsService group dependsOnItemIds', () => {
       {} as never,
       goalsMetrics,
       {} as never,
+      {} as never,
+      {} as never,
     );
 
     const stA = {
@@ -272,7 +274,10 @@ describe('GoalsService group dependsOnItemIds', () => {
         .fn()
         .mockResolvedValue({ success: true, branch: 'feature/goal-x-g2' }),
     };
-    const projectsService = { assertProjectCapability: jest.fn() };
+    const projectsService = {
+      assertProjectCapability: jest.fn(),
+      findByIdInternal: jest.fn().mockResolvedValue(null),
+    };
     const taskRepository = { findById: jest.fn() };
     const service = new GoalsService(
       goalRepository as never,
@@ -284,6 +289,8 @@ describe('GoalsService group dependsOnItemIds', () => {
       {} as never,
       {} as never,
       {} as GoalsMetricsService,
+      {} as never,
+      {} as never,
       {} as never,
     );
 
@@ -418,6 +425,8 @@ describe('GoalsService group dependsOnItemIds', () => {
       tasksService as never,
       {} as never,
       goalsMetrics,
+      {} as never,
+      {} as never,
       {} as never,
     );
 
@@ -655,6 +664,8 @@ describe('GoalsService group dependsOnItemIds', () => {
       {} as never,
       {} as never,
       goalsMetrics,
+      {} as never,
+      {} as never,
       {} as never,
     );
 

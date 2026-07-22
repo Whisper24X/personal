@@ -2,6 +2,7 @@ export type Project = {
   id: string
   businessLineId: string
   name: string
+  slug: string
   description?: string | null
   gitUrl: string
   defaultBranch: string
@@ -95,9 +96,8 @@ export type ProjectCustomRole = {
 export type CreateProjectPayload = {
   businessLineId: string
   name: string
+  slug: string
   description?: string
-  gitUrl: string
-  defaultBranch?: string
   configJson?: Record<string, unknown>
 }
 
@@ -149,4 +149,32 @@ export type DatabaseIsolationTableInfo = {
   name: string
   estimatedRows: number
   sizeBytes: number
+}
+
+export type SubtreeDeployItemStatus = 'pending' | 'pushing' | 'success' | 'failed' | 'skipped'
+
+export type SubtreeDeployItem = {
+  prefix: string
+  targetBranch: string
+  sourceCommitSha: string
+  status: SubtreeDeployItemStatus
+  attempts: number
+  error?: string
+  skippedReason?: 'no_changes'
+  pushedAt?: string
+}
+
+export type SubtreeDeployStatus = {
+  snapshotEpoch: string
+  deployCommitSha?: string
+  cleanupCommitSha?: string
+  updatedAt: string
+  subtrees: SubtreeDeployItem[]
+  mainRepoPushed: boolean
+}
+
+export type ProjectRunnerRegenerateResponse = {
+  accepted: true
+  projectId: string
+  queuedAt: string
 }

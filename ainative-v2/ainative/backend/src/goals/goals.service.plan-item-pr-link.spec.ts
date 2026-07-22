@@ -38,6 +38,9 @@ describe('GoalsService.getPlanItemPrLink', () => {
       {} as never,
       {} as never,
       {} as GoalsMetricsService,
+      {} as never,
+      {} as never,
+      {} as never,
     );
 
     const out = await service.getPlanItemPrLink('goal-1', 'item-1', user);

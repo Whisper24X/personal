@@ -1,0 +1,501 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "dynamic_learn_config/v1/dynamic_learn_config.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "DynamicLearnConfig"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/dynamic-learn-config/v1/batchCreateDynamicLearnConfig": {
+      "post": {
+        "summary": "批量复制动态学习配置",
+        "operationId": "DynamicLearnConfig_BatchCreateDynamicLearnConfig",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BatchCreateDynamicLearnConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1BatchCreateDynamicLearnConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicLearnConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-learn-config/v1/queryDynamicLearnConfigListApi": {
+      "post": {
+        "summary": "客户端查询动态配置列表",
+        "operationId": "DynamicLearnConfig_QueryDynamicLearnConfigListApi",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicLearnConfigListApiReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicLearnConfigListApiReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicLearnConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-learn-config/v1/queryDynamicLearnConfigShadowList": {
+      "post": {
+        "summary": "查询动态学习配置列表",
+        "operationId": "DynamicLearnConfig_QueryDynamicLearnConfigShadowList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicLearnConfigListShadowReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryDynamicLearnConfigListShadowReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicLearnConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-learn-config/v1/storeDynamicLearnConfig": {
+      "post": {
+        "summary": "保存动态学习配置",
+        "operationId": "DynamicLearnConfig_StoreDynamicLearnConfig",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreDynamicLearnConfigReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreDynamicLearnConfigReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicLearnConfig"
+        ]
+      }
+    },
+    "/devices-learn/dynamic-learn-config/v1/updateDynamicLearnConfigStatus": {
+      "post": {
+        "summary": "修改动态学习配置状态",
+        "operationId": "DynamicLearnConfig_UpdateDynamicLearnConfigStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateDynamicLearnConfigStatusReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateDynamicLearnConfigStatusReq"
+            }
+          }
+        ],
+        "tags": [
+          "DynamicLearnConfig"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1BatchCreateDynamicLearnConfigReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功: true: 成功; false: 失败"
+        }
+      }
+    },
+    "v1BatchCreateDynamicLearnConfigReq": {
+      "type": "object",
+      "properties": {
+        "configType": {
+          "type": "string",
+          "title": "配置类型: 同步学习/专项学练"
+        },
+        "subjectType": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "学科类别: 数学/物理/语文/化学/英语/生物/地理"
+        },
+        "functionName": {
+          "type": "string",
+          "title": "功能名称"
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32",
+          "title": "优先级"
+        },
+        "imageScale": {
+          "type": "string",
+          "title": "图片尺寸: 大/小"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "图片链接"
+        },
+        "scene": {
+          "type": "string",
+          "title": "学习场景"
+        },
+        "jumpLink": {
+          "type": "string",
+          "title": "跳转链接"
+        },
+        "functionType": {
+          "type": "string",
+          "title": "功能类别：专项学习/专项练习"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后修改人"
+        }
+      }
+    },
+    "v1DynamicLearnConfigFunctionItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "subjectType": {
+          "type": "string",
+          "title": "学科类别"
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32",
+          "title": "优先级"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架"
+        },
+        "functionName": {
+          "type": "string",
+          "title": "功能名称"
+        },
+        "imageScale": {
+          "type": "string",
+          "title": "图片尺寸"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "图片链接"
+        },
+        "scene": {
+          "type": "string",
+          "title": "学习场景"
+        },
+        "jumpLink": {
+          "type": "string",
+          "title": "跳转链接"
+        },
+        "functionType": {
+          "type": "string",
+          "title": "功能类别"
+        },
+        "configType": {
+          "type": "string",
+          "title": "配置类型"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "更新人"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      },
+      "title": "功能项"
+    },
+    "v1DynamicLearnConfigItem": {
+      "type": "object",
+      "properties": {
+        "subjectType": {
+          "type": "string",
+          "title": "学科类别"
+        },
+        "functionNums": {
+          "type": "integer",
+          "format": "int32",
+          "title": "功能数量"
+        },
+        "functionList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicLearnConfigFunctionItem"
+          },
+          "title": "功能列表"
+        }
+      }
+    },
+    "v1QueryDynamicLearnConfigListApiReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicLearnConfigItem"
+          },
+          "title": "列表"
+        }
+      }
+    },
+    "v1QueryDynamicLearnConfigListApiReq": {
+      "type": "object",
+      "properties": {
+        "configType": {
+          "type": "string",
+          "title": "配置类型"
+        }
+      }
+    },
+    "v1QueryDynamicLearnConfigListShadowReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DynamicLearnConfigItem"
+          },
+          "title": "列表"
+        }
+      }
+    },
+    "v1QueryDynamicLearnConfigListShadowReq": {
+      "type": "object",
+      "properties": {
+        "subjectType": {
+          "type": "string",
+          "title": "学科类别"
+        },
+        "functionName": {
+          "type": "string",
+          "title": "功能名称"
+        },
+        "configType": {
+          "type": "string",
+          "title": "配置类型"
+        }
+      }
+    },
+    "v1StoreDynamicLearnConfigReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        }
+      }
+    },
+    "v1StoreDynamicLearnConfigReq": {
+      "type": "object",
+      "properties": {
+        "configType": {
+          "type": "string",
+          "title": "配置类型: 同步学习/专项学练"
+        },
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "subjectType": {
+          "type": "string",
+          "title": "学科类别: 数学/物理/语文/化学/英语/生物/地理"
+        },
+        "functionName": {
+          "type": "string",
+          "title": "功能名称"
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32",
+          "title": "优先级"
+        },
+        "imageScale": {
+          "type": "string",
+          "title": "图片尺寸: 大/小"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "图片链接"
+        },
+        "scene": {
+          "type": "string",
+          "title": "学习场景"
+        },
+        "jumpLink": {
+          "type": "string",
+          "title": "跳转链接"
+        },
+        "functionType": {
+          "type": "string",
+          "title": "功能类别：专项学习/专项练习"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后修改人"
+        }
+      }
+    },
+    "v1UpdateDynamicLearnConfigStatusReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功: true: 成功; false: 失败"
+        }
+      }
+    },
+    "v1UpdateDynamicLearnConfigStatusReq": {
+      "type": "object",
+      "properties": {
+        "configType": {
+          "type": "string",
+          "title": "配置类型"
+        },
+        "id": {
+          "type": "string",
+          "title": "主键ID"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "最后修改人"
+        }
+      }
+    }
+  }
+}

@@ -62,6 +62,7 @@ export function mapProjectItem(project: Project): ProjectItem {
   return {
     id: project.id,
     name: project.name,
+    slug: project.slug,
     to: `/dashboard?projectId=${encodeURIComponent(project.id)}`,
     businessLineId: project.businessLineId,
     description: project.description ?? null,

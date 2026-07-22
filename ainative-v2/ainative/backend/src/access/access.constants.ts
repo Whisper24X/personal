@@ -107,6 +107,7 @@ const PROJECT_VIEWER_CAPABILITIES: CapabilityCode[] = [
 
 const PROJECT_DEVELOPER_CAPABILITIES: CapabilityCode[] = [
   ...PROJECT_VIEWER_CAPABILITIES,
+  'project.task.manage',
   'project.automation.read',
 ];
 
@@ -184,6 +185,7 @@ const PROJECT_CAPABILITY_DEPENDENCIES: Record<
 > = {
   'project.dashboard.read': [],
   'project.task.read': ['project.dashboard.read'],
+  'project.task.manage': ['project.task.read'],
   'project.kanban.read': ['project.dashboard.read'],
   'project.automation.read': ['project.dashboard.read'],
   'project.knowledge.read': ['project.dashboard.read'],

@@ -4,6 +4,8 @@ export class AddGoalPlanBranchMergedStatus1775100000000
   implements MigrationInterface
 {
   name = 'AddGoalPlanBranchMergedStatus1775100000000';
+  // ALTER TYPE ... ADD VALUE 不能在事务内执行，必须设为 false
+  transaction = false;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

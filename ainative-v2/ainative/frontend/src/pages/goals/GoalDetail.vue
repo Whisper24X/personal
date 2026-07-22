@@ -50,6 +50,8 @@ const {
   planProgressDone,
   planProgressPercent,
   planProgressTotal,
+  pushGoalSubrepos,
+  pushingGoalSubrepos,
   prdEditorContent,
   prdEditorLoading,
   prdEditorOpen,
@@ -131,6 +133,7 @@ const {
         :merging-plan-group-id="mergingPlanGroupId"
         :materializing="materializing"
         :marking-branch-merged-id="markingBranchMergedId"
+        :pushing-goal-subrepos="pushingGoalSubrepos"
         :plan-item-status-label="planItemStatusLabel"
         :plan-item-approve-blocked-reason="planItemApproveBlockedReason"
         :plan-item-materialize-blocked-reason="planItemMaterializeBlockedReason"
@@ -138,6 +141,7 @@ const {
         @materialize-plan-item="materializeSingleSubTask"
         @merge-plan-group-into-goal="mergePlanGroupIntoGoal"
         @mark-branch-merged="markBranchMergedSubTask"
+        @push-subrepos="pushGoalSubrepos"
       />
 
       <GoalPlanItemSheet

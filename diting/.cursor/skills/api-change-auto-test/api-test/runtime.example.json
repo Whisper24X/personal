@@ -1,0 +1,26 @@
+{
+  "auth": {
+    "channels": {
+      "admin": {
+        "headerEnv": "RUNNER_ADMIN_AUTH_HEADER",
+        "legacyHeaderEnvs": ["RUNNER_SHADOW_AUTH_HEADER"]
+      },
+      "client": {
+        "headerEnv": "RUNNER_CLIENT_AUTH_HEADER",
+        "legacyHeaderEnvs": ["RUNNER_WECHAT_AUTH_HEADER"]
+      }
+    },
+    "classify": [
+      { "channel": "admin", "pathPrefix": "/yanxue/api/shadow/" },
+      { "channel": "client", "pathPrefix": "/yanxue/wechat/" }
+    ]
+  },
+  "backend": {
+    "cwd": "ainative-backend",
+    "startCommand": "go run ./cmd/server",
+    "healthUrl": "http://127.0.0.1:8000/health",
+    "baseUrl": "http://127.0.0.1:8000",
+    "pidFile": "tmp/api-test-backend.pid",
+    "logFile": "tmp/api-test-backend.log"
+  }
+}

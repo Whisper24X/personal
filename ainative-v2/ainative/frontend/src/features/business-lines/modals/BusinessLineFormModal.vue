@@ -6,6 +6,7 @@ const props = defineProps<{
   mode: 'create' | 'edit'
   submitting: boolean
   initialName: string
+  initialSlug?: string
   initialDescription: string
   errorMessage?: string
   size?: 'default' | 'large'
@@ -13,10 +14,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
-  (event: 'submit', payload: { name: string; description: string }): void
+  (event: 'submit', payload: { name: string; slug?: string; description: string }): void
 }>()
 
 const name = ref('')
+const slug = ref('')
 const description = ref('')
 const validationMessage = ref('')
 
@@ -27,7 +29,7 @@ const modalTitle = computed(() => {
 const sectionClass = computed(() => {
   return props.size === 'large'
     ? 'relative z-10 flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl'
-    : 'relative z-10 w-full max-w-lg rounded-2xl border border-border bg-background shadow-2xl'
+    : 'relative z-10 w-full max-w-xl rounded-2xl border border-border bg-background shadow-2xl'
 })
 
 const formClass = computed(() => {
@@ -38,6 +40,7 @@ const formClass = computed(() => {
 
 const syncFormValues = () => {
   name.value = props.initialName
+  slug.value = props.initialSlug ?? ''
   description.value = props.initialDescription
   validationMessage.value = ''
 }
@@ -52,9 +55,15 @@ const submit = () => {
     return
   }
 
+  if (props.mode === 'create' && !slug.value.trim()) {
+    validationMessage.value = '业务线标识不能为空'
+    return
+  }
+
   validationMessage.value = ''
   emit('submit', {
     name: name.value.trim(),
+    slug: props.mode === 'create' ? slug.value.trim() : undefined,
     description: description.value,
   })
 }
@@ -71,7 +80,7 @@ watch(
 )
 
 watch(
-  () => [props.initialName, props.initialDescription, props.mode],
+  () => [props.initialName, props.initialSlug, props.initialDescription, props.mode],
   () => {
     if (!props.open) {
       return
@@ -102,7 +111,7 @@ watch(
         :class="sectionClass"
       >
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 class="text-sm font-semibold">{{ modalTitle }}</h2>
+          <h2 id="business-line-form-modal-title" class="text-sm font-semibold">{{ modalTitle }}</h2>
           <button
             type="button"
             aria-label="关闭"
@@ -137,6 +146,25 @@ watch(
               placeholder="例如：Retail"
             />
           </label>
+
+          <label v-if="props.mode === 'create'" class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">业务线标识</span>
+            <input
+              v-model="slug"
+              type="text"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-sm text-foreground"
+              placeholder="例如：retail"
+            />
+            <p class="text-[11px] text-muted-foreground">
+              创建后不可修改；项目分支名为 <span class="font-mono">{slug}-项目标识</span>
+            </p>
+          </label>
+          <p
+            v-else-if="props.initialSlug"
+            class="text-[11px] text-muted-foreground"
+          >
+            业务线标识：<span class="font-mono">{{ props.initialSlug }}</span>
+          </p>
 
           <label class="block space-y-1">
             <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>

@@ -9,6 +9,7 @@ import {
   type BusinessLineCustomRole,
   type BusinessLineInvite,
   type BusinessLineMember,
+  type RunnerStatusSummary,
 } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import {
@@ -50,6 +51,7 @@ type MainTab =
   | 'settings'
 type PermissionRoleTab = 'business-line' | 'project'
 const PROJECT_ROLE_NONE_VALUE = 'none'
+const RUNNER_STATUS_POLL_INTERVAL_MS = 5000
 type ProjectRoleSelection = string
 
 export type BusinessLineManagementPanelProps = {
@@ -86,18 +88,21 @@ const router = useRouter()
 
 const activeLineId = ref('')
 const activeTab = ref<MainTab>('projects')
+const pendingProjectsMainTab = ref(false)
 const activePermissionRoleTab = ref<PermissionRoleTab>('business-line')
 
 const projectQuery = ref('')
 const memberQuery = ref('')
 
 const lineDetail = ref<BusinessLine | null>(null)
+const runnerStatus = ref<RunnerStatusSummary | null>(null)
 const lineProjects = ref<ProjectItem[]>([])
 const lineMembers = ref<BusinessLineMember[]>([])
 const lineCustomRoles = ref<BusinessLineCustomRole[]>([])
 const users = ref<User[]>([])
 
 const loadingLineDetail = ref(false)
+const loadingRunnerStatus = ref(false)
 const loadingProjects = ref(false)
 const loadingMembers = ref(false)
 const loadingCustomRoles = ref(false)
@@ -108,6 +113,7 @@ const lineFormMode = ref<'create' | 'edit'>('create')
 const lineFormSubmitting = ref(false)
 const lineFormError = ref('')
 const lineFormInitialName = ref('')
+const lineFormInitialSlug = ref('')
 const lineFormInitialDescription = ref('')
 
 const projectFormModalOpen = ref(false)
@@ -115,9 +121,19 @@ const projectFormMode = ref<'create' | 'edit'>('create')
 const projectFormSubmitting = ref(false)
 const projectFormError = ref('')
 const projectFormInitialName = ref('')
+const projectFormInitialSlug = ref('')
 const projectFormInitialDescription = ref('')
 const projectFormInitialGitUrl = ref('')
 const projectFormInitialDefaultBranch = ref('main')
+const projectFormInitialSubRepos = ref<Array<{
+  url: string
+  prefix: string
+  branch: string
+  command?: string
+  port?: number
+  installCommand?: string
+}>>([])
+const editingProjectConfigJson = ref<Record<string, unknown> | null>(null)
 const editingProjectId = ref('')
 const projectRuntimeSettingsModalOpen = ref(false)
 const projectRuntimeSettingsSubmitting = ref(false)
@@ -178,6 +194,7 @@ const lineDeleteFinalModalOpen = ref(false)
 const deletingLine = ref(false)
 
 const message = useMessage()
+let runnerStatusPollingTimer: ReturnType<typeof setInterval> | null = null
 
 const {
   loadingAgentToolConfigs,
@@ -320,9 +337,150 @@ const selectedLineName = computed(() => {
   return lineDetail.value?.name ?? selectedLine.value?.name ?? '业务线'
 })
 
+const selectedLineSlug = computed(() => {
+  return lineDetail.value?.slug ?? ''
+})
+
 const selectedLineDescription = computed(() => {
   return lineDetail.value?.description ?? selectedLine.value?.description ?? ''
 })
+
+const runnerStatusBadgeClass = computed(() => {
+  switch (runnerStatus.value?.status) {
+    case 'ready':
+      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+    case 'verifying':
+    case 'pending':
+      return 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+    case 'needsManualReview':
+    case 'failed':
+      return 'border-destructive/30 bg-destructive/10 text-destructive'
+    case 'generated':
+    case 'partial':
+      return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+    default:
+      return 'border-border bg-muted text-muted-foreground'
+  }
+})
+
+const runnerStatusTitle = computed(() => {
+  if (loadingRunnerStatus.value) return 'Runner 验证状态加载中'
+  const status = runnerStatus.value
+  if (!status || status.status === 'unknown') return 'Runner 尚未生成配置'
+  if (status.status === 'ready' && status.verificationStatus === 'passed') {
+    return 'Runner verified ready'
+  }
+  if (status.status === 'ready') return 'Runner ready，验证状态未知'
+  if (status.status === 'verifying') return 'Runner 后台验证中'
+  if (status.status === 'needsManualReview') return 'Runner 自动验证失败'
+  if (status.status === 'failed') return 'Runner 生成失败'
+  return `Runner ${status.statusLabel}`
+})
+
+const runnerStatusDescription = computed(() => {
+  const status = runnerStatus.value
+  if (!status) return '暂无 runner 配置生成记录。'
+  if (status.status === 'ready' && status.verificationStatus === 'passed') {
+    return [
+      status.source ? `source=${status.source}` : '',
+      status.verificationDurationMs
+        ? `verification=${status.verificationDurationMs}ms`
+        : '',
+      status.probeDurationMs ? `probe=${status.probeDurationMs}ms` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ') || '配置已通过 runner runtime test。'
+  }
+  if (status.status === 'ready') {
+    return '配置已生成，但缺少 runtime verification passed 记录；不会按 verified ready 展示。'
+  }
+  if (status.status === 'verifying') {
+    return '配置已生成，正在后台执行 runner runtime test，通过后才会进入 ready。'
+  }
+  return (
+    status.verificationError ||
+    status.probeError ||
+    status.fullScanError ||
+    status.error ||
+    status.latestWarning ||
+    '暂无详细失败信息'
+  )
+})
+
+const runnerStatusMetaItems = computed(() => {
+  const status = runnerStatus.value
+  if (!status) return []
+  return [
+    status.verificationStatus ? `verification: ${status.verificationStatus}` : '',
+    status.probeStatus ? `probe: ${status.probeStatus}` : '',
+    status.probeRepaired && status.probeRepairSummary
+      ? `auto repair: ${status.probeRepairSummary}`
+      : status.probeRepaired
+        ? 'auto repair: applied'
+        : '',
+    status.fullScanAttempted ? 'full scan: attempted' : '',
+    status.warningCount > 0 ? `warnings: ${status.warningCount}` : '',
+    status.updatedAt ? `updated: ${formatCompactDate(status.updatedAt)}` : '',
+  ].filter(Boolean)
+})
+
+const runnerRouteProbeItems = computed(() => {
+  const routes = runnerStatus.value?.routeProbeResults ?? []
+  return routes.map((route) => ({
+    key: `${route.path}:${route.service ?? ''}:${route.port ?? ''}`,
+    label: route.path,
+    detail: [
+      route.service ? `service=${route.service}` : '',
+      route.port ? `port=${route.port}` : '',
+      route.statusCode ? `HTTP ${route.statusCode}` : '',
+      route.error || route.failureKind || '',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    className:
+      route.status === 'passed'
+        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+        : route.status === 'failed'
+          ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'
+          : 'border-border bg-muted text-muted-foreground',
+  }))
+})
+
+const isRunnerStatusPollingState = (status: RunnerStatusSummary | null) =>
+  status?.status === 'verifying' || status?.status === 'pending'
+
+const stopRunnerStatusPolling = () => {
+  if (runnerStatusPollingTimer) {
+    clearInterval(runnerStatusPollingTimer)
+    runnerStatusPollingTimer = null
+  }
+}
+
+const startRunnerStatusPolling = (lineId: string) => {
+  if (runnerStatusPollingTimer || !lineId) return
+  runnerStatusPollingTimer = setInterval(() => {
+    if (activeLineId.value !== lineId || !isRunnerStatusPollingState(runnerStatus.value)) {
+      stopRunnerStatusPolling()
+      return
+    }
+    void loadRunnerStatus(lineId, { silent: true })
+  }, RUNNER_STATUS_POLL_INTERVAL_MS)
+}
+
+const syncRunnerStatusPolling = () => {
+  const lineId = activeLineId.value
+  if (lineId && isRunnerStatusPollingState(runnerStatus.value)) {
+    startRunnerStatusPolling(lineId)
+    return
+  }
+  stopRunnerStatusPolling()
+}
+
+const formatCompactDate = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
 
 const getLineCapabilities = (lineId: string) => {
   return lineCapabilitiesById.value[lineId] ?? []
@@ -736,6 +894,7 @@ const replaceLineProject = (project: Project) => {
   )
 }
 
+
 const applyProjectRuntimeSettingsProject = (project: Project | ProjectItem) => {
   projectRuntimeSettingsProject.value = mapProjectItem(project as Project)
   projectRuntimeSettingsInitialContainerRuntime.value = toProjectContainerRuntimeConfig(
@@ -846,6 +1005,40 @@ const loadLineDetail = async (lineId: string) => {
   }
 }
 
+const loadRunnerStatus = async (
+  lineId: string,
+  options: { silent?: boolean } = {},
+) => {
+  if (!lineId) {
+    runnerStatus.value = null
+    stopRunnerStatusPolling()
+    return
+  }
+
+  if (!options.silent) {
+    loadingRunnerStatus.value = true
+  }
+
+  try {
+    const status = await businessLinesApi.runnerStatus(lineId)
+    if (lineId !== activeLineId.value) {
+      return
+    }
+    runnerStatus.value = status
+    syncRunnerStatusPolling()
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      runnerStatus.value = null
+      stopRunnerStatusPolling()
+      message.error(toErrorMessage(error, '加载 Runner 状态失败'))
+    }
+  } finally {
+    if (!options.silent && lineId === activeLineId.value) {
+      loadingRunnerStatus.value = false
+    }
+  }
+}
+
 const loadLineProjects = async (lineId: string) => {
   if (!lineId) {
     lineProjects.value = []
@@ -855,21 +1048,15 @@ const loadLineProjects = async (lineId: string) => {
   loadingProjects.value = true
 
   try {
-    const response = await fetchAllPages((page, limit) =>
-      projectsApi.list({
-        page,
-        limit,
-        businessLineId: lineId,
-      }),
+    const allProjects = await fetchAllPages((page, limit) =>
+      projectsApi.list({ page, limit, businessLineId: lineId }),
     )
 
     if (lineId !== activeLineId.value) {
       return
     }
 
-    lineProjects.value = response
-      .map((project) => mapProjectItem(project))
-      .sort((left, right) => left.name.localeCompare(right.name))
+    lineProjects.value = allProjects.map(mapProjectItem)
   } catch (error) {
     if (lineId === activeLineId.value) {
       lineProjects.value = []
@@ -969,6 +1156,12 @@ const loadUsers = async () => {
   }
 }
 
+const resolvePreferredMainTab = (
+  tabs: Array<{ key: MainTab; label: string }>,
+): MainTab => {
+  return tabs.find((tab) => tab.key === 'projects')?.key ?? tabs[0]!.key
+}
+
 const syncActiveTabWithPermissions = () => {
   const availableTabs = availableMainTabs.value
   if (availableTabs.length === 0) {
@@ -976,17 +1169,44 @@ const syncActiveTabWithPermissions = () => {
   }
 
   if (!availableTabs.some((tab) => tab.key === activeTab.value)) {
-    activeTab.value = availableTabs[0]!.key
+    activeTab.value = resolvePreferredMainTab(availableTabs)
+  }
+}
+
+const applyPreferredProjectsMainTab = () => {
+  pendingProjectsMainTab.value = true
+  syncActiveTabWithPermissions()
+  if (activeTab.value === 'projects') {
+    pendingProjectsMainTab.value = false
+  }
+}
+
+const recoverProjectsTabAfterPermissionsLoad = (previousTab: MainTab) => {
+  if (pendingProjectsMainTab.value && canAccessProjectsTab.value) {
+    activeTab.value = 'projects'
+    pendingProjectsMainTab.value = false
+    return
+  }
+
+  if (
+    canAccessProjectsTab.value &&
+    activeTab.value === 'settings' &&
+    previousTab === 'projects'
+  ) {
+    activeTab.value = 'projects'
   }
 }
 
 const resetLoadedLineScopedData = () => {
+  stopRunnerStatusPolling()
   loadingLineDetail.value = false
   loadingProjects.value = false
   loadingMembers.value = false
   loadingCustomRoles.value = false
   loadingPermissionProjectRoleLibrary.value = false
+  loadingRunnerStatus.value = false
   lineDetail.value = null
+  runnerStatus.value = null
   lineProjects.value = []
   lineMembers.value = []
   lineCustomRoles.value = []
@@ -1112,6 +1332,9 @@ const refreshForCurrentLine = async ({
 }: { includeMembers?: boolean } = {}) => {
   void _includeMembers
   emit('request-refresh')
+  if (activeLineId.value) {
+    void loadRunnerStatus(activeLineId.value)
+  }
   await loadActiveTabData()
 }
 
@@ -1122,6 +1345,7 @@ const openCreateLineModal = () => {
 
   lineFormMode.value = 'create'
   lineFormInitialName.value = ''
+  lineFormInitialSlug.value = ''
   lineFormInitialDescription.value = ''
   lineFormError.value = ''
   lineFormModalOpen.value = true
@@ -1134,19 +1358,30 @@ const openEditLineModal = () => {
 
   lineFormMode.value = 'edit'
   lineFormInitialName.value = selectedLineName.value
+  lineFormInitialSlug.value = lineDetail.value?.slug ?? ''
   lineFormInitialDescription.value = selectedLineDescription.value ?? ''
   lineFormError.value = ''
   lineFormModalOpen.value = true
 }
 
-const submitLineForm = async (payload: { name: string; description: string }) => {
+const submitLineForm = async (payload: {
+  name: string
+  slug?: string
+  description: string
+}) => {
   lineFormSubmitting.value = true
   lineFormError.value = ''
 
   try {
     if (lineFormMode.value === 'create') {
+      if (!payload.slug?.trim()) {
+        lineFormError.value = '业务线标识不能为空'
+        return
+      }
+
       const created = await businessLinesApi.create({
         name: payload.name.trim(),
+        slug: payload.slug.trim(),
         description: normalizeOptionalText(payload.description),
       })
 
@@ -1182,9 +1417,12 @@ const openCreateProjectModal = () => {
   projectFormMode.value = 'create'
   editingProjectId.value = ''
   projectFormInitialName.value = ''
+  projectFormInitialSlug.value = ''
   projectFormInitialDescription.value = ''
   projectFormInitialGitUrl.value = ''
   projectFormInitialDefaultBranch.value = 'main'
+  projectFormInitialSubRepos.value = []
+  editingProjectConfigJson.value = null
   projectFormError.value = ''
   projectFormModalOpen.value = true
 }
@@ -1197,9 +1435,32 @@ const openEditProjectModal = (project: ProjectItem) => {
   projectFormMode.value = 'edit'
   editingProjectId.value = project.id
   projectFormInitialName.value = project.name
+  projectFormInitialSlug.value = project.slug ?? ''
   projectFormInitialDescription.value = project.description ?? ''
   projectFormInitialGitUrl.value = project.gitUrl
   projectFormInitialDefaultBranch.value = project.defaultBranch
+  editingProjectConfigJson.value =
+    ((project.configJson as Record<string, unknown> | null | undefined) ??
+      (lineDetail.value?.configJson as Record<string, unknown> | null | undefined) ??
+      null)
+  const cfg = editingProjectConfigJson.value
+  const rawSubRepos = cfg?.subRepos
+  projectFormInitialSubRepos.value = Array.isArray(rawSubRepos)
+    ? rawSubRepos
+        .filter(
+          (r: unknown): r is { url: string; prefix: string; branch: string } =>
+            r != null &&
+            typeof r === 'object' &&
+            typeof (r as Record<string, unknown>).url === 'string' &&
+            typeof (r as Record<string, unknown>).prefix === 'string' &&
+            typeof (r as Record<string, unknown>).branch === 'string',
+        )
+        .map((r) => ({
+          url: r.url,
+          prefix: r.prefix,
+          branch: r.branch,
+        }))
+    : []
   projectFormError.value = ''
   projectFormModalOpen.value = true
 }
@@ -1234,9 +1495,15 @@ const handleProjectRuntimeSettingsModalOpenChange = (open: boolean) => {
 
 const submitProjectForm = async (payload: {
   name: string
+  slug?: string
   description: string
   gitUrl: string
   defaultBranch: string
+  subRepos?: Array<{
+    url: string
+    prefix: string
+    branch: string
+  }>
 }) => {
   if (!activeLineId.value) {
     return
@@ -1246,28 +1513,75 @@ const submitProjectForm = async (payload: {
   projectFormError.value = ''
 
   try {
+    const subReposList = payload.subRepos ?? []
+
+    const subReposForStorage = subReposList.map(({ url, prefix, branch }) => ({
+      url,
+      prefix,
+      branch,
+    }))
+
     if (projectFormMode.value === 'create') {
       if (!canCreateProjectItem.value) {
         return
       }
-      await projectsApi.create({
-        businessLineId: activeLineId.value,
-        name: payload.name.trim(),
-        description: normalizeOptionalText(payload.description),
-        gitUrl: payload.gitUrl.trim(),
-        defaultBranch: payload.defaultBranch.trim() || 'main',
-      })
-    } else {
-      if (!editingProjectId.value || !canUpdateProjectItem.value) {
+
+      const configJson: Record<string, unknown> = {
+        subtreeMode: 'workspace-native',
+        subRepos: subReposForStorage.length > 0 ? subReposForStorage : undefined,
+      }
+
+      if (!payload.slug?.trim()) {
+        projectFormError.value = '项目标识不能为空'
         return
       }
 
-      await projectsApi.update(editingProjectId.value, {
+      await projectsApi.create({
+        businessLineId: activeLineId.value,
         name: payload.name.trim(),
-        description: payload.description.trim(),
-        gitUrl: payload.gitUrl.trim(),
-        defaultBranch: payload.defaultBranch.trim() || 'main',
+        slug: payload.slug.trim(),
+        description: payload.description?.trim() ?? '',
+        configJson,
       })
+    } else {
+      if (!canUpdateProjectItem.value) {
+        return
+      }
+
+      const editingId = editingProjectId.value
+      if (editingId) {
+        const baseConfig = editingProjectConfigJson.value ?? {}
+        const existingRuntime =
+          (baseConfig.containerRuntime as Record<string, unknown> | undefined) ?? {}
+        const { runnerOrchestration: _runnerOrchestration, ...containerRuntime } = existingRuntime
+
+        const configJson: Record<string, unknown> = {
+          ...baseConfig,
+          subRepos: subReposForStorage.length > 0 ? subReposForStorage : undefined,
+          ...(Object.keys(containerRuntime).length > 0
+            ? { containerRuntime }
+            : {}),
+        }
+
+        await projectsApi.update(editingId, {
+          name: payload.name.trim(),
+          description: payload.description?.trim() ?? '',
+          configJson: Object.values(configJson).some((v) => v !== undefined) ? configJson : undefined,
+        })
+      } else {
+        const baseConfig =
+          ((lineDetail.value?.configJson as Record<string, unknown> | null | undefined) ?? {})
+
+        const configJson: Record<string, unknown> = {
+          ...baseConfig,
+          subRepos: subReposForStorage.length > 0 ? subReposForStorage : undefined,
+        }
+
+        const hasConfigJson = Object.values(configJson).some((v) => v !== undefined)
+        await businessLinesApi.update(activeLineId.value, {
+          configJson: hasConfigJson ? configJson : { subRepos: [] },
+        })
+      }
     }
 
     projectFormModalOpen.value = false
@@ -1307,8 +1621,6 @@ const submitProjectRuntimeSettings = async (payload: {
     const updatedProject = await projectsApi.update(project.id, {
       name: project.name.trim(),
       description: project.description?.trim() ?? '',
-      gitUrl: project.gitUrl.trim(),
-      defaultBranch: project.defaultBranch.trim() || 'main',
       configJson: mergedConfigJson && Object.keys(mergedConfigJson).length > 0
         ? mergedConfigJson
         : undefined,
@@ -1367,8 +1679,6 @@ const submitDbIsolation = async (payload: {
     const updatedProject = await projectsApi.update(project.id, {
       name: project.name.trim(),
       description: project.description?.trim() ?? '',
-      gitUrl: project.gitUrl.trim(),
-      defaultBranch: project.defaultBranch.trim() || 'main',
       configJson: Object.keys(mergedConfigJson).length > 0
         ? mergedConfigJson
         : undefined,
@@ -1400,6 +1710,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopRunnerStatusPolling()
   if (removeProjectProvisioningChangedListener) {
     removeProjectProvisioningChangedListener()
     removeProjectProvisioningChangedListener = null
@@ -1909,9 +2220,11 @@ const initializePanel = () => {
 
   activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
   activePermissionRoleTab.value = 'business-line'
+  applyPreferredProjectsMainTab()
   if (activeLineId.value) {
     emit('select-line', activeLineId.value)
     void loadLineAccess(activeLineId.value)
+    void loadRunnerStatus(activeLineId.value)
   }
 }
 
@@ -1973,7 +2286,8 @@ watch(
 
     resetLoadedLineScopedData()
     emit('select-line', lineId)
-    syncActiveTabWithPermissions()
+    applyPreferredProjectsMainTab()
+    void loadRunnerStatus(lineId)
     void loadActiveTabData(lineId)
     void loadLineAccess(lineId)
   },
@@ -1999,6 +2313,7 @@ watch(
 
     const previousTab = activeTab.value
     syncActiveTabWithPermissions()
+    recoverProjectsTabAfterPermissionsLoad(previousTab)
 
     if (activeTab.value === previousTab) {
       void loadActiveTabData(activeLineId.value)
@@ -2158,6 +2473,7 @@ watch(
     lineFormError,
     lineFormInitialDescription,
     lineFormInitialName,
+    lineFormInitialSlug,
     lineFormModalOpen,
     lineFormMode,
     lineFormSubmitting,
@@ -2188,6 +2504,7 @@ watch(
     loadingMembers,
     loadingPermissionProjectRoleLibrary,
     loadingProjects,
+    loadingRunnerStatus,
     loadingSkillPreview,
     loadingUsers,
     loadingWorkflowConfiguredCliTools,
@@ -2267,6 +2584,8 @@ watch(
     projectFormInitialDescription,
     projectFormInitialGitUrl,
     projectFormInitialName,
+    projectFormInitialSlug,
+    projectFormInitialSubRepos,
     projectFormModalOpen,
     projectFormMode,
     projectFormSubmitting,
@@ -2301,6 +2620,12 @@ watch(
     resetWorkflowCreateForm,
     roleBadgeClass,
     router,
+    runnerStatus,
+    runnerStatusBadgeClass,
+    runnerStatusDescription,
+    runnerStatusMetaItems,
+    runnerRouteProbeItems,
+    runnerStatusTitle,
     saveDefaultAgentCliTool,
     saveAgentToolConfig,
     saveMcpJsonPreview,
@@ -2310,6 +2635,7 @@ watch(
     selectedLine,
     selectedLineDescription,
     selectedLineName,
+    selectedLineSlug,
     setAgentToolConfigAsDefault,
     setWorkflowTemplateDeleteModalOpen,
     skillKeyword,

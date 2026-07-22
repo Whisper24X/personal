@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import TaskGitChangeTreeItem from './TaskGitChangeTreeItem.vue'
 import TaskGitCompareTreeItem from './TaskGitCompareTreeItem.vue'
+import TaskGitPanelFullscreen from './TaskGitPanelFullscreen.vue'
 import TaskDiffViewer from './TaskDiffViewer.vue'
 import { useTaskGitPanel, type TaskGitPanelProps } from './use-task-git-panel'
 
@@ -19,9 +20,14 @@ const vm = useTaskGitPanel(props)
   <div class="flex h-full min-w-0 flex-col">
     <header class="border-border/70 flex items-center justify-between gap-2 border-b px-3 py-2">
       <p class="truncate text-xs text-foreground">
-        {{ vm.statusInfo?.branchName || '-' }}
-        <span class="text-muted-foreground/60">-></span>
-        {{ vm.baseBranchInput }}
+        <template v-if="vm.isMultiRepoWorkspace">
+          {{ vm.statusInfo?.branchName || '-' }}
+        </template>
+        <template v-else>
+          <span>{{ vm.statusInfo?.branchName || '-' }}</span>
+          <span class="text-muted-foreground/60">-></span>
+          <span>{{ vm.baseBranchInput }}</span>
+        </template>
       </p>
 
       <div class="flex shrink-0 items-center gap-1">
@@ -57,7 +63,7 @@ const vm = useTaskGitPanel(props)
       </button>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-hidden">
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <!-- Changes tab -->
       <div v-if="vm.activeTab === 'changes'" class="flex h-full min-w-0">
         <aside
@@ -95,7 +101,7 @@ const vm = useTaskGitPanel(props)
                   已暂存 ({{ vm.stagedFiles.length }})
                 </p>
                 <p class="mb-1.5 px-1 text-[11px] text-muted-foreground/70">
-                  准备进入下一次 vm.commit 的内容
+                  准备进入下一次提交的内容
                 </p>
                 <div class="space-y-0.5">
                   <TaskGitChangeTreeItem
@@ -104,7 +110,9 @@ const vm = useTaskGitPanel(props)
                     :node="node"
                     :files-by-path="vm.stagedTree.filesByPath"
                     :collapsed-paths="vm.stagedCollapsedPaths"
-                    :selected-path="vm.selectedChangedFile?.staged ? vm.selectedChangedFile.path : null"
+                    :selected-path="
+                      vm.selectedChangedFile?.staged ? vm.selectedChangedFile.path : null
+                    "
                     :staged="true"
                     @select-file="vm.selectFile"
                     @toggle-dir="vm.toggleCollapsedPath($event, true)"
@@ -120,7 +128,7 @@ const vm = useTaskGitPanel(props)
                   未暂存 ({{ vm.unstagedFiles.length }})
                 </p>
                 <p class="mb-1.5 px-1 text-[11px] text-muted-foreground/70">
-                  工作区变更，尚未加入 vm.commit
+                  工作区变更，尚未暂存
                 </p>
                 <div class="space-y-0.5">
                   <TaskGitChangeTreeItem
@@ -252,7 +260,9 @@ const vm = useTaskGitPanel(props)
             <section
               class="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-background"
             >
-              <div class="flex items-center justify-end gap-2 border-b border-border/60 px-3 py-1.5">
+              <div
+                class="flex items-center justify-end gap-2 border-b border-border/60 px-3 py-1.5"
+              >
                 <div
                   class="inline-flex rounded-md border border-border/70 bg-background p-0.5 shadow-sm"
                 >
@@ -305,12 +315,59 @@ const vm = useTaskGitPanel(props)
       <!-- Operations tab -->
       <div v-else-if="vm.activeTab === 'operations'" class="min-h-0 flex-1 overflow-y-auto p-4">
         <div class="mx-auto flex max-w-4xl flex-col gap-4">
-          <section class="rounded-2xl border border-border/70 bg-background shadow-sm">
+          <section
+            v-if="!vm.isMultiRepoWorkspace"
+            class="rounded-2xl border border-border/70 bg-background shadow-sm"
+          >
             <div class="flex flex-wrap items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
               <span class="rounded-md bg-muted px-2 py-1">
                 当前分支 {{ vm.statusInfo?.branchName || '-' }}
               </span>
               <span class="rounded-md bg-muted px-2 py-1">基准分支 {{ vm.baseBranchInput }}</span>
+            </div>
+          </section>
+
+          <section
+            v-if="vm.isMultiRepoWorkspace"
+            class="overflow-hidden rounded-2xl border border-border/70 bg-background shadow-sm"
+          >
+            <header class="border-b border-border/60 px-4 py-3">
+              <h3 class="text-sm font-semibold text-foreground">子仓状态</h3>
+              <p class="mt-1 text-xs text-muted-foreground">
+                当前任务基于 ainative-workspace 快照开发，推送时配置仓和各子仓都会推到 feature 分支。
+              </p>
+            </header>
+            <div class="divide-y divide-border/50">
+              <div
+                v-for="repo in vm.subRepoOperationRows"
+                :key="repo.prefix"
+                class="grid gap-2 px-4 py-3 text-xs text-muted-foreground md:grid-cols-[1.2fr_1fr_1fr_auto]"
+              >
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-foreground">{{ repo.prefix }}</p>
+                  <p class="mt-0.5 truncate">仓库目录 /{{ repo.prefix }}</p>
+                </div>
+                <div>
+                  <p class="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                    当前分支
+                  </p>
+                  <p class="mt-0.5 truncate text-foreground">{{ repo.branchName || '-' }}</p>
+                </div>
+                <div>
+                  <p class="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                    基准分支
+                  </p>
+                  <p class="mt-0.5 truncate text-foreground">{{ repo.baseBranch }}</p>
+                </div>
+                <div class="flex items-center gap-1 md:justify-end">
+                  <span class="rounded-full bg-muted px-2 py-1">
+                    变更 {{ repo.changedCount }}
+                  </span>
+                  <span class="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700">
+                    已暂存 {{ repo.stagedCount }}
+                  </span>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -320,13 +377,19 @@ const vm = useTaskGitPanel(props)
             >
               <div>
                 <h3 class="text-sm font-semibold text-foreground">提交操作</h3>
-                <p class="mt-1 text-xs text-muted-foreground">整理已暂存内容并提交到当前分支。</p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  {{
+                    vm.isMultiRepoWorkspace
+                      ? '整理已暂存内容并提交到任务分支。'
+                      : '整理已暂存内容并提交到当前分支。'
+                  }}
+                </p>
               </div>
               <span
                 class="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
-                >
-                  已暂存 {{ vm.stagedFilesCount }} 个文件
-                </span>
+              >
+                已暂存 {{ vm.stagedFilesCount }} 个文件
+              </span>
             </header>
 
             <div class="space-y-4 px-4 py-4">
@@ -340,7 +403,7 @@ const vm = useTaskGitPanel(props)
                 />
                 <button
                   class="h-10 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                  :disabled="vm.commitLoading || !vm.hasStagedFiles || !vm.commitMessage.trim()"
+                  :disabled="vm.commitLoading || !vm.hasStagedFiles || !vm.commitMessage.trim() || vm.gitOperationRunning"
                   type="button"
                   @click="vm.commit"
                 >
@@ -348,14 +411,15 @@ const vm = useTaskGitPanel(props)
                 </button>
                 <button
                   class="h-10 rounded-xl border border-border/60 bg-background px-4 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                  :disabled="vm.pushLoading"
+                  :disabled="vm.pushLoading || vm.gitOperationRunning"
                   type="button"
                   @click="vm.push"
                 >
-                  {{ vm.pushLoading ? '推送中...' : '推送' }}
+                  {{
+                    vm.pushLoading ? '推送中...' : '推送'
+                  }}
                 </button>
               </div>
-
             </div>
           </section>
 
@@ -364,7 +428,11 @@ const vm = useTaskGitPanel(props)
               <div>
                 <h3 class="text-sm font-semibold text-foreground">分支操作</h3>
                 <p class="mt-1 text-xs text-muted-foreground">
-                  围绕当前分支和基准分支执行后续协作动作。
+                  {{
+                    vm.isMultiRepoWorkspace
+                      ? '合并会把子仓基准分支同步进当前子仓 feature 分支；最终合回基准分支仍通过 PR。'
+                      : '围绕当前分支和基准分支执行后续协作动作。'
+                  }}
                 </p>
               </div>
             </header>
@@ -377,17 +445,18 @@ const vm = useTaskGitPanel(props)
                   type="button"
                   @click="vm.openPrLink"
                 >
-                  {{ vm.actionLoading === 'pr' ? '生成中...' : '创建 PR' }}
+                  {{ vm.actionLoading === 'pr' ? '生成中...' : '创建pr' }}
                 </button>
                 <button
                   class="h-10 rounded-xl border border-border/60 bg-background px-4 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
-                  :disabled="vm.actionLoading === 'merge'"
+                  :disabled="vm.actionLoading === 'merge' || vm.gitOperationRunning"
                   type="button"
                   @click="vm.doMerge"
                 >
                   {{ vm.actionLoading === 'merge' ? '合并中...' : '合并' }}
                 </button>
                 <button
+                  v-if="!vm.isMultiRepoWorkspace"
                   class="h-10 rounded-xl border border-amber-500/30 bg-amber-50/30 px-4 text-sm text-amber-700 transition-colors hover:bg-amber-50/50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-amber-500/10 dark:text-amber-300"
                   :disabled="vm.actionLoading === 'rebase'"
                   type="button"
@@ -399,10 +468,36 @@ const vm = useTaskGitPanel(props)
 
               <div
                 v-if="vm.actionMessage"
-                class="rounded-xl border px-3 py-3 text-sm"
+                class="rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap"
                 :class="vm.actionFeedbackClasses"
               >
                 {{ vm.actionMessage }}
+              </div>
+
+              <div
+                v-if="vm.gitOperation"
+                class="rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
+              >
+                <div class="mb-2 flex items-center justify-between gap-2 text-xs">
+                  <span class="font-medium text-foreground">
+                    {{ vm.gitOperation.type === 'push' ? '推送' : vm.gitOperation.type === 'deploy' ? '部署中' : '同步子仓基准分支' }}
+                    ·
+                    {{
+                      vm.gitOperation.status === 'running'
+                        ? '运行中'
+                        : vm.gitOperation.status === 'success'
+                          ? '成功'
+                          : vm.gitOperation.status === 'cancelled'
+                            ? '已取消'
+                            : '失败'
+                    }}
+                  </span>
+                  <span class="text-muted-foreground">{{ vm.gitOperation.startedAt }}</span>
+                </div>
+                <pre
+                  class="whitespace-pre-wrap rounded-lg bg-background/70 p-2 font-mono text-[11px] leading-5 text-muted-foreground"
+                  >{{ vm.gitOperationLogs.join('\n') }}</pre
+                >
               </div>
 
               <div
@@ -441,78 +536,36 @@ const vm = useTaskGitPanel(props)
     </div>
   </div>
 
-  <Teleport to="body">
-    <div
-      v-if="vm.fullscreenOpen"
-      class="fixed inset-0 z-[140] flex bg-background/85 p-3 backdrop-blur-sm sm:p-6"
-      @click.self="vm.closeFullscreen"
-    >
-      <section
-        ref="fullscreenDialog"
-        class="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Git Diff 全屏预览"
-        tabindex="-1"
-        @keydown.esc="vm.closeFullscreen"
-      >
-        <header
-          class="flex items-center justify-between gap-3 border-b border-border bg-background px-4 py-3"
-        >
-          <p class="min-w-0 truncate font-mono text-sm text-foreground">
-            {{ vm.fullscreenSelectedPath || 'Git Diff' }}
-          </p>
-          <div class="flex items-center gap-2">
-            <div
-              class="inline-flex rounded-md border border-border/70 bg-background p-0.5 shadow-sm"
-            >
-              <button
-                class="rounded px-2.5 py-1 text-[11px] transition-colors"
-                :class="
-                  vm.fullscreenViewMode === 'unified'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted'
-                "
-                type="button"
-                @click="vm.setFullscreenViewMode('unified')"
-              >
-                统一视图
-              </button>
-              <button
-                class="rounded px-2.5 py-1 text-[11px] transition-colors"
-                :class="
-                  vm.fullscreenViewMode === 'split'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted'
-                "
-                type="button"
-                @click="vm.setFullscreenViewMode('split')"
-              >
-                分栏视图
-              </button>
-            </div>
-            <button
-              class="rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              type="button"
-              @click="vm.closeFullscreen"
-            >
-              退出全屏
-            </button>
-          </div>
-        </header>
-
-        <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <TaskDiffViewer
-            :diff-text="vm.fullscreenDiffText"
-            :fallback-text="vm.fullscreenFallbackText"
-            :loading="vm.fullscreenDiffLoading"
-            :empty-text="'选择文件查看差异'"
-            :fallback-path="vm.fullscreenSelectedPath"
-            :view-mode="vm.fullscreenViewMode"
-            :show-view-mode-toolbar="false"
-          />
-        </div>
-      </section>
-    </div>
-  </Teleport>
+  <TaskGitPanelFullscreen
+    :open="vm.fullscreenOpen"
+    :selected-path="vm.fullscreenSelectedPath"
+    :view-mode="vm.fullscreenViewMode"
+    :diff-text="vm.fullscreenDiffText"
+    :fallback-text="vm.fullscreenFallbackText"
+    :diff-loading="vm.fullscreenDiffLoading"
+    @close="vm.closeFullscreen"
+    @set-view-mode="vm.setFullscreenViewMode"
+  />
 </template>
+
+<style scoped>
+:deep(.overflow-y-auto) {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+:deep(.overflow-y-auto)::-webkit-scrollbar {
+  width: 8px;
+}
+:deep(.overflow-y-auto)::-webkit-scrollbar-track {
+  background: transparent;
+}
+:deep(.overflow-y-auto)::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+:deep(.overflow-y-auto)::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.4);
+}
+</style>

@@ -169,6 +169,21 @@ export class ProjectRelationalRepository implements ProjectRepository {
     return entity ? ProjectMapper.toDomain(entity) : null;
   }
 
+  async findByBusinessLineIdAndSlug(
+    businessLineId: Project['businessLineId'],
+    slug: Project['slug'],
+  ): Promise<NullableType<Project>> {
+    const entity = await this.projectRepository.findOne({
+      where: {
+        businessLineId,
+        slug,
+        deletedAt: IsNull(),
+      },
+    });
+
+    return entity ? ProjectMapper.toDomain(entity) : null;
+  }
+
   async findByRepositoryProvisioningStatus(
     status: RepositoryProvisioningStatus,
   ): Promise<Project[]> {
@@ -189,14 +204,22 @@ export class ProjectRelationalRepository implements ProjectRepository {
     paginationOptions,
     businessLineId,
     keyword,
+    includeWorkspaceManaged,
   }: {
     paginationOptions: IPaginationOptions;
     businessLineId?: string;
     keyword?: string;
+    includeWorkspaceManaged?: boolean;
   }): Promise<Project[]> {
     const query = this.projectRepository
       .createQueryBuilder('project')
       .where('project.deletedAt IS NULL');
+
+    if (!includeWorkspaceManaged) {
+      query.andWhere(
+        `(project.configJson IS NULL OR NOT project.configJson @> '{"workspaceManaged": true}')`,
+      );
+    }
 
     if (businessLineId) {
       query.andWhere('project.businessLineId = :businessLineId', {
@@ -231,12 +254,14 @@ export class ProjectRelationalRepository implements ProjectRepository {
     businessLineIds,
     keyword,
     businessLineId,
+    includeWorkspaceManaged,
   }: {
     paginationOptions: IPaginationOptions;
     projectIds: string[];
     businessLineIds: string[];
     keyword?: string;
     businessLineId?: string;
+    includeWorkspaceManaged?: boolean;
   }): Promise<Project[]> {
     if (!projectIds.length && !businessLineIds.length) {
       return [];
@@ -244,28 +269,35 @@ export class ProjectRelationalRepository implements ProjectRepository {
 
     const query = this.projectRepository
       .createQueryBuilder('project')
-      .where('project.deletedAt IS NULL')
-      .andWhere(
-        new Brackets((qb) => {
+      .where('project.deletedAt IS NULL');
+
+    if (!includeWorkspaceManaged) {
+      query.andWhere(
+        `(project.configJson IS NULL OR NOT project.configJson @> '{"workspaceManaged": true}')`,
+      );
+    }
+
+    query.andWhere(
+      new Brackets((qb) => {
+        if (projectIds.length) {
+          qb.where('project.id IN (:...projectIds)', {
+            projectIds,
+          });
+        }
+
+        if (businessLineIds.length) {
           if (projectIds.length) {
-            qb.where('project.id IN (:...projectIds)', {
-              projectIds,
+            qb.orWhere('project.businessLineId IN (:...businessLineIds)', {
+              businessLineIds,
+            });
+          } else {
+            qb.where('project.businessLineId IN (:...businessLineIds)', {
+              businessLineIds,
             });
           }
-
-          if (businessLineIds.length) {
-            if (projectIds.length) {
-              qb.orWhere('project.businessLineId IN (:...businessLineIds)', {
-                businessLineIds,
-              });
-            } else {
-              qb.where('project.businessLineId IN (:...businessLineIds)', {
-                businessLineIds,
-              });
-            }
-          }
-        }),
-      );
+        }
+      }),
+    );
 
     if (businessLineId) {
       query.andWhere('project.businessLineId = :businessLineId', {
@@ -292,6 +324,19 @@ export class ProjectRelationalRepository implements ProjectRepository {
       .getMany();
 
     return entities.map((entity) => ProjectMapper.toDomain(entity));
+  }
+
+  async findWorkspaceManagedByBusinessLineId(
+    businessLineId: Project['businessLineId'],
+  ): Promise<NullableType<Project>> {
+    const entity = await this.projectRepository
+      .createQueryBuilder('project')
+      .where('project.businessLineId = :businessLineId', { businessLineId })
+      .andWhere('project.deletedAt IS NULL')
+      .andWhere(`project.configJson @> '{"workspaceManaged": true}'`)
+      .getOne();
+
+    return entity ? ProjectMapper.toDomain(entity) : null;
   }
 
   async update(

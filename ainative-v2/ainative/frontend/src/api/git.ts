@@ -6,6 +6,10 @@ export const gitApi = {
     return apiHttp.get<GitBranches>('/git/branches', { projectId })
   },
 
+  workspaceBranches(businessLineId: string) {
+    return apiHttp.get<GitBranches>('/git/workspace-branches', { businessLineId })
+  },
+
   branchesDetail(projectId: string) {
     return apiHttp.get<GitBranchesDetail>('/git/branches-detail', { projectId })
   },

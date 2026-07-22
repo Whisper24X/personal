@@ -1,0 +1,267 @@
+syntax = "proto3";
+package config;
+
+//import "api/devices-learn/devices-learn.proto";
+import "google/protobuf/duration.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/internal/conf;conf";
+
+// 环境变量GO_ENV选项
+enum GO_ENV {
+  production = 0;
+  stage = 1;
+  test = 2;
+  local = 3;
+  development = 4;
+}
+
+message Bootstrap {
+  message YC {
+    map<string, Redis> redis = 1;
+    map<string, PG> pg = 2;
+    Nacos nacos = 3;
+    Kafkas kafka = 4;
+    map<string, RabbitMq> rabbitmq = 5;
+    CronTasks cronTasks = 6;
+  }
+  string name = 1;
+  Server server = 2;
+  GO_ENV env = 3;
+  YC yc = 4;
+  Logger logger = 5;
+  RateLimit ratelimit = 7;
+}
+
+message Server {
+  message HTTP {
+    string network = 1;
+    string addr = 2;
+    google.protobuf.Duration timeout = 3;
+  }
+  message GRPC {
+    string network = 1;
+    string addr = 2;
+    google.protobuf.Duration timeout = 3;
+  }
+  HTTP http = 1;
+  GRPC grpc = 2;
+}
+
+// Redis 缓存数据.
+message Redis {
+  string addr = 1;
+  string password = 2;
+  int32 db = 3;
+  // 名称
+  string name = 4;
+  // 用户名
+  string username = 5;
+  // 读超时时间，默认3秒，-1表示取消读超时
+  int64 readTimeout = 6;
+  // 写超时时间，默认等于读超时
+  int64 writeTimeout = 7;
+  // key 前缀
+  string keyPrefix = 8;
+  // 触发 LatencyHookFn 函数的时间
+  int64 maxLatency = 9;
+  // 连接池的类型。
+  // FIFO 池为 true，LIFO 池为 false。
+  // 请注意，与 lifo 相比，fifo 的开销更高
+  bool poolFIFO = 10;
+  // 最大套接字连接数。
+  int32 poolSize = 11;
+  // 如果所有连接都忙，则客户端在返回错误之前等待连接的时间。
+  int64 poolTimeout = 12;
+  // 建立新连接缓慢时有用的最小空闲连接数。
+  int32 minIdleConns = 13;
+  // 客户端关闭空闲连接的时间。应该小于服务器的超时时间。
+  int64 idleTimeout = 14;
+  // 客户端退出（关闭）连接的连接年龄。默认是不关闭老化的连接。
+  int64 maxConnAge = 15;
+}
+
+// PG pg配置信息
+message PG {
+  string host = 1;
+  int32 port = 2;
+  string user = 3;
+  string password = 4;
+  string db = 5;
+  string sslMode = 6;
+  // 最大空闲连接数.
+  int32 maxIdleConns = 7;
+  // 最大活动连接数.
+  int32 maxOpenConns = 8;
+  // 连接的最大存活时间 300s.
+  google.protobuf.Duration connMaxLifetime = 9;
+  // 是否开启debug模式.
+  bool debug = 10;
+  // 关闭复数表 true.
+  bool singularTable = 11;
+  // 关闭指标采集.
+  bool disableMetric = 12;
+  // 超时时间 500ms.
+  google.protobuf.Duration slowThreshold = 13;
+  // 更新字段.
+  repeated string updateColumn = 14;
+  // 名称
+  string name = 15;
+}
+
+// logger 日志配置信息
+message Logger {
+  repeated string headerWhites = 1;
+  int32 enableResWithCode = 2;
+  int32 enableReqWithCode = 3;
+}
+
+message Nacos {
+  string host = 1;
+  uint64 port = 2;
+  string username = 3;
+  string password = 4;
+}
+
+// kafka的配置信息
+message Kafka {
+  // SASL校验.
+  message Sasl {
+    // 是否启用用户名密码校验
+    bool enable = 1;
+    // 用户名
+    string user = 2;
+    // 密码
+    string password = 3;
+    // 认证加密方式;默认 PLAIN 支持: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+    string mechanism = 4;
+  }
+
+  // 生产者.
+  message Producer {
+    // 是否开启批发送; 默认关闭
+    bool batch = 1;
+    // 批量发送消息:生产者批发送的时间间隔,先攒5ms,5ms有一批数据就发一批,有几个发几个 默认:5ms; 参数:queue.buffering.max.ms
+    int32 batchMaxMs = 2;
+    // 批量发送消息:本地队列上允许储存的最大消息数。 此队列由所有主题和分区共享, 用于异步发送数据,默认:100000。参数:queue.buffering.max.messages
+    int32 batchMaxMessages = 3;
+    // 批量发送消息:本地队列上允许的最大消息的字节大小数。 此队列由所有主题和分区共享。 此属性的优先级高于 queueBufferingMaxMessages, 大小达到上线,则会停止 默认: 1048576 = 1M。参数:queue.buffering.max.kbytes
+    int32 batchMaxKbytes = 4;
+  }
+
+  // 消费者信息.
+  message Consumer {
+    // 消费模式: 默认: 单条消费(single) | 批量多条消费(multiSingle) | 批量单条消费(multiBatch)
+    string mode = 1;
+    // 批量消费数量: 默认单条消费;如果大于1,需要设置:enable.auto.offset.store = false enable.auto.commit=false 不自动偏移,完全手动偏移,不自动提交,完全手动提交
+    int32 batchAmount = 2;
+    // 批量多条消费时,最大等待时长: 默认:1000ms;
+    int32 maxWaitMs = 3;
+    // 消费超时时间: 默认:10s 10000ms;
+    int32 timeoutMs = 4;
+    // 消费者 所在组
+    string group = 5;
+    // 消费者最大轮询时间,超出时间后,会执行reBalance;默认:300000ms 5分钟: max.poll.interval.ms
+    int32 maxPollMs = 6;
+    // 消费者偏移量重置策略:默认:latest(新的分组offset从最最新的数据开始消费);参数:auto.offset.reset: earliest\latest
+    string autoOffsetReset = 7;
+  }
+
+  // 名称.
+  string name = 1;
+  // 地址信息.
+  repeated string address = 2;
+  // 安全协议: plaintext\sasl_plaintext\sasl_ssl.
+  string securityProtocol = 3;
+  // ca证书文件地址.
+  string certFile = 4;
+  // 是否需要加密.
+  bool tls = 5;
+  // 消费或发送给的topic.
+  string topic = 6;
+  // SASL配置.
+  Sasl sasl = 7;
+  // 生产者配置.
+  Producer producer = 8;
+  // 消费者配置.
+  Consumer consumer = 9;
+}
+
+message RateLimit {
+  int64 window = 1;
+  int64 bucket = 2;
+  int64 cpuThreshold = 3;
+}
+
+message RabbitMq {
+  // 配置
+  message Business {
+    bool enable = 1;
+    string exchangeName = 2;
+    string queueName = 3;
+    string bindingKey = 4;
+  }
+  // vhost
+  string vhost = 1;
+  // 用户名
+  string userName = 2;
+  // 密码
+  string password = 3;
+  // 终端地址
+  string endPoint = 4;
+  // 重试次数限制
+  int32 reconnectLimit = 5;
+  // 重试的时间间隔基准
+  int32 reconnectTimeGap = 6;
+  // 配置.
+  map<string, Business> business = 7;
+}
+
+message Kafkas {
+  // 用户队列队列.
+  Kafka user = 1;
+  // 用户区域队列
+  Kafka userRegion = 2;
+}
+
+// GrpcService 服务列表
+message GrpcService {
+  string courseBusiness = 1;
+}
+
+// CronTasks 定时任务
+message CronTasks {
+  enum NOTIFY_TYPE {
+    // NONE 不通知.
+    NONE = 0;
+    // 打印日志.
+    CONSOLE = 1;
+    // 飞书通知.
+    FEISHU = 2;
+  }
+  // 飞书通知结构.
+  message FeiShu {
+    // 通知的飞书机器人url.
+    string url = 1;
+    // 标题.
+    string title = 2;
+  }
+  // 飞书通知结构.
+  message Notify {
+    // 通知方式; feiShu: 飞书通知; console 打印日志.
+    NOTIFY_TYPE type = 1;
+    // 飞书通知
+    FeiShu feiShu = 2;
+  }
+  message CronTask {
+    // 名称.
+    string name = 1;
+    // cron表达式.
+    string cron = 2;
+    // 运行模式 default:到时间就开一个新的协程处理任务; skip:该执行的时候,上一个还没结束,就跳过本次运行; delay: 延迟继续运行.
+    string mode = 3;
+    // 通知方式
+    Notify notify = 4;
+  }
+  // 定时任务列表.
+  map<string, CronTask> tasks = 1;
+}

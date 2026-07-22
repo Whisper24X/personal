@@ -3,6 +3,7 @@ import { AgentPromptTemplateService } from '../agent-execution/agent-prompt-temp
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
 import { TaskMode } from './dto/task-mode.enum';
+import { TaskNodeStatus } from './dto/task-node-status.enum';
 import { TaskStatus } from './dto/task-status.enum';
 
 const createTask = (overrides: Partial<Task> = {}): Task => ({
@@ -42,7 +43,7 @@ const createNode = (overrides: Partial<TaskNode> = {}): TaskNode => ({
     maxLoops: 1,
   },
   runtimeJson: null,
-  status: TaskStatus.todo,
+  status: TaskNodeStatus.todo,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -77,10 +78,17 @@ describe('AgentPromptTemplateService', () => {
         '{{gitBaseBranch}}',
         '{{gitWorktree}}',
         '{{gitWorktreePath}}',
+        '{{earlyExitMarkerFileName}}',
       ].join('\n'),
       {
         task: createTask(),
-        node: createNode(),
+        node: createNode({
+          input: {
+            taskInput: 'task input',
+            nodeInput: 'node input',
+            earlyExitMarkerFileName: 'taskResult',
+          },
+        }),
         project: createProject(),
         runtime: {
           gitBranch: 'feature/runtime-branch',
@@ -102,6 +110,7 @@ describe('AgentPromptTemplateService', () => {
         'develop',
         'wk-20260318-101500',
         '/tmp/worktrees/wk-20260318-101500',
+        'taskResult',
       ].join('\n'),
     );
   });

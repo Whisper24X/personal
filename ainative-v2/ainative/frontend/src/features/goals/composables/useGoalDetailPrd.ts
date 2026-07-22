@@ -1,5 +1,5 @@
 import { ref, watch, type Ref } from 'vue'
-import { projectsApi } from '@/api/projects'
+import { goalsApi } from '@/api/goals'
 import { useMessage } from '@app/composables/useMessage'
 import type { GoalDetail as GoalDetailType } from '@/types/api/goals'
 import type { GoalDetailTab } from './useGoalDetailData'
@@ -29,8 +29,8 @@ export function useGoalDetailPrd(options: UseGoalDetailPrdOptions) {
       return
     }
     const path = detail.goal.prdDocPath?.trim()
-    const projectId = detail.goal.projectId
-    if (!path || !projectId) {
+    const goalId = detail.goal.id
+    if (!path || !goalId) {
       prdPreviewContent.value = ''
       prdPreviewError.value = ''
       prdPreviewLoading.value = false
@@ -41,7 +41,7 @@ export function useGoalDetailPrd(options: UseGoalDetailPrdOptions) {
     prdPreviewLoading.value = true
     prdPreviewError.value = ''
     try {
-      const result = await projectsApi.readDoc(projectId, path)
+      const result = await goalsApi.readPrdDoc(goalId)
       if (token !== prdPreviewRequestToken) {
         return
       }
@@ -66,14 +66,14 @@ export function useGoalDetailPrd(options: UseGoalDetailPrdOptions) {
   async function openPrdEditor() {
     const detail = options.detail.value
     const path = detail?.goal.prdDocPath?.trim()
-    const projectId = detail?.goal.projectId
-    if (!detail || !path || !projectId) {
+    const goalId = detail?.goal.id
+    if (!detail || !path || !goalId) {
       return
     }
     prdEditorOpen.value = true
     prdEditorLoading.value = true
     try {
-      const result = await projectsApi.readDoc(projectId, path)
+      const result = await goalsApi.readPrdDoc(goalId)
       prdEditorContent.value = result.content
     } catch (e) {
       message.error(toErrorMessage(e, '读取 PRD 失败'))
@@ -86,14 +86,13 @@ export function useGoalDetailPrd(options: UseGoalDetailPrdOptions) {
   async function savePrdEditor() {
     const detail = options.detail.value
     const path = detail?.goal.prdDocPath?.trim()
-    const projectId = detail?.goal.projectId
-    if (!detail || !path || !projectId) {
+    const goalId = detail?.goal.id
+    if (!detail || !path || !goalId) {
       return
     }
     prdEditorSaving.value = true
     try {
-      await projectsApi.updateDoc(projectId, {
-        path,
+      await goalsApi.updatePrdDoc(goalId, {
         content: prdEditorContent.value,
       })
       message.success('PRD 已保存')
@@ -107,11 +106,14 @@ export function useGoalDetailPrd(options: UseGoalDetailPrdOptions) {
   }
 
   watch(
-    [
-      () => options.tab.value,
-      () => options.detail.value?.goal.prdDocPath?.trim() ?? '',
-      () => options.detail.value?.goal.projectId ?? '',
-    ],
+    () =>
+      [
+        options.tab.value,
+        options.detail.value?.goal.id,
+        options.detail.value?.goal.prdDocPath?.trim() ?? '',
+        options.detail.value?.goal.projectId ?? '',
+        options.detail.value?.goal.gitBranch,
+      ] as const,
     () => {
       if (options.tab.value === 'prd' && options.detail.value?.goal.prdDocPath?.trim()) {
         void loadPrdPreview()

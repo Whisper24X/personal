@@ -412,6 +412,146 @@ export class ProjectDocsService {
     };
   }
 
+  async readDocFromBranch(
+    projectId: Project['id'],
+    rawDocPath: string,
+    branchName: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const normalizedBranchName = branchName.trim();
+    if (!normalizedBranchName) {
+      throw new BadRequestException('Project doc branch is required');
+    }
+
+    const { repositoryRoot } =
+      await this.projectRepositoryWorkspaceService.ensureProjectRepositoryReady(
+        projectId,
+        currentUser,
+        { syncRemote: false },
+      );
+    const relativePath = this.normalizeProjectDocPath(rawDocPath);
+    const gitObjectPath = `docs/${relativePath}`;
+    let gitRef = normalizedBranchName;
+    let showResult = await this.runGitCommand(repositoryRoot, [
+      'show',
+      `${gitRef}:${gitObjectPath}`,
+    ]);
+    if (!showResult.success && !normalizedBranchName.startsWith('origin/')) {
+      gitRef = `origin/${normalizedBranchName}`;
+      showResult = await this.runGitCommand(repositoryRoot, [
+        'show',
+        `${gitRef}:${gitObjectPath}`,
+      ]);
+    }
+
+    if (!showResult.success) {
+      throw new NotFoundException('Project doc not found');
+    }
+
+    const logResult = await this.runGitCommand(repositoryRoot, [
+      'log',
+      '-1',
+      '--format=%cI',
+      gitRef,
+      '--',
+      gitObjectPath,
+    ]);
+    const committedAt = logResult.success
+      ? new Date(logResult.stdout.trim())
+      : null;
+
+    return {
+      path: relativePath,
+      name: path.basename(relativePath),
+      size: Buffer.byteLength(showResult.stdout, 'utf-8'),
+      updatedAt:
+        committedAt && !Number.isNaN(committedAt.getTime())
+          ? committedAt
+          : new Date(),
+      content: showResult.stdout,
+    };
+  }
+
+  async saveDocInRepositoryRoot(
+    repositoryRoot: string,
+    payload: SaveProjectDocDto,
+    options?: { overwrite?: boolean },
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(payload.path);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+    const existing = await fs.stat(absolutePath).catch(() => null);
+
+    if (existing?.isDirectory()) {
+      throw new ConflictException('Project doc path is a directory');
+    }
+
+    if (existing?.isFile() && options?.overwrite === false) {
+      throw new ConflictException('Project doc already exists');
+    }
+
+    if (!existing) {
+      await this.ensureDocParentDirectory(docsRoot, absolutePath);
+    }
+
+    if (payload.contentBase64 != null && payload.contentBase64 !== '') {
+      await fs.writeFile(
+        absolutePath,
+        Buffer.from(payload.contentBase64, 'base64'),
+      );
+    } else {
+      await fs.writeFile(absolutePath, payload.content ?? '', 'utf-8');
+    }
+
+    return this.readDocFromRepositoryRoot(repositoryRoot, relativePath);
+  }
+
+  async readDocFromRepositoryRoot(
+    repositoryRoot: string,
+    rawDocPath: string,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(rawDocPath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+    const stat = await fs.stat(absolutePath).catch(() => null);
+
+    if (!stat || !stat.isFile()) {
+      throw new NotFoundException('Project doc not found');
+    }
+
+    return {
+      path: relativePath,
+      name: path.basename(absolutePath),
+      size: stat.size,
+      updatedAt: stat.mtime,
+      content: await fs.readFile(absolutePath, 'utf-8'),
+    };
+  }
+
   async uploadProjectDoc(
     projectId: Project['id'],
     rawPath: string,
@@ -844,7 +984,19 @@ export class ProjectDocsService {
 
   private async runGitCommand(
     args: string[],
+  ): Promise<{ success: boolean; stdout: string; stderr: string }>;
+  private async runGitCommand(
+    repositoryRoot: string,
+    args: string[],
+  ): Promise<{ success: boolean; stdout: string; stderr: string }>;
+  private async runGitCommand(
+    repositoryRootOrArgs: string | string[],
+    maybeArgs?: string[],
   ): Promise<{ success: boolean; stdout: string; stderr: string }> {
+    const args = Array.isArray(repositoryRootOrArgs)
+      ? repositoryRootOrArgs
+      : ['-C', repositoryRootOrArgs, ...(maybeArgs ?? [])];
+
     return new Promise((resolve) => {
       const childProcess = spawn('git', args, {
         env: process.env,
@@ -893,5 +1045,22 @@ export class ProjectDocsService {
     } catch {
       return false;
     }
+  }
+
+  private async ensureDocParentDirectory(
+    docsRoot: string,
+    absolutePath: string,
+  ): Promise<void> {
+    const parentDir = path.dirname(absolutePath);
+    const parentStat = await fs.stat(parentDir).catch(() => null);
+    if (parentStat?.isFile()) {
+      const parentRelative = path
+        .relative(docsRoot, parentDir)
+        .replace(/\\/g, '/');
+      throw new ConflictException(
+        `路径「${parentRelative}」已存在为文件，无法在其下创建子文件。请删除该文件或选择其他路径。`,
+      );
+    }
+    await fs.mkdir(parentDir, { recursive: true });
   }
 }

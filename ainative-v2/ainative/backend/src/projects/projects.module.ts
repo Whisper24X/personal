@@ -17,6 +17,9 @@ import { ProjectKnowledgeService } from './project-knowledge.service';
 import { ProjectRepositoryWorkspaceService } from './project-repository-workspace.service';
 import { ProjectRepositoryProvisioningService } from './project-repository-provisioning.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SnapshotSyncModule } from '../git/snapshot-sync.module';
+import { WorkspaceNativeModule } from '../git/workspace-native.module';
+import { WorkspaceNativeDeployService } from '../tasks/application/workspace-native-deploy.service';
 import { RelationalGoalPersistenceModule } from '../goals/infrastructure/persistence/relational/relational-persistence.module';
 
 @Module({
@@ -32,6 +35,8 @@ import { RelationalGoalPersistenceModule } from '../goals/infrastructure/persist
     forwardRef(() => BusinessLinesModule),
     AccessModule,
     NotificationsModule,
+    SnapshotSyncModule,
+    WorkspaceNativeModule,
   ],
   controllers: [ProjectsController],
   providers: [
@@ -42,6 +47,7 @@ import { RelationalGoalPersistenceModule } from '../goals/infrastructure/persist
     ProjectDeployService,
     ProjectRepositoryWorkspaceService,
     ProjectRepositoryProvisioningService,
+    WorkspaceNativeDeployService,
   ],
   exports: [
     ProjectsService,
@@ -51,7 +57,10 @@ import { RelationalGoalPersistenceModule } from '../goals/infrastructure/persist
     ProjectDeployService,
     ProjectRepositoryWorkspaceService,
     ProjectRepositoryProvisioningService,
+    WorkspaceNativeDeployService,
     RelationalProjectPersistenceModule,
+    SnapshotSyncModule,
+    WorkspaceNativeModule,
   ],
 })
 export class ProjectsModule {}

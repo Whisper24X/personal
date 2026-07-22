@@ -43,6 +43,15 @@ export class RunnerOrchestrationService {
     return this.normalizeOrchestration(rawOrchestration);
   }
 
+  normalizeConfigSnapshot(
+    orchestration?: Record<string, unknown> | null,
+  ): RunnerOrchestrationConfig | null {
+    if (!orchestration) {
+      return null;
+    }
+    return this.normalizeOrchestration(orchestration);
+  }
+
   buildEffectiveOrchestration(
     project?: Project | null,
   ): RunnerOrchestrationConfig | null {
@@ -54,8 +63,78 @@ export class RunnerOrchestrationService {
     );
   }
 
+  private buildFromSubRepoMetadata(
+    project?: Project | null,
+  ): RunnerOrchestrationConfig | null {
+    if (!project?.configJson || typeof project.configJson !== 'object') {
+      return null;
+    }
+    const configJson = project.configJson as Record<string, unknown>;
+    const subRepos = configJson.subRepos;
+    if (!Array.isArray(subRepos) || subRepos.length === 0) return null;
+
+    const services: RunnerServiceConfig[] = [];
+    for (const raw of subRepos) {
+      if (!raw || typeof raw !== 'object') continue;
+      const r = raw as Record<string, unknown>;
+      const prefix = typeof r.prefix === 'string' ? r.prefix.trim() : undefined;
+      const command =
+        typeof r.command === 'string' ? r.command.trim() : undefined;
+      if (!prefix || !command) continue;
+
+      const svc: RunnerServiceConfig = {
+        name: prefix,
+        workdir: prefix,
+        command,
+      };
+      if (typeof r.port === 'number' && r.port > 0) svc.port = r.port;
+      if (typeof r.installCommand === 'string' && r.installCommand.trim()) {
+        svc.installCommand = r.installCommand.trim();
+      }
+      services.push(svc);
+    }
+
+    if (services.length === 0) return null;
+
+    const routes: RunnerRouteConfig[] = [];
+    const withPort = services.filter((s) => s.port);
+    if (withPort.length === 1) {
+      routes.push({
+        path: '/',
+        action: 'proxy',
+        match: 'prefix',
+        service: withPort[0].name,
+      });
+    } else if (withPort.length > 1) {
+      for (const svc of withPort) {
+        routes.push({
+          path: `/${svc.name}/`,
+          action: 'proxy',
+          match: 'prefix',
+          service: svc.name,
+        });
+      }
+    }
+
+    const orchestration: RunnerOrchestrationConfig = { services };
+    if (routes.length > 0) orchestration.routes = routes;
+    if (withPort.length > 0) {
+      orchestration.preview = {
+        service: withPort[0].name,
+        path: withPort.length === 1 ? '/' : `/${withPort[0].name}/`,
+      };
+    }
+    return orchestration;
+  }
+
   resolvePreviewConfig(project?: Project | null): RunnerPreviewConfig | null {
     return this.buildEffectiveOrchestration(project)?.preview ?? null;
+  }
+
+  resolvePreviewConfigFromOrchestration(
+    orchestration?: RunnerOrchestrationConfig | null,
+  ): RunnerPreviewConfig | null {
+    return orchestration?.preview ?? null;
   }
 
   buildProjectRunnerConfigFile(
@@ -65,6 +144,16 @@ export class RunnerOrchestrationService {
     if (!orchestration) {
       return null;
     }
+    return this.buildProjectRunnerConfigFileFromOrchestration(
+      project,
+      orchestration,
+    );
+  }
+
+  buildProjectRunnerConfigFileFromOrchestration(
+    project: Project,
+    orchestration: RunnerOrchestrationConfig,
+  ): ProjectRunnerConfigFile {
     const runnerPlatform = this.containerConfig.getRunnerPlatform(project);
 
     const runtimeSharedVolumes = this.mergeSharedVolumes(
@@ -129,7 +218,20 @@ export class RunnerOrchestrationService {
     project?: Project | null,
   ): string[] {
     const orchestration = this.buildEffectiveOrchestration(project);
-    const mounts = new Set<string>([`${workspaceMount}/logs`]);
+    return this.buildManagedVolumeTargetsFromOrchestration(
+      workspaceMount,
+      orchestration,
+    );
+  }
+
+  buildManagedVolumeTargetsFromOrchestration(
+    workspaceMount: string,
+    orchestration?: RunnerOrchestrationConfig | null,
+  ): string[] {
+    const mounts = new Set<string>([
+      `${workspaceMount}/logs`,
+      '/var/lib/ainative-runner-cache',
+    ]);
 
     for (const service of orchestration?.services ?? []) {
       if (!service.installCommand) {
@@ -194,6 +296,10 @@ export class RunnerOrchestrationService {
               TARO_APP_API: '/api',
               BROWSER: 'none',
               CI: 'true',
+              AINATIVE_PREVIEW_HTML_INJECT: '1',
+              AINATIVE_PREVIEW_HMR_PATH: '/_ainative/vite-hmr/ainative-app',
+              AINATIVE_PREVIEW_SERVICE_NAME: 'ainative-app',
+              AINATIVE_PREVIEW_SERVICE_PORT: '8200',
             },
             installCommand: 'npm install',
             installCheckPath: 'node_modules/.bin/taro',
@@ -255,9 +361,17 @@ export class RunnerOrchestrationService {
             websocket: true,
           },
           {
+            path: '/_ainative/vite-hmr/ainative-app',
+            match: 'prefix',
+            service: 'ainative-app',
+            upstreamPath: '/',
+            websocket: true,
+          },
+          {
             path: '/',
             match: 'prefix',
             service: 'ainative-app',
+            upstreamPath: '/',
             websocket: true,
           },
         ],

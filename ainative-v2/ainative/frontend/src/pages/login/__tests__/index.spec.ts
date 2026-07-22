@@ -42,6 +42,7 @@ beforeEach(() => {
       {
         id: 'line-1',
         name: 'Line 1',
+        slug: 'line-1',
         description: '',
       },
     ],

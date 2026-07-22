@@ -1,10 +1,12 @@
 import type { InjectionKey } from 'vue'
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@app/composables/useMessage'
 import { useAccessStore } from '@app/stores/modules/access'
 import { openSseStream } from '@/api/http'
+import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
+import type { Project, ProjectRunnerRegenerateResponse } from '@/types/api/projects'
 import type {
   ResetNodePayload,
   TaskDetail,
@@ -91,6 +93,10 @@ const editOpen = ref(false)
 const deleteOpen = ref(false)
 const savingEdit = ref(false)
 const removingTask = ref(false)
+const regeneratingRunnerConfig = ref(false)
+const regenerateRunnerConfigPreparing = ref(false)
+const isAutoApplyingRunnerConfig = ref(false)
+const deleteBlockReason = ref('')
 const approveConfirmationNodeId = ref<string | null>(null)
 const editForm = reactive<TaskEditFormValue>({
   title: '',
@@ -112,12 +118,29 @@ let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let rightPanelWorkspaceRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let streamLogFlushTimer: ReturnType<typeof setTimeout> | null = null
 let heartbeatCheckTimer: ReturnType<typeof setInterval> | null = null
+let previewProvisioningPollTimer: ReturnType<typeof setTimeout> | null = null
+let regenerateRunnerConfigPollTimer: ReturnType<typeof setTimeout> | null = null
+let previewProvisioningStartedAt = 0
+let previewProvisioningLongWarned = false
+let previewProvisioningRefreshPromise: Promise<void> | null = null
 let lastSseEventTime = 0
 const SSE_HEARTBEAT_TIMEOUT_MS = 90_000
+const PREVIEW_PROVISIONING_FAST_POLL_INTERVAL_MS = 2_000
+const PREVIEW_PROVISIONING_SLOW_POLL_INTERVAL_MS = 15_000
+const PREVIEW_PROVISIONING_FAST_POLL_WINDOW_MS = 120_000
+const RUNNER_CONFIG_PREPARING_POLL_INTERVAL_MS = 2_000
 let detailRequestId = 0
 let pendingStreamLogs: TaskLog[] = []
 const pendingRightPanelArtifactRefreshPaths = new Set<string>()
 let pendingRightPanelArtifactRefreshUnknown = false
+type RunnerConfigApplyState = {
+  projectId: string
+  queuedAt: string
+  environmentWasReady: boolean
+  initialGeneratedAt: string | null
+  initialSignature: string | null
+}
+const runnerConfigApplyState = ref<RunnerConfigApplyState | null>(null)
 
 const task = computed(() => detail.value?.task ?? null)
 const pageLoading = computed(() => loading.value && !detail.value)
@@ -125,6 +148,11 @@ const pageLoading = computed(() => loading.value && !detail.value)
 const taskConfig = computed(() => task.value?.configJson ?? null)
 const environmentStatus = computed(() => environment.value?.status ?? null)
 const isEnvironmentReady = computed(() => environmentStatus.value === 'ready')
+const isPreviewProvisioning = computed(
+  () =>
+    environment.value?.status === 'ready' &&
+    environment.value?.preview?.status === 'provisioning',
+)
 const environmentStatusLabel = computed(() => {
   return environmentStatus.value ? environmentStatusLabelMap[environmentStatus.value] : ''
 })
@@ -350,7 +378,13 @@ const canCompleteTask = computed(() => {
 })
 
 const canStartEnvironment = computed(() => {
-  if (!task.value || !hasButtonAccess('executeTask') || actionLoading.value) {
+  if (
+    !task.value ||
+    !hasButtonAccess('executeTask') ||
+    actionLoading.value ||
+    regenerateRunnerConfigPreparing.value ||
+    isAutoApplyingRunnerConfig.value
+  ) {
     return false
   }
 
@@ -358,7 +392,119 @@ const canStartEnvironment = computed(() => {
     return false
   }
 
+  if (
+    environment.value?.workspaceStatus === 'provisioning' ||
+    environment.value?.workspaceStatus === 'failed'
+  ) {
+    return false
+  }
+
   return environment.value?.status !== 'ready' && environment.value?.status !== 'starting'
+})
+
+const hasProjectConfigEditAccess = computed(() => {
+  return hasButtonAccess('editProjectConfig')
+})
+
+const hasTaskRuntimeManageAccess = computed(() => {
+  return hasButtonAccess('executeTask') || hasButtonAccess('deleteTask')
+})
+
+const isWorkspaceNativeTask = computed(() => {
+  const config = taskConfig.value
+  if (!config || typeof config !== 'object') {
+    return false
+  }
+
+  if (Array.isArray(config.subReposSnapshot) && config.subReposSnapshot.length > 0) {
+    return true
+  }
+
+  if (config.workspaceSnapshot && typeof config.workspaceSnapshot === 'object') {
+    return true
+  }
+
+  return (
+    typeof config.workspaceStatus === 'string' ||
+    typeof config.workspaceStage === 'string' ||
+    typeof config.workspaceSnapshotStatus === 'string'
+  )
+})
+
+const runnerResetRequired = computed(() => {
+  const runnerConfig = taskConfig.value?.runner
+  if (!runnerConfig || typeof runnerConfig !== 'object') {
+    return false
+  }
+
+  const source =
+    typeof runnerConfig.source === 'string'
+      ? runnerConfig.source.trim()
+      : ''
+  const status =
+    typeof runnerConfig.status === 'string'
+      ? runnerConfig.status.trim()
+      : ''
+  const error =
+    typeof runnerConfig.error === 'string'
+      ? runnerConfig.error.trim()
+      : ''
+
+  if (source === 'unavailableGenerationFailed' || source === 'unavailableStaleCache') {
+    return true
+  }
+
+  const diagnosticText = `${status} ${source} ${error}`.toLowerCase()
+  return (
+    diagnosticText.includes('重置配置') ||
+    diagnosticText.includes('runner 配置未通过验证') ||
+    diagnosticText.includes('runner configuration unavailable')
+  )
+})
+
+const showRegenerateRunnerConfig = computed(() => {
+  if (!activeProjectId.value || !isWorkspaceNativeTask.value) {
+    return false
+  }
+
+  return hasProjectConfigEditAccess.value || hasTaskRuntimeManageAccess.value || runnerResetRequired.value
+})
+
+const canRegenerateRunnerConfig = computed(() => {
+  if (
+    !activeProjectId.value ||
+    !isWorkspaceNativeTask.value ||
+    (!hasProjectConfigEditAccess.value && !hasTaskRuntimeManageAccess.value)
+  ) {
+    return false
+  }
+
+  return (
+    !actionLoading.value &&
+    !regeneratingRunnerConfig.value &&
+    !regenerateRunnerConfigPreparing.value &&
+    !isAutoApplyingRunnerConfig.value
+  )
+})
+
+const regenerateRunnerConfigBlockedReason = computed(() => {
+  if (!activeProjectId.value) {
+    return '当前任务未关联项目，无法重置 Runner 配置。'
+  }
+
+  if (!isWorkspaceNativeTask.value) {
+    return '当前任务不是 workspace-native 任务，无需重置预览编排。'
+  }
+
+  if (!hasProjectConfigEditAccess.value && !hasTaskRuntimeManageAccess.value) {
+    if (runnerResetRequired.value) {
+      return '当前任务需要恢复预览编排，但当前账号暂无可用权限，请联系项目管理员处理。'
+    }
+
+    return '当前账号暂无恢复预览编排权限。'
+  }
+
+  return ''
 })
 
 const selectedWorkflowNode = computed(() => {
@@ -556,6 +702,13 @@ const updateEnvironmentFromLog = (log: TaskLog) => {
             ).find((step) => step.key === nextStage)?.label || '执行环境',
     message: typeof nextMessage === 'string' ? nextMessage : null,
     updatedAt: log.createdAt,
+    workspaceStatus: environment.value?.workspaceStatus ?? null,
+    workspaceError: environment.value?.workspaceError ?? null,
+    workspaceStage: environment.value?.workspaceStage ?? null,
+    workspaceMessage: environment.value?.workspaceMessage ?? null,
+    workspaceSnapshotStatus: environment.value?.workspaceSnapshotStatus ?? null,
+    workspaceSnapshotError: environment.value?.workspaceSnapshotError ?? null,
+    workspaceSnapshotPushedAt: environment.value?.workspaceSnapshotPushedAt ?? null,
     runtime,
     preview,
     steps: buildEnvironmentSteps(
@@ -947,6 +1100,8 @@ const resetTaskState = () => {
   rightPanelArtifactRefreshPaths.value = []
   approveConfirmationNodeId.value = null
   clearPendingStreamLogs()
+  stopPreviewProvisioningPolling()
+  stopRegenerateRunnerConfigPreparation()
 }
 
 const loadInitialTaskData = async () => {
@@ -983,6 +1138,7 @@ const loadInitialTaskData = async () => {
       return leftAt - rightAt
     })
     messages.value = messageResponse
+    syncPreviewProvisioningPolling()
   } catch (error) {
     if (requestId === detailRequestId) {
       message.error(toErrorMessage(error, '加载任务详情失败'))
@@ -999,9 +1155,19 @@ const refreshEnvironment = async () => {
     return
   }
 
+  const currentTaskId = taskId.value
+
   try {
-    environment.value = await tasksApi.environment(taskId.value)
+    const nextEnvironment = await tasksApi.environment(currentTaskId)
+    if (taskId.value !== currentTaskId) {
+      return
+    }
+    environment.value = nextEnvironment
+    syncPreviewProvisioningPolling()
   } catch (error) {
+    if (taskId.value !== currentTaskId) {
+      return
+    }
     message.error(toErrorMessage(error, '加载执行环境失败'))
   }
 }
@@ -1025,10 +1191,246 @@ const refreshTaskDetail = async () => {
 
     detail.value = detailResponse
     environment.value = environmentResponse
+    syncPreviewProvisioningPolling()
   } catch (error) {
     if (requestId === detailRequestId) {
       message.error(toErrorMessage(error, '加载任务详情失败'))
     }
+  }
+}
+
+const clearRegenerateRunnerConfigPollTimer = () => {
+  if (!regenerateRunnerConfigPollTimer) {
+    return
+  }
+
+  clearTimeout(regenerateRunnerConfigPollTimer)
+  regenerateRunnerConfigPollTimer = null
+}
+
+const stopRegenerateRunnerConfigPreparation = () => {
+  clearRegenerateRunnerConfigPollTimer()
+  regenerateRunnerConfigPreparing.value = false
+  isAutoApplyingRunnerConfig.value = false
+  runnerConfigApplyState.value = null
+}
+
+const readProjectRunnerGeneratedAt = (project: Project | null | undefined): string | null => {
+  const configJson =
+    project?.configJson && typeof project.configJson === 'object' ? project.configJson : null
+  const containerRuntime =
+    configJson?.containerRuntime && typeof configJson.containerRuntime === 'object'
+      ? (configJson.containerRuntime as Record<string, unknown>)
+      : null
+  const orchestration =
+    containerRuntime?.runnerOrchestration &&
+    typeof containerRuntime.runnerOrchestration === 'object'
+      ? (containerRuntime.runnerOrchestration as Record<string, unknown>)
+      : null
+  const generatedMeta =
+    orchestration?.generatedMeta && typeof orchestration.generatedMeta === 'object'
+      ? (orchestration.generatedMeta as Record<string, unknown>)
+      : null
+  const generatedAt = generatedMeta?.generatedAt
+  return typeof generatedAt === 'string' && generatedAt.trim() ? generatedAt.trim() : null
+}
+
+const readProjectRunnerSignature = (project: Project | null | undefined): string | null => {
+  const configJson =
+    project?.configJson && typeof project.configJson === 'object' ? project.configJson : null
+  const containerRuntime =
+    configJson?.containerRuntime && typeof configJson.containerRuntime === 'object'
+      ? (configJson.containerRuntime as Record<string, unknown>)
+      : null
+  const orchestration =
+    containerRuntime?.runnerOrchestration &&
+    typeof containerRuntime.runnerOrchestration === 'object'
+      ? (containerRuntime.runnerOrchestration as Record<string, unknown>)
+      : null
+  if (!orchestration) {
+    return null
+  }
+
+  try {
+    return JSON.stringify(orchestration)
+  } catch {
+    return null
+  }
+}
+
+const didProjectRunnerWriteAfterRequest = (
+  project: Project,
+  state: RunnerConfigApplyState,
+): boolean => {
+  const configJson =
+    project.configJson && typeof project.configJson === 'object' ? project.configJson : null
+  const containerRuntime =
+    configJson?.containerRuntime && typeof configJson.containerRuntime === 'object'
+      ? (configJson.containerRuntime as Record<string, unknown>)
+      : null
+  const refreshState =
+    containerRuntime?.runnerSnapshotRefreshState &&
+    typeof containerRuntime.runnerSnapshotRefreshState === 'object'
+      ? (containerRuntime.runnerSnapshotRefreshState as Record<string, unknown>)
+      : null
+
+  if (refreshState?.lastOutcome === 'written') {
+    const attemptedAt =
+      typeof refreshState.attemptedAt === 'string' ? refreshState.attemptedAt.trim() : ''
+    if (attemptedAt && attemptedAt >= state.queuedAt) {
+      return true
+    }
+  }
+
+  const generatedAt = readProjectRunnerGeneratedAt(project)
+  if (generatedAt && generatedAt >= state.queuedAt && generatedAt !== state.initialGeneratedAt) {
+    return true
+  }
+
+  const signature = readProjectRunnerSignature(project)
+  if (signature && signature !== state.initialSignature) {
+    return true
+  }
+
+  return false
+}
+
+const readProjectRunnerRefreshState = (project: Project | null | undefined) => {
+  const configJson =
+    project?.configJson && typeof project.configJson === 'object' ? project.configJson : null
+  const containerRuntime =
+    configJson?.containerRuntime && typeof configJson.containerRuntime === 'object'
+      ? (configJson.containerRuntime as Record<string, unknown>)
+      : null
+  const refreshState =
+    containerRuntime?.runnerSnapshotRefreshState &&
+    typeof containerRuntime.runnerSnapshotRefreshState === 'object'
+      ? (containerRuntime.runnerSnapshotRefreshState as Record<string, unknown>)
+      : null
+
+  if (!refreshState) {
+    return null
+  }
+
+  return {
+    attemptedAt:
+      typeof refreshState.attemptedAt === 'string' ? refreshState.attemptedAt.trim() : '',
+    lastOutcome:
+      typeof refreshState.lastOutcome === 'string' ? refreshState.lastOutcome.trim() : '',
+    lastError: typeof refreshState.lastError === 'string' ? refreshState.lastError.trim() : '',
+  }
+}
+
+const performEnvironmentRestartForRunnerConfig = async () => {
+  if (!taskId.value) {
+    return
+  }
+
+  isAutoApplyingRunnerConfig.value = true
+  actionLoading.value = true
+
+  try {
+    clearPendingStreamLogs()
+    environment.value = await tasksApi.terminateEnvironment(taskId.value)
+    syncPreviewProvisioningPolling()
+    bumpRightPanelRefresh([])
+
+    environment.value = {
+      ...(environment.value ?? {
+        status: 'starting',
+        stage: 'workspace_preparing',
+        stageLabel: '准备任务工作区',
+        message: '开始准备任务执行环境',
+        updatedAt: new Date().toISOString(),
+        runtime: null,
+        preview: {
+          status: 'provisioning',
+          url: null,
+        },
+        steps: buildEnvironmentSteps('starting', 'workspace_preparing', '开始准备任务执行环境'),
+      }),
+      status: 'starting',
+      stage: 'workspace_preparing',
+      stageLabel: '准备任务工作区',
+      message: '正在应用新的预览编排并重启执行环境',
+      updatedAt: new Date().toISOString(),
+      preview:
+        environment.value?.preview?.status === 'ready'
+          ? environment.value.preview
+          : {
+              status: 'provisioning',
+              url: null,
+            },
+      steps: buildEnvironmentSteps(
+        'starting',
+        'workspace_preparing',
+        '正在应用新的预览编排并重启执行环境',
+      ),
+    }
+
+    environment.value = await tasksApi.startEnvironment(taskId.value)
+    syncPreviewProvisioningPolling()
+    await refreshTaskDetail()
+    message.success('新的 Runner 配置已自动应用到当前环境')
+  } catch (error) {
+    message.error(toErrorMessage(error, '自动应用 Runner 配置失败'))
+    await refreshEnvironment()
+  } finally {
+    actionLoading.value = false
+    isAutoApplyingRunnerConfig.value = false
+  }
+}
+
+const scheduleRegenerateRunnerConfigPoll = (
+  delay = RUNNER_CONFIG_PREPARING_POLL_INTERVAL_MS,
+) => {
+  clearRegenerateRunnerConfigPollTimer()
+  regenerateRunnerConfigPollTimer = setTimeout(() => {
+    regenerateRunnerConfigPollTimer = null
+    void pollPreparedRunnerConfig()
+  }, delay)
+}
+
+const pollPreparedRunnerConfig = async () => {
+  const state = runnerConfigApplyState.value
+  if (!state || !activeProjectId.value || activeProjectId.value !== state.projectId) {
+    stopRegenerateRunnerConfigPreparation()
+    return
+  }
+
+  try {
+    const project = await projectsApi.detail(state.projectId)
+    const refreshState = readProjectRunnerRefreshState(project)
+
+    if (
+      refreshState &&
+      refreshState.lastError &&
+      refreshState.attemptedAt >= state.queuedAt &&
+      (refreshState.lastOutcome === 'failed' || refreshState.lastOutcome === 'skipped') &&
+      !didProjectRunnerWriteAfterRequest(project, state)
+    ) {
+      stopRegenerateRunnerConfigPreparation()
+      message.error(refreshState.lastError || '新的 Runner 配置准备失败，请稍后重试')
+      return
+    }
+
+    if (!didProjectRunnerWriteAfterRequest(project, state)) {
+      scheduleRegenerateRunnerConfigPoll()
+      return
+    }
+
+    regenerateRunnerConfigPreparing.value = false
+    clearRegenerateRunnerConfigPollTimer()
+
+    if (state.environmentWasReady) {
+      await performEnvironmentRestartForRunnerConfig()
+    } else {
+      message.success('新的 Runner 配置已准备好，后续启动环境会自动吃到')
+    }
+
+    runnerConfigApplyState.value = null
+  } catch {
+    scheduleRegenerateRunnerConfigPoll()
   }
 }
 
@@ -1089,12 +1491,57 @@ const startEnvironment = async () => {
       steps: buildEnvironmentSteps('starting', 'workspace_preparing', '开始准备任务执行环境'),
     }
     environment.value = await tasksApi.startEnvironment(taskId.value)
+    syncPreviewProvisioningPolling()
     await refreshTaskDetail()
   } catch (error) {
     message.error(toErrorMessage(error, '启动执行环境失败'))
     await refreshEnvironment()
   } finally {
     actionLoading.value = false
+  }
+}
+
+const regenerateRunnerConfig = async () => {
+  if (!activeProjectId.value) {
+    return
+  }
+
+  if (!hasProjectConfigEditAccess.value && !hasTaskRuntimeManageAccess.value) {
+    message.error(
+      regenerateRunnerConfigBlockedReason.value || '当前账号暂无恢复预览编排权限，请联系项目管理员处理。',
+    )
+    return
+  }
+
+  if (!canRegenerateRunnerConfig.value) {
+    return
+  }
+
+  regeneratingRunnerConfig.value = true
+
+  try {
+    const latestProject = await projectsApi.detail(activeProjectId.value)
+    const response: ProjectRunnerRegenerateResponse = await projectsApi.regenerateRunner(
+      activeProjectId.value,
+    )
+    runnerConfigApplyState.value = {
+      projectId: activeProjectId.value,
+      queuedAt: response.queuedAt,
+      environmentWasReady: environment.value?.status === 'ready',
+      initialGeneratedAt: readProjectRunnerGeneratedAt(latestProject),
+      initialSignature: readProjectRunnerSignature(latestProject),
+    }
+    regenerateRunnerConfigPreparing.value = true
+    if (runnerConfigApplyState.value.environmentWasReady) {
+      message.success('正在准备新的 Runner 配置，完成后会自动重启环境应用')
+    } else {
+      message.success('正在准备新的 Runner 配置，完成后后续启动环境会自动吃到')
+    }
+    scheduleRegenerateRunnerConfigPoll(300)
+  } catch (error) {
+    message.error(toErrorMessage(error, '重置 Runner 配置失败'))
+  } finally {
+    regeneratingRunnerConfig.value = false
   }
 }
 
@@ -1166,6 +1613,7 @@ const terminateEnvironment = async () => {
   try {
     clearPendingStreamLogs()
     environment.value = await tasksApi.terminateEnvironment(taskId.value)
+    syncPreviewProvisioningPolling()
     bumpRightPanelRefresh([])
     message.success('执行环境已释放')
   } catch (error) {
@@ -1399,13 +1847,13 @@ const saveEdit = async (payload: TaskEditFormValue) => {
     savingEdit.value = false
   }
 }
-
 const removeTask = async () => {
   if (!taskId.value || !canRemove.value) {
     return
   }
 
   removingTask.value = true
+  deleteBlockReason.value = ''
 
   try {
     await tasksApi.remove(taskId.value)
@@ -1413,8 +1861,10 @@ const removeTask = async () => {
     message.success('任务已删除')
     void refreshSidebarRecentTasks()
     await router.push(taskListRoute.value)
-  } catch (error) {
-    message.error(toErrorMessage(error, '删除任务失败'))
+  } catch (error: unknown) {
+    const errorMessage = toErrorMessage(error, '删除任务失败')
+    deleteBlockReason.value = errorMessage
+    message.error(errorMessage)
   } finally {
     removingTask.value = false
   }
@@ -1468,8 +1918,136 @@ watch(isRightPanelVisible, (visible) => {
   localStorage.setItem(STORAGE_KEYS.taskDetailRightPanelVisible, String(visible))
 })
 
+function stopPreviewProvisioningPolling() {
+  if (previewProvisioningPollTimer) {
+    clearTimeout(previewProvisioningPollTimer)
+    previewProvisioningPollTimer = null
+  }
+  previewProvisioningStartedAt = 0
+  previewProvisioningLongWarned = false
+  previewProvisioningRefreshPromise = null
+}
+
+function warnPreviewProvisioningLongWaitIfNeeded() {
+  if (
+    previewProvisioningLongWarned ||
+    previewProvisioningStartedAt <= 0 ||
+    Date.now() - previewProvisioningStartedAt < PREVIEW_PROVISIONING_FAST_POLL_WINDOW_MS
+  ) {
+    return
+  }
+
+  previewProvisioningLongWarned = true
+  message.warning('预览生成时间较长，请查看日志')
+}
+
+function resolvePreviewProvisioningPollDelay() {
+  if (previewProvisioningStartedAt <= 0) {
+    return PREVIEW_PROVISIONING_FAST_POLL_INTERVAL_MS
+  }
+
+  return Date.now() - previewProvisioningStartedAt >= PREVIEW_PROVISIONING_FAST_POLL_WINDOW_MS
+    ? PREVIEW_PROVISIONING_SLOW_POLL_INTERVAL_MS
+    : PREVIEW_PROVISIONING_FAST_POLL_INTERVAL_MS
+}
+
+async function refreshPreviewProvisioningEnvironment() {
+  if (!taskId.value || !isPreviewProvisioning.value) {
+    return
+  }
+
+  if (!previewProvisioningRefreshPromise) {
+    previewProvisioningRefreshPromise = (async () => {
+      warnPreviewProvisioningLongWaitIfNeeded()
+      await refreshEnvironment()
+    })().finally(() => {
+      previewProvisioningRefreshPromise = null
+    })
+  }
+
+  await previewProvisioningRefreshPromise
+}
+
+function schedulePreviewProvisioningPoll() {
+  if (previewProvisioningPollTimer || !taskId.value || !isPreviewProvisioning.value) {
+    return
+  }
+
+  previewProvisioningPollTimer = setTimeout(async () => {
+    previewProvisioningPollTimer = null
+
+    if (!taskId.value || !isPreviewProvisioning.value) {
+      stopPreviewProvisioningPolling()
+      return
+    }
+
+    await refreshPreviewProvisioningEnvironment()
+
+    if (isPreviewProvisioning.value) {
+      schedulePreviewProvisioningPoll()
+      return
+    }
+
+    stopPreviewProvisioningPolling()
+  }, resolvePreviewProvisioningPollDelay())
+}
+
+function syncPreviewProvisioningPolling() {
+  if (isPreviewProvisioning.value) {
+    if (previewProvisioningStartedAt === 0) {
+      previewProvisioningStartedAt = Date.now()
+    }
+    warnPreviewProvisioningLongWaitIfNeeded()
+    schedulePreviewProvisioningPoll()
+    return
+  }
+
+  stopPreviewProvisioningPolling()
+}
+
+async function refreshPreviewProvisioningOnVisibility() {
+  if (!isPreviewProvisioning.value) {
+    return
+  }
+
+  await refreshPreviewProvisioningEnvironment()
+
+  if (isPreviewProvisioning.value) {
+    schedulePreviewProvisioningPoll()
+  }
+}
+
+function handlePreviewProvisioningVisibilityChange() {
+  if (typeof document === 'undefined' || document.visibilityState !== 'visible') {
+    return
+  }
+
+  void refreshPreviewProvisioningOnVisibility()
+}
+
+function handlePreviewProvisioningWindowFocus() {
+  void refreshPreviewProvisioningOnVisibility()
+}
+
+onMounted(() => {
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handlePreviewProvisioningVisibilityChange)
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', handlePreviewProvisioningWindowFocus)
+  }
+})
+
 onBeforeUnmount(() => {
   disconnectStream()
+  stopPreviewProvisioningPolling()
+  stopRegenerateRunnerConfigPreparation()
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handlePreviewProvisioningVisibilityChange)
+  }
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('focus', handlePreviewProvisioningWindowFocus)
+  }
 })
 
 function startDrag(e: MouseEvent) {
@@ -1514,6 +2092,7 @@ return reactive({
     canInterruptExecution,
     canManageReview,
     canRemove,
+    canRegenerateRunnerConfig,
     canResetTaskNode,
     canStartEnvironment,
     canTerminateEnvironment,
@@ -1529,7 +2108,7 @@ return reactive({
     contextSubtitle,
     currentActionNode,
     currentFailedNode,
-    currentReviewNode,
+    deleteBlockReason,
     deleteOpen,
     detail,
     detailRefreshDebounceTimer,
@@ -1558,6 +2137,7 @@ return reactive({
     hasTodoNode,
     heartbeatCheckTimer,
     interruptExecution,
+    isAutoApplyingRunnerConfig,
     isCliRunning,
     isDragging,
     isEnvironmentReady,
@@ -1582,6 +2162,10 @@ return reactive({
     refreshEnvironment,
     refreshMessages,
     refreshTaskDetail,
+    regenerateRunnerConfig,
+    regenerateRunnerConfigBlockedReason,
+    regenerateRunnerConfigPreparing,
+    regeneratingRunnerConfig,
     removeTask,
     removingTask,
     replyDisabled,
@@ -1608,6 +2192,7 @@ return reactive({
     selectedWorkflowNodeId,
     showApproveConfirmation,
     shouldShowEnvironmentGate,
+    showRegenerateRunnerConfig,
     showReviewCard,
     showWorkflowCard,
     sidebarRecentTasksDebounceTimer,

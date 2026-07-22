@@ -25,6 +25,11 @@ export abstract class ProjectRepository {
     name: Project['name'],
   ): Promise<NullableType<Project>>;
 
+  abstract findByBusinessLineIdAndSlug(
+    businessLineId: Project['businessLineId'],
+    slug: Project['slug'],
+  ): Promise<NullableType<Project>>;
+
   abstract findByRepositoryProvisioningStatus(
     status: RepositoryProvisioningStatus,
   ): Promise<Project[]>;
@@ -33,10 +38,12 @@ export abstract class ProjectRepository {
     paginationOptions,
     businessLineId,
     keyword,
+    includeWorkspaceManaged,
   }: {
     paginationOptions: IPaginationOptions;
     businessLineId?: string;
     keyword?: string;
+    includeWorkspaceManaged?: boolean;
   }): Promise<Project[]>;
 
   abstract findAccessibleWithPagination({
@@ -45,13 +52,19 @@ export abstract class ProjectRepository {
     businessLineIds,
     keyword,
     businessLineId,
+    includeWorkspaceManaged,
   }: {
     paginationOptions: IPaginationOptions;
     projectIds: string[];
     businessLineIds: string[];
     keyword?: string;
     businessLineId?: string;
+    includeWorkspaceManaged?: boolean;
   }): Promise<Project[]>;
+
+  abstract findWorkspaceManagedByBusinessLineId(
+    businessLineId: Project['businessLineId'],
+  ): Promise<NullableType<Project>>;
 
   abstract update(
     id: Project['id'],

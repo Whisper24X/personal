@@ -19,6 +19,43 @@ export class TaskGitChangedFileDto {
   staged: boolean;
 }
 
+export class SubRepoBranchInfoDto {
+  @ApiProperty({ type: String })
+  prefix: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  branchName: string | null;
+
+  @ApiProperty({ type: String })
+  baseBranch: string;
+}
+
+export class TaskGitAsyncOperationDto {
+  @ApiProperty({ type: String })
+  id: string;
+
+  @ApiProperty({ type: String, enum: ['push', 'merge', 'deploy'] })
+  type: 'push' | 'merge' | 'deploy';
+
+  @ApiProperty({
+    type: String,
+    enum: ['running', 'success', 'failed', 'cancelled'],
+  })
+  status: 'running' | 'success' | 'failed' | 'cancelled';
+
+  @ApiProperty({ type: String })
+  startedAt: string;
+
+  @ApiPropertyOptional({ type: String })
+  finishedAt?: string;
+
+  @ApiProperty({ type: [String] })
+  logs: string[];
+
+  @ApiPropertyOptional({ type: String })
+  message?: string;
+}
+
 export class TaskGitStatusDto {
   @ApiProperty({ type: String, nullable: true })
   branchName: string | null;
@@ -28,6 +65,12 @@ export class TaskGitStatusDto {
 
   @ApiProperty({ type: TaskGitChangedFileDto, isArray: true })
   files: TaskGitChangedFileDto[];
+
+  @ApiPropertyOptional({ type: [SubRepoBranchInfoDto] })
+  subRepoBranches?: SubRepoBranchInfoDto[];
+
+  @ApiPropertyOptional({ type: TaskGitAsyncOperationDto })
+  operation?: TaskGitAsyncOperationDto;
 }
 
 export class TaskGitDiffQueryDto {
@@ -119,9 +162,26 @@ export class TaskGitActionResultDto {
 
   @ApiPropertyOptional({ type: [String] })
   conflicts?: string[];
+
+  @ApiPropertyOptional({ type: String })
+  operationId?: string;
+}
+
+export class TaskGitPrLinkItemDto {
+  @ApiProperty({ type: String })
+  prefix: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  url?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  hint?: string;
 }
 
 export class TaskGitPrLinkDto {
   @ApiPropertyOptional({ type: String, nullable: true })
   url?: string | null;
+
+  @ApiPropertyOptional({ type: [TaskGitPrLinkItemDto] })
+  urls?: TaskGitPrLinkItemDto[];
 }

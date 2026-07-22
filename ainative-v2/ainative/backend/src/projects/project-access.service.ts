@@ -42,6 +42,33 @@ export class ProjectAccessService {
     return project;
   }
 
+  async assertCanRegenerateRunnerConfig(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<Project> {
+    const project = await this.getProjectOrThrow(projectId);
+
+    if (this.isAdmin(currentUser)) {
+      return project;
+    }
+
+    try {
+      await this.accessService.assertProjectCapability(
+        currentUser,
+        projectId,
+        'project.task.manage',
+      );
+      return project;
+    } catch {
+      await this.accessService.assertBusinessLineCapability(
+        currentUser,
+        project.businessLineId,
+        'businessLine.project.update',
+      );
+      return project;
+    }
+  }
+
   async assertProjectCapability(
     projectId: Project['id'],
     currentUser: JwtPayloadType,
@@ -54,6 +81,29 @@ export class ProjectAccessService {
       capability,
       diagnostics,
     );
+  }
+
+  async assertWorkspaceProjectByBusinessLineCapability(
+    businessLineId: Project['businessLineId'],
+    currentUser: JwtPayloadType,
+    capability: string,
+  ): Promise<Project> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      capability,
+    );
+
+    const project =
+      await this.projectRepository.findWorkspaceManagedByBusinessLineId(
+        businessLineId,
+      );
+
+    if (!project) {
+      throw new NotFoundException('Workspace project not found');
+    }
+
+    return project;
   }
 
   private async getProjectOrThrow(projectId: Project['id']): Promise<Project> {

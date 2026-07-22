@@ -1,0 +1,299 @@
+syntax = "proto3";
+
+package api.nps.v1;
+
+import "descriptor/descriptor.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/nps/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.nps.v1";
+
+service Nps {
+  // 获取用户弹窗信息
+  rpc GetNpsPopup(GetNpsPopupRequest) returns (GetNpsPopupReply) {
+    option (google.api.http) = {get: "/devices-learn/api/nps/popup/info"};
+    option (descriptor.api_tag) = {header_has_sn: true};
+  }
+
+  // 用户弹窗答案提交
+  rpc SubmitNpsAnswer(SubmitNpsAnswerRequest) returns (SubmitNpsAnswerReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/api/nps/popup/answer/submit"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {
+      header_has_sn: true
+      header_has_uid: true
+    };
+  }
+
+  // 用户弹窗反馈列表--shadow
+  rpc ListNpsShadow(ListNpsRequest) returns (ListNpsReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/popup/user/list"
+      body: "*"
+    };
+  }
+  // 查询nps走势图--shadow
+  rpc GetNpsTrendListShadow(GetNpsTrendListRequest) returns (GetNpsTrendListReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/trend/list"
+      body: "*"
+    };
+  }
+  // 查询nps学段走势图--shadow
+  rpc GetStageNpsTrendListShadow(GetStageNpsTrendListRequest) returns (GetStageNpsTrendListReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/stageTrend/list"
+      body: "*"
+    };
+  }
+  // 查询nps词云--shadow
+  rpc GetNpsWordCloudShadow(GetNpsWordCloudRequest) returns (GetNpsWordCloudReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/wordCloud/list"
+      body: "*"
+    };
+  }
+  // 查询nps新老用户列表--shadow
+  rpc GetNpsNewOldUserListShadow(GetNpsNewOldUserListRequest) returns (GetNpsNewOldUserListReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/newOldUser/list"
+      body: "*"
+    };
+  }
+  // 查询nps深度使用用户列表--shadow
+  rpc GetNpsDeepUseUserListShadow(GetNpsDeepUseUserListRequest) returns (GetNpsDeepUseUserListReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/deepUseUser/list"
+      body: "*"
+    };
+  }
+  // 查询nps设备型号列表--shadow
+  rpc GetNpsModelDeviceListShadow(GetNpsModelDeviceListRequest) returns (GetNpsModelDeviceListReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/modelDevice/list"
+      body: "*"
+    };
+  }
+  // 查询nps洋葱学园版本列表--shadow
+  rpc GetNpsOnionVersionListShadow(GetNpsOnionVersionListRequest) returns (GetNpsOnionVersionListReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/onionVersion/list"
+      body: "*"
+    };
+  }
+  // 查询nps桌面版本列表--shadow
+  rpc GetNpsDesktopVersionListShadow(GetNpsDesktopVersionListRequest) returns (GetNpsDesktopVersionListReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/desktopVersion/list"
+      body: "*"
+    };
+  }
+  // 生成nps汇总数据--shadow
+  rpc GenerateNpsSummaryShadow(GenerateNpsSummaryRequest) returns (GenerateNpsSummaryReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/shadow/nps/generateSummary"
+      body: "*"
+    };
+  }
+}
+
+message GenerateNpsSummaryRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string summaryTimeRangeType = 3; // 汇总时间范围类型：week、month
+}
+message GenerateNpsSummaryReply {}
+
+message GetNpsDesktopVersionListRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string searchRange = 3; // 查询范围：week、month
+}
+
+message NpsDesktopVersionItem {
+  string version = 1; // 版本号
+  string npsScore = 2; // NPS分数
+  int32 feedBackNums = 3; // 反馈人数
+}
+
+message GetNpsDesktopVersionListReply {
+  string totalNpsScore = 1; // 总NPS分数
+  int32 totalFeedBackNums = 2; // 总反馈人数
+  repeated NpsDesktopVersionItem list = 3; // nps桌面版本数据列表
+}
+
+message GetNpsOnionVersionListRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string searchRange = 3; // 查询范围：week、month
+}
+
+message NpsOnionVersionItem {
+  string version = 1; // 版本号
+  string npsScore = 2; // NPS分数
+  int32 feedBackNums = 3; // 反馈人数
+}
+
+message GetNpsOnionVersionListReply {
+  string totalNpsScore = 1; // 总NPS分数
+  int32 totalFeedBackNums = 2; // 总反馈人数
+  repeated NpsOnionVersionItem list = 3; // nps洋葱版本数据列表
+}
+
+message GetNpsModelDeviceListRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string searchRange = 3; // 查询范围：week、month
+}
+
+message NpsModelDeviceItem {
+  string npsScore = 1; // NPS分数
+  int32 feedBackNums = 2; // 反馈人数
+  string timeRange = 3; // 时间范围：格式：2014.2.12-2014.2.25
+}
+
+message NpsModelDeviceList {
+  string modelDevice = 1; // 设备类型：Q20, S30
+  repeated NpsModelDeviceItem npsList = 2; // nps设备数据列表
+}
+
+message GetNpsModelDeviceListReply {
+  repeated NpsModelDeviceList list = 2; // nps设备数据列表
+}
+
+message GetNpsDeepUseUserListRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string searchRange = 3; // 查询范围：week、month
+}
+
+message NpsDeepUseUserItem {
+  string npsScore = 1; // NPS分数
+  int32 feedBackNums = 2; // 反馈人数
+  string timeRange = 3; // 时间范围：格式：2014.2.12-2014.2.25
+}
+
+message NpsDeepUseUserList {
+  string userType = 1; // 用户类型：3天<激活时间<7天  新用户、60天<激活时间<=365天  老用户、365天<激活时间  老用户
+  repeated NpsDeepUseUserItem npsList = 2; // nps新老用户数据列表
+}
+
+message GetNpsDeepUseUserListReply {
+  repeated NpsDeepUseUserList list = 1; // nps新老用户数据列表
+}
+
+message GetNpsNewOldUserListRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string searchRange = 3; // 查询范围：week、month
+}
+
+message NpsNewOldUserItem {
+  string npsScore = 1; // NPS分数
+  int32 feedBackNums = 2; // 反馈人数
+  string timeRange = 3; // 时间范围：格式：2014.2.12-2014.2.25
+}
+
+message NpsNewOldUserList {
+  string userType = 1; // 用户类型：3天<激活时间<=30天 新用户、60天<激活时间 老用户
+  repeated NpsNewOldUserItem npsList = 2; // nps新老用户数据列表
+}
+
+message GetNpsNewOldUserListReply {
+  repeated NpsNewOldUserList list = 1; // nps新老用户数据列表
+}
+
+message GetNpsWordCloudRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string feedBackLevel = 3; // 反馈等级：good、bad、middle
+  string npsWordCloudType = 4; // 词云类型：scene、stage
+}
+
+message FeedBackItem {
+  string feedBackContent = 1; // 反馈内容
+  int32 feedBackNums = 2; // 反馈数量
+}
+
+message NpsWordCloudItem {
+  string stage = 1; // 学段：小学、初中、高中、中职
+  string scene = 2; // 场景：教材同步学/毕业年级总复习、日常练习、作业题型速攻、pk赛、考前突击、试卷真题、期末诊疗
+  repeated FeedBackItem feedBackList = 3; // 反馈内容
+}
+
+message GetNpsWordCloudReply {
+  repeated NpsWordCloudItem list = 1; // nps词云数据列表
+}
+
+message GetStageNpsTrendListRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string searchRange = 3; // 查询范围：week、month
+}
+
+message StageNpsTrendItem {
+  string npsScore = 1; // NPS分数
+  int32 feedBackNums = 2; // 反馈人数
+  string timeRange = 3; // 时间范围：格式：2014.2.12-2014.2.25
+}
+
+message StageNpsTrendData {
+  string stage = 1; // 学段：小学、初中、高中、中职
+  repeated StageNpsTrendItem npsList = 2; // nps学段走势数据列表
+}
+
+message GetStageNpsTrendListReply {
+  repeated StageNpsTrendData list = 1; // nps学段走势数据列表
+}
+
+message GetNpsTrendListRequest {
+  string startTime = 1; // 开始时间：格式：2006-01-02
+  string endTime = 2; // 结束时间：格式：2006-01-02
+  string searchRange = 3; // 查询范围：week、month
+}
+
+message NpsTrendData {
+  string timeRange = 1; // 时间范围：格式：2014.2.12-2014.2.25
+  int32 promotersNums = 2; // 好评人数(9-10)
+  int32 middleNums = 3; // 中评人数(7-8)
+  int32 detractorsNums = 4; // 差评人数(1-6)
+  int32 totalNums = 5; // 总人数
+  string npsScore = 6; // NPS分数
+}
+
+message GetNpsTrendListReply {
+  repeated NpsTrendData list = 1; // nps趋势数据列表
+}
+
+message GetNpsPopupRequest {}
+message GetNpsPopupReply {
+  string popupLogId = 1; // 弹窗记录ID
+  bool isPopup = 2; // 是否需要弹窗
+}
+
+message SubmitNpsAnswerRequest {
+  string popupLogId = 1 [(validate.rules).string = {min_len: 1}]; // 弹窗记录ID
+  int32 score = 2 [(validate.rules).int32 = {gte: 0}]; // NPS评分(0-10)
+  repeated string problemList = 3 [(validate.rules).repeated = {min_items: 1}]; // 反馈问题列表
+}
+message SubmitNpsAnswerReply {}
+
+message ListNpsRequest {
+  int32 page = 1; // 页码
+  int32 pageSize = 2 [(validate.rules).int32 = {lte: 1000}]; // 每页数量
+  int32 stage = 3 [(validate.rules).int32 = {
+    gte: 0
+    lte: 4
+  }]; // 学段: 0-全部 1-小学 2-初中 3-高中 4-中职
+  string startTime = 4; // 开始时间
+  string endTime = 5; // 结束时间
+}
+message ListNpsReply {
+  int32 total = 1; // 总数
+  repeated google.protobuf.Struct list = 2; // 反馈列表
+}

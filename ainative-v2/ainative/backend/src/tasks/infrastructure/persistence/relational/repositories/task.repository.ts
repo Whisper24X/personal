@@ -521,6 +521,30 @@ export class TaskRelationalRepository implements TaskRepository {
     return TaskMapper.toDomain(updatedEntity);
   }
 
+  async acquireGitOperationLock(
+    id: Task['id'],
+    gitOperation: Record<string, unknown>,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query(
+      `UPDATE tasks
+       SET "configJson" = jsonb_set(
+         COALESCE("configJson", '{}'::jsonb),
+         '{gitOperation}',
+         $2::jsonb
+       ),
+       "updatedAt" = NOW()
+       WHERE id = $1
+         AND "deletedAt" IS NULL
+         AND (
+           "configJson"->'gitOperation' IS NULL
+           OR "configJson"->'gitOperation'->>'status' IS NULL
+           OR "configJson"->'gitOperation'->>'status' != 'running'
+         )`,
+      [id, JSON.stringify(gitOperation)],
+    );
+    return (result?.[1] ?? result?.rowCount ?? 0) > 0;
+  }
+
   async remove(id: Task['id']): Promise<void> {
     await this.taskRepository.softDelete(id);
   }

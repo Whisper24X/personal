@@ -41,6 +41,22 @@ const createGoal = (overrides: Partial<Goal> = {}): Goal => ({
   ...overrides,
 });
 
+const createProject = () => ({
+  id: 'project-1',
+  businessLineId: 'business-line-1',
+  name: 'Demo Project',
+  description: null,
+  gitUrl: '',
+  defaultBranch: 'main',
+  configJson: null,
+  repositoryProvisioningStatus: 'ready',
+  repositoryProvisioningError: null,
+  repositoryProvisionedAt: null,
+  createdAt: new Date('2026-04-08T00:00:00.000Z'),
+  updatedAt: new Date('2026-04-08T00:00:00.000Z'),
+  deletedAt: null,
+});
+
 const createService = () => {
   let repositoryLockDepth = 0;
   const goalRepository = {
@@ -77,6 +93,8 @@ const createService = () => {
     createDoc: jest.fn().mockResolvedValue(undefined),
     updateDoc: jest.fn().mockResolvedValue(undefined),
     readDoc: jest.fn(),
+    readDocFromBranch: jest.fn(),
+    saveDocInRepositoryRoot: jest.fn(),
     readDocInRepositoryRoot: jest.fn(),
     writeDocInRepositoryRoot: jest.fn(
       (_repositoryRoot: string, payload: { path: string }) => ({
@@ -114,6 +132,26 @@ const createService = () => {
     incrementPlanGeneration: jest.fn(),
     incrementGoalCreated: jest.fn(),
   };
+  const projectRepositoryWorkspaceService = {
+    checkoutBranch: jest.fn().mockResolvedValue(undefined),
+    runWithProjectRepositoryLock: jest
+      .fn()
+      .mockImplementation(
+        (
+          _projectId: string,
+          _currentUser: JwtPayloadType,
+          _options: unknown,
+          operation: (ctx: {
+            project: ReturnType<typeof createProject>;
+            repositoryRoot: string;
+          }) => Promise<unknown>,
+        ) =>
+          operation({
+            project: createProject(),
+            repositoryRoot: '/tmp/project-repo',
+          }),
+      ),
+  };
   const projectWorkspacePathsService = {
     resolveWorktreeAllowedRoot: jest.fn(
       () => '/repo-storage/project-1/worktrees',
@@ -130,7 +168,10 @@ const createService = () => {
     taskProvisioningService as never,
     goalSourceDocsService as never,
     goalsMetrics as never,
+    {} as never,
     projectWorkspacePathsService as never,
+    {} as never,
+    projectRepositoryWorkspaceService as never,
   );
 
   return {
@@ -142,9 +183,21 @@ const createService = () => {
     gitService,
     goalSourceDocsService,
     goalsMetrics,
+    projectRepositoryWorkspaceService,
     projectWorkspacePathsService,
     getRepositoryLockDepth: () => repositoryLockDepth,
   };
+};
+
+const mockGoalPrdWorktree = (service: GoalsService) => {
+  const ensureGoalPrdWorktree = jest
+    .spyOn(service as never, 'ensureGoalPrdWorktree')
+    .mockResolvedValue('/tmp/goal-prd-worktree' as never);
+  const commitGoalPrdWorktreeChanges = jest
+    .spyOn(service as never, 'commitGoalPrdWorktreeChanges')
+    .mockResolvedValue(undefined as never);
+
+  return { commitGoalPrdWorktreeChanges, ensureGoalPrdWorktree };
 };
 
 describe('GoalsService generation parsing', () => {
@@ -363,5 +416,80 @@ describe('GoalsService generation parsing', () => {
     expect(result.itemCount).toBe(1);
     expect(result.subTaskCount).toBe(1);
     expect(goalsMetrics.incrementPlanGeneration).toHaveBeenCalledWith(true);
+  });
+
+  it('should read PRD from goal branch', async () => {
+    const { service, goalRepository, projectDocsService } = createService();
+    const currentUser = createJwt();
+    const goal = createGoal({
+      status: GoalStatus.prdGenerated,
+      prdDocPath: 'goals/goal-1/PRD.md',
+    });
+
+    goalRepository.findById.mockResolvedValue(goal);
+    projectDocsService.readDocFromBranch.mockResolvedValue({
+      path: goal.prdDocPath,
+      content: '# PRD',
+    });
+
+    await expect(service.readPrdDoc(goal.id, currentUser)).resolves.toEqual({
+      path: goal.prdDocPath,
+      content: '# PRD',
+    });
+    expect(projectDocsService.readDocFromBranch).toHaveBeenCalledWith(
+      goal.projectId,
+      goal.prdDocPath,
+      goal.gitBranch,
+      currentUser,
+    );
+  });
+
+  it('should save PRD on goal branch', async () => {
+    const {
+      service,
+      goalRepository,
+      projectDocsService,
+      projectRepositoryWorkspaceService,
+    } = createService();
+    const { commitGoalPrdWorktreeChanges, ensureGoalPrdWorktree } =
+      mockGoalPrdWorktree(service);
+    const currentUser = createJwt();
+    const goal = createGoal({
+      status: GoalStatus.prdGenerated,
+      prdDocPath: 'goals/goal-1/PRD.md',
+    });
+
+    goalRepository.findById.mockResolvedValue(goal);
+    projectDocsService.saveDocInRepositoryRoot.mockResolvedValue({
+      path: goal.prdDocPath,
+      content: '# Updated PRD',
+    });
+
+    await service.updatePrdDoc(
+      goal.id,
+      { content: '# Updated PRD' },
+      currentUser,
+    );
+
+    expect(
+      projectRepositoryWorkspaceService.checkoutBranch,
+    ).not.toHaveBeenCalled();
+    expect(ensureGoalPrdWorktree).toHaveBeenCalledWith({
+      goal,
+      gitBranch: goal.gitBranch,
+      project: expect.objectContaining({ id: goal.projectId }),
+      repositoryRoot: '/tmp/project-repo',
+    });
+    expect(projectDocsService.saveDocInRepositoryRoot).toHaveBeenCalledWith(
+      '/tmp/goal-prd-worktree',
+      { path: goal.prdDocPath, content: '# Updated PRD' },
+      { overwrite: true },
+    );
+    expect(commitGoalPrdWorktreeChanges).toHaveBeenCalledWith({
+      currentUser,
+      docPath: goal.prdDocPath,
+      goal,
+      worktreePath: '/tmp/goal-prd-worktree',
+    });
   });
 });

@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package api.learn_config.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/learn_config/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.learn_config.v1";
+
+service LearnConfig {
+  // 解析学习配置csv文件
+  rpc ParseLearnConfigCsvFile(ParseLearnConfigCsvFileReq) returns (ParseLearnConfigCsvFileReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/learn-config/v1/parseLearnConfigCsvFile"
+      body: "*"
+    };
+  }
+  // 保存学习配置
+  rpc StoreLearnConfig(StoreLearnConfigReq) returns (StoreLearnConfigReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/learn-config/v1/storeLearnConfig"
+      body: "*"
+    };
+  }
+  // 查询学习配置列表
+  rpc QueryLearnConfigListShadow(QueryLearnConfigListShadowReq) returns (QueryLearnConfigListShadowReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/learn-config/v1/queryLearnConfigListShadow"
+      body: "*"
+    };
+  }
+  // 通过key查询学习配置
+  rpc QueryLearnConfigByKey(QueryLearnConfigByKeyReq) returns (QueryLearnConfigByKeyReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/learn-config/v1/queryLearnConfigByKey"
+      body: "*"
+    };
+  }
+  // 更改学习配置状态
+  rpc UpdateLearnConfigStatus(UpdateLearnConfigStatusReq) returns (UpdateLearnConfigStatusReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/learn-config/v1/updateLearnConfigStatus"
+      body: "*"
+    };
+  }
+}
+
+message UpdateLearnConfigStatusReq {
+  string id = 1; // id
+  int32 status = 2; // 状态：-1:删除，1：启用
+}
+
+message UpdateLearnConfigStatusReply {
+  bool isSucceed = 1; // true:成功，false:失败
+}
+
+message QueryLearnConfigByKeyReq {
+  repeated string key = 1; // key
+}
+
+message LearnConfigItem {
+  string key = 1; // key
+  repeated google.protobuf.Struct data = 2; // 数据
+}
+
+message QueryLearnConfigByKeyReply {
+  repeated LearnConfigItem list = 1; // 列表
+}
+
+message QueryLearnConfigListShadowReq {
+  int32 page = 1; // 页码
+  int32 pageSize = 2; // 每页数量
+}
+
+message LearnConfigInfo {
+  string id = 1; // id
+  string key = 2; // key
+  string description = 3; // 描述
+  string fileUrl = 4; // csv文件地址
+  string updatedBy = 5; // 最后操作人
+  repeated google.protobuf.Struct data = 6; // 数据
+  int32 status = 7; // 状态：-1:删除，1：启用
+  string createdAt = 8; //  创建时间
+  string updatedAt = 9; // 最后操作时间
+}
+
+message QueryLearnConfigListShadowReply {
+  int32 total = 1; // 总数
+  repeated LearnConfigInfo list = 2; // 配置列表
+}
+
+message StoreLearnConfigReq {
+  string id = 1; // id
+  string key = 2; // key
+  string description = 3; // 描述
+  string fileUrl = 4; // csv文件地址
+  string updatedBy = 5; // 最后操作人
+}
+
+message StoreLearnConfigReply {
+  string id = 1; // id
+}
+
+message ParseLearnConfigCsvFileReq {
+  string csvFileUrl = 1; // csv文件地址
+}
+
+message ParseLearnConfigCsvFileReply {
+  repeated google.protobuf.Struct data = 1; // 数据
+}

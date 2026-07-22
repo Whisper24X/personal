@@ -26,11 +26,18 @@ type ActiveAgentExecution = {
   killTimerRef: NodeJS.Timeout | null;
 };
 
+type PreparedAgentExecution = {
+  config: AgentExecutionConfig;
+  prompt: string;
+};
+
 @Injectable()
 export class RunnerAgentExecutionService {
   private readonly logger = new Logger(RunnerAgentExecutionService.name);
   private readonly maxOutputLength = 100_000;
   private readonly forcedKillDelayMs = 2_000;
+  private readonly rateLimitRetryMaxAttempts = 3;
+  private readonly rateLimitRetryBaseDelaysMs = [2_000, 6_000];
   private readonly activeExecutions = new Map<string, ActiveAgentExecution>();
 
   constructor(
@@ -73,77 +80,90 @@ export class RunnerAgentExecutionService {
       projectId: project.id,
       businessLineId: project.businessLineId,
     };
-    const preparedExecution = await this.prepareExecution(
-      project,
-      task,
-      node,
-      runtimeContext,
-      callbacks,
-      additionalRunnerEnv,
-    );
     const resolvedRef =
       containerExecRef ?? (await this.resolveContainerExecRefForTask(task));
-    const firstResult = await this.runWithConfig(
-      preparedExecution.config,
-      preparedExecution.prompt,
-      executionContext,
-      callbacks,
-      resolvedRef ?? undefined,
-    );
 
-    if (
-      this.shouldClearCodexInvalidFollowUpResume({
-        node,
-        config: preparedExecution.config,
-        result: firstResult,
-      })
+    let attemptNode = node;
+    let lastResult: AgentExecutionResult | null = null;
+
+    for (
+      let attempt = 1;
+      attempt <= this.rateLimitRetryMaxAttempts;
+      attempt += 1
     ) {
-      return {
-        ...firstResult,
-        clearPreviousSessionId: true,
+      const attemptResult = await this.executeAgentNodeAttempt({
+        task,
+        node: attemptNode,
+        project,
+        runtimeContext,
+        callbacks,
+        additionalRunnerEnv,
+        executionContext,
+        containerExecRef: resolvedRef ?? undefined,
+      });
+
+      lastResult = {
+        ...attemptResult,
+        attemptCount: attempt,
+        retryCount: attempt - 1,
       };
+
+      if (lastResult.success || lastResult.interrupted) {
+        return lastResult;
+      }
+
+      const retryDecision = this.resolveRateLimitRetryDecision(lastResult);
+      if (
+        !retryDecision.retryable ||
+        attempt >= this.rateLimitRetryMaxAttempts ||
+        !(await this.shouldContinueExecution(callbacks))
+      ) {
+        return {
+          ...lastResult,
+          retryReason: retryDecision.reason,
+          retryDiagnostic: retryDecision.diagnostic,
+        };
+      }
+
+      const delayMs = this.resolveRateLimitRetryDelayMs(attempt);
+      await callbacks?.onRetryScheduled?.({
+        attempt,
+        nextAttempt: attempt + 1,
+        maxAttempts: this.rateLimitRetryMaxAttempts,
+        delayMs,
+        reason: retryDecision.reason ?? 'rate_limit',
+        diagnostic: retryDecision.diagnostic,
+      });
+      this.logger.warn(
+        `runner_agent_rate_limit_retry_scheduled ${JSON.stringify({
+          ...executionContext,
+          attempt,
+          nextAttempt: attempt + 1,
+          maxAttempts: this.rateLimitRetryMaxAttempts,
+          delayMs,
+          reason: retryDecision.reason,
+          diagnosticPreview: this.truncateForLog(
+            retryDecision.diagnostic ?? '',
+          ),
+        })}`,
+      );
+
+      await this.delay(delayMs);
+      if (!(await this.shouldContinueExecution(callbacks))) {
+        return {
+          ...lastResult,
+          retryReason: retryDecision.reason,
+          retryDiagnostic: retryDecision.diagnostic,
+        };
+      }
+
+      attemptNode = this.buildRetryNode({
+        node: attemptNode,
+        result: lastResult,
+      });
     }
 
-    if (
-      !this.shouldFallbackCodexInvalidResume({
-        node,
-        config: preparedExecution.config,
-        result: firstResult,
-      })
-    ) {
-      return firstResult;
-    }
-
-    this.logger.warn(
-      `runner_agent_invalid_resume_fallback ${JSON.stringify({
-        ...executionContext,
-        staleSessionId: node.agentCliSessionId ?? null,
-        stderrPreview: this.truncateForLog(firstResult.stderr),
-      })}`,
-    );
-    const fallbackExecution = await this.prepareExecution(
-      project,
-      task,
-      {
-        ...node,
-        agentCliSessionId: null,
-      },
-      runtimeContext,
-      callbacks,
-      additionalRunnerEnv,
-    );
-    const fallbackResult = await this.runWithConfig(
-      fallbackExecution.config,
-      fallbackExecution.prompt,
-      executionContext,
-      callbacks,
-      resolvedRef ?? undefined,
-    );
-
-    return {
-      ...fallbackResult,
-      clearPreviousSessionId: true,
-    };
+    return lastResult!;
   }
 
   interruptExecution(nodeId: string): boolean {
@@ -432,6 +452,7 @@ export class RunnerAgentExecutionService {
       return {
         success,
         interrupted,
+        adapter: config.adapter,
         exitCode: closeResult.exitCode,
         signal: closeResult.signal,
         command: config.command,
@@ -491,6 +512,7 @@ export class RunnerAgentExecutionService {
       return {
         success: false,
         interrupted,
+        adapter: config.adapter,
         exitCode: null,
         signal: null,
         command: config.command,
@@ -512,6 +534,114 @@ export class RunnerAgentExecutionService {
         this.activeExecutions.delete(executionContext.nodeId);
       }
     }
+  }
+
+  private async executeAgentNodeAttempt({
+    task,
+    node,
+    project,
+    runtimeContext,
+    callbacks,
+    additionalRunnerEnv,
+    executionContext,
+    containerExecRef,
+  }: {
+    task: Task;
+    node: TaskNode;
+    project: Project;
+    runtimeContext?: PromptTemplateRuntimeContext;
+    callbacks?: AgentExecutionStreamCallbacks;
+    additionalRunnerEnv?: Record<string, string>;
+    executionContext: AgentExecutionContext;
+    containerExecRef?: string;
+  }): Promise<AgentExecutionResult> {
+    const preparedExecution = await this.prepareExecution(
+      project,
+      task,
+      node,
+      runtimeContext,
+      callbacks,
+      additionalRunnerEnv,
+    );
+    const firstResult = await this.runPreparedExecution({
+      preparedExecution,
+      executionContext,
+      callbacks,
+      containerExecRef,
+    });
+
+    if (
+      this.shouldClearCodexInvalidFollowUpResume({
+        node,
+        config: preparedExecution.config,
+        result: firstResult,
+      })
+    ) {
+      return {
+        ...firstResult,
+        clearPreviousSessionId: true,
+      };
+    }
+
+    if (
+      !this.shouldFallbackCodexInvalidResume({
+        node,
+        config: preparedExecution.config,
+        result: firstResult,
+      })
+    ) {
+      return firstResult;
+    }
+
+    this.logger.warn(
+      `runner_agent_invalid_resume_fallback ${JSON.stringify({
+        ...executionContext,
+        staleSessionId: node.agentCliSessionId ?? null,
+        stderrPreview: this.truncateForLog(firstResult.stderr),
+      })}`,
+    );
+    const fallbackExecution = await this.prepareExecution(
+      project,
+      task,
+      {
+        ...node,
+        agentCliSessionId: null,
+      },
+      runtimeContext,
+      callbacks,
+      additionalRunnerEnv,
+    );
+    const fallbackResult = await this.runPreparedExecution({
+      preparedExecution: fallbackExecution,
+      executionContext,
+      callbacks,
+      containerExecRef,
+    });
+
+    return {
+      ...fallbackResult,
+      clearPreviousSessionId: true,
+    };
+  }
+
+  private runPreparedExecution({
+    preparedExecution,
+    executionContext,
+    callbacks,
+    containerExecRef,
+  }: {
+    preparedExecution: PreparedAgentExecution;
+    executionContext: AgentExecutionContext;
+    callbacks?: AgentExecutionStreamCallbacks;
+    containerExecRef?: string;
+  }): Promise<AgentExecutionResult> {
+    return this.runWithConfig(
+      preparedExecution.config,
+      preparedExecution.prompt,
+      executionContext,
+      callbacks,
+      containerExecRef,
+    );
   }
 
   private async prepareExecution(
@@ -626,6 +756,122 @@ export class RunnerAgentExecutionService {
       normalizedValue.includes('thread/resume failed') &&
       normalizedValue.includes('no rollout found for thread id')
     );
+  }
+
+  private resolveRateLimitRetryDecision(
+    result: AgentExecutionResult,
+  ): {
+    retryable: boolean;
+    reason: string | null;
+    diagnostic: string | null;
+  } {
+    if (result.success || result.interrupted) {
+      return { retryable: false, reason: null, diagnostic: null };
+    }
+
+    const diagnostic = [result.stdout, result.stderr, result.errorMessage]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .join('\n');
+    const normalizedDiagnostic = diagnostic.toLowerCase();
+
+    if (!normalizedDiagnostic) {
+      return { retryable: false, reason: null, diagnostic: null };
+    }
+
+    if (
+      this.isInvalidCodexResumeError(normalizedDiagnostic) ||
+      this.isNonRetryableAgentFailure(normalizedDiagnostic)
+    ) {
+      return {
+        retryable: false,
+        reason: null,
+        diagnostic,
+      };
+    }
+
+    const retryable =
+      /\b429\b/.test(normalizedDiagnostic) ||
+      normalizedDiagnostic.includes('too many requests') ||
+      normalizedDiagnostic.includes('rate limit') ||
+      normalizedDiagnostic.includes('rate_limit') ||
+      normalizedDiagnostic.includes('resource exhausted') ||
+      normalizedDiagnostic.includes('exceeded retry limit');
+
+    return {
+      retryable,
+      reason: retryable ? 'rate_limit' : null,
+      diagnostic,
+    };
+  }
+
+  private isNonRetryableAgentFailure(value: string): boolean {
+    return [
+      'insufficient_quota',
+      'quota exceeded',
+      'invalid api key',
+      'invalid_api_key',
+      'authentication failed',
+      'unauthorized',
+      '401 unauthorized',
+      'forbidden',
+      '403 forbidden',
+      'bad request',
+      '400 bad request',
+      'invalid request',
+      'invalid_request_error',
+      'unexpected argument',
+      'unknown option',
+      'missing required',
+      'prompt is too long',
+      'context length',
+      'maximum context',
+    ].some((pattern) => value.includes(pattern));
+  }
+
+  private buildRetryNode({
+    node,
+    result,
+  }: {
+    node: TaskNode;
+    result: AgentExecutionResult;
+  }): TaskNode {
+    if (
+      result.sessionId &&
+      result.adapter === 'codex' &&
+      !this.hasPendingUserMessage(node)
+    ) {
+      return {
+        ...node,
+        agentCliSessionId: result.sessionId,
+      };
+    }
+
+    return node;
+  }
+
+  private resolveRateLimitRetryDelayMs(attempt: number): number {
+    const baseDelay =
+      this.rateLimitRetryBaseDelaysMs[
+        Math.min(attempt - 1, this.rateLimitRetryBaseDelaysMs.length - 1)
+      ] ?? this.rateLimitRetryBaseDelaysMs[0]!;
+    return baseDelay + this.resolveRetryJitterMs(baseDelay);
+  }
+
+  protected resolveRetryJitterMs(baseDelayMs: number): number {
+    return Math.floor(Math.random() * Math.max(1, Math.floor(baseDelayMs / 5)));
+  }
+
+  protected delay(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      timer.unref?.();
+    });
+  }
+
+  private async shouldContinueExecution(
+    callbacks?: AgentExecutionStreamCallbacks,
+  ): Promise<boolean> {
+    return (await callbacks?.shouldContinue?.()) !== false;
   }
 
   private requestProcessStop(

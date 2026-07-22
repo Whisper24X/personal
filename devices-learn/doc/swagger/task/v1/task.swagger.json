@@ -1,0 +1,355 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "task/v1/task.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Task"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/api/task/finish": {
+      "post": {
+        "summary": "完成任务",
+        "operationId": "Task_TaskFinish",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ReplyBool"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1TaskFinishRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Task"
+        ]
+      }
+    },
+    "/devices-learn/api/task/list": {
+      "get": {
+        "summary": "任务列表",
+        "operationId": "Task_TaskListApi",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1TaskListApiReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Task"
+        ]
+      }
+    },
+    "/devices-learn/api/task/reward": {
+      "post": {
+        "summary": "领取任务奖励",
+        "operationId": "Task_TaskReward",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1TaskRewardReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1TaskRewardRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Task"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "TaskInfoprogressInfo": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "title": "任务礼包等级"
+        },
+        "total": {
+          "type": "string",
+          "title": "进度条总数"
+        },
+        "current": {
+          "type": "string",
+          "title": "进度条当前数"
+        }
+      }
+    },
+    "TaskInforewardInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "奖励ID."
+        },
+        "type": {
+          "type": "string",
+          "description": "奖励类型(coin 洋葱币,vip 体验券)."
+        },
+        "info": {
+          "$ref": "#/definitions/TaskInforewardInfoInfo",
+          "title": "奖励具体信息"
+        }
+      }
+    },
+    "TaskInforewardInfoInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "奖品名称描述"
+        },
+        "num": {
+          "type": "integer",
+          "format": "int32",
+          "title": "奖品数量"
+        },
+        "floatUp": {
+          "type": "integer",
+          "format": "int32",
+          "title": "奖品浮动数量  一般用num进行+"
+        },
+        "level": {
+          "type": "integer",
+          "format": "int32",
+          "title": "礼包任务 对应的礼包等级"
+        },
+        "probability": {
+          "type": "number",
+          "format": "float",
+          "title": "随机奖品的概率"
+        }
+      }
+    },
+    "TaskListApiReplyCategoryInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "任务类别(daily日常任务,custom定制任务,gift礼包任务)."
+        },
+        "taskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "任务ID列表"
+        }
+      }
+    },
+    "TaskListApiReplyTaskInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "任务ID"
+        },
+        "name": {
+          "type": "string",
+          "title": "任务名称"
+        },
+        "category": {
+          "type": "string",
+          "title": "任务类型"
+        },
+        "jumpUrl": {
+          "type": "string",
+          "title": "任务跳转地址"
+        },
+        "isShowNew": {
+          "type": "boolean",
+          "title": "是否显示new标签"
+        },
+        "rewards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/TaskInforewardInfo"
+          },
+          "title": "任务奖励列表"
+        },
+        "progress": {
+          "$ref": "#/definitions/TaskInfoprogressInfo",
+          "title": "gift礼包任务的进度信息"
+        },
+        "status": {
+          "type": "string",
+          "description": "任务状态 undo-未完成 done-已完成待领取 reward-已完成领取 notExist-不存在."
+        }
+      }
+    },
+    "TaskRewardReplyRewardInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "奖励ID."
+        },
+        "type": {
+          "type": "string",
+          "description": "奖励类型(coin 洋葱币,vip 体验券)."
+        },
+        "info": {
+          "$ref": "#/definitions/TaskRewardReplyRewardInfoInfo",
+          "title": "奖励具体信息"
+        }
+      }
+    },
+    "TaskRewardReplyRewardInfoInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "奖品名称描述"
+        },
+        "num": {
+          "type": "integer",
+          "format": "int32",
+          "title": "奖品数量"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1ReplyBool": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "boolean",
+          "title": "操作是否成功"
+        }
+      }
+    },
+    "v1TaskFinishRequest": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "title": "任务ID"
+        }
+      }
+    },
+    "v1TaskListApiReply": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/TaskListApiReplyCategoryInfo"
+          },
+          "title": "任务分组信息"
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/TaskListApiReplyTaskInfo"
+          },
+          "title": "任务列表"
+        }
+      }
+    },
+    "v1TaskRewardReply": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "boolean",
+          "title": "操作是否成功"
+        },
+        "rewards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/TaskRewardReplyRewardInfo"
+          },
+          "title": "奖励列表"
+        }
+      }
+    },
+    "v1TaskRewardRequest": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "title": "任务ID"
+        }
+      }
+    }
+  }
+}

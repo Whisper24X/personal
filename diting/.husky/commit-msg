@@ -1,0 +1,2 @@
+# npx 会把 --config 当成 npm 自己的参数；用本地二进制或 npx -- 分隔
+commitlint --config commitlint.config.js --edit "$1"

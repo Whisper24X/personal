@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { GitService } from './git.service';
+import { isWorkspaceManaged } from './workspace-native.types';
 
 const createCurrentUser = () => ({
   sub: 'user-1',
@@ -12,8 +13,24 @@ const createCurrentUser = () => ({
 });
 
 const createGitService = () => {
+  const workspaceRepoService = {
+    ensureClone: jest.fn(),
+    ensureSharedRepoReady: jest.fn().mockResolvedValue('/tmp/workspace-repo'),
+    getBaseBranch: () => 'master',
+  };
+
   const projectsService = {
     ensureProjectRepositoryReady: jest.fn(),
+    resolveEffectiveDefaultBranch: (project: {
+      defaultBranch?: string;
+      gitUrl?: string | null;
+      configJson?: Record<string, unknown> | null;
+    }) => {
+      if (!project.gitUrl?.trim() || isWorkspaceManaged(project)) {
+        return workspaceRepoService.getBaseBranch();
+      }
+      return project.defaultBranch?.trim() || 'main';
+    },
     runWithProjectRepositoryLock: jest
       .fn()
       .mockImplementation(
@@ -31,9 +48,37 @@ const createGitService = () => {
             repositoryRoot: '/tmp/project-repo',
           }),
       ),
+    ensureBranchWorktree: jest
+      .fn()
+      .mockResolvedValue('/tmp/goal-branch-worktree'),
   };
 
-  const service = new GitService(projectsService as never);
+  const projectRepository = {
+    findById: jest.fn().mockResolvedValue({ businessLineId: 'bl-1' }),
+    findWorkspaceManagedByBusinessLineId: jest.fn().mockResolvedValue({
+      id: 'workspace-project-1',
+      businessLineId: 'bl-1',
+      name: 'AINative Workspace',
+      gitUrl: 'git@example.com:platform/ainative-workspace.git',
+      configJson: { workspaceManaged: true },
+    }),
+  };
+
+  const projectWorkspacePaths = {
+    resolveRepositoryRoot: () => '/tmp/project-repo',
+  };
+
+  const accessService = {
+    assertBusinessLineCapability: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const service = new GitService(
+    projectsService as never,
+    workspaceRepoService as never,
+    projectRepository as never,
+    projectWorkspacePaths as never,
+    accessService as never,
+  );
 
   return {
     service,
@@ -61,6 +106,7 @@ describe('GitService', () => {
     projectsService.ensureProjectRepositoryReady.mockResolvedValue({
       project: {
         defaultBranch: 'main',
+        gitUrl: 'https://example.com/acme/app.git',
       },
       repositoryRoot: '/tmp/project-repo',
     });
@@ -151,6 +197,7 @@ describe('GitService', () => {
     projectsService.ensureProjectRepositoryReady.mockResolvedValue({
       project: {
         defaultBranch: 'main',
+        gitUrl: 'https://example.com/acme/app.git',
       },
       repositoryRoot: '/tmp/project-repo',
     });
@@ -222,6 +269,7 @@ describe('GitService', () => {
     projectsService.ensureProjectRepositoryReady.mockResolvedValue({
       project: {
         defaultBranch: 'main',
+        gitUrl: 'https://example.com/acme/app.git',
       },
       repositoryRoot: '/tmp/project-repo',
     });
@@ -284,7 +332,7 @@ describe('GitService', () => {
     ]);
   });
 
-  it('should checkout requirement branch and create plan branch from HEAD when prepareRequirementBranchWorkingTree and working tree clean', async () => {
+  it('should create plan branch from requirement worktree HEAD when prepareRequirementBranchWorkingTree and working tree clean', async () => {
     const { service, projectsService } = createGitService();
 
     const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
@@ -570,7 +618,7 @@ describe('GitService', () => {
     ]);
   });
 
-  it('should throw BadRequestException with stage hint when checkout requirement branch fails', async () => {
+  it('should throw BadRequestException when requirement worktree cannot be prepared', async () => {
     const { service } = createGitService();
 
     const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
@@ -592,7 +640,7 @@ describe('GitService', () => {
         createCurrentUser(),
         { prepareRequirementBranchWorkingTree: true },
       ),
-    ).rejects.toThrow(/无法切换到需求分支：/);
+    ).rejects.toThrow(/仓库中不存在分支 feature\/missing/);
   });
 
   it('should throw BadRequestException with stage hint when auto-commit fails', async () => {
@@ -665,6 +713,44 @@ describe('GitService', () => {
     expect(runCommandSpy).toHaveBeenCalledTimes(3);
   });
 
+  it('should use workspace template base branch when project has no gitUrl for deleteLocalBranch', async () => {
+    const { service, projectsService } = createGitService();
+
+    projectsService.runWithProjectRepositoryLock.mockImplementation(
+      async (
+        _projectId: string,
+        _user: unknown,
+        _options: unknown,
+        operation: (ctx: {
+          project: { defaultBranch?: string };
+          repositoryRoot: string;
+        }) => Promise<unknown>,
+      ) =>
+        operation({
+          project: { defaultBranch: 'main' },
+          repositoryRoot: '/tmp/project-repo',
+        }),
+    );
+
+    const runCommandSpy = jest.spyOn(service as any, 'runCommand') as jest.Mock;
+    runCommandSpy
+      .mockResolvedValueOnce(createGitCommandResult('feature/on'))
+      .mockResolvedValueOnce(createGitCommandResult('master\nfeature/on'))
+      .mockResolvedValueOnce(createGitCommandResult('origin/master'))
+      .mockResolvedValueOnce(createGitCommandResult(''))
+      .mockResolvedValueOnce(createGitCommandResult(''));
+
+    await service.deleteLocalBranch(
+      'project-1',
+      'feature/on',
+      createCurrentUser(),
+    );
+
+    expect(runCommandSpy.mock.calls).toContainEqual([
+      ['-C', '/tmp/project-repo', 'switch', 'master'],
+    ]);
+  });
+
   it('should delete local branch when it exists and is not checked out', async () => {
     const { service, projectsService } = createGitService();
 
@@ -721,12 +807,15 @@ describe('GitService', () => {
         _user: unknown,
         _options: unknown,
         operation: (ctx: {
-          project: { defaultBranch: string };
+          project: { defaultBranch: string; gitUrl?: string };
           repositoryRoot: string;
         }) => Promise<unknown>,
       ) =>
         operation({
-          project: { defaultBranch: 'main' },
+          project: {
+            defaultBranch: 'main',
+            gitUrl: 'https://example.com/acme/app.git',
+          },
           repositoryRoot: '/tmp/project-repo',
         }),
     );

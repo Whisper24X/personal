@@ -1,0 +1,42 @@
+When Cursor auto-generates a Git commit message for this repository (Source Control sparkle button, chat, or Agent), output a complete Conventional Commits message: one header line, then a blank line, then a body with concrete details.
+
+Structure (required):
+
+  type(scope): subject
+
+  <body: what changed and why, 2-6 lines>
+
+Header rules:
+- type (lowercase): build | chore | ci | docs | feat | fix | perf | refactor | revert | style | test
+- scope (optional): server | web | core | plugin-api | repo | openspec
+- subject: lowercase imperative, no trailing period, keep header under 100 characters
+
+Body rules:
+- Must be present (do not output header-only)
+- Blank line between header and body
+- Use bullet lines starting with "- " for each distinct change
+- Describe concrete files/areas and intent (what + why), not vague "update dependencies"
+- Body may be Chinese or English; keep header in English type(scope): subject
+- Do not put the whole commit in the subject line; details belong in the body
+
+FORBIDDEN:
+- Header-only one-liners when multiple files or topics changed
+- Starting subject with "Add"/"Update"/"Enhance" without type prefix
+- Semicolons in the subject line
+- Replacing body with a long subject ("... and update ...; enhance ...")
+
+BAD:
+  chore(repo): add commitlint and husky hooks
+
+BAD:
+  Add commitlint configuration and update package dependencies; enhance .gitignore and README documentation
+
+GOOD:
+  chore(repo): add commitlint and husky hooks
+
+  - add commitlint.config.js and husky commit-msg hook
+  - add npm script commitlint:check for pre-commit validation
+  - add docs/dev-spec/repo/git-commit-convention.md and .cursorrules for SCM generation
+  - update package.json devDependencies for @commitlint/*
+
+If changes span repo root (husky, package.json, docs/dev-spec), use type chore or docs with scope repo.

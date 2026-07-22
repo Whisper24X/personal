@@ -179,6 +179,8 @@ const newMemberForm = reactive({
   roleKey: '',
 })
 
+type SubRepoEntry = { url: string; prefix: string; branch: string }
+
 const configForm = reactive({
   name: '',
   description: '',
@@ -196,6 +198,7 @@ const configForm = reactive({
   runnerCommand: '',
   runnerArgs: '',
   runnerTimeoutSeconds: '600',
+  subRepos: [] as SubRepoEntry[],
   ...createProjectContainerRuntimeFormState(),
 })
 
@@ -1148,6 +1151,18 @@ const syncConfigForm = (currentProject: Project) => {
     typeof runnerConfig.timeoutSeconds === 'number' && runnerConfig.timeoutSeconds > 0
       ? String(runnerConfig.timeoutSeconds)
       : '600'
+  configForm.subRepos = Array.isArray(configJson.subRepos)
+    ? (configJson.subRepos as SubRepoEntry[])
+        .filter(
+          (r) =>
+            r &&
+            typeof r === 'object' &&
+            typeof r.url === 'string' &&
+            typeof r.prefix === 'string' &&
+            typeof r.branch === 'string',
+        )
+        .map((r) => ({ url: r.url, prefix: r.prefix, branch: r.branch }))
+    : []
   syncFromContainerRuntime(configJson.containerRuntime)
 }
 
@@ -1365,8 +1380,8 @@ const saveConfig = async () => {
     return
   }
 
-  if (!project.value || !projectId.value || !configForm.name.trim() || !configForm.gitUrl.trim()) {
-    validationMessage.value = '项目名称和仓库地址不能为空'
+  if (!project.value || !projectId.value || !configForm.name.trim()) {
+    validationMessage.value = '项目名称不能为空'
     return
   }
 
@@ -1428,11 +1443,22 @@ const saveConfig = async () => {
       delete configJson.worktreeBaseDir
     }
 
+    const filteredSubRepos = configForm.subRepos
+      .filter((r) => r.url.trim() && r.prefix.trim() && r.branch.trim())
+      .map((r) => ({
+        url: r.url.trim(),
+        prefix: r.prefix.trim(),
+        branch: r.branch.trim(),
+      }))
+    if (filteredSubRepos.length > 0) {
+      configJson.subRepos = filteredSubRepos
+    } else {
+      delete configJson.subRepos
+    }
+
     await projectsApi.update(projectId.value, {
       name: configForm.name.trim(),
       description: configForm.description.trim() || undefined,
-      gitUrl: configForm.gitUrl.trim(),
-      defaultBranch: configForm.defaultBranch.trim() || 'main',
       configJson: buildContainerRuntimeConfigJson(configJson),
     })
 

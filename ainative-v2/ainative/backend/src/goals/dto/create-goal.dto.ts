@@ -8,9 +8,17 @@ import {
 } from 'class-validator';
 
 export class CreateGoalDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsUUID()
-  projectId: string;
+  projectId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Workspace-native 需求可直接传业务线，由后端解析内部执行项目',
+  })
+  @IsOptional()
+  @IsUUID()
+  businessLineId?: string;
 
   @ApiProperty()
   @IsString()

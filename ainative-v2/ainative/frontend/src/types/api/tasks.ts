@@ -15,6 +15,19 @@ export type TaskEnvironmentStage =
   | 'failed'
   | 'stopped'
 export type TaskEnvironmentStepStatus = 'pending' | 'in_progress' | 'done' | 'error'
+export type TaskWorkspaceStatus = 'provisioning' | 'ready' | 'failed'
+export type TaskWorkspaceSnapshotStatus = 'pending' | 'pushing' | 'pushed' | 'failed'
+export type TaskWorkspaceStage =
+  | 'initializing'
+  | 'syncing_base'
+  | 'creating_worktree'
+  | 'fetching_sub_repos'
+  | 'embedding_sub_repos'
+  | 'writing_runner_config'
+  | 'committing_snapshot'
+  | 'ready'
+  | 'pushing_snapshot'
+  | 'failed'
 
 /** GET /tasks/stats 项目任务按状态聚合 */
 export type TaskStatusCounts = {
@@ -49,6 +62,48 @@ export type TaskNodeConfig = {
   [key: string]: unknown
 }
 
+export type WorkspaceNativeSubRepoDeployBranch = {
+  prefix: string
+  url: string
+  branch: string
+  status: 'pending' | 'success' | 'failed'
+  error?: string
+  pushedAt?: string
+}
+
+export type WorkspaceNativeDeployStatus = {
+  status: 'pending' | 'pushing' | 'done' | 'failed' | 'cancelled'
+  deployCommitSha?: string
+  updatedAt?: string
+  subRepoPushResults?: WorkspaceNativeSubRepoPushResult[]
+}
+
+export type WorkspaceNativeSubRepoPushResult = {
+  prefix: string
+  status: 'success' | 'failed' | 'skipped'
+  error?: string
+  remoteBranch?: string
+}
+
+export type SubRepoConfig = {
+  url: string
+  prefix: string
+  branch: string
+}
+
+export type TaskWorkspaceSnapshot = {
+  taskBranch: string
+  snapshotCommitSha: string
+  subRepoHeads?: Record<string, string>
+}
+
+export type TaskDeleteStatusValue = 'pending' | 'deleting' | 'done' | 'failed'
+
+export type TaskDeleteStatus = {
+  status: TaskDeleteStatusValue
+  warnings?: string[]
+}
+
 export type TaskConfig = {
   workflowTemplateId?: string | null
   agentCliId?: string | null
@@ -58,6 +113,19 @@ export type TaskConfig = {
   earlyExitMarkerFileName?: string | null
   earlyExitMarkerEnabled?: boolean | null
   attachments?: TaskAttachmentConfig[] | null
+  workspaceStatus?: TaskWorkspaceStatus
+  workspaceStage?: TaskWorkspaceStage
+  workspaceMessage?: string | null
+  workspaceError?: string | null
+  workspaceSnapshotStatus?: TaskWorkspaceSnapshotStatus
+  workspaceSnapshotError?: string | null
+  workspaceSnapshotPushedAt?: string | null
+  subReposSnapshot?: SubRepoConfig[]
+  workspaceSnapshot?: TaskWorkspaceSnapshot
+  runner?: Record<string, unknown>
+  deployStatus?: WorkspaceNativeDeployStatus
+  subRepoDeployBranches?: WorkspaceNativeSubRepoDeployBranch[]
+  deleteStatus?: TaskDeleteStatus
 }
 
 export type Task = {
@@ -137,6 +205,15 @@ export type TaskEnvironmentStep = {
 }
 
 export type TaskPreviewStatus = 'unavailable' | 'provisioning' | 'ready' | 'failed'
+export type TaskEnvironmentCoreMode = 'preview' | 'core-only'
+export type TaskEnvironmentServicePhase =
+  | 'pending'
+  | 'installing'
+  | 'starting'
+  | 'listening'
+  | 'failed'
+  | 'unknown'
+export type TaskEnvironmentDiagnosticStatus = 'passed' | 'failed' | 'skipped'
 
 export type TaskEnvironmentRuntime = {
   gitWorktree?: string | null
@@ -147,6 +224,32 @@ export type TaskEnvironmentPreview = {
   status: TaskPreviewStatus
   url?: string | null
   expiresAt?: string | null
+  partial?: boolean
+  reason?: 'http-ready' | 'port-listening-only' | 'unavailable' | 'failed' | null
+}
+
+export type TaskEnvironmentServiceStatus = {
+  name: string
+  port?: number | null
+  phase: TaskEnvironmentServicePhase
+  message?: string | null
+  exitCode?: number | null
+  updatedAt?: string | null
+  isPrimaryPreview?: boolean
+}
+
+export type TaskEnvironmentRouteDiagnostic = {
+  path: string
+  service?: string | null
+  port?: number | null
+  status: TaskEnvironmentDiagnosticStatus
+  statusCode?: number | null
+  error?: string | null
+}
+
+export type TaskEnvironmentStartupFailure = {
+  services: TaskEnvironmentServiceStatus[]
+  lastError?: string | null
 }
 
 export type TaskEnvironment = {
@@ -156,8 +259,19 @@ export type TaskEnvironment = {
   stageLabel: string
   message?: string | null
   updatedAt: string
+  workspaceStatus?: TaskWorkspaceStatus | null
+  workspaceStage?: TaskWorkspaceStage | string | null
+  workspaceMessage?: string | null
+  workspaceError?: string | null
+  workspaceSnapshotStatus?: TaskWorkspaceSnapshotStatus | null
+  workspaceSnapshotError?: string | null
+  workspaceSnapshotPushedAt?: string | null
   runtime?: TaskEnvironmentRuntime | null
   preview: TaskEnvironmentPreview
+  coreMode?: TaskEnvironmentCoreMode | null
+  serviceStatuses?: TaskEnvironmentServiceStatus[] | null
+  routeDiagnostics?: TaskEnvironmentRouteDiagnostic[] | null
+  startupFailureSnapshot?: TaskEnvironmentStartupFailure | null
   steps: TaskEnvironmentStep[]
 }
 
@@ -257,10 +371,28 @@ export type TaskGitChangedFile = {
   staged: boolean
 }
 
+export type SubRepoBranchInfo = {
+  prefix: string
+  branchName: string | null
+  baseBranch: string
+}
+
+export type TaskGitAsyncOperation = {
+  id: string
+  type: 'push' | 'merge' | 'deploy'
+  status: 'running' | 'success' | 'failed' | 'cancelled'
+  startedAt: string
+  finishedAt?: string
+  logs: string[]
+  message?: string
+}
+
 export type TaskGitStatus = {
   branchName: string | null
   baseBranch: string | null
   files: TaskGitChangedFile[]
+  subRepoBranches?: SubRepoBranchInfo[]
+  operation?: TaskGitAsyncOperation
 }
 
 export type TaskGitDiff = {
@@ -282,10 +414,18 @@ export type TaskGitActionResult = {
   success: boolean
   message: string
   conflicts?: string[]
+  operationId?: string
+}
+
+export type TaskGitPrLinkItem = {
+  prefix: string
+  url?: string | null
+  hint?: string
 }
 
 export type TaskGitPrLink = {
   url?: string | null
+  urls?: TaskGitPrLinkItem[]
 }
 
 export type TaskTerminalSessionStatus = 'running' | 'stopped' | 'error'
@@ -315,7 +455,8 @@ export type TaskTerminalEvent = {
 }
 
 export type CreateTaskPayload = {
-  projectId: string
+  projectId?: string
+  businessLineId?: string
   mode?: TaskMode
   title: string
   prompt?: string

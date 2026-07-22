@@ -8,6 +8,7 @@ export class ProjectMapper {
     domainEntity.id = raw.id;
     domainEntity.businessLineId = raw.businessLineId;
     domainEntity.name = raw.name;
+    domainEntity.slug = raw.slug;
     domainEntity.description = raw.description;
     domainEntity.gitUrl = raw.gitUrl;
     domainEntity.defaultBranch = raw.defaultBranch;
@@ -32,6 +33,7 @@ export class ProjectMapper {
 
     persistenceEntity.businessLineId = domainEntity.businessLineId;
     persistenceEntity.name = domainEntity.name;
+    persistenceEntity.slug = domainEntity.slug;
     persistenceEntity.description = domainEntity.description;
     persistenceEntity.gitUrl = domainEntity.gitUrl;
     persistenceEntity.defaultBranch = domainEntity.defaultBranch;

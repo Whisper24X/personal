@@ -17,23 +17,19 @@ export class CreateProjectDto {
   @IsNotEmpty()
   name: string;
 
+  @ApiProperty({
+    type: String,
+    example: 'admin-console',
+    description: '项目在 ainative-workspace 中的稳定标识（Git 分支片段）',
+  })
+  @IsString()
+  @IsNotEmpty()
+  slug: string;
+
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
   description?: string;
-
-  @ApiProperty({
-    type: String,
-    example: 'git@gitlab.yc345.tv:frontend/ainative.git',
-  })
-  @IsString()
-  @IsNotEmpty()
-  gitUrl: string;
-
-  @ApiPropertyOptional({ type: String, default: 'main' })
-  @IsOptional()
-  @IsString()
-  defaultBranch?: string;
 
   @ApiPropertyOptional({
     type: Object,

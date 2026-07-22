@@ -29,6 +29,15 @@ export type AgentExecutionStreamCallbacks = {
     prompt: string;
     preparedAt: Date;
   }) => Promise<void> | void;
+  onRetryScheduled?: (input: {
+    attempt: number;
+    nextAttempt: number;
+    maxAttempts: number;
+    delayMs: number;
+    reason: string;
+    diagnostic: string | null;
+  }) => Promise<void> | void;
+  shouldContinue?: () => Promise<boolean> | boolean;
   onStdoutLine?: (line: string) => void;
   onStderrLine?: (line: string) => void;
   onStdoutChunk?: (chunk: string) => void;
@@ -38,6 +47,7 @@ export type AgentExecutionStreamCallbacks = {
 export type AgentExecutionResult = {
   success: boolean;
   interrupted: boolean;
+  adapter?: AgentCliAdapterId;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   command: string;
@@ -50,4 +60,8 @@ export type AgentExecutionResult = {
   sessionId?: string | null;
   errorMessage?: string;
   clearPreviousSessionId?: boolean;
+  attemptCount?: number;
+  retryCount?: number;
+  retryReason?: string | null;
+  retryDiagnostic?: string | null;
 };

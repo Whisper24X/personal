@@ -122,6 +122,7 @@ export class ContainerExecutionConfigService {
       `${workspaceMount}/backend/node_modules`,
       `${workspaceMount}/frontend/node_modules`,
       `${workspaceMount}/logs`,
+      '/var/lib/ainative-runner-cache',
     ];
   }
 
@@ -239,6 +240,15 @@ export class ContainerExecutionConfigService {
 
   getRunnerEnv(project?: Project | null): Record<string, string> {
     return this.readProjectContainerRuntimeConfig(project)?.env ?? {};
+  }
+
+  getRunnerDependencyCacheEnv(project?: Project | null): Record<string, string> {
+    void project;
+    return {
+      PNPM_STORE_DIR: '/var/lib/ainative-runner-cache/pnpm-store',
+      npm_config_cache: '/var/lib/ainative-runner-cache/npm-cache',
+      YARN_CACHE_FOLDER: '/var/lib/ainative-runner-cache/yarn-cache',
+    };
   }
 
   /**

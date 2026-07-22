@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RelationalProjectPersistenceModule } from '../projects/infrastructure/persistence/relational/relational-persistence.module';
 import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persistence/relational/relational-persistence.module';
+import { RelationalBusinessLinePersistenceModule } from '../business-lines/infrastructure/persistence/relational/relational-persistence.module';
 import { ContainerExecutionConfigService } from './container-execution-config.service';
 import { ContainerOrchestrationService } from './container-orchestration.service';
 import { DockerExecProcessLauncherService } from './docker-exec-process-launcher.service';
@@ -11,12 +12,14 @@ import { IsolatedRunnerContainerService } from './isolated-runner-container.serv
 import { RunnerOrchestrationService } from './runner-orchestration.service';
 import { DatabaseIsolationService } from './database-isolation.service';
 import { ProjectRunnerImageService } from './project-runner-image.service';
+import { RunnerRuntimeReadinessService } from './runner-runtime-readiness.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ProjectExecutionSlotEntity]),
     RelationalProjectPersistenceModule,
     RelationalTaskPersistenceModule,
+    RelationalBusinessLinePersistenceModule,
   ],
   providers: [
     ContainerExecutionConfigService,
@@ -27,6 +30,7 @@ import { ProjectRunnerImageService } from './project-runner-image.service';
     ProjectExecutionSlotRepository,
     ContainerOrchestrationService,
     DatabaseIsolationService,
+    RunnerRuntimeReadinessService,
   ],
   exports: [
     ContainerExecutionConfigService,
@@ -37,6 +41,7 @@ import { ProjectRunnerImageService } from './project-runner-image.service';
     ProjectExecutionSlotRepository,
     IsolatedRunnerContainerService,
     DatabaseIsolationService,
+    RunnerRuntimeReadinessService,
   ],
 })
 export class ContainersModule {}

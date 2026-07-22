@@ -3,17 +3,24 @@ import { defineMemberRoleCapabilities } from '../utils/member-role-capabilities'
 
 describe('AccessService', () => {
   let service: AccessService;
+  let usersService: { findById: jest.Mock };
   let businessLineRepository: { findById: jest.Mock };
   let businessLineMemberRepository: {
+    findByUserId: jest.Mock;
     findByBusinessLineIdAndUserId: jest.Mock;
   };
   let businessLineCustomRoleRepository: {
     findById: jest.Mock;
     findByIds: jest.Mock;
   };
-  let projectRepository: { findById: jest.Mock };
+  let projectRepository: {
+    findById: jest.Mock;
+    findByBusinessLineId: jest.Mock;
+    findByIds: jest.Mock;
+  };
   let projectMemberRepository: {
     findByProjectIdAndUserId: jest.Mock;
+    findByUserId: jest.Mock;
   };
   let projectCustomRoleRepository: {
     findById: jest.Mock;
@@ -21,10 +28,14 @@ describe('AccessService', () => {
   };
 
   beforeEach(() => {
+    usersService = {
+      findById: jest.fn(),
+    };
     businessLineRepository = {
       findById: jest.fn(),
     };
     businessLineMemberRepository = {
+      findByUserId: jest.fn(),
       findByBusinessLineIdAndUserId: jest.fn(),
     };
     businessLineCustomRoleRepository = {
@@ -33,9 +44,12 @@ describe('AccessService', () => {
     };
     projectRepository = {
       findById: jest.fn(),
+      findByBusinessLineId: jest.fn(),
+      findByIds: jest.fn(),
     };
     projectMemberRepository = {
       findByProjectIdAndUserId: jest.fn(),
+      findByUserId: jest.fn(),
     };
     projectCustomRoleRepository = {
       findById: jest.fn(),
@@ -43,9 +57,7 @@ describe('AccessService', () => {
     };
 
     service = new AccessService(
-      {
-        findById: jest.fn(),
-      } as never,
+      usersService as never,
       businessLineRepository as never,
       businessLineMemberRepository as never,
       businessLineCustomRoleRepository as never,
@@ -124,6 +136,55 @@ describe('AccessService', () => {
       'project.task.read',
     ]);
     expect(projectCustomRoleRepository.findByIds).not.toHaveBeenCalled();
+  });
+
+  it('should expose workspace-managed project access through business line membership', async () => {
+    usersService.findById.mockResolvedValue({
+      id: 'user-1',
+      username: 'tester',
+      nickname: 'Tester',
+      avatar: null,
+    });
+    const businessMembership = {
+      businessLineId: 'business-line-1',
+      roleId: 'member',
+      customRoleName: 'member',
+    };
+    defineMemberRoleCapabilities(businessMembership, ['businessLine.read']);
+    businessLineMemberRepository.findByUserId.mockResolvedValue([
+      businessMembership,
+    ]);
+    projectMemberRepository.findByUserId.mockResolvedValue([]);
+    businessLineRepository.findById.mockResolvedValue({
+      id: 'business-line-1',
+    });
+    projectRepository.findById.mockResolvedValue({
+      id: 'workspace-project-1',
+      businessLineId: 'business-line-1',
+      configJson: {
+        workspaceManaged: true,
+      },
+    });
+    projectRepository.findByBusinessLineId.mockResolvedValue([]);
+    projectRepository.findByIds.mockResolvedValue([
+      {
+        id: 'workspace-project-1',
+        businessLineId: 'business-line-1',
+      },
+    ]);
+
+    const access = await service.getCurrentAccess(
+      { sub: 'user-1', roles: [] } as never,
+      { projectId: 'workspace-project-1' },
+    );
+
+    expect(access.currentContext.projectRole).toBe('viewer');
+    expect(access.capabilities).toEqual(
+      expect.arrayContaining(['project.dashboard.read', 'project.task.read']),
+    );
+    expect(access.visibility.visibleProjectIds).toContain(
+      'workspace-project-1',
+    );
   });
 
   it('should allow business line updates when membership includes update capability', async () => {

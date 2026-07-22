@@ -1,0 +1,1823 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "homework_assistant/v1/homework_assistant.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "HomeworkAssistant"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/homework-assistant/v1/batchSearchQuestionAsync": {
+      "post": {
+        "summary": "异步批量搜题",
+        "operationId": "HomeworkAssistant_BatchSearchQuestionAsync",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BatchSearchQuestionReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1BatchSearchQuestionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/generateRankList": {
+      "post": {
+        "summary": "作业助手排行榜-根据DB数据生成排行榜",
+        "operationId": "HomeworkAssistant_GenerateRankList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GenerateRankListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GenerateRankListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/homeworkFullPageCorrection": {
+      "post": {
+        "summary": "作业批改(压测）",
+        "operationId": "HomeworkAssistant_HomeworkFullPageCorrection",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1FullPageCorrectionReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1FullPageCorrectionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/queryCorrectionRecordList": {
+      "post": {
+        "summary": "查询批改记录列表（压测）",
+        "operationId": "HomeworkAssistant_QueryCorrectionRecordList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryCorrectionRecordListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryCorrectionRecordListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/queryHomeworkAssistantReport": {
+      "post": {
+        "summary": "查询作业助手报告",
+        "operationId": "HomeworkAssistant_QueryHomeworkAssistantReport",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryHomeworkAssistantReportReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryHomeworkAssistantReportRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/queryHomeworkAssistantScoreRankList": {
+      "post": {
+        "summary": "作业助手排行榜-查询排行榜信息",
+        "operationId": "HomeworkAssistant_QueryHomeworkAssistantScoreRankList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryHomeworkAssistantScoreRankListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryHomeworkAssistantScoreRankListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/queryHomeworkFullPageCorrectionDetailById": {
+      "get": {
+        "summary": "作业批改结果查询（压测）",
+        "operationId": "HomeworkAssistant_QueryHomeworkFullPageCorrectionDetailById",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1FullPageCorrectionDetailReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "description": "批改的唯一标识ID",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/queryHomeworkTaskWrongQuestionCount": {
+      "get": {
+        "summary": "查询作业任务所属错题数量",
+        "operationId": "HomeworkAssistant_QueryHomeworkTaskWrongQuestionCount",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryHomeworkTaskWrongQuestionCountReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "description": "任务id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/queryHomeworkTaskWrongQuestionRectificationInfo": {
+      "get": {
+        "summary": "查询订正记录详情（压测）",
+        "operationId": "HomeworkAssistant_QueryHomeworkTaskWrongQuestionRectificationInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RectificationInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "description": "订正记录id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/queryRecommendTopics": {
+      "get": {
+        "summary": "查询知识点名称推荐视频",
+        "operationId": "HomeworkAssistant_QueryRecommendTopicsSearch",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1TopicSearchReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "topicName",
+            "description": "知识点名称",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/querySearchRecordList": {
+      "post": {
+        "summary": "查询搜题记录列表",
+        "operationId": "HomeworkAssistant_QuerySearchRecordList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QuerySearchRecordListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QuerySearchRecordListRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/querySearchResultById": {
+      "get": {
+        "summary": "查询搜题结果",
+        "operationId": "HomeworkAssistant_QuerySearchResultById",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QuerySearchResultByIdReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/registerSearchDevices": {
+      "post": {
+        "summary": "注册设备",
+        "operationId": "HomeworkAssistant_RegisterSearchDevices",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RegisterSearchDevicesReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1RegisterSearchDevicesRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/searchQuestion": {
+      "post": {
+        "summary": "搜题",
+        "operationId": "HomeworkAssistant_SearchQuestion",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SearchQuestionReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SearchQuestionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/storeHomeworkAssistantRectificationScore": {
+      "post": {
+        "summary": "作业助手积分-订正",
+        "operationId": "HomeworkAssistant_StoreHomeworkAssistantRectificationScore",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreHomeworkAssistantRectificationScoreReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreHomeworkAssistantRectificationScoreRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/storeHomeworkAssistantTaskScore": {
+      "post": {
+        "summary": "作业助手积分-任务完成",
+        "operationId": "HomeworkAssistant_StoreHomeworkAssistantTaskScore",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StoreHomeworkAssistantTaskScoreReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1StoreHomeworkAssistantTaskScoreRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/storeHomeworkTaskWrongQuestionRectificationInfo": {
+      "post": {
+        "summary": "保存错题订正记录",
+        "operationId": "HomeworkAssistant_StoreWrongQuestionRectificationInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RectificationReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1RectificationRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    },
+    "/devices-learn/homework-assistant/v1/updateQuestionCorrectionResult": {
+      "post": {
+        "summary": "题目批改结果修改",
+        "operationId": "HomeworkAssistant_UpdateQuestionCorrectionResult",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CorrectionResultReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CorrectionResultRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HomeworkAssistant"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1BatchSearchQuestionReply": {
+      "type": "object"
+    },
+    "v1BatchSearchQuestionRequest": {
+      "type": "object",
+      "properties": {
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1QuestionImage"
+          },
+          "title": "图片列表"
+        },
+        "subject": {
+          "type": "string",
+          "description": "学科 数学 语文 英语 ..."
+        },
+        "taskId": {
+          "type": "string",
+          "title": "任务id"
+        }
+      }
+    },
+    "v1CorrectionData": {
+      "type": "object",
+      "properties": {
+        "image_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CorrectionImageResult"
+          },
+          "title": "图片批改结果"
+        },
+        "stat_result": {
+          "$ref": "#/definitions/v1CorrectionStatResult",
+          "title": "批改中数据统计"
+        },
+        "trace_id": {
+          "type": "string",
+          "title": "学习机trace_Id"
+        }
+      }
+    },
+    "v1CorrectionImageResult": {
+      "type": "object",
+      "properties": {
+        "image_id": {
+          "type": "string",
+          "title": "图片id"
+        },
+        "processed_image_url": {
+          "type": "string",
+          "title": "矫正后的图片url"
+        },
+        "paper_subject": {
+          "type": "string",
+          "title": "math 数学 chinese 语文 english 英语"
+        },
+        "subject": {
+          "type": "integer",
+          "format": "int32",
+          "title": "0：数学 1：语文 2：英语"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CorrectionQuestionResult"
+          },
+          "title": "题目批改结果"
+        },
+        "stat_result": {
+          "$ref": "#/definitions/v1CorrectionStatResult",
+          "title": "批改中某个图片数据统计"
+        }
+      }
+    },
+    "v1CorrectionQuestionAnswer": {
+      "type": "object",
+      "properties": {
+        "answer": {
+          "type": "string",
+          "title": "作答框答案"
+        },
+        "bbox": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": "用户作答框坐标"
+        },
+        "bbox_id": {
+          "type": "string",
+          "title": "作答框唯一id"
+        },
+        "correct_result": {
+          "type": "integer",
+          "format": "int32",
+          "title": "批改结果 0：未批改 1：对 2：错 3：未作答"
+        },
+        "correct_txt": {
+          "type": "string",
+          "title": "解题思路"
+        },
+        "index": {
+          "type": "integer",
+          "format": "int32",
+          "title": "用户作答题目id"
+        },
+        "text": {
+          "type": "string",
+          "title": "作答框ocr文本"
+        }
+      }
+    },
+    "v1CorrectionQuestionResult": {
+      "type": "object",
+      "properties": {
+        "analysis": {
+          "type": "string",
+          "title": "解析"
+        },
+        "analysis_sds": {
+          "type": "string",
+          "title": "三段式解析"
+        },
+        "answer": {
+          "type": "string",
+          "title": "答案"
+        },
+        "bbox": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": "题目的框坐标"
+        },
+        "bbox_id": {
+          "type": "string",
+          "title": "题目框唯一id"
+        },
+        "correct_result": {
+          "type": "integer",
+          "format": "int32",
+          "title": "整个题目批改结果，0：未批改；1：正确；2：错误；3：未作答"
+        },
+        "correct_source": {
+          "type": "integer",
+          "format": "int32",
+          "title": "批改来源 1整页2口算3单题"
+        },
+        "index": {
+          "type": "integer",
+          "format": "int32",
+          "title": "题目顺序id"
+        },
+        "is_finish": {
+          "type": "integer",
+          "format": "int32",
+          "title": "是否完成批改0：未完成 1：已完成"
+        },
+        "isAnalysisFinish": {
+          "type": "integer",
+          "format": "int32",
+          "title": "解析是否加载完成（只用于语文和英语学科批改） 0：未完成 1：已完成"
+        },
+        "question": {
+          "type": "string",
+          "title": "题干"
+        },
+        "database_id": {
+          "type": "string",
+          "title": "题库id"
+        },
+        "text": {
+          "type": "string",
+          "title": "题目ocr文本"
+        },
+        "type": {
+          "type": "integer",
+          "format": "int32",
+          "title": "题目类型 0：默认 1：口算题 2：选择题 3：判断题 4：填空题 5：应用题 6：连线题 7：画画题 8：题干 9：其他 10：材料 11：圈选题 17：计算题 18：证明题 19：解答题 401：描述提 402：排序题 801：图表题 902：带过程填空"
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CorrectionQuestionAnswer"
+          },
+          "title": "作答框多道题批改结果"
+        },
+        "uuid": {
+          "type": "string",
+          "title": "题目唯一id"
+        }
+      }
+    },
+    "v1CorrectionRecordItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "批改的唯一标识ID"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "批改数据"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        }
+      }
+    },
+    "v1CorrectionRecordList": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "title": "学科"
+        },
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "数量"
+        },
+        "recordList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CorrectionRecordItem"
+          },
+          "title": "记录列表"
+        }
+      }
+    },
+    "v1CorrectionResultReply": {
+      "type": "object"
+    },
+    "v1CorrectionResultRequest": {
+      "type": "object",
+      "properties": {
+        "correctionId": {
+          "type": "string",
+          "title": "整页批改唯一id"
+        },
+        "questionId": {
+          "type": "string",
+          "title": "题目唯一id"
+        },
+        "correctResult": {
+          "type": "integer",
+          "format": "int32",
+          "title": "整个题目批改结果，0：未批改；1：正确；2：错误；3：未作答"
+        }
+      }
+    },
+    "v1CorrectionStatResult": {
+      "type": "object",
+      "properties": {
+        "corrected": {
+          "type": "integer",
+          "format": "int32",
+          "title": "已批改数"
+        },
+        "correcting": {
+          "type": "integer",
+          "format": "int32",
+          "title": "批改中"
+        },
+        "all": {
+          "type": "integer",
+          "format": "int32",
+          "title": "所有记录数"
+        }
+      }
+    },
+    "v1CorrectionSummaryItem": {
+      "type": "object",
+      "properties": {
+        "correctionTotalCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "批改题目总数"
+        },
+        "correctionCorrectCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "批改正确题目数"
+        },
+        "rectificationTotalCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "订正题目总数"
+        },
+        "rectificationCorrectCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "订正正确题目数"
+        }
+      }
+    },
+    "v1Detail": {
+      "type": "object",
+      "properties": {
+        "stageId": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": "学段ids"
+        },
+        "subjectId": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": "学科ids"
+        },
+        "publisherId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "出版社id"
+        },
+        "semesterId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "册id"
+        },
+        "packageId": {
+          "type": "string",
+          "title": "课程包id"
+        },
+        "chapterId": {
+          "type": "string",
+          "title": "章节id"
+        },
+        "sectionId": {
+          "type": "string",
+          "title": "大节id"
+        }
+      }
+    },
+    "v1DurationSummaryItem": {
+      "type": "object",
+      "properties": {
+        "totalHomeAssistantDuration": {
+          "type": "integer",
+          "format": "int32",
+          "title": "累计作业时长"
+        },
+        "studyDuration": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学习时间"
+        },
+        "subjectDurationSummary": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SubjectDurationSummaryItem"
+          },
+          "title": "学科学习时长"
+        }
+      }
+    },
+    "v1FullPageCorrectionDetailReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "批改的唯一标识ID"
+        },
+        "code": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态码"
+        },
+        "msg": {
+          "type": "string",
+          "title": "错误信息"
+        },
+        "data": {
+          "$ref": "#/definitions/v1CorrectionData",
+          "title": "批改数据"
+        },
+        "subject": {
+          "type": "string",
+          "title": "学科名称"
+        }
+      }
+    },
+    "v1FullPageCorrectionReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "批改的唯一标识ID"
+        },
+        "code": {
+          "type": "integer",
+          "format": "int32",
+          "title": "好未来接口返回的状态码 20000 无错误 参考：https://openai.100tal.com/documents/article/page?fromWhichSys=admin\u0026id=445"
+        },
+        "msg": {
+          "type": "string",
+          "title": "好未来接口返回的错误信息"
+        }
+      }
+    },
+    "v1FullPageCorrectionRequest": {
+      "type": "object",
+      "properties": {
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "题目图片url列表"
+        }
+      }
+    },
+    "v1GenerateRankListReply": {
+      "type": "object"
+    },
+    "v1GenerateRankListRequest": {
+      "type": "object"
+    },
+    "v1HomeworkAssistantReportUserRankInfo": {
+      "type": "object",
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排名"
+        },
+        "userId": {
+          "type": "string",
+          "title": "用户id"
+        },
+        "userName": {
+          "type": "string",
+          "title": "用户名"
+        },
+        "userAvatar": {
+          "type": "string",
+          "title": "用户头像"
+        },
+        "consecutiveCheckInDays": {
+          "type": "integer",
+          "format": "int32",
+          "title": "连续打卡天数"
+        }
+      }
+    },
+    "v1HomeworkAssistantScoreDetail": {
+      "type": "object",
+      "properties": {
+        "detailType": {
+          "type": "string",
+          "title": "明细类型  任务完成：taskComplete，任务时长：taskDuration，打卡：checkIn"
+        },
+        "detailScore": {
+          "type": "integer",
+          "format": "int32",
+          "title": "明细分数"
+        }
+      }
+    },
+    "v1HomeworkAssistantScoreRankItem": {
+      "type": "object",
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排名"
+        },
+        "userId": {
+          "type": "string",
+          "title": "用户id"
+        },
+        "userName": {
+          "type": "string",
+          "title": "用户名"
+        },
+        "userAvatar": {
+          "type": "string",
+          "title": "用户头像"
+        },
+        "score": {
+          "type": "integer",
+          "format": "int32",
+          "title": "积分"
+        }
+      }
+    },
+    "v1QueryCorrectionRecordListReply": {
+      "type": "object",
+      "properties": {
+        "correctionRecordList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CorrectionRecordList"
+          },
+          "title": "批改记录列表"
+        }
+      }
+    },
+    "v1QueryCorrectionRecordListRequest": {
+      "type": "object",
+      "properties": {
+        "SNId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "v1QueryHomeworkAssistantReportReply": {
+      "type": "object",
+      "properties": {
+        "todayWrongQuestionCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "今日错题数"
+        },
+        "searchQuestionSummary": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SearchQuestionSummaryItem"
+          },
+          "title": "答疑统计"
+        },
+        "correctionSummaryItem": {
+          "$ref": "#/definitions/v1CorrectionSummaryItem",
+          "title": "作业批改统计"
+        },
+        "durationSummaryItem": {
+          "$ref": "#/definitions/v1DurationSummaryItem",
+          "title": "时长统计"
+        },
+        "taskSummaryItem": {
+          "$ref": "#/definitions/v1TaskSummaryItem",
+          "title": "任务统计"
+        },
+        "lastPeriodCorrectionSummaryItem": {
+          "$ref": "#/definitions/v1CorrectionSummaryItem",
+          "title": "上一周期作业批改统计"
+        },
+        "homeworkAssistantReportUserRankInfo": {
+          "$ref": "#/definitions/v1HomeworkAssistantReportUserRankInfo",
+          "title": "用户排行榜信息"
+        }
+      }
+    },
+    "v1QueryHomeworkAssistantReportRequest": {
+      "type": "object",
+      "properties": {
+        "startDate": {
+          "type": "string"
+        },
+        "endDate": {
+          "type": "string"
+        }
+      }
+    },
+    "v1QueryHomeworkAssistantScoreRankListReply": {
+      "type": "object",
+      "properties": {
+        "rankList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1HomeworkAssistantScoreRankItem"
+          },
+          "title": "排行榜"
+        },
+        "selfRankInfo": {
+          "$ref": "#/definitions/v1SelfRankInfo",
+          "title": "用户自己的排名信息"
+        },
+        "isUseRankFunction": {
+          "type": "boolean",
+          "title": "是否已开启排行榜"
+        },
+        "isLastPeriodRankList": {
+          "type": "boolean",
+          "title": "是否是上期排行榜"
+        }
+      }
+    },
+    "v1QueryHomeworkAssistantScoreRankListRequest": {
+      "type": "object"
+    },
+    "v1QueryHomeworkTaskWrongQuestionCountReply": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "int32",
+          "title": "错题数量"
+        }
+      }
+    },
+    "v1QuerySearchRecordListReply": {
+      "type": "object",
+      "properties": {
+        "searchRecordList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SearchRecordList"
+          },
+          "title": "搜题记录列表"
+        }
+      }
+    },
+    "v1QuerySearchRecordListRequest": {
+      "type": "object",
+      "properties": {
+        "SNId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "questionSourceType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "问题来源：0:全部；1:作业错题；2:答疑记录;"
+        },
+        "rectificationType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "订正状态：0:全部；1:已改错；2:未改错；"
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "v1QuerySearchResultByIdReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "code": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态码"
+        },
+        "data": {
+          "$ref": "#/definitions/v1QuestionData",
+          "title": "处理结果"
+        },
+        "msg": {
+          "type": "string",
+          "title": "错误信息"
+        },
+        "requestId": {
+          "type": "string",
+          "title": "平台返回的唯一标识"
+        },
+        "questionId": {
+          "type": "string",
+          "title": "批改记录中的题目id"
+        },
+        "correctionId": {
+          "type": "string",
+          "title": "批改记录id"
+        },
+        "rectificationId": {
+          "type": "string",
+          "title": "订正记录id"
+        },
+        "questionSourceType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "问题来源：1:作业错题；2:答疑记录;"
+        }
+      }
+    },
+    "v1QuestionData": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "questionArr": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1QuestionDetail"
+          },
+          "title": "结果数组"
+        },
+        "traceId": {
+          "type": "string",
+          "title": "本次请求唯一Id标识"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "原图url"
+        }
+      }
+    },
+    "v1QuestionDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "问题的标识"
+        },
+        "question": {
+          "type": "string",
+          "title": "题目html标签"
+        },
+        "hint": {
+          "type": "string",
+          "title": "解析html标签"
+        },
+        "answer": {
+          "type": "string",
+          "title": "答案html标签"
+        },
+        "css": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "答案css数组"
+        },
+        "js": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "答案js数组"
+        },
+        "rank_score": {
+          "type": "number",
+          "format": "float",
+          "title": "相似度得分"
+        },
+        "subject": {
+          "type": "string",
+          "title": "学科"
+        },
+        "point": {
+          "type": "string",
+          "title": "知识点id"
+        },
+        "point_name": {
+          "type": "string",
+          "title": "知识点名称"
+        },
+        "grade": {
+          "type": "string",
+          "title": "年级"
+        }
+      }
+    },
+    "v1QuestionImage": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "title": "图片base64"
+        },
+        "questionId": {
+          "type": "string",
+          "title": "批改记录中的题目id"
+        },
+        "correctionId": {
+          "type": "string",
+          "title": "批改记录id"
+        }
+      }
+    },
+    "v1RectificationInfoReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "订正记录id"
+        },
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "订正答案图片url列表"
+        },
+        "rectificationResult": {
+          "type": "integer",
+          "format": "int32",
+          "title": "订正结果：0-未订正 1-订正正确 2-订正错误 3-订正半对半错"
+        }
+      }
+    },
+    "v1RectificationReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "订正记录id"
+        }
+      }
+    },
+    "v1RectificationRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "订正记录id（重新订正时必选）"
+        },
+        "wrongQuestionRecordId": {
+          "type": "string",
+          "title": "错题记录id"
+        },
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "订正答案图片url列表"
+        },
+        "rectificationResult": {
+          "type": "integer",
+          "format": "int32",
+          "title": "订正结果：0-未订正 1-订正正确 2-订正错误 3-订正半对半错"
+        }
+      }
+    },
+    "v1RegisterSearchDevicesReply": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "boolean",
+          "title": "是否成功：true:成功，false:失败"
+        }
+      }
+    },
+    "v1RegisterSearchDevicesRequest": {
+      "type": "object",
+      "properties": {
+        "SNId": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "v1SearchQuestionReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "搜题的唯一标识ID;通用返回错误原因：SEARCH_QUESTION_FAILED：搜题出错（接口调用失败等）；EMPTY_SEARCH_RESULT ： 搜索不到题目；JSON_UNMARSHAL_FAILED：数据解析失败；TOO_MANY_REQUEST：请求过多，入队列失败；SEARCH_QUESTION_TIMEOUT：搜题超时"
+        }
+      }
+    },
+    "v1SearchQuestionRequest": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string"
+        }
+      }
+    },
+    "v1SearchQuestionSummaryItem": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "title": "学科"
+        },
+        "count": {
+          "type": "integer",
+          "format": "int32",
+          "title": "次数"
+        }
+      }
+    },
+    "v1SearchRecordItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "记录Id"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "code": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态码"
+        },
+        "data": {
+          "$ref": "#/definitions/v1QuestionData",
+          "title": "处理结果"
+        },
+        "msg": {
+          "type": "string",
+          "title": "错误信息"
+        },
+        "requestId": {
+          "type": "string",
+          "title": "平台返回的唯一标识"
+        },
+        "questionId": {
+          "type": "string",
+          "title": "批改记录中的题目id（来源于批改错题时才有值）"
+        },
+        "correctionId": {
+          "type": "string",
+          "title": "批改记录id（来源于批改错题时才有值）"
+        },
+        "imageUrl": {
+          "type": "string",
+          "title": "原图url"
+        },
+        "questionSourceType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "问题来源：1:作业错题；2:答疑记录;"
+        },
+        "rectificationType": {
+          "type": "integer",
+          "format": "int32",
+          "title": "订正状态：1:已改错；2:未改错；"
+        },
+        "rectificationId": {
+          "type": "string",
+          "title": "订正记录id"
+        }
+      }
+    },
+    "v1SearchRecordList": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "title": "学科"
+        },
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "数量"
+        },
+        "recordList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SearchRecordItem"
+          },
+          "title": "记录列表"
+        }
+      }
+    },
+    "v1SelfRankInfo": {
+      "type": "object",
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排名"
+        },
+        "userId": {
+          "type": "string",
+          "title": "用户id"
+        },
+        "userName": {
+          "type": "string",
+          "title": "用户名"
+        },
+        "userAvatar": {
+          "type": "string",
+          "title": "用户头像"
+        },
+        "score": {
+          "type": "integer",
+          "format": "int32",
+          "title": "积分"
+        },
+        "rankChange": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排名变化"
+        },
+        "scoreChange": {
+          "type": "integer",
+          "format": "int32",
+          "title": "积分变化"
+        }
+      }
+    },
+    "v1StoreHomeworkAssistantRectificationScoreReply": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "integer",
+          "format": "int32",
+          "title": "积分"
+        }
+      }
+    },
+    "v1StoreHomeworkAssistantRectificationScoreRequest": {
+      "type": "object",
+      "properties": {
+        "questionTextMd5Sum": {
+          "type": "string",
+          "title": "问题识别文本的md5值（保证唯一性）"
+        }
+      }
+    },
+    "v1StoreHomeworkAssistantTaskScoreReply": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "integer",
+          "format": "int32",
+          "title": "积分"
+        },
+        "scoreDetails": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1HomeworkAssistantScoreDetail"
+          },
+          "title": "积分明细"
+        }
+      }
+    },
+    "v1StoreHomeworkAssistantTaskScoreRequest": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "title": "任务Id （保证唯一性）"
+        },
+        "taskDuration": {
+          "type": "integer",
+          "format": "int32",
+          "title": "任务时长(秒)"
+        }
+      }
+    },
+    "v1SubjectDurationSummaryItem": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "title": "学科"
+        },
+        "studyDuration": {
+          "type": "integer",
+          "format": "int32",
+          "title": "学习时间"
+        }
+      }
+    },
+    "v1TaskSummaryItem": {
+      "type": "object",
+      "properties": {
+        "totalTasks": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总任务数"
+        },
+        "completedTasks": {
+          "type": "integer",
+          "format": "int32",
+          "title": "完成任务数"
+        },
+        "onTimeTasks": {
+          "type": "integer",
+          "format": "int32",
+          "title": "按时完成任务数"
+        },
+        "overtimeTasks": {
+          "type": "integer",
+          "format": "int32",
+          "title": "超时完成任务数"
+        },
+        "incompleteTasks": {
+          "type": "integer",
+          "format": "int32",
+          "title": "未完成任务数"
+        }
+      }
+    },
+    "v1TopicSearchItem": {
+      "type": "object",
+      "properties": {
+        "topicId": {
+          "type": "string",
+          "title": "知识点id"
+        },
+        "topicName": {
+          "type": "string",
+          "title": "知识点名称"
+        },
+        "videoId": {
+          "type": "string",
+          "description": "视频id."
+        },
+        "specialCourseId": {
+          "type": "string",
+          "title": "课程包id"
+        },
+        "cover": {
+          "type": "string",
+          "title": "视频封面"
+        },
+        "detail": {
+          "$ref": "#/definitions/v1Detail",
+          "title": "知识点详情"
+        }
+      }
+    },
+    "v1TopicSearchReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "code": {
+          "type": "integer",
+          "format": "int32",
+          "title": "0 -正常值 -1-敏感词"
+        },
+        "hasFilterWords": {
+          "type": "boolean",
+          "title": "用户输入是否包含过滤词"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TopicSearchItem"
+          },
+          "title": "知识点列表"
+        }
+      }
+    }
+  }
+}

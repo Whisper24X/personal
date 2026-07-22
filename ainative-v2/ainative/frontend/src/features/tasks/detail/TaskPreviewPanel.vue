@@ -3,7 +3,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RotateCw } from 'lucide-vue-next'
 import type { SelectOption } from '@shared/components/select'
 import AppSelect from '@shared/components/select'
-import type { TaskEnvironmentPreview, TaskLog } from '@/types/api/tasks'
+import { tasksApi } from '@/api/tasks'
+import type {
+  TaskEnvironmentPreview,
+  TaskEnvironmentServiceStatus,
+  TaskEnvironmentServicePhase,
+  TaskLog,
+} from '@/types/api/tasks'
 import {
   getInitialPreviewViewportState,
   getPreviewViewportPreset,
@@ -19,6 +25,19 @@ defineOptions({
 
 /** In preview iframe: `parent.postMessage({ type, url, title? }, <parent origin>)` */
 const PREVIEW_OPEN_IN_TAB = 'ainative:preview:openInTab' as const
+const PREVIEW_DIAGNOSTIC = 'ainative:preview:diagnostic' as const
+
+type PreviewDiagnosticKind =
+  | 'platform-hmr-rewritten'
+  | 'platform-hmr-relay-failed'
+  | 'workspace-runtime-error'
+
+type ReportablePreviewDiagnosticKind = Exclude<PreviewDiagnosticKind, 'platform-hmr-rewritten'>
+
+type PreviewDiagnosticEvent = {
+  kind: PreviewDiagnosticKind
+  detail?: Record<string, unknown> | null
+}
 
 type PreviewTab = {
   id: string
@@ -28,12 +47,16 @@ type PreviewTab = {
 
 const props = withDefaults(
   defineProps<{
+    taskId?: string
     preview?: TaskEnvironmentPreview | null
+    serviceStatuses?: TaskEnvironmentServiceStatus[] | null
     logs?: TaskLog[]
     formatDate?: (value?: string) => string
   }>(),
   {
+    taskId: '',
     preview: null,
+    serviceStatuses: () => [],
     logs: () => [],
     formatDate: undefined,
   },
@@ -44,6 +67,9 @@ const tabs = ref<PreviewTab[]>([])
 const activeTabId = ref<string | null>(null)
 const tabReloadNonce = ref<Record<string, number>>({})
 let nextTabSeq = 0
+const latestDiagnostic = ref<PreviewDiagnosticEvent | null>(null)
+const reportedDiagnosticKeys = new Map<string, number>()
+const DIAGNOSTIC_REPORT_WINDOW_MS = 60_000
 
 const makeTabId = () => {
   nextTabSeq += 1
@@ -97,9 +123,33 @@ const expectedMessageOrigin = computed(() => {
   }
 })
 
-const hasPreview = computed(
-  () => props.preview?.status === 'ready' && Boolean(resolvedPreviewUrl.value),
+const hasPreview = computed(() => Boolean(resolvedPreviewUrl.value))
+
+const phaseLabelMap: Record<TaskEnvironmentServicePhase, string> = {
+  pending: '等待启动',
+  installing: '安装依赖中',
+  starting: '启动中',
+  listening: '已监听',
+  failed: '启动失败',
+  unknown: '状态未知',
+}
+
+const visibleServiceStatuses = computed(() =>
+  (props.serviceStatuses ?? []).filter((item) => item?.isPrimaryPreview),
 )
+
+const primaryPreviewStatusSummary = computed(() => {
+  const target = visibleServiceStatuses.value[0]
+  if (!target) {
+    return ''
+  }
+  const phase = phaseLabelMap[target.phase] ?? '状态未知'
+  const portText = typeof target.port === 'number' ? `:${target.port}` : ''
+  const detail = target.message?.trim() || ''
+  return detail
+    ? `${target.name}${portText} ${phase} · ${detail}`
+    : `${target.name}${portText} ${phase}`
+})
 
 const initialViewport = getInitialPreviewViewportState()
 const previewViewportId = ref(initialViewport.viewportId)
@@ -186,6 +236,154 @@ const previewHint = computed(() => {
   return '容器预览尚未就绪'
 })
 
+const previewDiagnosticSummary = computed(() => {
+  const diagnostic = latestDiagnostic.value
+  if (!diagnostic) {
+    return ''
+  }
+  if (diagnostic.kind === 'platform-hmr-relay-failed') {
+    return '平台 HMR relay 建联失败，预览页可能仍在尝试连接错误的本地调试地址。'
+  }
+  if (diagnostic.kind === 'platform-hmr-rewritten') {
+    const from = typeof diagnostic.detail?.from === 'string' ? diagnostic.detail.from : ''
+    return from
+      ? `平台已将 HMR 连接从 ${from} 改写到当前预览域名。`
+      : '平台已接管并改写 HMR 连接到当前预览域名。'
+  }
+  const summary =
+    typeof diagnostic.detail?.summary === 'string' ? diagnostic.detail.summary.trim() : ''
+  return summary
+    ? `子仓运行时发生异常：${summary}`
+    : '子仓运行时发生未处理异常，请查看任务日志。'
+})
+
+const clampText = (value: string, maxLength: number) => {
+  const trimmed = value.trim()
+  if (trimmed.length <= maxLength) {
+    return trimmed
+  }
+  return `${trimmed.slice(0, maxLength - 1)}…`
+}
+
+const topStackFrame = (stack: string | null) => {
+  if (!stack) {
+    return ''
+  }
+  return (
+    stack
+      .split('\n')
+      .map((line) => line.trim())
+      .find(Boolean) ?? ''
+  )
+}
+
+const sanitizeDiagnosticDetail = (detail: Record<string, unknown> | null) => {
+  if (!detail) {
+    return null
+  }
+  const result: Record<string, unknown> = {}
+  const allowedKeys = [
+    'source',
+    'message',
+    'summary',
+    'rawKind',
+    'filename',
+    'name',
+    'code',
+    'status',
+    'errMsg',
+    'from',
+    'url',
+    'path',
+    'stack',
+  ] as const
+  for (const key of allowedKeys) {
+    const value = detail[key]
+    if (value === undefined || value === null) {
+      continue
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      result[key] = value
+      continue
+    }
+    if (typeof value === 'string') {
+      result[key] = clampText(value, key === 'stack' ? 4000 : 1024)
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null
+}
+
+const buildPreviewDiagnosticSummary = (
+  kind: PreviewDiagnosticKind,
+  detail: Record<string, unknown> | null,
+) => {
+  if (kind === 'platform-hmr-relay-failed') {
+    return '平台 HMR relay 建联失败'
+  }
+  const summaryCandidates = [
+    typeof detail?.summary === 'string' ? detail.summary : '',
+    typeof detail?.message === 'string' ? detail.message : '',
+    typeof detail?.errMsg === 'string' ? detail.errMsg : '',
+  ]
+  const hit = summaryCandidates.map((item) => item.trim()).find(Boolean)
+  return hit ? clampText(hit, 1024) : '子仓运行时发生未处理异常'
+}
+
+const buildDiagnosticDedupeKey = (
+  kind: PreviewDiagnosticKind,
+  detail: Record<string, unknown> | null,
+) => {
+  const summary = buildPreviewDiagnosticSummary(kind, detail)
+  const source = typeof detail?.source === 'string' ? detail.source.trim() : ''
+  const filename = typeof detail?.filename === 'string' ? detail.filename.trim() : ''
+  const stack = typeof detail?.stack === 'string' ? detail.stack : null
+  return clampText(
+    [kind, summary, source, filename, topStackFrame(stack)].filter(Boolean).join('|'),
+    128,
+  )
+}
+
+const shouldReportDiagnostic = (
+  kind: PreviewDiagnosticKind,
+  detail: Record<string, unknown> | null,
+): kind is ReportablePreviewDiagnosticKind => {
+  if (!props.taskId) {
+    return false
+  }
+  if (kind !== 'workspace-runtime-error' && kind !== 'platform-hmr-relay-failed') {
+    return false
+  }
+  const key = buildDiagnosticDedupeKey(kind, detail)
+  const now = Date.now()
+  const previous = reportedDiagnosticKeys.get(key) ?? 0
+  if (now - previous < DIAGNOSTIC_REPORT_WINDOW_MS) {
+    return false
+  }
+  reportedDiagnosticKeys.set(key, now)
+  return true
+}
+
+const reportPreviewDiagnostic = (
+  kind: PreviewDiagnosticKind,
+  detail: Record<string, unknown> | null,
+) => {
+  if (!shouldReportDiagnostic(kind, detail)) {
+    return
+  }
+  const sanitizedDetail = sanitizeDiagnosticDetail(detail)
+  void tasksApi
+    .reportPreviewDiagnostic(props.taskId, {
+      kind,
+      message: kind === 'platform-hmr-relay-failed' ? 'Preview HMR relay failure' : 'Preview runtime error',
+      summary: buildPreviewDiagnosticSummary(kind, sanitizedDetail),
+      dedupeKey: buildDiagnosticDedupeKey(kind, sanitizedDetail),
+      detail: sanitizedDetail,
+    })
+    .catch(() => {
+      /* ignore reporting failures */
+    })
+}
+
 const validateOpenInTabUrl = (
   rawUrl: string,
   allowedOrigin: string | null,
@@ -261,6 +459,26 @@ const onPreviewMessage = (ev: MessageEvent) => {
     return
   }
   if ((data as { type?: string }).type !== PREVIEW_OPEN_IN_TAB) {
+    if ((data as { type?: string }).type !== PREVIEW_DIAGNOSTIC) {
+      return
+    }
+    const kind = (data as { kind?: unknown }).kind
+    if (
+      kind !== 'platform-hmr-rewritten' &&
+      kind !== 'platform-hmr-relay-failed' &&
+      kind !== 'workspace-runtime-error'
+    ) {
+      return
+    }
+    const detail = (data as { detail?: unknown }).detail
+    latestDiagnostic.value = {
+      kind,
+      detail: detail && typeof detail === 'object' ? (detail as Record<string, unknown>) : null,
+    }
+    reportPreviewDiagnostic(
+      kind,
+      detail && typeof detail === 'object' ? (detail as Record<string, unknown>) : null,
+    )
     return
   }
   const url = (data as { url?: unknown }).url
@@ -304,12 +522,14 @@ watch(
   () => [props.preview?.status, props.preview?.url] as const,
   () => {
     const resolved = resolvedPreviewUrl.value
-    const ready = props.preview?.status === 'ready' && Boolean(resolved)
-    if (!ready) {
+    const available = Boolean(resolved)
+    if (!available) {
       nextTabSeq = 0
       tabs.value = []
       activeTabId.value = null
       tabReloadNonce.value = {}
+      latestDiagnostic.value = null
+      reportedDiagnosticKeys.clear()
       return
     }
     const id = 'p-0'
@@ -317,6 +537,8 @@ watch(
     tabs.value = [{ id, url: resolved, title: undefined }]
     activeTabId.value = id
     tabReloadNonce.value = { [id]: 0 }
+    latestDiagnostic.value = null
+    reportedDiagnosticKeys.clear()
   },
   { immediate: true },
 )
@@ -433,6 +655,21 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <div
+      v-if="primaryPreviewStatusSummary"
+      class="text-muted-foreground border-border/60 shrink-0 border-b px-3 py-1.5 text-[11px]"
+    >
+      {{ primaryPreviewStatusSummary }}
+    </div>
+
+    <div
+      v-if="previewDiagnosticSummary"
+      class="text-amber-700 border-border/60 bg-amber-50 shrink-0 border-b px-3 py-2 text-[11px] leading-5"
+      data-testid="task-preview-diagnostic"
+    >
+      {{ previewDiagnosticSummary }}
+    </div>
+
     <div class="flex min-h-0 flex-1 flex-col">
       <div v-if="hasPreview && tabs.length > 0" class="flex min-h-0 flex-1 flex-col">
         <div
@@ -484,7 +721,7 @@ onBeforeUnmount(() => {
       >
         <span class="text-sm">{{ previewHint }}</span>
         <span v-if="props.preview?.status === 'provisioning'" class="max-w-xs text-center text-xs">
-          系统正在为当前任务分配预览地址，地址就绪后会自动展示。
+          预览服务正在启动，地址就绪后会自动展示。
         </span>
         <span
           v-else-if="props.preview?.status === 'failed'"
@@ -493,7 +730,7 @@ onBeforeUnmount(() => {
           系统未能为当前任务生成可访问的预览地址，请刷新任务状态或重新启动环境。
         </span>
         <span v-else class="max-w-xs text-center text-xs">
-          预览地址由系统统一分配和托管，不再从项目配置或容器端口直接读取。
+          请启动执行环境后查看容器预览。
         </span>
       </div>
     </div>

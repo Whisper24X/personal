@@ -1,0 +1,15 @@
+# 环境变量（包含敏感 Token，禁止提交）
+.env
+
+# Apifox CLI 测试报告（自动生成，不需提交）
+apifox-reports/
+
+# Node.js
+node_modules/
+
+# macOS
+.DS_Store
+
+# 编辑器
+.idea/
+*.swp

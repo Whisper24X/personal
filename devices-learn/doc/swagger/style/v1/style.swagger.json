@@ -1,0 +1,268 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "style/v1/style.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Style"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/devices-learn/style/paper": {
+      "get": {
+        "summary": "获取学习风格问卷",
+        "operationId": "Style_GetLearnStylePaper",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetLearnStylePaperReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Style"
+        ]
+      }
+    },
+    "/devices-learn/style/user/create": {
+      "post": {
+        "summary": "创建用户学习风格",
+        "operationId": "Style_CreateUserStyle",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UserStyleInfo"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateUserStyleRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Style"
+        ]
+      }
+    },
+    "/devices-learn/style/user/info": {
+      "get": {
+        "summary": "查询用户学习风格",
+        "operationId": "Style_GetUserStyle",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UserStyleInfo"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Style"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "PaperStideAnswerOption": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "title": "选项值: V-视觉 A-听觉 K-动觉"
+        },
+        "description": {
+          "type": "string",
+          "title": "选项描述"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1Answers": {
+      "type": "object",
+      "properties": {
+        "stide": {
+          "type": "integer",
+          "format": "int32",
+          "title": "题号"
+        },
+        "answer": {
+          "type": "string",
+          "title": "答案: V-视觉 A-听觉 K-动觉"
+        }
+      }
+    },
+    "v1CreateUserStyleRequest": {
+      "type": "object",
+      "properties": {
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Answers"
+          },
+          "title": "用户答案列表"
+        }
+      }
+    },
+    "v1GetLearnStylePaperReply": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string",
+          "title": "问卷说明"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1PaperStide"
+          },
+          "title": "问卷题目列表"
+        }
+      }
+    },
+    "v1PaperStide": {
+      "type": "object",
+      "properties": {
+        "stide": {
+          "type": "integer",
+          "format": "int32",
+          "title": "题号"
+        },
+        "theme": {
+          "type": "string",
+          "title": "题目"
+        },
+        "answerOption": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/PaperStideAnswerOption"
+          },
+          "title": "答案选项"
+        }
+      }
+    },
+    "v1UserStyleInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "记录ID"
+        },
+        "userId": {
+          "type": "string",
+          "title": "用户ID"
+        },
+        "vision": {
+          "type": "integer",
+          "format": "int32",
+          "title": "视觉值"
+        },
+        "audition": {
+          "type": "integer",
+          "format": "int32",
+          "title": "听觉值"
+        },
+        "kinesthesis": {
+          "type": "integer",
+          "format": "int32",
+          "title": "动觉值"
+        },
+        "style": {
+          "type": "string",
+          "title": "风格结果: default/vision/audition/kinesthesis"
+        },
+        "styleLearnMethod": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "风格学习方法"
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Answers"
+          },
+          "title": "用户答案"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态 -1:删除 0:无效 1:有效"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      }
+    }
+  }
+}

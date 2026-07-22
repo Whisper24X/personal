@@ -66,16 +66,18 @@ services:
       - ${PWD}/tmp:${PWD}/tmp
     ports:
       - "9000:9000"
+      - "9222:9222"
+    shm_size: "2gb"
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:9000/').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))\"",
+          "node -e \"fetch('http://127.0.0.1:9000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
         ]
-      interval: 15s
+      interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 60s
+      retries: 12
+      start_period: 30s
     networks:
       - ainative
 

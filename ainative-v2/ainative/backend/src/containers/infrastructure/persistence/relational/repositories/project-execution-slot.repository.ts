@@ -98,7 +98,7 @@ export class ProjectExecutionSlotRepository {
       { taskId },
       {
         containerId: params.containerId,
-        accessMetadata: params.accessMetadata ?? null,
+        accessMetadata: (params.accessMetadata as unknown as any) ?? null,
       },
     );
   }

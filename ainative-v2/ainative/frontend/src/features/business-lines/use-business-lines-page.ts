@@ -38,6 +38,7 @@ const activeTab = ref<BusinessLinesTab>('lines')
 const lineFormModalOpen = ref(false)
 const lineFormMode = ref<'create' | 'edit'>('create')
 const lineFormInitialName = ref('')
+const lineFormInitialSlug = ref('')
 const lineFormInitialDescription = ref('')
 const editingLineId = ref('')
 const memberFormModalOpen = ref(false)
@@ -168,6 +169,7 @@ const openCreateLineModal = () => {
   lineFormMode.value = 'create'
   editingLineId.value = ''
   lineFormInitialName.value = ''
+  lineFormInitialSlug.value = ''
   lineFormInitialDescription.value = ''
   lineFormModalOpen.value = true
 }
@@ -176,25 +178,37 @@ const openEditLineModal = (line: BusinessLine) => {
   lineFormMode.value = 'edit'
   editingLineId.value = line.id
   lineFormInitialName.value = line.name
+  lineFormInitialSlug.value = line.slug
   lineFormInitialDescription.value = line.description ?? ''
   lineFormModalOpen.value = true
 }
 
-const submitLineForm = async (payload: { name: string; description: string }) => {
+const submitLineForm = async (payload: {
+  name: string
+  slug?: string
+  description: string
+}) => {
   savingLine.value = true
   validationMessage.value = ''
 
-  const requestPayload = {
-    name: payload.name.trim(),
-    description: normalizeOptionalText(payload.description),
-  }
-
   try {
     if (lineFormMode.value === 'edit' && editingLineId.value) {
-      await businessLinesApi.update(editingLineId.value, requestPayload)
+      await businessLinesApi.update(editingLineId.value, {
+        name: payload.name.trim(),
+        description: normalizeOptionalText(payload.description),
+      })
       await loadLines(editingLineId.value)
     } else {
-      const createdLine = await businessLinesApi.create(requestPayload)
+      if (!payload.slug?.trim()) {
+        validationMessage.value = '业务线标识不能为空'
+        return
+      }
+
+      const createdLine = await businessLinesApi.create({
+        name: payload.name.trim(),
+        slug: payload.slug.trim(),
+        description: normalizeOptionalText(payload.description),
+      })
       await loadLines(createdLine.id)
     }
 
@@ -367,6 +381,7 @@ onMounted(() => {
     lineDeleteModalOpen,
     lineFormInitialDescription,
     lineFormInitialName,
+    lineFormInitialSlug,
     lineFormModalOpen,
     lineFormMode,
     lineRoles,

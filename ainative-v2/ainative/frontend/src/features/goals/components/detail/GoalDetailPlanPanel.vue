@@ -3,6 +3,7 @@ import { Button } from '@shared/ui/button'
 import type { GoalDetail, GoalPlanItem, GoalPlanSubTask } from '@/types/api/goals'
 import type { WorkflowTemplate } from '@/types/api/workflow'
 import { Loader2 } from 'lucide-vue-next'
+import { computed } from 'vue'
 
 defineOptions({
   name: 'GoalDetailPlanPanel',
@@ -17,11 +18,17 @@ const props = withDefaults(
     mergingPlanGroupId: string | null
     materializing: boolean
     markingBranchMergedId: string | null
+    pushingGoalSubrepos: boolean
     planItemStatusLabel: Record<GoalPlanSubTask['status'], string>
     planItemApproveBlockedReason: (item: GoalPlanSubTask) => string | null
     planItemMaterializeBlockedReason: (item: GoalPlanSubTask) => string | null
   }>(),
-  { generatingPlan: false, markingBranchMergedId: null, mergingPlanGroupId: null },
+  {
+    generatingPlan: false,
+    markingBranchMergedId: null,
+    mergingPlanGroupId: null,
+    pushingGoalSubrepos: false,
+  },
 )
 
 const emit = defineEmits<{
@@ -29,6 +36,7 @@ const emit = defineEmits<{
   materializePlanItem: [item: GoalPlanSubTask]
   mergePlanGroupIntoGoal: [group: GoalPlanItem]
   markBranchMerged: [item: GoalPlanSubTask]
+  pushSubrepos: []
 }>()
 
 function planGroupCountableSubTasks(group: GoalPlanItem): GoalPlanSubTask[] {
@@ -49,6 +57,35 @@ function planGroupCanMergeIntoGoal(group: GoalPlanItem): boolean {
     !group.groupMergedIntoGoalAt
   )
 }
+
+const countablePlanGroups = computed(() =>
+  props.detail.planItems.filter((group) => planGroupCountableSubTasks(group).length > 0),
+)
+
+const pushSubreposBlockedReason = computed(() => {
+  if (!props.detail.goal.gitBranch?.trim()) {
+    return '需求尚未设置需求分支，无法推送'
+  }
+  if (countablePlanGroups.value.length === 0) {
+    return '需求下没有有效功能组，无法推送'
+  }
+  const unmergedGroup = countablePlanGroups.value.find(
+    (group) => !group.groupMergedIntoGoalAt,
+  )
+  if (unmergedGroup) {
+    return `功能组「${unmergedGroup.title}」尚未并入需求分支`
+  }
+  if (props.detail.tasks.length === 0) {
+    return '需求下尚无已物化任务，无法推送'
+  }
+  const unfinishedTask = props.detail.tasks.find((task) => task.status !== 'done')
+  if (unfinishedTask) {
+    return `任务「${unfinishedTask.title}」尚未完成`
+  }
+  return null
+})
+
+const canPushSubrepos = computed(() => !pushSubreposBlockedReason.value)
 
 function formatGroupMergedAt(iso: string): string {
   const d = new Date(iso)
@@ -98,6 +135,36 @@ function workflowDisplayLabel(item: GoalPlanSubTask): string {
       >
         当前项目暂无启用的工作流，请先在项目下创建并启用后，在子任务侧栏内为待确认项配置工作流。
       </p>
+      <div
+        class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-background px-3 py-2"
+      >
+        <div class="min-w-0">
+          <p class="text-foreground text-xs font-medium">需求分支推送</p>
+          <p class="text-muted-foreground mt-0.5 min-w-0 break-all font-mono text-[11px]">
+            {{ props.detail.goal.gitBranch ?? '未设置需求分支' }}
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          :disabled="
+            props.pushingGoalSubrepos ||
+            !canPushSubrepos ||
+            props.materializing ||
+            !!props.mergingPlanGroupId ||
+            !!props.markingBranchMergedId
+          "
+          :title="pushSubreposBlockedReason ?? '将需求分支推送到各个子仓'"
+          @click="emit('pushSubrepos')"
+        >
+          <Loader2
+            v-if="props.pushingGoalSubrepos"
+            class="size-3.5 animate-spin"
+            aria-hidden="true"
+          />
+          {{ props.pushingGoalSubrepos ? '推送中…' : '推送' }}
+        </Button>
+      </div>
       <div class="min-w-0 px-0">
         <table class="w-full table-fixed border-collapse text-left text-xs">
           <colgroup>

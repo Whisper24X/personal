@@ -59,7 +59,7 @@ const ctx = useProjectsDetailPageInject()
         </div>
         <div>
           <dt class="text-muted-foreground">服务编排</dt>
-          <dd class="mt-1 text-foreground">{{ ctx.containerServiceSummary }}</dd>
+          <dd class="mt-1 text-foreground">自动生成</dd>
         </div>
       </dl>
     </div>

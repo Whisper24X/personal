@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package api.dynamic_learn_config.v1;
+
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/dynamic_learn_config/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.dynamic_learn_config.v1";
+//import "google/protobuf/struct.proto";
+
+service DynamicLearnConfig {
+  // 查询动态学习配置列表
+  rpc QueryDynamicLearnConfigShadowList(QueryDynamicLearnConfigListShadowReq) returns (QueryDynamicLearnConfigListShadowReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-learn-config/v1/queryDynamicLearnConfigShadowList"
+      body: "*"
+    };
+  }
+  // 保存动态学习配置
+  rpc StoreDynamicLearnConfig(StoreDynamicLearnConfigReq) returns (StoreDynamicLearnConfigReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-learn-config/v1/storeDynamicLearnConfig"
+      body: "*"
+    };
+  }
+  // 修改动态学习配置状态
+  rpc UpdateDynamicLearnConfigStatus(UpdateDynamicLearnConfigStatusReq) returns (UpdateDynamicLearnConfigStatusReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-learn-config/v1/updateDynamicLearnConfigStatus"
+      body: "*"
+    };
+  }
+  // 客户端查询动态配置列表
+  rpc QueryDynamicLearnConfigListApi(QueryDynamicLearnConfigListApiReq) returns (QueryDynamicLearnConfigListApiReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-learn-config/v1/queryDynamicLearnConfigListApi"
+      body: "*"
+    };
+  }
+  // 批量复制动态学习配置
+  rpc BatchCreateDynamicLearnConfig(BatchCreateDynamicLearnConfigReq) returns (BatchCreateDynamicLearnConfigReply) {
+    option (google.api.http) = {
+      post: "/devices-learn/dynamic-learn-config/v1/batchCreateDynamicLearnConfig"
+      body: "*"
+    };
+  }
+}
+
+message BatchCreateDynamicLearnConfigReq {
+  string configType = 1 [(validate.rules).string = {min_len: 1}]; // 配置类型: 同步学习/专项学练
+  repeated string subjectType = 2; // 学科类别: 数学/物理/语文/化学/英语/生物/地理
+  string functionName = 4 [(validate.rules).string = {min_len: 1}]; // 功能名称
+  int32 priority = 5 [(validate.rules).int32 = {gte: 1}]; // 优先级
+  string imageScale = 6 [(validate.rules).string = {min_len: 1}]; // 图片尺寸: 大/小
+  string imageUrl = 7 [(validate.rules).string = {min_len: 1}]; // 图片链接
+  string scene = 8; // 学习场景
+  string jumpLink = 9; // 跳转链接
+  string functionType = 10; // 功能类别：专项学习/专项练习
+  string updatedBy = 11; // 最后修改人
+}
+
+message BatchCreateDynamicLearnConfigReply {
+  bool isSucceed = 1; // 是否成功: true: 成功; false: 失败
+}
+
+message QueryDynamicLearnConfigListApiReq {
+  string configType = 1 [(validate.rules).string = {min_len: 1}]; // 配置类型
+}
+
+message QueryDynamicLearnConfigListApiReply {
+  repeated DynamicLearnConfigItem list = 1; // 列表
+}
+
+message UpdateDynamicLearnConfigStatusReq {
+  string configType = 1 [(validate.rules).string = {min_len: 1}]; // 配置类型
+  string id = 2 [(validate.rules).string = {min_len: 1}]; // 主键ID
+  int32 status = 3; // 状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架
+  string updatedBy = 4; // 最后修改人
+}
+
+message UpdateDynamicLearnConfigStatusReply {
+  bool isSucceed = 1; // 是否成功: true: 成功; false: 失败
+}
+
+message StoreDynamicLearnConfigReq {
+  string configType = 1 [(validate.rules).string = {min_len: 1}]; // 配置类型: 同步学习/专项学练
+  string id = 2; // 主键ID
+  string subjectType = 3 [(validate.rules).string = {min_len: 1}]; // 学科类别: 数学/物理/语文/化学/英语/生物/地理
+  string functionName = 4 [(validate.rules).string = {min_len: 1}]; // 功能名称
+  int32 priority = 5 [(validate.rules).int32 = {gte: 1}]; // 优先级
+  string imageScale = 6 [(validate.rules).string = {min_len: 1}]; // 图片尺寸: 大/小
+  string imageUrl = 7 [(validate.rules).string = {min_len: 1}]; // 图片链接
+  string scene = 8; // 学习场景
+  string jumpLink = 9; // 跳转链接
+  string functionType = 10; // 功能类别：专项学习/专项练习
+  string updatedBy = 11; // 最后修改人
+}
+
+message StoreDynamicLearnConfigReply {
+  string id = 1; // 主键ID
+}
+
+message QueryDynamicLearnConfigListShadowReq {
+  string subjectType = 1; // 学科类别
+  string functionName = 2; // 功能名称
+  string configType = 3 [(validate.rules).string = {min_len: 1}]; // 配置类型
+}
+
+// 功能项
+message DynamicLearnConfigFunctionItem {
+  string id = 1; // 主键ID
+  string subjectType = 2; // 学科类别
+  int32 priority = 3; // 优先级
+  int32 status = 4; // 状态: -1: 已删除; 0: 待上架；1：已上架；2：已下架
+  string functionName = 5; // 功能名称
+  string imageScale = 6; // 图片尺寸
+  string imageUrl = 7; // 图片链接
+  string scene = 8; // 学习场景
+  string jumpLink = 9; // 跳转链接
+  string functionType = 10; // 功能类别
+  string configType = 11; // 配置类型
+  string updatedBy = 12; // 更新人
+  string createdAt = 13; // 创建时间
+  string updatedAt = 14; // 更新时间
+}
+
+message DynamicLearnConfigItem {
+  string subjectType = 1; // 学科类别
+  int32 functionNums = 2; // 功能数量
+  repeated DynamicLearnConfigFunctionItem functionList = 3; // 功能列表
+}
+
+message QueryDynamicLearnConfigListShadowReply {
+  repeated DynamicLearnConfigItem list = 1; // 列表
+}

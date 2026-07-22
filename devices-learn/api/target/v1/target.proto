@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package api.target.v1;
+
+import "descriptor/descriptor.proto";
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/devices-learn/api/target/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.target.v1";
+
+service Target {
+  // 查询学校各科满分分数选项
+  rpc GetSchoolScoresTotalSubject(GetSchoolScoresTotalSubjectRequest) returns (GetSchoolScoresTotalSubjectReply) {
+    option (google.api.http) = {get: "/devices-learn/target/school/scoresTotalSubject"};
+  }
+  // 创建用户学习目标
+  rpc CreateUserLearnTarget(CreateUserLearnTargetRequest) returns (UserLearnTargetInfo) {
+    option (google.api.http) = {
+      post: "/devices-learn/target/user/create"
+      body: "*"
+    };
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+  // 查询用户学习目标
+  rpc GetUserLearnTarget(GetUserLearnTargetRequest) returns (UserLearnTargetInfo) {
+    option (google.api.http) = {get: "/devices-learn/target/user/info"};
+    option (descriptor.api_tag) = {header_has_uid: true};
+  }
+}
+
+message GetSchoolScoresTotalSubjectRequest {
+  optional string schoolId = 1 [(validate.rules).string = {
+    min_len: 0
+    max_len: 64
+  }]; // 学校配置ID
+}
+message GetSchoolScoresTotalSubjectReply {
+  message ScoresTotalSubject {
+    int32 subjectId = 1; // 学科ID
+    string subjectName = 2; // 学科名称
+    repeated int32 scoresOption = 3; // 学科满分分数选项
+  }
+  repeated ScoresTotalSubject scoresTotalSubject = 1; // 各科满分分数选项列表
+}
+
+message CreateUserLearnTargetRequest {
+  string schoolId = 1 [(validate.rules).string = {
+    min_len: 0
+    max_len: 64
+  }]; // 学校配置ID
+  string schoolName = 2 [(validate.rules).string = {
+    min_len: 0
+    max_len: 64
+  }]; // 学校名称
+  int64 schoolSystem = 3 [(validate.rules).int64 = {
+    gte: 1
+    lte: 5
+  }]; // 学制年限
+  int64 scoresAdmission = 4 [(validate.rules).int64 = {gte: 1}]; // 最近一年录取分数线
+  repeated ScoresTotalSubject scoresTotalSubject = 5; // 各科满分分数
+}
+
+message GetUserLearnTargetRequest {}
+
+message UserLearnTargetInfo {
+  string id = 1; // 记录ID
+  string userId = 2; // 用户ID
+  string schoolId = 3; // 学校配置ID
+  string schoolName = 4; // 学校名称
+  int32 schoolSystem = 5; // 学制年限
+  int32 scoresTotal = 6; // 最近一年中考总分
+  int32 scoresAdmission = 7; // 最近一年录取分数线
+  int32 scoresTarget = 8; // 用户目标分数线
+  repeated ScoresTotalSubject scoresTotalSubject = 9; // 各科满分分数
+  string status = 13; // 状态 -1:删除 0:无效 1:有效
+  string createdAt = 14; // 创建时间
+  string updatedAt = 15; // 更新时间
+}
+
+message ScoresTotalSubject {
+  int32 subjectId = 1; // 学科ID
+  optional string subjectName = 2; // 学科名称
+  int32 scoresTotal = 3; // 学科总分
+}

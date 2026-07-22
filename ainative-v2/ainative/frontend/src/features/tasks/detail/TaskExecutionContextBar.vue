@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { TaskEnvironmentStatus, TaskMode, TaskStatus } from '@/types/api/tasks'
+import type {
+  TaskEnvironmentStatus,
+  TaskMode,
+  TaskStatus,
+  TaskWorkspaceSnapshotStatus,
+} from '@/types/api/tasks'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@shared/ui/tooltip'
 
 defineOptions({
@@ -18,18 +23,26 @@ const props = defineProps<{
   environmentStatusLabel?: string
   environmentStatusClass?: string
   environmentStageLabel?: string
+  workspaceSnapshotStatus?: TaskWorkspaceSnapshotStatus | null
+  workspaceSnapshotError?: string | null
   actionLoading: boolean
+  showRegenerateRunnerConfig?: boolean
+  canRegenerateRunnerConfig?: boolean
+  regenerateRunnerConfigBlockedReason?: string
   canStartEnvironment?: boolean
   canExecute: boolean
   canCompleteTask: boolean
   canReset: boolean
   canTerminate?: boolean
   canRemove?: boolean
+  regenerateRunnerConfigLoading?: boolean
+  regenerateRunnerConfigPreparing?: boolean
   rightPanelVisible?: boolean
 }>()
 
 const emit = defineEmits<{
   execute: []
+  regenerateRunnerConfig: []
   startEnvironment: []
   completeTask: []
   reset: []
@@ -61,7 +74,12 @@ const showPrimaryActions = computed(() => {
 })
 
 const canShowMoreActions = computed(() => {
-  return props.canReset || Boolean(props.canTerminate) || Boolean(props.canRemove)
+  return (
+    Boolean(props.showRegenerateRunnerConfig) ||
+    props.canReset ||
+    Boolean(props.canTerminate) ||
+    Boolean(props.canRemove)
+  )
 })
 
 const environmentBadgeLabel = computed(() => {
@@ -75,6 +93,26 @@ const environmentBadgeLabel = computed(() => {
 
   return `环境 ${props.environmentStatusLabel}`
 })
+const workspaceSnapshotBadge = computed(() => {
+  if (props.workspaceSnapshotStatus === 'pushing') {
+    return {
+      label: 'snapshot 后台同步中',
+      className: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+    }
+  }
+  if (props.workspaceSnapshotStatus === 'failed') {
+    return {
+      label: 'snapshot 同步失败',
+      className: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      title: props.workspaceSnapshotError ?? undefined,
+    }
+  }
+  return null
+})
+
+const regenerateRunnerActionLoading = computed(
+  () => props.regenerateRunnerConfigLoading || props.regenerateRunnerConfigPreparing,
+)
 </script>
 
 <template>
@@ -91,6 +129,14 @@ const environmentBadgeLabel = computed(() => {
             :class="props.environmentStatusClass || 'bg-muted text-muted-foreground'"
           >
             {{ environmentBadgeLabel }}
+          </span>
+          <span
+            v-if="workspaceSnapshotBadge"
+            class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+            :class="workspaceSnapshotBadge.className"
+            :title="workspaceSnapshotBadge.title"
+          >
+            {{ workspaceSnapshotBadge.label }}
           </span>
           <span
             class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
@@ -211,6 +257,33 @@ const environmentBadgeLabel = computed(() => {
                 v-if="moreMenuOpen"
                 class="border-border bg-background absolute right-0 top-full z-30 mt-1 min-w-[120px] rounded-lg border py-1 shadow-lg"
               >
+              <button
+                v-if="props.showRegenerateRunnerConfig"
+                class="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                :title="
+                  props.canRegenerateRunnerConfig ? undefined : props.regenerateRunnerConfigBlockedReason
+                "
+                :disabled="
+                  props.actionLoading ||
+                  props.regenerateRunnerConfigLoading ||
+                  props.regenerateRunnerConfigPreparing ||
+                  !props.canRegenerateRunnerConfig
+                "
+                type="button"
+                @click="
+                  moreMenuOpen = false;
+                  emit('regenerateRunnerConfig');
+                "
+              >
+                <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fill-rule="evenodd"
+                    d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.634a.75.75 0 0 0 1.5 0v-2.033l.364.363a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.112-.231Zm-1.624-8.3a.75.75 0 0 0-1.112-.231A5.5 5.5 0 0 0 3.576 5.36l.312.311H1.455a.75.75 0 0 0 0 1.5h3.634a.75.75 0 0 0 .75-.75V2.787a.75.75 0 0 0-1.5 0v2.033l-.364-.363A7 7 0 0 1 15.688 7.595a.75.75 0 0 0-2-4.471Z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                {{ regenerateRunnerActionLoading ? '准备中...' : '重置配置' }}
+              </button>
               <button
                 v-if="props.canReset"
                 class="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40"

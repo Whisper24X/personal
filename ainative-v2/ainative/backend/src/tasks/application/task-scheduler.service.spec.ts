@@ -19,7 +19,7 @@ const createService = () => {
     renewNodeLease: jest.fn(),
   };
   const projectRepository = {
-    findPage: jest.fn(),
+    findAllWithPagination: jest.fn(),
   };
   const dataSource = {
     query: jest
@@ -97,14 +97,19 @@ const createService = () => {
 
   return {
     service,
+    taskRepository,
     taskNodeRepository,
+    projectRepository,
     taskAccessService,
     taskOutputService,
     taskLogService,
     taskStatusService,
     taskConfigResolver,
+    projectExecutionSlotRepository,
     containerOrchestration,
+    taskNodeExecutionService,
     notificationsService,
+    containerExecutionConfig,
   };
 };
 
@@ -184,5 +189,125 @@ describe('TaskSchedulerService', () => {
     expect(
       notificationsService.notifyTaskNodeStatusChanged,
     ).not.toHaveBeenCalled();
+  });
+
+  it('should not dispatch workspace-native task while workspace is provisioning', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      projectRepository,
+      projectExecutionSlotRepository,
+      taskNodeExecutionService,
+      containerExecutionConfig,
+    } = createService();
+    const task = {
+      id: 'task-1',
+      projectId: 'project-1',
+      configJson: {
+        workspaceStatus: 'provisioning',
+      },
+    };
+    const project = {
+      id: 'project-1',
+      configJson: {
+        subtreeMode: 'workspace-native',
+      },
+    };
+
+    taskRepository.findTasksReadyForDispatch.mockResolvedValue([task]);
+    taskRepository.countRunningTasksByProjectIds.mockResolvedValue({});
+    taskRepository.countRunningTasks.mockResolvedValue(0);
+    projectRepository.findAllWithPagination.mockResolvedValue([project]);
+    containerExecutionConfig.getMaxContainersPerProject.mockReturnValue(2);
+
+    await expect(
+      (
+        service as never as {
+          scheduleQueuedNodes: () => Promise<void>;
+        }
+      ).scheduleQueuedNodes(),
+    ).resolves.toBeUndefined();
+
+    expect(
+      projectExecutionSlotRepository.claimSlotWithinLimit,
+    ).not.toHaveBeenCalled();
+    expect(taskNodeRepository.claimFirstTodoNode).not.toHaveBeenCalled();
+    expect(taskNodeExecutionService.runNode).not.toHaveBeenCalled();
+  });
+
+  it('should dispatch legacy workspace-native task when workspace status is missing', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      projectRepository,
+      projectExecutionSlotRepository,
+      taskNodeExecutionService,
+      taskStatusService,
+      taskLogService,
+      containerExecutionConfig,
+    } = createService();
+    const task = {
+      id: 'task-legacy',
+      projectId: 'project-1',
+      configJson: {
+        workspaceSnapshot: {
+          taskBranch: 'feature/legacy',
+          snapshotCommitSha: 'abc123',
+        },
+      },
+    };
+    const project = {
+      id: 'project-1',
+      configJson: {
+        subtreeMode: 'workspace-native',
+      },
+    };
+    const node = {
+      id: 'node-1',
+      nodeOrder: 1,
+    };
+
+    taskRepository.findTasksReadyForDispatch.mockResolvedValue([task]);
+    taskRepository.countRunningTasksByProjectIds.mockResolvedValue({});
+    taskRepository.countRunningTasks.mockResolvedValue(0);
+    projectRepository.findAllWithPagination.mockResolvedValue([project]);
+    containerExecutionConfig.getMaxContainersPerProject.mockReturnValue(2);
+    containerExecutionConfig.getSlotTtlMs.mockReturnValue(5_000);
+    projectExecutionSlotRepository.claimSlotWithinLimit.mockResolvedValue(
+      'claimed',
+    );
+    taskNodeRepository.claimFirstTodoNode.mockResolvedValue(node);
+
+    await expect(
+      (
+        service as never as {
+          scheduleQueuedNodes: () => Promise<void>;
+        }
+      ).scheduleQueuedNodes(),
+    ).resolves.toBeUndefined();
+
+    expect(
+      projectExecutionSlotRepository.claimSlotWithinLimit,
+    ).toHaveBeenCalledWith('project-1', 'task-legacy', 5_000, 2);
+    expect(taskNodeRepository.claimFirstTodoNode).toHaveBeenCalled();
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-legacy',
+        taskNodeId: 'node-1',
+        message: 'Node execution started',
+      }),
+    );
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-legacy',
+    );
+    expect(taskNodeExecutionService.runNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-legacy',
+        nodeId: 'node-1',
+        project,
+      }),
+    );
   });
 });
